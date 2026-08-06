@@ -1,0 +1,25 @@
+{
+  "case_id": "Cpp_478__0",
+  "sample_id": "D/C++/478",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "antlarr/audiofile",
+  "cve_id": "CVE-2017-6829",
+  "cve_summary": "The decodeSample function in IMA.cpp in Audio File Library (aka audiofile) 0.3.6 allows remote attackers to cause a denial of service (crash) via a crafted file.",
+  "commit_message": "clamp index values to fix index overflow in IMA.cpp\n\nThis fixes #33\n(also reported at https://bugzilla.opensuse.org/show_bug.cgi?id=1026981\nand https://blogs.gentoo.org/ago/2017/02/20/audiofile-global-buffer-overflow-in-decodesample-ima-cpp/)",
+  "changed_file": "libaudiofile/modules/IMA.cpp",
+  "docstring": "Summary: This function decodes a WAVE audio block using ADPCM encoding and fills the decoded audio samples into an output buffer.\n\nParameters: \n- encoded (const uint8_t *): Pointer to the input encoded audio data.\n- decoded (int16_t *): Pointer to the output buffer where decoded audio samples will be stored.\n\nReturns: \n- int: The total number of bytes written to the decoded buffer.\n\nLogic: The function first initializes the previous values and indices for each audio channel based on the encoded data. It then processes the encoded samples in packets, decoding them into the output buffer using the ADPCM state for each channel. The function returns the total size of the decoded audio data in bytes.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    162,
+    198
+  ],
+  "vulnerable_snippet": "int IMA::decodeBlockWAVE(const uint8_t *encoded, int16_t *decoded)\r\n{\r\n\tint channelCount = m_track->f.channelCount;\r\n\r\n\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tm_adpcmState[c].previousValue = (encoded[1]<<8) | encoded[0];\r\n\t\tif (encoded[1] & 0x80)\r\n\t\t\tm_adpcmState[c].previousValue -= 0x10000;\r\n\r\n\t\tm_adpcmState[c].index = encoded[2];\r\n\r\n\t\t*decoded++ = m_adpcmState[c].previousValue;\r\n\r\n\t\tencoded += 4;\r\n\t}\r\n\r\n\tfor (int n=0; n<m_framesPerPacket - 1; n += 8)\r\n\t{\r\n\t\tfor (int c=0; c<channelCount; c++)\r\n\t\t{\r\n\t\t\tint16_t *output = decoded + c;\r\n\t\t\tfor (int s=0; s<4; s++)\r\n\t\t\t{\r\n\t\t\t\t*output = decodeSample(m_adpcmState[c], *encoded & 0xf);\r\n\t\t\t\toutput += channelCount;\r\n\t\t\t\t*output = decodeSample(m_adpcmState[c], *encoded >> 4);\r\n\t\t\t\toutput += channelCount;\r\n\t\t\t\tencoded++;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\tdecoded += channelCount * 8;\r\n\t}\r\n\r\n\treturn m_framesPerPacket * channelCount * sizeof (int16_t);\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    166,
+    177
+  ],
+  "fixed_snippet": "\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tm_adpcmState[c].previousValue = (encoded[1]<<8) | encoded[0];\r\n\t\tif (encoded[1] & 0x80)\r\n\t\t\tm_adpcmState[c].previousValue -= 0x10000;\r\n\r\n\t\tm_adpcmState[c].index = clamp(encoded[2], 0, 88);\r\n\r\n\t\t*decoded++ = m_adpcmState[c].previousValue;\r\n\r\n\t\tencoded += 4;\r\n\t}"
+}

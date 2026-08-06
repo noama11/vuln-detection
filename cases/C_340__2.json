@@ -1,0 +1,25 @@
+{
+  "case_id": "C_340__2",
+  "sample_id": "D/C/340",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2672",
+  "cve_summary": "The xsave/xrstor implementation in arch/x86/include/asm/xsave.h in the Linux kernel before 3.19.2 creates certain .altinstr_replacement pointers and consequently does not provide any protection against instruction faulting, which allows local users to cause a denial of service (panic) by triggering a fault, as demonstrated by an unaligned memory operand or a non-canonical address memory operand.",
+  "commit_message": "x86/fpu/xsaves: Fix improper uses of __ex_table\n\nCommit:\n\n  f31a9f7c7169 (\"x86/xsaves: Use xsaves/xrstors to save and restore xsave area\")\n\nintroduced alternative instructions for XSAVES/XRSTORS and commit:\n\n  adb9d526e982 (\"x86/xsaves: Add xsaves and xrstors support for booting time\")\n\nadded support for the XSAVES/XRSTORS instructions at boot time.\n\nUnfortunately both failed to properly protect them against faulting:\n\nThe 'xstate_fault' macro will use the closest label named '1'\nbackward and that ends up in the .altinstr_replacement section\nrather than in .text. This means that the kernel will never find\nin the __ex_table the .text address where this instruction might\nfault, leading to serious problems if userspace manages to\ntrigger the fault.\n\nSigned-off-by: Quentin Casasnovas <quentin.casasnovas@oracle.com>\nSigned-off-by: Jamie Iles <jamie.iles@oracle.com>\n[ Improved the changelog, fixed some whitespace noise. ]\nAcked-by: Borislav Petkov <bp@alien8.de>\nAcked-by: Linus Torvalds <torvalds@linux-foundation.org>\nCc: <stable@vger.kernel.org>\nCc: Allan Xavier <mr.a.xavier@gmail.com>\nCc: H. Peter Anvin <hpa@zytor.com>\nCc: Thomas Gleixner <tglx@linutronix.de>\nFixes: adb9d526e982 (\"x86/xsaves: Add xsaves and xrstors support for booting time\")\nFixes: f31a9f7c7169 (\"x86/xsaves: Use xsaves/xrstors to save and restore xsave area\")\nSigned-off-by: Ingo Molnar <mingo@kernel.org>",
+  "changed_file": "arch/x86/include/asm/xsave.h",
+  "docstring": "Summary: Restores the processor's extended state from a specified xsave structure using the xrstor or xrstors instruction based on feature availability.\n\nParameters: \nfx (struct xsave_struct *): Pointer to the xsave structure containing the state to restore.  \nmask (u64): Bitmask indicating which state components to restore.\n\nReturns: int: Returns an error code indicating the success or failure of the operation.\n\nLogic: The function checks if the xrstors instruction can be used to restore the context, which supports a compacted format of the xsave area. It utilizes an inline assembly block to perform the restoration and handles potential faults during the operation. The function ultimately returns an error code, which is initialized to zero.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    163,
+    186
+  ],
+  "vulnerable_snippet": "\treturn err;\r\n}\r\n\r\n/*\r\n * Restore processor xstate from xsave area.\r\n */\r\nstatic inline int xrstor_state(struct xsave_struct *fx, u64 mask)\r\n{\r\n\tint err = 0;\r\n\tu32 lmask = mask;\r\n\tu32 hmask = mask >> 32;\r\n\r\n\t/*\r\n\t * Use xrstors to restore context if it is enabled. xrstors supports\r\n\t * compacted format of xsave area which is not supported by xrstor.\r\n\t */\r\n\talternative_input(\r\n\t\t\"1: \" XRSTOR,\r\n\t\t\"1: \" XRSTORS,\r\n\t\tX86_FEATURE_XSAVES,\r\n\t\t\"D\" (fx), \"m\" (*fx), \"a\" (lmask), \"d\" (hmask)\r\n\t\t: \"memory\");\r\n\r\n\tasm volatile(\"2:\\n\"\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    163,
+    186
+  ],
+  "fixed_snippet": "static inline int xrstor_state(struct xsave_struct *fx, u64 mask)\r\n{\r\n\tint err = 0;\r\n\tu32 lmask = mask;\r\n\tu32 hmask = mask >> 32;\r\n\r\n\t/*\r\n\t * Use xrstors to restore context if it is enabled. xrstors supports\r\n\t * compacted format of xsave area which is not supported by xrstor.\r\n\t */\r\n\talternative_input(\r\n\t\t\"1: \" XRSTOR,\r\n\t\tXRSTORS,\r\n\t\tX86_FEATURE_XSAVES,\r\n\t\t\"D\" (fx), \"m\" (*fx), \"a\" (lmask), \"d\" (hmask)\r\n\t\t: \"memory\");\r\n\r\n\tasm volatile(\"2:\\n\"\r\n\t\t     xstate_fault\r\n\t\t     : \"0\" (0)\r\n\t\t     : \"memory\");\r\n\r\n\treturn err;\r\n}"
+}

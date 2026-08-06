@@ -1,0 +1,25 @@
+{
+  "case_id": "C_59__0",
+  "sample_id": "D/C/59",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4300",
+  "cve_summary": "The scm_check_creds function in net/core/scm.c in the Linux kernel before 3.11 performs a capability check in an incorrect namespace, which allows local users to gain privileges via PID spoofing.",
+  "commit_message": "net: Check the correct namespace when spoofing pid over SCM_RIGHTS\n\nThis is a security bug.\n\nThe follow-up will fix nsproxy to discourage this type of issue from\nhappening again.\n\nCc: stable@vger.kernel.org\nSigned-off-by: Andy Lutomirski <luto@amacapital.net>\nReviewed-by: \"Eric W. Biederman\" <ebiederm@xmission.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/core/scm.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Checks if the provided user credentials can be sent based on the current  \n * process's capabilities and user IDs.  \n *  \n * Parameters:  \n * creds (struct ucred*): Pointer to the user credentials to be checked.  \n *  \n * Returns:  \n * int: Returns 0 if the credentials are valid for sending; otherwise,  \n * returns -EINVAL for invalid UID/GID or -EPERM for permission denied.  \n *  \n * Logic:  \n * The function retrieves the current process's credentials and validates the  \n * provided UID and GID. It checks if the credentials belong to the current  \n * process or if the current process has administrative capabilities. If the  \n * checks pass, it allows the credentials to be sent; otherwise, it denies  \n * permission.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    12,
+    65
+  ],
+  "vulnerable_snippet": "#include <linux/module.h>\r\n#include <linux/signal.h>\r\n#include <linux/capability.h>\r\n#include <linux/errno.h>\r\n#include <linux/sched.h>\r\n#include <linux/mm.h>\r\n#include <linux/kernel.h>\r\n#include <linux/stat.h>\r\n#include <linux/socket.h>\r\n#include <linux/file.h>\r\n#include <linux/fcntl.h>\r\n#include <linux/net.h>\r\n#include <linux/interrupt.h>\r\n#include <linux/netdevice.h>\r\n#include <linux/security.h>\r\n#include <linux/pid_namespace.h>\r\n#include <linux/pid.h>\r\n#include <linux/nsproxy.h>\r\n#include <linux/slab.h>\r\n\r\n#include <asm/uaccess.h>\r\n\r\n#include <net/protocol.h>\r\n#include <linux/skbuff.h>\r\n#include <net/sock.h>\r\n#include <net/compat.h>\r\n#include <net/scm.h>\r\n#include <net/cls_cgroup.h>\r\n\r\n\r\n/*\r\n *\tOnly allow a user to send credentials, that they could set with\r\n *\tsetu(g)id.\r\n */\r\n\r\nstatic __inline__ int scm_check_creds(struct ucred *creds)\r\n{\r\n\tconst struct cred *cred = current_cred();\r\n\tkuid_t uid = make_kuid(cred->user_ns, creds->uid);\r\n\tkgid_t gid = make_kgid(cred->user_ns, creds->gid);\r\n\r\n\tif (!uid_valid(uid) || !gid_valid(gid))\r\n\t\treturn -EINVAL;\r\n\r\n\tif ((creds->pid == task_tgid_vnr(current) ||\r\n\t     ns_capable(current->nsproxy->pid_ns->user_ns, CAP_SYS_ADMIN)) &&\r\n\t    ((uid_eq(uid, cred->uid)   || uid_eq(uid, cred->euid) ||\r\n\t      uid_eq(uid, cred->suid)) || nsown_capable(CAP_SETUID)) &&\r\n\t    ((gid_eq(gid, cred->gid)   || gid_eq(gid, cred->egid) ||\r\n\t      gid_eq(gid, cred->sgid)) || nsown_capable(CAP_SETGID))) {\r\n\t       return 0;\r\n\t}\r\n\treturn -EPERM;\r\n}\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'setu'",
+  "fixed_line_range": [
+    47,
+    65
+  ],
+  "fixed_snippet": "static __inline__ int scm_check_creds(struct ucred *creds)\r\n{\r\n\tconst struct cred *cred = current_cred();\r\n\tkuid_t uid = make_kuid(cred->user_ns, creds->uid);\r\n\tkgid_t gid = make_kgid(cred->user_ns, creds->gid);\r\n\r\n\tif (!uid_valid(uid) || !gid_valid(gid))\r\n\t\treturn -EINVAL;\r\n\r\n\tif ((creds->pid == task_tgid_vnr(current) ||\r\n\t     ns_capable(task_active_pid_ns(current)->user_ns, CAP_SYS_ADMIN)) &&\r\n\t    ((uid_eq(uid, cred->uid)   || uid_eq(uid, cred->euid) ||\r\n\t      uid_eq(uid, cred->suid)) || nsown_capable(CAP_SETUID)) &&\r\n\t    ((gid_eq(gid, cred->gid)   || gid_eq(gid, cred->egid) ||\r\n\t      gid_eq(gid, cred->sgid)) || nsown_capable(CAP_SETGID))) {\r\n\t       return 0;\r\n\t}\r\n\treturn -EPERM;\r\n}"
+}

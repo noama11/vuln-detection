@@ -1,0 +1,25 @@
+{
+  "case_id": "C_119__0",
+  "sample_id": "D/C/119",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2119",
+  "cve_summary": "Buffer overflow in the macvtap device driver in the Linux kernel before 3.4.5, when running in certain configurations, allows privileged KVM guest users to cause a denial of service (crash) via a long descriptor with a long vector length.",
+  "commit_message": "macvtap: zerocopy: validate vectors before building skb\n\nThere're several reasons that the vectors need to be validated:\n\n- Return error when caller provides vectors whose num is greater than UIO_MAXIOV.\n- Linearize part of skb when userspace provides vectors grater than MAX_SKB_FRAGS.\n- Return error when userspace provides vectors whose total length may exceed\n- MAX_SKB_FRAGS * PAGE_SIZE.\n\nSigned-off-by: Jason Wang <jasowang@redhat.com>\nSigned-off-by: Michael S. Tsirkin <mst@redhat.com>",
+  "changed_file": "drivers/net/macvtap.c",
+  "docstring": "/**\n * Summary: \n * Copies data from an iovec structure into a socket buffer (sk_buff) without additional memory allocation.\n * \n * Parameters: \n * skb (struct sk_buff *): Pointer to the socket buffer where data will be copied.\n * from (const struct iovec *): Pointer to the iovec structure containing the source data.\n * offset (int): The starting point in the iovec from which to begin copying.\n * count (size_t): The number of iovec elements to process.\n * \n * Returns: \n * int: Returns 0 on success, or a negative error code on failure (e.g., -EFAULT for copy errors).\n * \n * Logic: \n * The function first calculates the length of data to copy and processes the iovec elements, copying data into the socket buffer's head. If more data remains, it retrieves pages from user space and fills the socket buffer's fragment descriptors, updating the buffer's metadata accordingly.\n */",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    484,
+    559
+  ],
+  "vulnerable_snippet": "static int zerocopy_sg_from_iovec(struct sk_buff *skb, const struct iovec *from,\r\n\t\t\t\t  int offset, size_t count)\r\n{\r\n\tint len = iov_length(from, count) - offset;\r\n\tint copy = skb_headlen(skb);\r\n\tint size, offset1 = 0;\r\n\tint i = 0;\r\n\r\n\t/* Skip over from offset */\r\n\twhile (count && (offset >= from->iov_len)) {\r\n\t\toffset -= from->iov_len;\r\n\t\t++from;\r\n\t\t--count;\r\n\t}\r\n\r\n\t/* copy up to skb headlen */\r\n\twhile (count && (copy > 0)) {\r\n\t\tsize = min_t(unsigned int, copy, from->iov_len - offset);\r\n\t\tif (copy_from_user(skb->data + offset1, from->iov_base + offset,\r\n\t\t\t\t   size))\r\n\t\t\treturn -EFAULT;\r\n\t\tif (copy > size) {\r\n\t\t\t++from;\r\n\t\t\t--count;\r\n\t\t\toffset = 0;\r\n\t\t} else\r\n\t\t\toffset += size;\r\n\t\tcopy -= size;\r\n\t\toffset1 += size;\r\n\t}\r\n\r\n\tif (len == offset1)\r\n\t\treturn 0;\r\n\r\n\twhile (count--) {\r\n\t\tstruct page *page[MAX_SKB_FRAGS];\r\n\t\tint num_pages;\r\n\t\tunsigned long base;\r\n\t\tunsigned long truesize;\r\n\r\n\t\tlen = from->iov_len - offset;\r\n\t\tif (!len) {\r\n\t\t\toffset = 0;\r\n\t\t\t++from;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tbase = (unsigned long)from->iov_base + offset;\r\n\t\tsize = ((base & ~PAGE_MASK) + len + ~PAGE_MASK) >> PAGE_SHIFT;\r\n\t\tnum_pages = get_user_pages_fast(base, size, 0, &page[i]);\r\n\t\tif ((num_pages != size) ||\r\n\t\t    (num_pages > MAX_SKB_FRAGS - skb_shinfo(skb)->nr_frags)) {\r\n\t\t\tfor (i = 0; i < num_pages; i++)\r\n\t\t\t\tput_page(page[i]);\r\n\t\t\treturn -EFAULT;\r\n\t\t}\r\n\t\ttruesize = size * PAGE_SIZE;\r\n\t\tskb->data_len += len;\r\n\t\tskb->len += len;\r\n\t\tskb->truesize += truesize;\r\n\t\tatomic_add(truesize, &skb->sk->sk_wmem_alloc);\r\n\t\twhile (len) {\r\n\t\t\tint off = base & ~PAGE_MASK;\r\n\t\t\tint size = min_t(int, len, PAGE_SIZE - off);\r\n\t\t\t__skb_fill_page_desc(skb, i, page[i], off, size);\r\n\t\t\tskb_shinfo(skb)->nr_frags++;\r\n\t\t\t/* increase sk_wmem_alloc */\r\n\t\t\tbase += size;\r\n\t\t\tlen -= size;\r\n\t\t\ti++;\r\n\t\t}\r\n\t\toffset = 0;\r\n\t\t++from;\r\n\t}\r\n\treturn 0;\r\n}\r\n\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'zerocopy_sg_from_iovec'",
+  "fixed_line_range": [
+    525,
+    529
+  ],
+  "fixed_snippet": "\t\tif (!len) {\r\n\t\t\toffset = 0;\r\n\t\t\t++from;\r\n\t\t\tcontinue;\r\n\t\t}"
+}

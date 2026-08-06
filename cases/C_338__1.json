@@ -1,0 +1,22 @@
+{
+  "case_id": "C_338__1",
+  "sample_id": "D/C/338",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4176",
+  "cve_summary": "fs/namespace.c in the Linux kernel before 4.0.2 does not properly support mount connectivity, which allows local users to read arbitrary files by leveraging user-namespace root access for deletion of a file or directory.",
+  "commit_message": "mnt: Update detach_mounts to leave mounts connected\n\nNow that it is possible to lazily unmount an entire mount tree and\nleave the individual mounts connected to each other add a new flag\nUMOUNT_CONNECTED to umount_tree to force this behavior and use\nthis flag in detach_mounts.\n\nThis closes a bug where the deletion of a file or directory could\ntrigger an unmount and reveal data under a mount point.\n\nCc: stable@vger.kernel.org\nSigned-off-by: \"Eric W. Biederman\" <ebiederm@xmission.com>",
+  "changed_file": "fs/namespace.c",
+  "docstring": "\"\"\"\nSummary: \nUnmounts a tree of mounts starting from the specified mount point.\n\nParameters: \nmnt (struct mount *): The mount point from which to begin unmounting.\nhow (enum umount_tree_flags): Flags that dictate the behavior of the unmount operation.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function first checks if the UMOUNT_PROPAGATE flag is set and propagates the mount unlock if necessary. It then gathers all mounts to unmount into a temporary list, marking them with the MNT_UMOUNT flag. The mounts are hidden from their parent mount's list, and if propagation is required, it handles that as well. Each mount is processed to update its namespace and flags based on the provided options, and the function manages the relationships between mounts, ensuring proper disconnection and cleanup of resources.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    1357,
+    1408
+  ],
+  "vulnerable_snippet": "{\r\n\tLIST_HEAD(tmp_list);\r\n\tstruct mount *p;\r\n\r\n\tif (how & UMOUNT_PROPAGATE)\r\n\t\tpropagate_mount_unlock(mnt);\r\n\r\n\t/* Gather the mounts to umount */\r\n\tfor (p = mnt; p; p = next_mnt(p, mnt)) {\r\n\t\tp->mnt.mnt_flags |= MNT_UMOUNT;\r\n\t\tlist_move(&p->mnt_list, &tmp_list);\r\n\t}\r\n\r\n\t/* Hide the mounts from mnt_mounts */\r\n\tlist_for_each_entry(p, &tmp_list, mnt_list) {\r\n\t\tlist_del_init(&p->mnt_child);\r\n\t}\r\n\r\n\t/* Add propogated mounts to the tmp_list */\r\n\tif (how & UMOUNT_PROPAGATE)\r\n\t\tpropagate_umount(&tmp_list);\r\n\r\n\twhile (!list_empty(&tmp_list)) {\r\n\t\tbool disconnect;\r\n\t\tp = list_first_entry(&tmp_list, struct mount, mnt_list);\r\n\t\tlist_del_init(&p->mnt_expire);\r\n\t\tlist_del_init(&p->mnt_list);\r\n\t\t__touch_mnt_namespace(p->mnt_ns);\r\n\t\tp->mnt_ns = NULL;\r\n\t\tif (how & UMOUNT_SYNC)\r\n\t\t\tp->mnt.mnt_flags |= MNT_SYNC_UMOUNT;\r\n\r\n\t\tdisconnect = !IS_MNT_LOCKED_AND_LAZY(p);\r\n\r\n\t\tpin_insert_group(&p->mnt_umount, &p->mnt_parent->mnt,\r\n\t\t\t\t disconnect ? &unmounted : NULL);\r\n\t\tif (mnt_has_parent(p)) {\r\n\t\t\tmnt_add_count(p->mnt_parent, -1);\r\n\t\t\tif (!disconnect) {\r\n\t\t\t\t/* Don't forget about p */\r\n\t\t\t\tlist_add_tail(&p->mnt_child, &p->mnt_parent->mnt_mounts);\r\n\t\t\t} else {\r\n\t\t\t\tumount_mnt(p);\r\n\t\t\t}\r\n\t\t}\r\n\t\tchange_mnt_propagation(p, MS_PRIVATE);\r\n\t}\r\n}\r\n\r\nstatic void shrink_submounts(struct mount *mnt);\r\n\r\nstatic int do_umount(struct mount *mnt, int flags)\r\n",
+  "extraction_status": "skipped",
+  "extraction_reason": "no overlapping changed_lines entry",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "C_232__0",
+  "sample_id": "D/C/232",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-9529",
+  "cve_summary": "Race condition in the key_gc_unused_keys function in security/keys/gc.c in the Linux kernel through 3.18.2 allows local users to cause a denial of service (memory corruption or panic) or possibly have unspecified other impact via keyctl commands that trigger access to a key structure member during garbage collection of a key.",
+  "commit_message": "KEYS: close race between key lookup and freeing\n\nWhen a key is being garbage collected, it's key->user would get put before\nthe ->destroy() callback is called, where the key is removed from it's\nrespective tracking structures.\n\nThis leaves a key hanging in a semi-invalid state which leaves a window open\nfor a different task to try an access key->user. An example is\nfind_keyring_by_name() which would dereference key->user for a key that is\nin the process of being garbage collected (where key->user was freed but\n->destroy() wasn't called yet - so it's still present in the linked list).\n\nThis would cause either a panic, or corrupt memory.\n\nFixes CVE-2014-9529.\n\nSigned-off-by: Sasha Levin <sasha.levin@oracle.com>\nSigned-off-by: David Howells <dhowells@redhat.com>",
+  "changed_file": "security/keys/gc.c",
+  "docstring": "\"\"\"\nSummary: \nCleans up and frees unused keys from a given list.\n\nParameters: \nkeys (struct list_head *): A pointer to the list of keys to be garbage collected.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function iterates through the provided list of keys, removing each key from the list and performing necessary cleanup operations. It checks if the key is in quota, updates the user's key tracking and quota, decrements the key counts, and calls the appropriate destroy function for the key type if it exists. Finally, it frees the key's memory and cleans up associated resources, ensuring proper memory management and preventing memory leaks.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    127,
+    164
+  ],
+  "vulnerable_snippet": "static noinline void key_gc_unused_keys(struct list_head *keys)\r\n{\r\n\twhile (!list_empty(keys)) {\r\n\t\tstruct key *key =\r\n\t\t\tlist_entry(keys->next, struct key, graveyard_link);\r\n\t\tlist_del(&key->graveyard_link);\r\n\r\n\t\tkdebug(\"- %u\", key->serial);\r\n\t\tkey_check(key);\r\n\r\n\t\tsecurity_key_free(key);\r\n\r\n\t\t/* deal with the user's key tracking and quota */\r\n\t\tif (test_bit(KEY_FLAG_IN_QUOTA, &key->flags)) {\r\n\t\t\tspin_lock(&key->user->lock);\r\n\t\t\tkey->user->qnkeys--;\r\n\t\t\tkey->user->qnbytes -= key->quotalen;\r\n\t\t\tspin_unlock(&key->user->lock);\r\n\t\t}\r\n\r\n\t\tatomic_dec(&key->user->nkeys);\r\n\t\tif (test_bit(KEY_FLAG_INSTANTIATED, &key->flags))\r\n\t\t\tatomic_dec(&key->user->nikeys);\r\n\r\n\t\tkey_user_put(key->user);\r\n\r\n\t\t/* now throw away the key memory */\r\n\t\tif (key->type->destroy)\r\n\t\t\tkey->type->destroy(key);\r\n\r\n\t\tkfree(key->description);\r\n\r\n#ifdef KEY_DEBUGGING\r\n\t\tkey->magic = KEY_DEBUG_MAGIC_X;\r\n#endif\r\n\t\tkmem_cache_free(key_jar, key);\r\n\t}\r\n}\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'key_gc_unused_keys'",
+  "fixed_line_range": [
+    129,
+    163
+  ],
+  "fixed_snippet": "\twhile (!list_empty(keys)) {\r\n\t\tstruct key *key =\r\n\t\t\tlist_entry(keys->next, struct key, graveyard_link);\r\n\t\tlist_del(&key->graveyard_link);\r\n\r\n\t\tkdebug(\"- %u\", key->serial);\r\n\t\tkey_check(key);\r\n\r\n\t\tsecurity_key_free(key);\r\n\r\n\t\t/* deal with the user's key tracking and quota */\r\n\t\tif (test_bit(KEY_FLAG_IN_QUOTA, &key->flags)) {\r\n\t\t\tspin_lock(&key->user->lock);\r\n\t\t\tkey->user->qnkeys--;\r\n\t\t\tkey->user->qnbytes -= key->quotalen;\r\n\t\t\tspin_unlock(&key->user->lock);\r\n\t\t}\r\n\r\n\t\tatomic_dec(&key->user->nkeys);\r\n\t\tif (test_bit(KEY_FLAG_INSTANTIATED, &key->flags))\r\n\t\t\tatomic_dec(&key->user->nikeys);\r\n\r\n\t\t/* now throw away the key memory */\r\n\t\tif (key->type->destroy)\r\n\t\t\tkey->type->destroy(key);\r\n\r\n\t\tkey_user_put(key->user);\r\n\r\n\t\tkfree(key->description);\r\n\r\n#ifdef KEY_DEBUGGING\r\n\t\tkey->magic = KEY_DEBUG_MAGIC_X;\r\n#endif\r\n\t\tkmem_cache_free(key_jar, key);\r\n\t}"
+}

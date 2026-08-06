@@ -1,0 +1,25 @@
+{
+  "case_id": "C_339__0",
+  "sample_id": "D/C/339",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2686",
+  "cve_summary": "net/socket.c in the Linux kernel 3.19 before 3.19.3 does not validate certain range data for (1) sendto and (2) recvfrom system calls, which allows local users to gain privileges by leveraging a subsystem that uses the copy_from_iter function in the iov_iter interface, as demonstrated by the Bluetooth subsystem.",
+  "commit_message": "net: validate the range we feed to iov_iter_init() in sys_sendto/sys_recvfrom\n\nCc: stable@vger.kernel.org # v3.19\nSigned-off-by: Al Viro <viro@zeniv.linux.org.uk>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/socket.c",
+  "docstring": "Summary: This function implements the `sendto` system call for sending data to a specified address using a socket.\n\nParameters:\n- fd (int): The file descriptor of the socket.\n- buff (void __user *): A pointer to the buffer containing the data to be sent.\n- len (size_t): The length of the data in bytes.\n- flags (unsigned int): Flags that modify the behavior of the send operation.\n- addr (struct sockaddr __user *): A pointer to the address structure where the data is to be sent.\n- addr_len (int): The length of the address structure.\n\nReturns: int - The number of bytes sent on success, or a negative error code on failure.\n\nLogic: The function first checks the validity of the buffer length and the accessibility of the buffer. It retrieves the socket associated with the file descriptor and prepares the message header. If an address is provided, it converts it to kernel space. It sets the message flags based on the socket's non-blocking status and then calls `sock_sendmsg` to send the data. Finally, it releases the socket reference and returns the result of the send operation.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    1692,
+    1734
+  ],
+  "vulnerable_snippet": "SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,\r\n\t\tunsigned int, flags, struct sockaddr __user *, addr,\r\n\t\tint, addr_len)\r\n{\r\n\tstruct socket *sock;\r\n\tstruct sockaddr_storage address;\r\n\tint err;\r\n\tstruct msghdr msg;\r\n\tstruct iovec iov;\r\n\tint fput_needed;\r\n\r\n\tif (len > INT_MAX)\r\n\t\tlen = INT_MAX;\r\n\tsock = sockfd_lookup_light(fd, &err, &fput_needed);\r\n\tif (!sock)\r\n\t\tgoto out;\r\n\r\n\tiov.iov_base = buff;\r\n\tiov.iov_len = len;\r\n\tmsg.msg_name = NULL;\r\n\tiov_iter_init(&msg.msg_iter, WRITE, &iov, 1, len);\r\n\tmsg.msg_control = NULL;\r\n\tmsg.msg_controllen = 0;\r\n\tmsg.msg_namelen = 0;\r\n\tif (addr) {\r\n\t\terr = move_addr_to_kernel(addr, addr_len, &address);\r\n\t\tif (err < 0)\r\n\t\t\tgoto out_put;\r\n\t\tmsg.msg_name = (struct sockaddr *)&address;\r\n\t\tmsg.msg_namelen = addr_len;\r\n\t}\r\n\tif (sock->file->f_flags & O_NONBLOCK)\r\n\t\tflags |= MSG_DONTWAIT;\r\n\tmsg.msg_flags = flags;\r\n\terr = sock_sendmsg(sock, &msg, len);\r\n\r\nout_put:\r\n\tfput_light(sock->file, fput_needed);\r\nout:\r\n\treturn err;\r\n}\r\n\r\n/*\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    1692,
+    1734
+  ],
+  "fixed_snippet": "SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,\r\n\t\tunsigned int, flags, struct sockaddr __user *, addr,\r\n\t\tint, addr_len)\r\n{\r\n\tstruct socket *sock;\r\n\tstruct sockaddr_storage address;\r\n\tint err;\r\n\tstruct msghdr msg;\r\n\tstruct iovec iov;\r\n\tint fput_needed;\r\n\r\n\tif (len > INT_MAX)\r\n\t\tlen = INT_MAX;\r\n\tif (unlikely(!access_ok(VERIFY_READ, buff, len)))\r\n\t\treturn -EFAULT;\r\n\tsock = sockfd_lookup_light(fd, &err, &fput_needed);\r\n\tif (!sock)\r\n\t\tgoto out;\r\n\r\n\tiov.iov_base = buff;\r\n\tiov.iov_len = len;\r\n\tmsg.msg_name = NULL;\r\n\tiov_iter_init(&msg.msg_iter, WRITE, &iov, 1, len);\r\n\tmsg.msg_control = NULL;\r\n\tmsg.msg_controllen = 0;\r\n\tmsg.msg_namelen = 0;\r\n\tif (addr) {\r\n\t\terr = move_addr_to_kernel(addr, addr_len, &address);\r\n\t\tif (err < 0)\r\n\t\t\tgoto out_put;\r\n\t\tmsg.msg_name = (struct sockaddr *)&address;\r\n\t\tmsg.msg_namelen = addr_len;\r\n\t}\r\n\tif (sock->file->f_flags & O_NONBLOCK)\r\n\t\tflags |= MSG_DONTWAIT;\r\n\tmsg.msg_flags = flags;\r\n\terr = sock_sendmsg(sock, &msg, len);\r\n\r\nout_put:\r\n\tfput_light(sock->file, fput_needed);\r\nout:\r\n\treturn err;\r\n}"
+}

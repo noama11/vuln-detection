@@ -1,0 +1,25 @@
+{
+  "case_id": "C_103__0",
+  "sample_id": "D/C/103",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1763",
+  "cve_summary": "Array index error in the __sock_diag_rcv_msg function in net/core/sock_diag.c in the Linux kernel before 3.7.10 allows local users to gain privileges via a large family value in a Netlink message.",
+  "commit_message": "sock_diag: Fix out-of-bounds access to sock_diag_handlers[]\n\nUserland can send a netlink message requesting SOCK_DIAG_BY_FAMILY\nwith a family greater or equal then AF_MAX -- the array size of\nsock_diag_handlers[]. The current code does not test for this\ncondition therefore is vulnerable to an out-of-bound access opening\ndoors for a privilege escalation.\n\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nAcked-by: Eric Dumazet <edumazet@google.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/core/sock_diag.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a socket diagnostic message received via netlink.\n\nParameters: \nskb (struct sk_buff *): Pointer to the socket buffer containing the message.\nnlh (struct nlmsghdr *): Pointer to the netlink message header.\n\nReturns: \nint: Returns 0 on success, or a negative error code indicating the failure reason.\n\nLogic: \nThe function first checks if the length of the netlink message is valid. It then verifies that the socket family specified in the request is valid. If valid, it locks the appropriate socket diagnostic handler and attempts to call its dump function to process the message. After processing, it unlocks the handler and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    115,
+    135
+  ],
+  "vulnerable_snippet": "static int __sock_diag_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)\r\n{\r\n\tint err;\r\n\tstruct sock_diag_req *req = nlmsg_data(nlh);\r\n\tconst struct sock_diag_handler *hndl;\r\n\r\n\tif (nlmsg_len(nlh) < sizeof(*req))\r\n\t\treturn -EINVAL;\r\n\r\n\thndl = sock_diag_lock_handler(req->sdiag_family);\r\n\tif (hndl == NULL)\r\n\t\terr = -ENOENT;\r\n\telse\r\n\t\terr = hndl->dump(skb, nlh);\r\n\tsock_diag_unlock_handler(hndl);\r\n\r\n\treturn err;\r\n}\r\n\r\nstatic int sock_diag_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)\r\n{\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    115,
+    135
+  ],
+  "fixed_snippet": "static int __sock_diag_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)\r\n{\r\n\tint err;\r\n\tstruct sock_diag_req *req = nlmsg_data(nlh);\r\n\tconst struct sock_diag_handler *hndl;\r\n\r\n\tif (nlmsg_len(nlh) < sizeof(*req))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (req->sdiag_family >= AF_MAX)\r\n\t\treturn -EINVAL;\r\n\r\n\thndl = sock_diag_lock_handler(req->sdiag_family);\r\n\tif (hndl == NULL)\r\n\t\terr = -ENOENT;\r\n\telse\r\n\t\terr = hndl->dump(skb, nlh);\r\n\tsock_diag_unlock_handler(hndl);\r\n\r\n\treturn err;\r\n}"
+}

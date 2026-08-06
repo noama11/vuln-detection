@@ -1,0 +1,22 @@
+{
+  "case_id": "C_303__1",
+  "sample_id": "D/C/303",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-3137",
+  "cve_summary": "drivers/usb/serial/cypress_m8.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a USB device without both an interrupt-in and an interrupt-out endpoint descriptor, related to the cypress_generic_port_probe and cypress_open functions.",
+  "commit_message": "USB: cypress_m8: add endpoint sanity check\n\nAn attack using missing endpoints exists.\n\nCVE-2016-3137\n\nSigned-off-by: Oliver Neukum <ONeukum@suse.com>\nCC: stable@vger.kernel.org\nSigned-off-by: Johan Hovold <johan@kernel.org>\nSigned-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>",
+  "changed_file": "drivers/usb/serial/cypress_m8.c",
+  "docstring": "Summary:  \nOpens a Cypress USB serial port, initializing communication and setting up the necessary parameters for data transfer.\n\nParameters:  \ntty (struct tty_struct *): Pointer to the terminal structure associated with the port.  \nport (struct usb_serial_port *): Pointer to the USB serial port structure to be opened.\n\nReturns:  \nint: Returns 0 on success or a negative error code on failure.\n\nLogic:  \nThe function first checks if the communication is operational. It clears any halted states on the USB device and resets the read/write statistics. It then sets the terminal I/O settings and prepares the USB interrupt transfer for reading data. If the submission of the read request fails, it logs an error and marks the port as dead.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    585,
+    629
+  ],
+  "vulnerable_snippet": "\tint result = 0;\r\n\r\n\tif (!priv->comm_is_ok)\r\n\t\treturn -EIO;\r\n\r\n\t/* clear halts before open */\r\n\tusb_clear_halt(serial->dev, 0x81);\r\n\tusb_clear_halt(serial->dev, 0x02);\r\n\r\n\tspin_lock_irqsave(&priv->lock, flags);\r\n\t/* reset read/write statistics */\r\n\tpriv->bytes_in = 0;\r\n\tpriv->bytes_out = 0;\r\n\tpriv->cmd_count = 0;\r\n\tpriv->rx_flags = 0;\r\n\tspin_unlock_irqrestore(&priv->lock, flags);\r\n\r\n\t/* Set termios */\r\n\tcypress_send(port);\r\n\r\n\tif (tty)\r\n\t\tcypress_set_termios(tty, port, &priv->tmp_termios);\r\n\r\n\t/* setup the port and start reading from the device */\r\n\tif (!port->interrupt_in_urb) {\r\n\t\tdev_err(&port->dev, \"%s - interrupt_in_urb is empty!\\n\",\r\n\t\t\t__func__);\r\n\t\treturn -1;\r\n\t}\r\n\r\n\tusb_fill_int_urb(port->interrupt_in_urb, serial->dev,\r\n\t\tusb_rcvintpipe(serial->dev, port->interrupt_in_endpointAddress),\r\n\t\tport->interrupt_in_urb->transfer_buffer,\r\n\t\tport->interrupt_in_urb->transfer_buffer_length,\r\n\t\tcypress_read_int_callback, port, priv->read_urb_interval);\r\n\tresult = usb_submit_urb(port->interrupt_in_urb, GFP_KERNEL);\r\n\r\n\tif (result) {\r\n\t\tdev_err(&port->dev,\r\n\t\t\t\"%s - failed submitting read urb, error %d\\n\",\r\n\t\t\t\t\t\t\t__func__, result);\r\n\t\tcypress_set_dead(port);\r\n\t}\r\n\r\n\treturn result;\r\n",
+  "extraction_status": "unsupported_multi_function_scope",
+  "extraction_reason": "vulnerable-side scope spans 2 top-level constructs (functions/declarations), not a single function",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

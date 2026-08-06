@@ -1,0 +1,25 @@
+{
+  "case_id": "C_335__0",
+  "sample_id": "D/C/335",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7566",
+  "cve_summary": "The clie_5_attach function in drivers/usb/serial/visor.c in the Linux kernel through 4.4.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by inserting a USB device that lacks a bulk-out endpoint.",
+  "commit_message": "USB: serial: visor: fix crash on detecting device without write_urbs\n\nThe visor driver crashes in clie_5_attach() when a specially crafted USB\ndevice without bulk-out endpoint is detected. This fix adds a check that\nthe device has proper configuration expected by the driver.\n\nReported-by: Ralf Spenneberg <ralf@spenneberg.net>\nSigned-off-by: Vladis Dronov <vdronov@redhat.com>\nFixes: cfb8da8f69b8 (\"USB: visor: fix initialisation of UX50/TH55 devices\")\nCc: stable <stable@vger.kernel.org>\nSigned-off-by: Johan Hovold <johan@kernel.org>",
+  "changed_file": "drivers/usb/serial/visor.c",
+  "docstring": "\"\"\"\nSummary: \nAttaches a USB serial device by configuring its bulk output endpoint addresses.\n\nParameters: \nserial (struct usb_serial*): Pointer to the USB serial structure representing the device.\n\nReturns: \nint: Returns 0 on success, or -ENODEV if there are insufficient bulk out endpoints.\n\nLogic: \nThe function first checks if the USB serial device has at least two bulk out endpoints. If not, it logs an error and returns -ENODEV. If the check passes, it assigns the bulk out endpoint address from the second port to the first port. It then sets up the USB pipe for sending data and updates the write URBs (USB Request Blocks) for the first port to use the new pipe. Finally, it returns 0 to indicate successful attachment.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    590,
+    620
+  ],
+  "vulnerable_snippet": "static int clie_5_attach(struct usb_serial *serial)\r\n{\r\n\tstruct usb_serial_port *port;\r\n\tunsigned int pipe;\r\n\tint j;\r\n\r\n\t/* TH55 registers 2 ports.\r\n\t   Communication in from the UX50/TH55 uses bulk_in_endpointAddress\r\n\t   from port 0. Communication out to the UX50/TH55 uses\r\n\t   bulk_out_endpointAddress from port 1\r\n\r\n\t   Lets do a quick and dirty mapping\r\n\t */\r\n\r\n\t/* some sanity check */\r\n\tif (serial->num_ports < 2)\r\n\t\treturn -1;\r\n\r\n\t/* port 0 now uses the modified endpoint Address */\r\n\tport = serial->port[0];\r\n\tport->bulk_out_endpointAddress =\r\n\t\t\t\tserial->port[1]->bulk_out_endpointAddress;\r\n\r\n\tpipe = usb_sndbulkpipe(serial->dev, port->bulk_out_endpointAddress);\r\n\tfor (j = 0; j < ARRAY_SIZE(port->write_urbs); ++j)\r\n\t\tport->write_urbs[j]->pipe = pipe;\r\n\r\n\treturn 0;\r\n}\r\n\r\nmodule_usb_serial_driver(serial_drivers, id_table_combined);\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    590,
+    620
+  ],
+  "fixed_snippet": "static int clie_5_attach(struct usb_serial *serial)\r\n{\r\n\tstruct usb_serial_port *port;\r\n\tunsigned int pipe;\r\n\tint j;\r\n\r\n\t/* TH55 registers 2 ports.\r\n\t   Communication in from the UX50/TH55 uses bulk_in_endpointAddress\r\n\t   from port 0. Communication out to the UX50/TH55 uses\r\n\t   bulk_out_endpointAddress from port 1\r\n\r\n\t   Lets do a quick and dirty mapping\r\n\t */\r\n\r\n\t/* some sanity check */\r\n\tif (serial->num_bulk_out < 2) {\r\n\t\tdev_err(&serial->interface->dev, \"missing bulk out endpoints\\n\");\r\n\t\treturn -ENODEV;\r\n\t}\r\n\r\n\t/* port 0 now uses the modified endpoint Address */\r\n\tport = serial->port[0];\r\n\tport->bulk_out_endpointAddress =\r\n\t\t\t\tserial->port[1]->bulk_out_endpointAddress;\r\n\r\n\tpipe = usb_sndbulkpipe(serial->dev, port->bulk_out_endpointAddress);\r\n\tfor (j = 0; j < ARRAY_SIZE(port->write_urbs); ++j)\r\n\t\tport->write_urbs[j]->pipe = pipe;\r\n\r\n\treturn 0;\r\n}"
+}

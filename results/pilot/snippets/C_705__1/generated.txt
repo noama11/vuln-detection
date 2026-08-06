@@ -1,0 +1,59 @@
+#include <string.h>
+
+void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
+{
+    struct pagevec local_pagevec;
+    unsigned int i;
+    unsigned int count;
+
+    if (!pvec || !zone)
+        return;
+
+    count = pagevec_count(pvec);
+    if (count == 0)
+        return;
+
+    pagevec_init(&local_pagevec, 0);
+
+    /* Phase 1: Isolate locked pages and update state */
+    spin_lock_irq(&zone->lru_lock);
+
+    for (i = 0; i < count; i++) {
+        struct page *page = pvec->pages[i];
+
+        if (PageLocked(page) && !PageMlocked(page)) {
+            if (pagevec_add(&local_pagevec, page)) {
+                /* Batch full, release lock and flush to prevent deadlock */
+                spin_unlock_irq(&zone->lru_lock);
+                pagevec_release(&local_pagevec);
+                spin_lock_irq(&zone->lru_lock);
+            }
+        }
+    }
+
+    spin_unlock_irq(&zone->lru_lock);
+
+    /* Phase 2: Release pins for pages not being unlocked */
+    for (i = 0; i < count; i++) {
+        struct page *page = pvec->pages[i];
+
+        if (!PageLocked(page)) {
+            put_page(page);
+        }
+    }
+
+    /* Phase 3: Putback fast path pages to LRU lists */
+    if (pagevec_count(&local_pagevec) > 0) {
+        spin_lock_irq(&zone->lru_lock);
+
+        for (i = 0; i < pagevec_count(&local_pagevec); i++) {
+            struct page *page = local_pagevec.pages[i];
+            unlock_page(page);
+            putback_lru_page(page);
+        }
+
+        spin_unlock_irq(&zone->lru_lock);
+    }
+
+    pagevec_release(&local_pagevec);
+}

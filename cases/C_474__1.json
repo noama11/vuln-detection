@@ -1,0 +1,25 @@
+{
+  "case_id": "C_474__1",
+  "sample_id": "D/C/474",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "aquynh/capstone",
+  "cve_id": "CVE-2017-6952",
+  "cve_summary": "Integer overflow in the cs_winkernel_malloc function in winkernel_mm.c in Capstone 3.0.4 and earlier allows attackers to cause a denial of service (heap-based buffer overflow in a kernel driver) or possibly have unspecified other impact via a large value.",
+  "commit_message": "provide a validity check to prevent against Integer overflow conditions (#870)\n\n* provide a validity check to prevent against Integer overflow conditions\n\n* fix some style issues.",
+  "changed_file": "windows/winkernel_mm.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates memory of a specified size from the NonPagedPool in a Windows kernel environment.  \n *  \n * Parameters:  \n * size (size_t): The number of bytes to allocate. Must be greater than zero.  \n *  \n * Returns:  \n * void*: A pointer to the allocated memory block on success, or NULL on failure.  \n *  \n * Logic:  \n * The function first checks that the requested size is non-zero to prevent wasting memory.  \n * It then calculates the total size needed for the allocation, including a header.  \n * If the size calculation overflows, it returns NULL.  \n * Memory is allocated using ExAllocatePoolWithTag, and if successful, the size is stored in the block header.  \n * Finally, it returns a pointer to the data portion of the allocated block.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "vulnerable_line_range": [
+    29,
+    53
+  ],
+  "vulnerable_snippet": "{\r\n\t// Disallow zero length allocation because they waste pool header space and,\r\n\t// in many cases, indicate a potential validation issue in the calling code.\r\n\tNT_ASSERT(size);\r\n\r\n\t// FP; a use of NonPagedPool is required for Windows 7 support\r\n#pragma prefast(suppress : 30030)\t\t// Allocating executable POOL_TYPE memory\r\n\tCS_WINKERNEL_MEMBLOCK *block = (CS_WINKERNEL_MEMBLOCK *)ExAllocatePoolWithTag(\r\n\t\t\tNonPagedPool, size + sizeof(CS_WINKERNEL_MEMBLOCK), CS_WINKERNEL_POOL_TAG);\r\n\tif (!block) {\r\n\t\treturn NULL;\r\n\t}\r\n\tblock->size = size;\r\n\r\n\treturn block->data;\r\n}\r\n\r\n// calloc()\r\nvoid * CAPSTONE_API cs_winkernel_calloc(size_t n, size_t size)\r\n{\r\n\tsize_t total = n * size;\r\n\r\n\tvoid *new_ptr = cs_winkernel_malloc(total);\r\n\tif (!new_ptr) {\r\n\t\treturn NULL;\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    29,
+    53
+  ],
+  "fixed_snippet": "void * CAPSTONE_API cs_winkernel_malloc(size_t size)\r\n{\r\n\t// Disallow zero length allocation because they waste pool header space and,\r\n\t// in many cases, indicate a potential validation issue in the calling code.\r\n\tNT_ASSERT(size);\r\n\r\n\t// FP; a use of NonPagedPool is required for Windows 7 support\r\n#pragma prefast(suppress : 30030)\t\t// Allocating executable POOL_TYPE memory\r\n\tsize_t number_of_bytes = 0;\r\n\tCS_WINKERNEL_MEMBLOCK *block = NULL;\r\n\t// A specially crafted size value can trigger the overflow.\r\n\t// If the sum in a value that overflows or underflows the capacity of the type,\r\n\t// the function returns NULL.\r\n\tif (!NT_SUCCESS(RtlSizeTAdd(size, sizeof(CS_WINKERNEL_MEMBLOCK), &number_of_bytes))) {\r\n\t\treturn NULL;\r\n\t}\r\n\tblock = (CS_WINKERNEL_MEMBLOCK *)ExAllocatePoolWithTag(\r\n\t\t\tNonPagedPool, number_of_bytes, CS_WINKERNEL_POOL_TAG);\r\n\tif (!block) {\r\n\t\treturn NULL;\r\n\t}\r\n\tblock->size = size;\r\n\r\n\treturn block->data;\r\n}"
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "C_382__0",
+  "sample_id": "D/C/382",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2017-14222",
+  "cve_summary": "In libavformat/mov.c in FFmpeg 3.3.3, a DoS in read_tfra() due to lack of an EOF (End of File) check might cause huge CPU and memory consumption. When a crafted MOV file, which claims a large *item_count* field in the header but does not contain sufficient backing data, is provided, the loop would consume huge CPU and memory resources, since there is no EOF check inside the loop.",
+  "commit_message": "avformat/mov: Fix DoS in read_tfra()\n\nFixes: Missing EOF check in loop\nNo testcase\n\nFound-by: Xiaohei and Wangchu from Alibaba Security Team\nSigned-off-by: Michael Niedermayer <michael@niedermayer.cc>",
+  "changed_file": "libavformat/mov.c",
+  "docstring": "\"\"\"\nSummary: \nReads the 'tfra' (Track Fragment Random Access) box from a MOV file and populates a MOVFragmentIndex structure with its data.\n\nParameters: \nmov (MOVContext*): Pointer to the MOV context that holds the fragment index data.\nf (AVIOContext*): Pointer to the AVIO context for reading the MOV file.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the box type is 'tfra'. If not, it returns an error. It allocates memory for a new MOVFragmentIndex and resizes the fragment index data array. It then reads the version, track ID, field length, and item count from the box. For each item, it reads the time and offset, handling different versions of the box format. Finally, it seeks to the end of the 'tfra' box and returns success or an error code if any allocation fails or if the data is invalid.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    6057,
+    6123
+  ],
+  "vulnerable_snippet": "static int read_tfra(MOVContext *mov, AVIOContext *f)\r\n{\r\n    MOVFragmentIndex* index = NULL;\r\n    int version, fieldlength, i, j;\r\n    int64_t pos = avio_tell(f);\r\n    uint32_t size = avio_rb32(f);\r\n    void *tmp;\r\n\r\n    if (avio_rb32(f) != MKBETAG('t', 'f', 'r', 'a')) {\r\n        return 1;\r\n    }\r\n    av_log(mov->fc, AV_LOG_VERBOSE, \"found tfra\\n\");\r\n    index = av_mallocz(sizeof(MOVFragmentIndex));\r\n    if (!index) {\r\n        return AVERROR(ENOMEM);\r\n    }\r\n\r\n    tmp = av_realloc_array(mov->fragment_index_data,\r\n                           mov->fragment_index_count + 1,\r\n                           sizeof(MOVFragmentIndex*));\r\n    if (!tmp) {\r\n        av_freep(&index);\r\n        return AVERROR(ENOMEM);\r\n    }\r\n    mov->fragment_index_data = tmp;\r\n    mov->fragment_index_data[mov->fragment_index_count++] = index;\r\n\r\n    version = avio_r8(f);\r\n    avio_rb24(f);\r\n    index->track_id = avio_rb32(f);\r\n    fieldlength = avio_rb32(f);\r\n    index->item_count = avio_rb32(f);\r\n    index->items = av_mallocz_array(\r\n            index->item_count, sizeof(MOVFragmentIndexItem));\r\n    if (!index->items) {\r\n        index->item_count = 0;\r\n        return AVERROR(ENOMEM);\r\n    }\r\n    for (i = 0; i < index->item_count; i++) {\r\n        int64_t time, offset;\r\n        if (version == 1) {\r\n            time   = avio_rb64(f);\r\n            offset = avio_rb64(f);\r\n        } else {\r\n            time   = avio_rb32(f);\r\n            offset = avio_rb32(f);\r\n        }\r\n        index->items[i].time = time;\r\n        index->items[i].moof_offset = offset;\r\n        for (j = 0; j < ((fieldlength >> 4) & 3) + 1; j++)\r\n            avio_r8(f);\r\n        for (j = 0; j < ((fieldlength >> 2) & 3) + 1; j++)\r\n            avio_r8(f);\r\n        for (j = 0; j < ((fieldlength >> 0) & 3) + 1; j++)\r\n            avio_r8(f);\r\n    }\r\n\r\n    avio_seek(f, pos + size, SEEK_SET);\r\n    return 0;\r\n}\r\n\r\nstatic int mov_read_mfra(MOVContext *c, AVIOContext *f)\r\n{\r\n    int64_t stream_size = avio_size(f);\r\n    int64_t original_pos = avio_tell(f);\r\n    int64_t seek_ret;\r\n    int32_t mfra_size;\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'read_tfra'",
+  "fixed_line_range": [
+    6091,
+    6094
+  ],
+  "fixed_snippet": "    if (!index->items) {\r\n        index->item_count = 0;\r\n        return AVERROR(ENOMEM);\r\n    }"
+}

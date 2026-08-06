@@ -1,0 +1,52 @@
+class SaslAuthCommand : public Command
+{
+private:
+    SimpleExtItem<SaslAuthenticator>& ext;
+    GenericCap& cap;
+
+public:
+    SaslAuthCommand(Module* Creator, SimpleExtItem<SaslAuthenticator>& ext, GenericCap& Cap)
+        : Command(Creator, "AUTHENTICATE"), ext(ext), cap(Cap)
+    {
+        parameters.clear();
+        syntax = "<data>";
+    }
+
+    CmdResult Handle(User* user, const Params& parameters) override
+    {
+        // Only unregistered clients can authenticate
+        if (user->IsFullyReg())
+        {
+            return CMD_FAILURE;
+        }
+
+        // Check validity of parameters
+        if (parameters.empty())
+        {
+            return CMD_FAILURE;
+        }
+
+        // Get existing authenticator or create new one
+        SaslAuthenticator* authenticator = ext.get(user);
+        if (!authenticator)
+        {
+            authenticator = new SaslAuthenticator(user);
+            ext.set(user, authenticator);
+        }
+
+        // Process authentication data
+        if (!authenticator->ProcessData(parameters[0]))
+        {
+            ext.unset(user);
+            return CMD_FAILURE;
+        }
+
+        // Handle authentication state
+        if (authenticator->IsComplete())
+        {
+            ext.unset(user);
+        }
+
+        return CMD_SUCCESS;
+    }
+};

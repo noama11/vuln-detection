@@ -1,0 +1,25 @@
+{
+  "case_id": "C_634__1",
+  "sample_id": "D/C/634",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "neomutt/neomutt",
+  "cve_id": "CVE-2018-14358",
+  "cve_summary": "An issue was discovered in Mutt before 1.10.1 and NeoMutt before 2018-07-16. imap/message.c has a stack-based buffer overflow for a FETCH response with a long RFC822.SIZE field.",
+  "commit_message": "Don't overflow stack buffer in msg_parse_fetch",
+  "changed_file": "imap/message.c",
+  "docstring": "\"\"\"\nSummary: \nParses a fetch response from an IMAP server and populates the provided ImapHeader structure with relevant data.\n\nParameters: \nh (struct ImapHeader *): Pointer to the ImapHeader structure to be populated.\ns (char *): Pointer to the string containing the fetch response to be parsed.\n\nReturns: \nint: Returns 0 on success, -1 on error, or -2 if the BODY or RFC822.HEADER fields are encountered.\n\nLogic: \nThe function processes the input string character by character, skipping whitespace and identifying specific fields such as FLAGS, UID, INTERNALDATE, and RFC822.SIZE. It extracts and converts the corresponding values, storing them in the ImapHeader structure. If an unrecognized field is encountered, it logs an error and returns -1. The function ensures proper handling of quoted strings for dates and validates numeric values for sizes. It concludes by returning 0 if parsing completes successfully.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    295,
+    369
+  ],
+  "vulnerable_snippet": "static int msg_parse_fetch(struct ImapHeader *h, char *s)\r\n{\r\n  char tmp[SHORT_STRING];\r\n  char *ptmp = NULL;\r\n\r\n  if (!s)\r\n    return -1;\r\n\r\n  while (*s)\r\n  {\r\n    SKIPWS(s);\r\n\r\n    if (mutt_str_strncasecmp(\"FLAGS\", s, 5) == 0)\r\n    {\r\n      s = msg_parse_flags(h, s);\r\n      if (!s)\r\n        return -1;\r\n    }\r\n    else if (mutt_str_strncasecmp(\"UID\", s, 3) == 0)\r\n    {\r\n      s += 3;\r\n      SKIPWS(s);\r\n      if (mutt_str_atoui(s, &h->data->uid) < 0)\r\n        return -1;\r\n\r\n      s = imap_next_word(s);\r\n    }\r\n    else if (mutt_str_strncasecmp(\"INTERNALDATE\", s, 12) == 0)\r\n    {\r\n      s += 12;\r\n      SKIPWS(s);\r\n      if (*s != '\\\"')\r\n      {\r\n        mutt_debug(1, \"bogus INTERNALDATE entry: %s\\n\", s);\r\n        return -1;\r\n      }\r\n      s++;\r\n      ptmp = tmp;\r\n      while (*s && *s != '\\\"')\r\n        *ptmp++ = *s++;\r\n      if (*s != '\\\"')\r\n        return -1;\r\n      s++; /* skip past the trailing \" */\r\n      *ptmp = '\\0';\r\n      h->received = mutt_date_parse_imap(tmp);\r\n    }\r\n    else if (mutt_str_strncasecmp(\"RFC822.SIZE\", s, 11) == 0)\r\n    {\r\n      s += 11;\r\n      SKIPWS(s);\r\n      ptmp = tmp;\r\n      while (isdigit((unsigned char) *s))\r\n        *ptmp++ = *s++;\r\n      *ptmp = '\\0';\r\n      if (mutt_str_atol(tmp, &h->content_length) < 0)\r\n        return -1;\r\n    }\r\n    else if ((mutt_str_strncasecmp(\"BODY\", s, 4) == 0) ||\r\n             (mutt_str_strncasecmp(\"RFC822.HEADER\", s, 13) == 0))\r\n    {\r\n      /* handle above, in msg_fetch_header */\r\n      return -2;\r\n    }\r\n    else if (*s == ')')\r\n      s++; /* end of request */\r\n    else if (*s)\r\n    {\r\n      /* got something i don't understand */\r\n      imap_error(\"msg_parse_fetch\", s);\r\n      return -1;\r\n    }\r\n  }\r\n\r\n  return 0;\r\n}\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'msg_parse_fetch'",
+  "fixed_line_range": [
+    341,
+    351
+  ],
+  "fixed_snippet": "    else if (mutt_str_strncasecmp(\"RFC822.SIZE\", s, 11) == 0)\r\n    {\r\n      s += 11;\r\n      SKIPWS(s);\r\n      ptmp = tmp;\r\n      while (isdigit((unsigned char) *s) && (ptmp != (tmp + sizeof(tmp) - 1)))\r\n        *ptmp++ = *s++;\r\n      *ptmp = '\\0';\r\n      if (mutt_str_atol(tmp, &h->content_length) < 0)\r\n        return -1;\r\n    }"
+}

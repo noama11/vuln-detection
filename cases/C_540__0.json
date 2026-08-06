@@ -1,0 +1,22 @@
+{
+  "case_id": "C_540__0",
+  "sample_id": "D/C/540",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-10044",
+  "cve_summary": "The aio_mount function in fs/aio.c in the Linux kernel before 4.7.7 does not properly restrict execute access, which makes it easier for local users to bypass intended SELinux W^X policy restrictions, and consequently gain privileges, via an io_setup system call.",
+  "commit_message": "aio: mark AIO pseudo-fs noexec\n\nThis ensures that do_mmap() won't implicitly make AIO memory mappings\nexecutable if the READ_IMPLIES_EXEC personality flag is set.  Such\nbehavior is problematic because the security_mmap_file LSM hook doesn't\ncatch this case, potentially permitting an attacker to bypass a W^X\npolicy enforced by SELinux.\n\nI have tested the patch on my machine.\n\nTo test the behavior, compile and run this:\n\n    #define _GNU_SOURCE\n    #include <unistd.h>\n    #include <sys/personality.h>\n    #include <linux/aio_abi.h>\n    #include <err.h>\n    #include <stdlib.h>\n    #include <stdio.h>\n    #include <sys/syscall.h>\n\n    int main(void) {\n        personality(READ_IMPLIES_EXEC);\n        aio_context_t ctx = 0;\n        if (syscall(__NR_io_setup, 1, &ctx))\n            err(1, \"io_setup\");\n\n        char cmd[1000];\n        sprintf(cmd, \"cat /proc/%d/maps | grep -F '/[aio]'\",\n            (int)getpid());\n        system(cmd);\n        return 0;\n    }\n\nIn the output, \"rw-s\" is good, \"rwxs\" is bad.\n\nSigned-off-by: Jann Horn <jann@thejh.net>\nSigned-off-by: Linus Torvalds <torvalds@linux-foundation.org>",
+  "changed_file": "fs/aio.c",
+  "docstring": "Summary: This code fragment defines the mounting process for an asynchronous I/O (aio) filesystem and initializes necessary slab caches during the boot sequence.\n\nParameters:\nfs_type (struct file_system_type *): The filesystem type being mounted.\nflags (int): Flags that modify the mount behavior.\ndev_name (const char *): The name of the device to mount.\ndata (void *): Additional data for the mount operation.\n\nReturns: struct dentry *: A pointer to the root dentry of the mounted filesystem or an error indicator.\n\nLogic: The `aio_mount` function creates a pseudo-filesystem mount using the provided filesystem type and operations, setting the `SB_I_NOEXEC` flag to prevent execution of binaries on this filesystem. The `aio_setup` function initializes the aio filesystem type and attempts to mount it, panicking if the mount fails. It also creates slab caches for `kiocb` and `kioctx` structures, which are essential for managing asynchronous I/O operations. The `pr_debug` statement logs the size of the `struct page`, aiding in debugging and memory management. The `__initcall` macro registers the `aio_setup` function to be called during the kernel initialization phase.",
+  "heuristic_leakage_flag": true,
+  "vulnerable_line_range": [
+    234,
+    272
+  ],
+  "vulnerable_snippet": "}\r\n\r\nstatic struct dentry *aio_mount(struct file_system_type *fs_type,\r\n\t\t\t\tint flags, const char *dev_name, void *data)\r\n{\r\n\tstatic const struct dentry_operations ops = {\r\n\t\t.d_dname\t= simple_dname,\r\n\t};\r\n\treturn mount_pseudo(fs_type, \"aio:\", NULL, &ops, AIO_RING_MAGIC);\r\n}\r\n\r\n/* aio_setup\r\n *\tCreates the slab caches used by the aio routines, panic on\r\n *\tfailure as this is done early during the boot sequence.\r\n */\r\nstatic int __init aio_setup(void)\r\n{\r\n\tstatic struct file_system_type aio_fs = {\r\n\t\t.name\t\t= \"aio\",\r\n\t\t.mount\t\t= aio_mount,\r\n\t\t.kill_sb\t= kill_anon_super,\r\n\t};\r\n\taio_mnt = kern_mount(&aio_fs);\r\n\tif (IS_ERR(aio_mnt))\r\n\t\tpanic(\"Failed to create aio fs mount.\");\r\n\r\n\tkiocb_cachep = KMEM_CACHE(aio_kiocb, SLAB_HWCACHE_ALIGN|SLAB_PANIC);\r\n\tkioctx_cachep = KMEM_CACHE(kioctx,SLAB_HWCACHE_ALIGN|SLAB_PANIC);\r\n\r\n\tpr_debug(\"sizeof(struct page) = %zu\\n\", sizeof(struct page));\r\n\r\n\treturn 0;\r\n}\r\n__initcall(aio_setup);\r\n\r\nstatic void put_aio_ring_file(struct kioctx *ctx)\r\n{\r\n\tstruct file *aio_ring_file = ctx->aio_ring_file;\r\n\tif (aio_ring_file) {\r\n",
+  "extraction_status": "unsupported_multi_function_scope",
+  "extraction_reason": "vulnerable-side scope spans 2 top-level constructs (functions/declarations), not a single function",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

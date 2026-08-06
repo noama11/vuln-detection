@@ -1,0 +1,64 @@
+void bgp_update_print(netdissect_options *ndo, const u_char *dat, int length) {
+    uint16_t withdrawn_len;
+    uint16_t path_attr_len;
+    const u_char *p;
+    int remaining;
+
+    /* Check minimum length for header (withdrawn routes length + path attr length) */
+    if (length < 4) {
+        ND_PRINT((ndo, " [truncated]"));
+        return;
+    }
+
+    p = dat;
+    remaining = length;
+
+    /* Extract withdrawn routes length (2 bytes, network byte order) */
+    withdrawn_len = (p[0] << 8) | p[1];
+    p += 2;
+    remaining -= 2;
+
+    /* Validate sufficient data for withdrawn routes */
+    if (remaining < withdrawn_len) {
+        ND_PRINT((ndo, " [truncated]"));
+        return;
+    }
+
+    /* Process and print withdrawn routes */
+    if (withdrawn_len > 0) {
+        ND_PRINT((ndo, " Withdrawn Routes: %u bytes", withdrawn_len));
+        p += withdrawn_len;
+        remaining -= withdrawn_len;
+    }
+
+    /* Check for path attributes length field */
+    if (remaining < 2) {
+        ND_PRINT((ndo, " [truncated]"));
+        return;
+    }
+
+    /* Extract total path attributes length (2 bytes, network byte order) */
+    path_attr_len = (p[0] << 8) | p[1];
+    p += 2;
+    remaining -= 2;
+
+    /* Validate sufficient data for path attributes */
+    if (remaining < path_attr_len) {
+        ND_PRINT((ndo, " [truncated]"));
+        return;
+    }
+
+    /* Process and print path attributes */
+    if (path_attr_len > 0) {
+        ND_PRINT((ndo, " Path Attributes: %u bytes", path_attr_len));
+        p += path_attr_len;
+        remaining -= path_attr_len;
+    }
+
+    /* Process NLRI (remaining data) */
+    if (remaining > 0) {
+        ND_PRINT((ndo, " NLRI: %u bytes", remaining));
+    } else if (withdrawn_len == 0 && path_attr_len == 0) {
+        ND_PRINT((ndo, " [empty NLRI]"));
+    }
+}

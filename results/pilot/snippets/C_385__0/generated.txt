@@ -1,0 +1,48 @@
+#include <string.h>
+
+int tcp_disconnect(struct sock *sk, int flags)
+{
+    int err = 0;
+
+    // Check the current state of the socket and set to TCP_CLOSE if not already closed
+    if (sk->sk_state != TCP_CLOSE) {
+        // Handle TCP_LISTEN state specially - stop listening
+        if (sk->sk_state == TCP_LISTEN) {
+            sk->sk_ack_backlog = 0;
+            sk->sk_max_ack_backlog = 0;
+        }
+
+        // Send reset if necessary according to RFC 793
+        if (sk->sk_state != TCP_SYN_SENT && sk->sk_state != TCP_SYN_RECV) {
+            sk->sk_send_reset = 1;
+        }
+
+        // Transition to TCP_CLOSE
+        sk->sk_state = TCP_CLOSE;
+    }
+
+    // Purge transmit queue
+    if (sk->sk_write_queue != NULL) {
+        sk->sk_write_queue = NULL;
+    }
+
+    // Purge receive queue
+    if (sk->sk_receive_queue != NULL) {
+        sk->sk_receive_queue = NULL;
+    }
+
+    // Reset various TCP parameters
+    sk->sk_rcv_wnd = 0;
+    sk->sk_snd_wnd = 0;
+    sk->sk_rcv_nxt = 0;
+    sk->sk_snd_nxt = 0;
+
+    // Initialize receive MSS to avoid division by zero issues
+    sk->sk_rcv_mss = 1460;
+
+    // Clean up any fastopen-related fields
+    sk->sk_fastopen_connect = 0;
+    sk->sk_fastopen_req = NULL;
+
+    return err;
+}

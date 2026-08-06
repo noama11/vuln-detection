@@ -1,0 +1,25 @@
+{
+  "case_id": "C_208__0",
+  "sample_id": "D/C/208",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-5697",
+  "cve_summary": "The get_bitmap_file function in drivers/md/md.c in the Linux kernel before 4.1.6 does not initialize a certain bitmap data structure, which allows local users to obtain sensitive information from kernel memory via a GET_BITMAP_FILE ioctl call.",
+  "commit_message": "md: use kzalloc() when bitmap is disabled\n\nIn drivers/md/md.c get_bitmap_file() uses kmalloc() for creating a\nmdu_bitmap_file_t called \"file\".\n\n5769         file = kmalloc(sizeof(*file), GFP_NOIO);\n5770         if (!file)\n5771                 return -ENOMEM;\n\nThis structure is copied to user space at the end of the function.\n\n5786         if (err == 0 &&\n5787             copy_to_user(arg, file, sizeof(*file)))\n5788                 err = -EFAULT\n\nBut if bitmap is disabled only the first byte of \"file\" is initialized\nwith zero, so it's possible to read some bytes (up to 4095) of kernel\nspace memory from user space. This is an information leak.\n\n5775         /* bitmap disabled, zero the first byte and copy out */\n5776         if (!mddev->bitmap_info.file)\n5777                 file->pathname[0] = '\\0';\n\nSigned-off-by: Benjamin Randazzo <benjamin@randazzo.fr>\nSigned-off-by: NeilBrown <neilb@suse.com>",
+  "changed_file": "drivers/md/md.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves the bitmap file associated with a given mddev structure and copies  \n * it to user space.  \n *  \n * Parameters:  \n * mddev (struct mddev *): Pointer to the mddev structure containing bitmap info.  \n * arg (void __user *): Pointer to user space where the bitmap file information will be copied.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * Allocates memory for a bitmap file structure. If the bitmap is disabled, it sets  \n * the pathname to an empty string. If the bitmap is enabled, it retrieves the file  \n * path and copies it to the structure. Finally, it attempts to copy the structure  \n * to user space and cleans up allocated memory before returning the result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    5756,
+    5786
+  ],
+  "vulnerable_snippet": "static int get_bitmap_file(struct mddev *mddev, void __user * arg)\r\n{\r\n\tmdu_bitmap_file_t *file = NULL; /* too big for stack allocation */\r\n\tchar *ptr;\r\n\tint err;\r\n\r\n\tfile = kmalloc(sizeof(*file), GFP_NOIO);\r\n\tif (!file)\r\n\t\treturn -ENOMEM;\r\n\r\n\terr = 0;\r\n\tspin_lock(&mddev->lock);\r\n\t/* bitmap disabled, zero the first byte and copy out */\r\n\tif (!mddev->bitmap_info.file)\r\n\t\tfile->pathname[0] = '\\0';\r\n\telse if ((ptr = file_path(mddev->bitmap_info.file,\r\n\t\t\t       file->pathname, sizeof(file->pathname))),\r\n\t\t IS_ERR(ptr))\r\n\t\terr = PTR_ERR(ptr);\r\n\telse\r\n\t\tmemmove(file->pathname, ptr,\r\n\t\t\tsizeof(file->pathname)-(ptr-file->pathname));\r\n\tspin_unlock(&mddev->lock);\r\n\r\n\tif (err == 0 &&\r\n\t    copy_to_user(arg, file, sizeof(*file)))\r\n\t\terr = -EFAULT;\r\n\r\n\tkfree(file);\r\n\treturn err;\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    5756,
+    5786
+  ],
+  "fixed_snippet": "static int get_bitmap_file(struct mddev *mddev, void __user * arg)\r\n{\r\n\tmdu_bitmap_file_t *file = NULL; /* too big for stack allocation */\r\n\tchar *ptr;\r\n\tint err;\r\n\r\n\tfile = kzalloc(sizeof(*file), GFP_NOIO);\r\n\tif (!file)\r\n\t\treturn -ENOMEM;\r\n\r\n\terr = 0;\r\n\tspin_lock(&mddev->lock);\r\n\t/* bitmap disabled, zero the first byte and copy out */\r\n\tif (!mddev->bitmap_info.file)\r\n\t\tfile->pathname[0] = '\\0';\r\n\telse if ((ptr = file_path(mddev->bitmap_info.file,\r\n\t\t\t       file->pathname, sizeof(file->pathname))),\r\n\t\t IS_ERR(ptr))\r\n\t\terr = PTR_ERR(ptr);\r\n\telse\r\n\t\tmemmove(file->pathname, ptr,\r\n\t\t\tsizeof(file->pathname)-(ptr-file->pathname));\r\n\tspin_unlock(&mddev->lock);\r\n\r\n\tif (err == 0 &&\r\n\t    copy_to_user(arg, file, sizeof(*file)))\r\n\t\terr = -EFAULT;\r\n\r\n\tkfree(file);\r\n\treturn err;\r\n}"
+}

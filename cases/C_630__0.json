@@ -1,0 +1,25 @@
+{
+  "case_id": "C_630__0",
+  "sample_id": "D/C/630",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-14734",
+  "cve_summary": "drivers/infiniband/core/ucma.c in the Linux kernel through 4.17.11 allows ucma_leave_multicast to access a certain data structure after a cleanup step in ucma_process_join, which allows attackers to cause a denial of service (use-after-free).",
+  "commit_message": "infiniband: fix a possible use-after-free bug\n\nucma_process_join() will free the new allocated \"mc\" struct,\nif there is any error after that, especially the copy_to_user().\n\nBut in parallel, ucma_leave_multicast() could find this \"mc\"\nthrough idr_find() before ucma_process_join() frees it, since it\nis already published.\n\nSo \"mc\" could be used in ucma_leave_multicast() after it is been\nallocated and freed in ucma_process_join(), since we don't refcnt\nit.\n\nFix this by separating \"publish\" from ID allocation, so that we\ncan get an ID first and publish it later after copy_to_user().\n\nFixes: c8f6a362bf3e (\"RDMA/cma: Add multicast communication support\")\nReported-by: Noam Rathaus <noamr@beyondsecurity.com>\nSigned-off-by: Cong Wang <xiyou.wangcong@gmail.com>\nSigned-off-by: Jason Gunthorpe <jgg@mellanox.com>",
+  "changed_file": "drivers/infiniband/core/ucma.c",
+  "docstring": "\"\"\"\nSummary: Allocates and initializes a multicast structure for a given context.\n\nParameters:\nctx (struct ucma_context*): Pointer to the context in which the multicast is being allocated.\n\nReturns:\nstruct ucma_multicast*: Pointer to the allocated multicast structure on success, or NULL on failure.\n\nLogic: The function allocates memory for a `ucma_multicast` structure using `kzalloc`. It locks a mutex to safely allocate a unique ID from an IDR (ID Radix Tree) and assigns it to the multicast structure. If the ID allocation fails, it cleans up by freeing the allocated memory and returns NULL. If successful, it associates the multicast structure with the provided context and adds it to the context's multicast list before returning the pointer to the newly created structure.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    229,
+    250
+  ],
+  "vulnerable_snippet": "static struct ucma_multicast* ucma_alloc_multicast(struct ucma_context *ctx)\r\n{\r\n\tstruct ucma_multicast *mc;\r\n\r\n\tmc = kzalloc(sizeof(*mc), GFP_KERNEL);\r\n\tif (!mc)\r\n\t\treturn NULL;\r\n\r\n\tmutex_lock(&mut);\r\n\tmc->id = idr_alloc(&multicast_idr, mc, 0, 0, GFP_KERNEL);\r\n\tmutex_unlock(&mut);\r\n\tif (mc->id < 0)\r\n\t\tgoto error;\r\n\r\n\tmc->ctx = ctx;\r\n\tlist_add_tail(&mc->list, &ctx->mc_list);\r\n\treturn mc;\r\n\r\nerror:\r\n\tkfree(mc);\r\n\treturn NULL;\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    229,
+    250
+  ],
+  "fixed_snippet": "static struct ucma_multicast* ucma_alloc_multicast(struct ucma_context *ctx)\r\n{\r\n\tstruct ucma_multicast *mc;\r\n\r\n\tmc = kzalloc(sizeof(*mc), GFP_KERNEL);\r\n\tif (!mc)\r\n\t\treturn NULL;\r\n\r\n\tmutex_lock(&mut);\r\n\tmc->id = idr_alloc(&multicast_idr, NULL, 0, 0, GFP_KERNEL);\r\n\tmutex_unlock(&mut);\r\n\tif (mc->id < 0)\r\n\t\tgoto error;\r\n\r\n\tmc->ctx = ctx;\r\n\tlist_add_tail(&mc->list, &ctx->mc_list);\r\n\treturn mc;\r\n\r\nerror:\r\n\tkfree(mc);\r\n\treturn NULL;\r\n}"
+}

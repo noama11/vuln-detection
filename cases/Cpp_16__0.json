@@ -1,0 +1,25 @@
+{
+  "case_id": "Cpp_16__0",
+  "sample_id": "D/C++/16",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "taglib/taglib",
+  "cve_id": "CVE-2012-1107",
+  "cve_summary": "The analyzeCurrent function in ape/apeproperties.cpp in TagLib 1.7 and earlier allows context-dependent attackers to cause a denial of service (application crash) via a crafted sampleRate in an ape file, which triggers a divide-by-zero error.",
+  "commit_message": "Make sure to not try dividing by zero",
+  "changed_file": "taglib/ape/apeproperties.cpp",
+  "docstring": "Summary: This code fragment defines a method to analyze and extract properties from an APE (Adaptive Precision Encoding) file header.\n\nParameters: N/A\n\nReturns: N/A\n\nLogic: The `analyzeOld` method reads a block of data from the APE file header and extracts various properties such as total frames, compression level, channels, and sample rate. It calculates the number of blocks per frame based on the file version and compression level, ensuring compatibility with different APE versions. If the total frames are zero, the method exits early to handle non-finalized APE files. The total number of blocks is computed, and subsequently, the length of the audio in seconds and the bitrate in kbps are derived from the total blocks and stream length. The method updates the properties of the `APE::Properties` object with the extracted values.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    193,
+    224
+  ],
+  "vulnerable_snippet": "  uint blocksPerFrame = header.mid(4, 4).toUInt(false);\r\n  uint finalFrameBlocks = header.mid(8, 4).toUInt(false);\r\n  uint totalBlocks = totalFrames > 0 ? (totalFrames -  1) * blocksPerFrame + finalFrameBlocks : 0;\r\n  d->length = totalBlocks / d->sampleRate;\r\n  d->bitrate = d->length > 0 ? ((d->streamLength * 8L) / d->length) / 1000 : 0;\r\n}\r\n\r\nvoid APE::Properties::analyzeOld()\r\n{\r\n  ByteVector header = d->file->readBlock(26);\r\n  uint totalFrames = header.mid(18, 4).toUInt(false);\r\n\r\n  // Fail on 0 length APE files (catches non-finalized APE files)\r\n  if(totalFrames == 0)\r\n    return;\r\n\r\n  short compressionLevel = header.mid(0, 2).toShort(false);\r\n  uint blocksPerFrame;\r\n  if(d->version >= 3950)\r\n    blocksPerFrame = 73728 * 4;\r\n  else if(d->version >= 3900 || (d->version >= 3800 && compressionLevel == 4000))\r\n    blocksPerFrame = 73728;\r\n  else\r\n    blocksPerFrame = 9216;\r\n  d->channels = header.mid(4, 2).toShort(false);\r\n  d->sampleRate = header.mid(6, 4).toUInt(false);\r\n  uint finalFrameBlocks = header.mid(22, 4).toUInt(false);\r\n  uint totalBlocks = totalFrames > 0 ? (totalFrames - 1) * blocksPerFrame + finalFrameBlocks : 0;\r\n  d->length = totalBlocks / d->sampleRate;\r\n  d->bitrate = d->length > 0 ? ((d->streamLength * 8L) / d->length) / 1000 : 0;\r\n}\r\n\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    173,
+    198
+  ],
+  "fixed_snippet": "void APE::Properties::analyzeCurrent()\r\n{\r\n  // Read the descriptor\r\n  d->file->seek(2, File::Current);\r\n  ByteVector descriptor = d->file->readBlock(44);\r\n  uint descriptorBytes = descriptor.mid(0,4).toUInt(false);\r\n\r\n  if ((descriptorBytes - 52) > 0)\r\n    d->file->seek(descriptorBytes - 52, File::Current);\r\n\r\n  // Read the header\r\n  ByteVector header = d->file->readBlock(24);\r\n\r\n  // Get the APE info\r\n  d->channels = header.mid(18, 2).toShort(false);\r\n  d->sampleRate = header.mid(20, 4).toUInt(false);\r\n  d->bitsPerSample = header.mid(16, 2).toShort(false);\r\n  //d->compressionLevel =\r\n\r\n  uint totalFrames = header.mid(12, 4).toUInt(false);\r\n  uint blocksPerFrame = header.mid(4, 4).toUInt(false);\r\n  uint finalFrameBlocks = header.mid(8, 4).toUInt(false);\r\n  uint totalBlocks = totalFrames > 0 ? (totalFrames -  1) * blocksPerFrame + finalFrameBlocks : 0;\r\n  d->length = d->sampleRate > 0 ? totalBlocks / d->sampleRate : 0;\r\n  d->bitrate = d->length > 0 ? ((d->streamLength * 8L) / d->length) / 1000 : 0;\r\n}"
+}

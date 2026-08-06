@@ -1,0 +1,22 @@
+{
+  "case_id": "C_420__0",
+  "sample_id": "D/C/420",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2017-11665",
+  "cve_summary": "The ff_amf_get_field_value function in libavformat/rtmppkt.c in FFmpeg 3.3.2 allows remote RTMP servers to cause a denial of service (Segmentation Violation and application crash) via a crafted stream.",
+  "commit_message": "avformat/rtmppkt: Convert ff_amf_get_field_value() to bytestream2\n\nFixes: out of array accesses\n\nFound-by: JunDong Xie of Ant-financial Light-Year Security Lab\nSigned-off-by: Michael Niedermayer <michael@niedermayer.cc>",
+  "changed_file": "libavformat/rtmppkt.c",
+  "docstring": "```plaintext\nSummary: Retrieves the value of a specified field from an AMF data stream.\n\nParameters:\ndata (const uint8_t*): Pointer to the start of the data stream.\ndata_end (const uint8_t*): Pointer to the end of the data stream.\nname (const uint8_t*): The name of the field to retrieve.\ndst (uint8_t*): Buffer to store the retrieved field value.\ndst_size (int): Size of the destination buffer.\n\nReturns: int: Returns 0 on success, or -1 on failure.\n\nLogic: The function initializes a byte stream context and calls a helper function to extract the field value. It checks for valid data boundaries, processes the AMF data types, and populates the destination buffer with the corresponding value based on the field name. If the field is not found or an error occurs during processing, it returns -1.\n```",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    505,
+    575
+  ],
+  "vulnerable_snippet": "    return bytestream2_tell(&gb);\r\n}\r\n\r\nint ff_amf_get_field_value(const uint8_t *data, const uint8_t *data_end,\r\n                           const uint8_t *name, uint8_t *dst, int dst_size)\r\n{\r\n    int namelen = strlen(name);\r\n    int len;\r\n\r\n    while (*data != AMF_DATA_TYPE_OBJECT && data < data_end) {\r\n        len = ff_amf_tag_size(data, data_end);\r\n        if (len < 0)\r\n            len = data_end - data;\r\n        data += len;\r\n    }\r\n    if (data_end - data < 3)\r\n        return -1;\r\n    data++;\r\n    for (;;) {\r\n        int size = bytestream_get_be16(&data);\r\n        if (!size)\r\n            break;\r\n        if (size < 0 || size >= data_end - data)\r\n            return -1;\r\n        data += size;\r\n        if (size == namelen && !memcmp(data-size, name, namelen)) {\r\n            switch (*data++) {\r\n            case AMF_DATA_TYPE_NUMBER:\r\n                snprintf(dst, dst_size, \"%g\", av_int2double(AV_RB64(data)));\r\n                break;\r\n            case AMF_DATA_TYPE_BOOL:\r\n                snprintf(dst, dst_size, \"%s\", *data ? \"true\" : \"false\");\r\n                break;\r\n            case AMF_DATA_TYPE_STRING:\r\n                len = bytestream_get_be16(&data);\r\n                av_strlcpy(dst, data, FFMIN(len+1, dst_size));\r\n                break;\r\n            default:\r\n                return -1;\r\n            }\r\n            return 0;\r\n        }\r\n        len = ff_amf_tag_size(data, data_end);\r\n        if (len < 0 || len >= data_end - data)\r\n            return -1;\r\n        data += len;\r\n    }\r\n    return -1;\r\n}\r\n\r\nstatic const char* rtmp_packet_type(int type)\r\n{\r\n    switch (type) {\r\n    case RTMP_PT_CHUNK_SIZE:     return \"chunk size\";\r\n    case RTMP_PT_BYTES_READ:     return \"bytes read\";\r\n    case RTMP_PT_PING:           return \"ping\";\r\n    case RTMP_PT_SERVER_BW:      return \"server bandwidth\";\r\n    case RTMP_PT_CLIENT_BW:      return \"client bandwidth\";\r\n    case RTMP_PT_AUDIO:          return \"audio packet\";\r\n    case RTMP_PT_VIDEO:          return \"video packet\";\r\n    case RTMP_PT_FLEX_STREAM:    return \"Flex shared stream\";\r\n    case RTMP_PT_FLEX_OBJECT:    return \"Flex shared object\";\r\n    case RTMP_PT_FLEX_MESSAGE:   return \"Flex shared message\";\r\n    case RTMP_PT_NOTIFY:         return \"notification\";\r\n    case RTMP_PT_SHARED_OBJ:     return \"shared object\";\r\n    case RTMP_PT_INVOKE:         return \"invoke\";\r\n    case RTMP_PT_METADATA:       return \"metadata\";\r\n    default:                     return \"unknown\";\r\n    }\r\n}\r\n\r\n",
+  "extraction_status": "unsupported_multi_function_scope",
+  "extraction_reason": "vulnerable-side scope spans 2 top-level constructs (functions/declarations), not a single function",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "C_830__0",
+  "sample_id": "D/C/830",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6544",
+  "cve_summary": "The Bluetooth protocol stack in the Linux kernel before 3.6 does not properly initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application that targets the (1) L2CAP or (2) HCI implementation.",
+  "commit_message": "Bluetooth: L2CAP - Fix info leak via getsockname()\n\nThe L2CAP code fails to initialize the l2_bdaddr_type member of struct\nsockaddr_l2 and the padding byte added for alignment. It that for leaks\ntwo bytes kernel stack via the getsockname() syscall. Add an explicit\nmemset(0) before filling the structure to avoid the info leak.\n\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nCc: Marcel Holtmann <marcel@holtmann.org>\nCc: Gustavo Padovan <gustavo@padovan.org>\nCc: Johan Hedberg <johan.hedberg@gmail.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/bluetooth/l2cap_sock.c",
+  "docstring": "Summary:  \nRetrieves the local or peer Bluetooth socket address for a given socket.\n\nParameters:  \nsock (struct socket *): The socket from which to retrieve the address.  \naddr (struct sockaddr *): Pointer to a sockaddr structure to be filled with the address.  \nlen (int *): Pointer to an integer to store the length of the address.  \npeer (int): Flag indicating whether to retrieve the peer address (1) or local address (0).\n\nReturns:  \nint: Returns 0 on success.\n\nLogic:  \nThe function initializes a sockaddr_l2 structure, sets the address family to AF_BLUETOOTH, and populates the structure with either the local or peer channel information based on the 'peer' flag. It also sets the length of the address to the size of sockaddr_l2.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    240,
+    263
+  ],
+  "vulnerable_snippet": "static int l2cap_sock_getname(struct socket *sock, struct sockaddr *addr, int *len, int peer)\r\n{\r\n\tstruct sockaddr_l2 *la = (struct sockaddr_l2 *) addr;\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct l2cap_chan *chan = l2cap_pi(sk)->chan;\r\n\r\n\tBT_DBG(\"sock %p, sk %p\", sock, sk);\r\n\r\n\taddr->sa_family = AF_BLUETOOTH;\r\n\t*len = sizeof(struct sockaddr_l2);\r\n\r\n\tif (peer) {\r\n\t\tla->l2_psm = chan->psm;\r\n\t\tbacpy(&la->l2_bdaddr, &bt_sk(sk)->dst);\r\n\t\tla->l2_cid = cpu_to_le16(chan->dcid);\r\n\t} else {\r\n\t\tla->l2_psm = chan->sport;\r\n\t\tbacpy(&la->l2_bdaddr, &bt_sk(sk)->src);\r\n\t\tla->l2_cid = cpu_to_le16(chan->scid);\r\n\t}\r\n\r\n\treturn 0;\r\n}\r\n\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    240,
+    263
+  ],
+  "fixed_snippet": "static int l2cap_sock_getname(struct socket *sock, struct sockaddr *addr, int *len, int peer)\r\n{\r\n\tstruct sockaddr_l2 *la = (struct sockaddr_l2 *) addr;\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct l2cap_chan *chan = l2cap_pi(sk)->chan;\r\n\r\n\tBT_DBG(\"sock %p, sk %p\", sock, sk);\r\n\r\n\tmemset(la, 0, sizeof(struct sockaddr_l2));\r\n\taddr->sa_family = AF_BLUETOOTH;\r\n\t*len = sizeof(struct sockaddr_l2);\r\n\r\n\tif (peer) {\r\n\t\tla->l2_psm = chan->psm;\r\n\t\tbacpy(&la->l2_bdaddr, &bt_sk(sk)->dst);\r\n\t\tla->l2_cid = cpu_to_le16(chan->dcid);\r\n\t} else {\r\n\t\tla->l2_psm = chan->sport;\r\n\t\tbacpy(&la->l2_bdaddr, &bt_sk(sk)->src);\r\n\t\tla->l2_cid = cpu_to_le16(chan->scid);\r\n\t}\r\n\r\n\treturn 0;\r\n}"
+}

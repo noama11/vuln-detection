@@ -1,0 +1,25 @@
+{
+  "case_id": "C_23__0",
+  "sample_id": "D/C/23",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0038",
+  "cve_summary": "Integer overflow in the xfs_acl_from_disk function in fs/xfs/xfs_acl.c in the Linux kernel before 3.1.9 allows local users to cause a denial of service (panic) via a filesystem with a malformed ACL, leading to a heap-based buffer overflow.",
+  "commit_message": "xfs: validate acl count\n\nThis prevents in-memory corruption and possible panics if the on-disk\nACL is badly corrupted.\n\nSigned-off-by: Christoph Hellwig <hch@lst.de>\nSigned-off-by: Ben Myers <bpm@sgi.com>",
+  "changed_file": "fs/xfs/xfs_acl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Converts an XFS ACL structure from disk format to a POSIX ACL structure.  \n *  \n * Parameters:  \n * aclp (struct xfs_acl*): Pointer to the XFS ACL structure to convert.  \n *  \n * Returns:  \n * struct posix_acl*: Pointer to the newly allocated POSIX ACL structure on success,  \n * or an error pointer on failure.  \n *  \n * Logic:  \n * The function first checks the count of ACL entries and allocates memory for the  \n * POSIX ACL. It then iterates through each entry, converting the tag and permissions  \n * from disk format to core format. Depending on the tag type, it assigns the appropriate  \n * ID or marks it as undefined. If any errors occur during this process, it releases  \n * the allocated ACL and returns an error pointer.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    18,
+    85
+  ],
+  "vulnerable_snippet": "#include \"xfs.h\"\r\n#include \"xfs_acl.h\"\r\n#include \"xfs_attr.h\"\r\n#include \"xfs_bmap_btree.h\"\r\n#include \"xfs_inode.h\"\r\n#include \"xfs_vnodeops.h\"\r\n#include \"xfs_trace.h\"\r\n#include <linux/slab.h>\r\n#include <linux/xattr.h>\r\n#include <linux/posix_acl_xattr.h>\r\n\r\n\r\n/*\r\n * Locking scheme:\r\n *  - all ACL updates are protected by inode->i_mutex, which is taken before\r\n *    calling into this file.\r\n */\r\n\r\nSTATIC struct posix_acl *\r\nxfs_acl_from_disk(struct xfs_acl *aclp)\r\n{\r\n\tstruct posix_acl_entry *acl_e;\r\n\tstruct posix_acl *acl;\r\n\tstruct xfs_acl_entry *ace;\r\n\tint count, i;\r\n\r\n\tcount = be32_to_cpu(aclp->acl_cnt);\r\n\r\n\tacl = posix_acl_alloc(count, GFP_KERNEL);\r\n\tif (!acl)\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\r\n\tfor (i = 0; i < count; i++) {\r\n\t\tacl_e = &acl->a_entries[i];\r\n\t\tace = &aclp->acl_entry[i];\r\n\r\n\t\t/*\r\n\t\t * The tag is 32 bits on disk and 16 bits in core.\r\n\t\t *\r\n\t\t * Because every access to it goes through the core\r\n\t\t * format first this is not a problem.\r\n\t\t */\r\n\t\tacl_e->e_tag = be32_to_cpu(ace->ae_tag);\r\n\t\tacl_e->e_perm = be16_to_cpu(ace->ae_perm);\r\n\r\n\t\tswitch (acl_e->e_tag) {\r\n\t\tcase ACL_USER:\r\n\t\tcase ACL_GROUP:\r\n\t\t\tacl_e->e_id = be32_to_cpu(ace->ae_id);\r\n\t\t\tbreak;\r\n\t\tcase ACL_USER_OBJ:\r\n\t\tcase ACL_GROUP_OBJ:\r\n\t\tcase ACL_MASK:\r\n\t\tcase ACL_OTHER:\r\n\t\t\tacl_e->e_id = ACL_UNDEFINED_ID;\r\n\t\t\tbreak;\r\n\t\tdefault:\r\n\t\t\tgoto fail;\r\n\t\t}\r\n\t}\r\n\treturn acl;\r\n\r\nfail:\r\n\tposix_acl_release(acl);\r\n\treturn ERR_PTR(-EINVAL);\r\n}\r\n\r\nSTATIC void\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    36,
+    85
+  ],
+  "fixed_snippet": "STATIC struct posix_acl *\r\nxfs_acl_from_disk(struct xfs_acl *aclp)\r\n{\r\n\tstruct posix_acl_entry *acl_e;\r\n\tstruct posix_acl *acl;\r\n\tstruct xfs_acl_entry *ace;\r\n\tint count, i;\r\n\r\n\tcount = be32_to_cpu(aclp->acl_cnt);\r\n\tif (count > XFS_ACL_MAX_ENTRIES)\r\n\t\treturn ERR_PTR(-EFSCORRUPTED);\r\n\r\n\tacl = posix_acl_alloc(count, GFP_KERNEL);\r\n\tif (!acl)\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\r\n\tfor (i = 0; i < count; i++) {\r\n\t\tacl_e = &acl->a_entries[i];\r\n\t\tace = &aclp->acl_entry[i];\r\n\r\n\t\t/*\r\n\t\t * The tag is 32 bits on disk and 16 bits in core.\r\n\t\t *\r\n\t\t * Because every access to it goes through the core\r\n\t\t * format first this is not a problem.\r\n\t\t */\r\n\t\tacl_e->e_tag = be32_to_cpu(ace->ae_tag);\r\n\t\tacl_e->e_perm = be16_to_cpu(ace->ae_perm);\r\n\r\n\t\tswitch (acl_e->e_tag) {\r\n\t\tcase ACL_USER:\r\n\t\tcase ACL_GROUP:\r\n\t\t\tacl_e->e_id = be32_to_cpu(ace->ae_id);\r\n\t\t\tbreak;\r\n\t\tcase ACL_USER_OBJ:\r\n\t\tcase ACL_GROUP_OBJ:\r\n\t\tcase ACL_MASK:\r\n\t\tcase ACL_OTHER:\r\n\t\t\tacl_e->e_id = ACL_UNDEFINED_ID;\r\n\t\t\tbreak;\r\n\t\tdefault:\r\n\t\t\tgoto fail;\r\n\t\t}\r\n\t}\r\n\treturn acl;\r\n\r\nfail:\r\n\tposix_acl_release(acl);\r\n\treturn ERR_PTR(-EINVAL);\r\n}"
+}

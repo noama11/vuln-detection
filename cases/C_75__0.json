@@ -1,0 +1,25 @@
+{
+  "case_id": "C_75__0",
+  "sample_id": "D/C/75",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3227",
+  "cve_summary": "The caif_seqpkt_recvmsg function in net/caif/caif_socket.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "commit_message": "caif: Fix missing msg_namelen update in caif_seqpkt_recvmsg()\n\nThe current code does not fill the msg_name member in case it is set.\nIt also does not set the msg_namelen member to 0 and therefore makes\nnet/socket.c leak the local, uninitialized sockaddr_storage variable\nto userland -- 128 bytes of kernel stack memory.\n\nFix that by simply setting msg_namelen to 0 as obviously nobody cared\nabout caif_seqpkt_recvmsg() not filling the msg_name in case it was\nset.\n\nCc: Sjur Braendeland <sjur.brandeland@stericsson.com>\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/caif/caif_socket.c",
+  "docstring": "Summary: This function receives a message from a socket and processes it, handling out-of-band data and message truncation.\n\nParameters: \n- iocb (struct kiocb*): The I/O control block for the operation.\n- sock (struct socket*): The socket from which the message is received.\n- m (struct msghdr*): The message header structure to fill with received data.\n- len (size_t): The maximum length of data to receive.\n- flags (int): Flags that modify the behavior of the receive operation.\n\nReturns: int: The number of bytes received or an error code.\n\nLogic: The function first checks if out-of-band data is requested and returns an error if so. It initializes the message name length and attempts to receive a datagram from the socket. If successful, it checks if the received data exceeds the specified length, potentially marking the message as truncated. It then copies the datagram into the provided message header and frees the socket buffer before returning the number of bytes received or an error code if any step fails.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    276,
+    312
+  ],
+  "vulnerable_snippet": "static int caif_seqpkt_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t\tstruct msghdr *m, size_t len, int flags)\r\n\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct sk_buff *skb;\r\n\tint ret;\r\n\tint copylen;\r\n\r\n\tret = -EOPNOTSUPP;\r\n\tif (m->msg_flags&MSG_OOB)\r\n\t\tgoto read_error;\r\n\r\n\tskb = skb_recv_datagram(sk, flags, 0 , &ret);\r\n\tif (!skb)\r\n\t\tgoto read_error;\r\n\tcopylen = skb->len;\r\n\tif (len < copylen) {\r\n\t\tm->msg_flags |= MSG_TRUNC;\r\n\t\tcopylen = len;\r\n\t}\r\n\r\n\tret = skb_copy_datagram_iovec(skb, 0, m->msg_iov, copylen);\r\n\tif (ret)\r\n\t\tgoto out_free;\r\n\r\n\tret = (flags & MSG_TRUNC) ? skb->len : copylen;\r\nout_free:\r\n\tskb_free_datagram(sk, skb);\r\n\tcaif_check_flow_release(sk);\r\n\treturn ret;\r\n\r\nread_error:\r\n\treturn ret;\r\n}\r\n\r\n\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'caif_seqpkt_recvmsg'",
+  "fixed_line_range": [
+    279,
+    312
+  ],
+  "fixed_snippet": "{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct sk_buff *skb;\r\n\tint ret;\r\n\tint copylen;\r\n\r\n\tret = -EOPNOTSUPP;\r\n\tif (m->msg_flags&MSG_OOB)\r\n\t\tgoto read_error;\r\n\r\n\tm->msg_namelen = 0;\r\n\r\n\tskb = skb_recv_datagram(sk, flags, 0 , &ret);\r\n\tif (!skb)\r\n\t\tgoto read_error;\r\n\tcopylen = skb->len;\r\n\tif (len < copylen) {\r\n\t\tm->msg_flags |= MSG_TRUNC;\r\n\t\tcopylen = len;\r\n\t}\r\n\r\n\tret = skb_copy_datagram_iovec(skb, 0, m->msg_iov, copylen);\r\n\tif (ret)\r\n\t\tgoto out_free;\r\n\r\n\tret = (flags & MSG_TRUNC) ? skb->len : copylen;\r\nout_free:\r\n\tskb_free_datagram(sk, skb);\r\n\tcaif_check_flow_release(sk);\r\n\treturn ret;\r\n\r\nread_error:\r\n\treturn ret;\r\n}"
+}

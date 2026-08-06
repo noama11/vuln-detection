@@ -1,0 +1,25 @@
+{
+  "case_id": "C_524__0",
+  "sample_id": "D/C/524",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-10150",
+  "cve_summary": "Use-after-free vulnerability in the kvm_ioctl_create_device function in virt/kvm/kvm_main.c in the Linux kernel before 4.8.13 allows host OS users to cause a denial of service (host OS crash) or possibly gain privileges via crafted ioctl calls on the /dev/kvm device.",
+  "commit_message": "KVM: use after free in kvm_ioctl_create_device()\n\nWe should move the ops->destroy(dev) after the list_del(&dev->vm_node)\nso that we don't use \"dev\" after freeing it.\n\nFixes: a28ebea2adc4 (\"KVM: Protect device ops->create and list_add with kvm->lock\")\nSigned-off-by: Dan Carpenter <dan.carpenter@oracle.com>\nReviewed-by: David Hildenbrand <david@redhat.com>\nSigned-off-by: Radim Kr\u010dm\u00e1\u0159 <rkrcmar@redhat.com>",
+  "changed_file": "virt/kvm/kvm_main.c",
+  "docstring": "/**\n * Summary: Creates a device in the KVM (Kernel-based Virtual Machine) environment.\n * \n * Parameters:\n * kvm (struct kvm *): Pointer to the KVM instance where the device will be created.\n * cd (struct kvm_create_device *): Pointer to the structure containing device creation parameters.\n * \n * Returns: int - 0 on success, negative error code on failure.\n * \n * Logic: The function first checks if the device type is valid and retrieves the corresponding device operations. If the test flag is set, it returns immediately. It allocates memory for the device and locks the KVM structure to safely create the device. If creation is successful, it adds the device to the KVM's device list and initializes it if an init function is provided. It then attempts to obtain a file descriptor for the device. If any step fails, it cleans up by removing the device and calling the destroy function. Finally, it returns the file descriptor in the provided structure.\n */",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    2852,
+    2902
+  ],
+  "vulnerable_snippet": "static int kvm_ioctl_create_device(struct kvm *kvm,\r\n\t\t\t\t   struct kvm_create_device *cd)\r\n{\r\n\tstruct kvm_device_ops *ops = NULL;\r\n\tstruct kvm_device *dev;\r\n\tbool test = cd->flags & KVM_CREATE_DEVICE_TEST;\r\n\tint ret;\r\n\r\n\tif (cd->type >= ARRAY_SIZE(kvm_device_ops_table))\r\n\t\treturn -ENODEV;\r\n\r\n\tops = kvm_device_ops_table[cd->type];\r\n\tif (ops == NULL)\r\n\t\treturn -ENODEV;\r\n\r\n\tif (test)\r\n\t\treturn 0;\r\n\r\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\r\n\tif (!dev)\r\n\t\treturn -ENOMEM;\r\n\r\n\tdev->ops = ops;\r\n\tdev->kvm = kvm;\r\n\r\n\tmutex_lock(&kvm->lock);\r\n\tret = ops->create(dev, cd->type);\r\n\tif (ret < 0) {\r\n\t\tmutex_unlock(&kvm->lock);\r\n\t\tkfree(dev);\r\n\t\treturn ret;\r\n\t}\r\n\tlist_add(&dev->vm_node, &kvm->devices);\r\n\tmutex_unlock(&kvm->lock);\r\n\r\n\tif (ops->init)\r\n\t\tops->init(dev);\r\n\r\n\tret = anon_inode_getfd(ops->name, &kvm_device_fops, dev, O_RDWR | O_CLOEXEC);\r\n\tif (ret < 0) {\r\n\t\tops->destroy(dev);\r\n\t\tmutex_lock(&kvm->lock);\r\n\t\tlist_del(&dev->vm_node);\r\n\t\tmutex_unlock(&kvm->lock);\r\n\t\treturn ret;\r\n\t}\r\n\r\n\tkvm_get_kvm(kvm);\r\n\tcd->fd = ret;\r\n\treturn 0;\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    2852,
+    2902
+  ],
+  "fixed_snippet": "static int kvm_ioctl_create_device(struct kvm *kvm,\r\n\t\t\t\t   struct kvm_create_device *cd)\r\n{\r\n\tstruct kvm_device_ops *ops = NULL;\r\n\tstruct kvm_device *dev;\r\n\tbool test = cd->flags & KVM_CREATE_DEVICE_TEST;\r\n\tint ret;\r\n\r\n\tif (cd->type >= ARRAY_SIZE(kvm_device_ops_table))\r\n\t\treturn -ENODEV;\r\n\r\n\tops = kvm_device_ops_table[cd->type];\r\n\tif (ops == NULL)\r\n\t\treturn -ENODEV;\r\n\r\n\tif (test)\r\n\t\treturn 0;\r\n\r\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\r\n\tif (!dev)\r\n\t\treturn -ENOMEM;\r\n\r\n\tdev->ops = ops;\r\n\tdev->kvm = kvm;\r\n\r\n\tmutex_lock(&kvm->lock);\r\n\tret = ops->create(dev, cd->type);\r\n\tif (ret < 0) {\r\n\t\tmutex_unlock(&kvm->lock);\r\n\t\tkfree(dev);\r\n\t\treturn ret;\r\n\t}\r\n\tlist_add(&dev->vm_node, &kvm->devices);\r\n\tmutex_unlock(&kvm->lock);\r\n\r\n\tif (ops->init)\r\n\t\tops->init(dev);\r\n\r\n\tret = anon_inode_getfd(ops->name, &kvm_device_fops, dev, O_RDWR | O_CLOEXEC);\r\n\tif (ret < 0) {\r\n\t\tmutex_lock(&kvm->lock);\r\n\t\tlist_del(&dev->vm_node);\r\n\t\tmutex_unlock(&kvm->lock);\r\n\t\tops->destroy(dev);\r\n\t\treturn ret;\r\n\t}\r\n\r\n\tkvm_get_kvm(kvm);\r\n\tcd->fd = ret;\r\n\treturn 0;\r\n}"
+}

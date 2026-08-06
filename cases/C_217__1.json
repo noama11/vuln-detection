@@ -1,0 +1,25 @@
+{
+  "case_id": "C_217__1",
+  "sample_id": "D/C/217",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4036",
+  "cve_summary": "Array index error in the tcm_vhost_make_tpg function in drivers/vhost/scsi.c in the Linux kernel before 4.0 might allow guest OS users to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted VHOST_SCSI_SET_ENDPOINT ioctl call.  NOTE: the affected function was renamed to vhost_scsi_make_tpg before the vulnerability was announced.",
+  "commit_message": "vhost/scsi: potential memory corruption\n\nThis code in vhost_scsi_make_tpg() is confusing because we limit \"tpgt\"\nto UINT_MAX but the data type of \"tpg->tport_tpgt\" and that is a u16.\n\nI looked at the context and it turns out that in\nvhost_scsi_set_endpoint(), \"tpg->tport_tpgt\" is used as an offset into\nthe vs_tpg[] array which has VHOST_SCSI_MAX_TARGET (256) elements so\nanything higher than 255 then it is invalid.  I have made that the limit\nnow.\n\nIn vhost_scsi_send_evt() we mask away values higher than 255, but now\nthat the limit has changed, we don't need the mask.\n\nSigned-off-by: Dan Carpenter <dan.carpenter@oracle.com>\nSigned-off-by: Nicholas Bellinger <nab@linux-iscsi.org>",
+  "changed_file": "drivers/vhost/scsi.c",
+  "docstring": "/**\n * Summary: Creates a target portal group (TPG) for a SCSI virtual host.\n * \n * Parameters:\n * wwn (struct se_wwn *): The worldwide name associated with the TPG.\n * group (struct config_group *): The configuration group to which the TPG belongs.\n * name (const char *): The name of the TPG, expected to start with \"tpgt_\".\n * \n * Returns: \n * struct se_portal_group *: A pointer to the created TPG on success, or an error pointer on failure.\n * \n * Logic: The function validates the TPG name, allocates memory for the TPG structure, initializes it, and registers it with the core SCSI transport. If any step fails, appropriate error handling is performed, including memory cleanup and returning error codes. The new TPG is added to a global list of TPGs, ensuring thread safety with mutex locks.\n */",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    2114,
+    2152
+  ],
+  "vulnerable_snippet": "static struct se_portal_group *\r\nvhost_scsi_make_tpg(struct se_wwn *wwn,\r\n\t\t   struct config_group *group,\r\n\t\t   const char *name)\r\n{\r\n\tstruct vhost_scsi_tport *tport = container_of(wwn,\r\n\t\t\tstruct vhost_scsi_tport, tport_wwn);\r\n\r\n\tstruct vhost_scsi_tpg *tpg;\r\n\tunsigned long tpgt;\r\n\tint ret;\r\n\r\n\tif (strstr(name, \"tpgt_\") != name)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\tif (kstrtoul(name + 5, 10, &tpgt) || tpgt > UINT_MAX)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\r\n\ttpg = kzalloc(sizeof(struct vhost_scsi_tpg), GFP_KERNEL);\r\n\tif (!tpg) {\r\n\t\tpr_err(\"Unable to allocate struct vhost_scsi_tpg\");\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\t}\r\n\tmutex_init(&tpg->tv_tpg_mutex);\r\n\tINIT_LIST_HEAD(&tpg->tv_tpg_list);\r\n\ttpg->tport = tport;\r\n\ttpg->tport_tpgt = tpgt;\r\n\r\n\tret = core_tpg_register(&vhost_scsi_fabric_configfs->tf_ops, wwn,\r\n\t\t\t\t&tpg->se_tpg, tpg, TRANSPORT_TPG_TYPE_NORMAL);\r\n\tif (ret < 0) {\r\n\t\tkfree(tpg);\r\n\t\treturn NULL;\r\n\t}\r\n\tmutex_lock(&vhost_scsi_mutex);\r\n\tlist_add_tail(&tpg->tv_tpg_list, &vhost_scsi_list);\r\n\tmutex_unlock(&vhost_scsi_mutex);\r\n\r\n\treturn &tpg->se_tpg;\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    2114,
+    2152
+  ],
+  "fixed_snippet": "static struct se_portal_group *\r\nvhost_scsi_make_tpg(struct se_wwn *wwn,\r\n\t\t   struct config_group *group,\r\n\t\t   const char *name)\r\n{\r\n\tstruct vhost_scsi_tport *tport = container_of(wwn,\r\n\t\t\tstruct vhost_scsi_tport, tport_wwn);\r\n\r\n\tstruct vhost_scsi_tpg *tpg;\r\n\tu16 tpgt;\r\n\tint ret;\r\n\r\n\tif (strstr(name, \"tpgt_\") != name)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\tif (kstrtou16(name + 5, 10, &tpgt) || tpgt >= VHOST_SCSI_MAX_TARGET)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\r\n\ttpg = kzalloc(sizeof(struct vhost_scsi_tpg), GFP_KERNEL);\r\n\tif (!tpg) {\r\n\t\tpr_err(\"Unable to allocate struct vhost_scsi_tpg\");\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\t}\r\n\tmutex_init(&tpg->tv_tpg_mutex);\r\n\tINIT_LIST_HEAD(&tpg->tv_tpg_list);\r\n\ttpg->tport = tport;\r\n\ttpg->tport_tpgt = tpgt;\r\n\r\n\tret = core_tpg_register(&vhost_scsi_fabric_configfs->tf_ops, wwn,\r\n\t\t\t\t&tpg->se_tpg, tpg, TRANSPORT_TPG_TYPE_NORMAL);\r\n\tif (ret < 0) {\r\n\t\tkfree(tpg);\r\n\t\treturn NULL;\r\n\t}\r\n\tmutex_lock(&vhost_scsi_mutex);\r\n\tlist_add_tail(&tpg->tv_tpg_list, &vhost_scsi_list);\r\n\tmutex_unlock(&vhost_scsi_mutex);\r\n\r\n\treturn &tpg->se_tpg;\r\n}"
+}

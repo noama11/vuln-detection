@@ -1,0 +1,22 @@
+{
+  "case_id": "C_321__1",
+  "sample_id": "D/C/321",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-8950",
+  "cve_summary": "arch/arm64/mm/dma-mapping.c in the Linux kernel before 4.0.3, as used in the ION subsystem in Android and other products, does not initialize certain data structures, which allows local users to obtain sensitive information from kernel memory by triggering a dma_mmap call.",
+  "commit_message": "arm64: dma-mapping: always clear allocated buffers\n\nBuffers allocated by dma_alloc_coherent() are always zeroed on Alpha,\nARM (32bit), MIPS, PowerPC, x86/x86_64 and probably other architectures.\nIt turned out that some drivers rely on this 'feature'. Allocated buffer\nmight be also exposed to userspace with dma_mmap() call, so clearing it\nis desired from security point of view to avoid exposing random memory\nto userspace. This patch unifies dma_alloc_coherent() behavior on ARM64\narchitecture with other implementations by unconditionally zeroing\nallocated buffer.\n\nCc: <stable@vger.kernel.org> # v3.14+\nSigned-off-by: Marek Szyprowski <m.szyprowski@samsung.com>\nSigned-off-by: Will Deacon <will.deacon@arm.com>",
+  "changed_file": "arch/arm64/mm/dma-mapping.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates a coherent DMA memory region for a given device.  \n *  \n * Parameters:  \n * dev (struct device *): Pointer to the device structure for which memory is allocated.  \n * size (size_t): The size of the memory to allocate.  \n * dma_handle (dma_addr_t *): Pointer to store the DMA address of the allocated memory.  \n * flags (gfp_t): Allocation flags that control the behavior of the allocation.  \n * attrs (struct dma_attrs *): Attributes for the DMA allocation.  \n *  \n * Returns:  \n * void *: Pointer to the allocated coherent memory, or NULL on failure.  \n *  \n * Logic:  \n * The function checks if the device structure is valid and adjusts allocation flags based on the device's DMA mask. It attempts to allocate memory using contiguous pages if certain conditions are met; otherwise, it falls back to a software I/O translation buffer allocation method.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    91,
+    120
+  ],
+  "vulnerable_snippet": "\r\nstatic void *__dma_alloc_coherent(struct device *dev, size_t size,\r\n\t\t\t\t  dma_addr_t *dma_handle, gfp_t flags,\r\n\t\t\t\t  struct dma_attrs *attrs)\r\n{\r\n\tif (dev == NULL) {\r\n\t\tWARN_ONCE(1, \"Use an actual device structure for DMA allocation\\n\");\r\n\t\treturn NULL;\r\n\t}\r\n\r\n\tif (IS_ENABLED(CONFIG_ZONE_DMA) &&\r\n\t    dev->coherent_dma_mask <= DMA_BIT_MASK(32))\r\n\t\tflags |= GFP_DMA;\r\n\tif (IS_ENABLED(CONFIG_DMA_CMA) && (flags & __GFP_WAIT)) {\r\n\t\tstruct page *page;\r\n\t\tvoid *addr;\r\n\r\n\t\tsize = PAGE_ALIGN(size);\r\n\t\tpage = dma_alloc_from_contiguous(dev, size >> PAGE_SHIFT,\r\n\t\t\t\t\t\t\tget_order(size));\r\n\t\tif (!page)\r\n\t\t\treturn NULL;\r\n\r\n\t\t*dma_handle = phys_to_dma(dev, page_to_phys(page));\r\n\t\taddr = page_address(page);\r\n\t\tif (flags & __GFP_ZERO)\r\n\t\t\tmemset(addr, 0, size);\r\n\t\treturn addr;\r\n\t} else {\r\n\t\treturn swiotlb_alloc_coherent(dev, size, dma_handle, flags);\r\n",
+  "extraction_status": "unsupported_multi_function_scope",
+  "extraction_reason": "vulnerable-side scope spans 2 top-level constructs (functions/declarations), not a single function",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

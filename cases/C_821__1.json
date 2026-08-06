@@ -1,0 +1,22 @@
+{
+  "case_id": "C_821__1",
+  "sample_id": "D/C/821",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2010-5332",
+  "cve_summary": "In the Linux kernel before 2.6.37, an out of bounds array access happened in drivers/net/mlx4/port.c. When searching for a free entry in either mlx4_register_vlan() or mlx4_register_mac(), and there is no free entry, the loop terminates without updating the local variable free thus causing out of array bounds access.",
+  "commit_message": "mlx4_en: Fix out of bounds array access\n\nWhen searching for a free entry in either mlx4_register_vlan() or\nmlx4_register_mac(), and there is no free entry, the loop terminates without\nupdating the local variable free thus causing out of array bounds access. Fix\nthis by adding a proper check outside the loop.\n\nSigned-off-by: Eli Cohen <eli@mellanox.co.il>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "drivers/net/mlx4/port.c",
+  "docstring": "/**\n * Summary: Registers a VLAN for a specified port on a given device.\n * \n * Parameters:\n * dev (struct mlx4_dev *): Pointer to the device structure.\n * port (u8): The port number to register the VLAN on.\n * vlan (u16): The VLAN ID to register.\n * index (int *): Pointer to store the index of the registered VLAN.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function locks the VLAN table mutex and checks for an available \n * entry to register the VLAN. If the VLAN is already registered, it \n * increments the reference count. If a new entry is needed, it checks \n * for available space and registers the VLAN. It updates the VLAN table \n * and unlocks the mutex before returning the result.\n */",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    191,
+    242
+  ],
+  "vulnerable_snippet": "\tmutex_lock(&table->mutex);\r\n\tfor (i = MLX4_VLAN_REGULAR; i < MLX4_MAX_VLAN_NUM; i++) {\r\n\t\tif (free < 0 && (table->refs[i] == 0)) {\r\n\t\t\tfree = i;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (table->refs[i] &&\r\n\t\t    (vlan == (MLX4_VLAN_MASK &\r\n\t\t\t      be32_to_cpu(table->entries[i])))) {\r\n\t\t\t/* Vlan already registered, increase refernce count */\r\n\t\t\t*index = i;\r\n\t\t\t++table->refs[i];\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t}\r\n\r\n\tif (table->total == table->max) {\r\n\t\t/* No free vlan entries */\r\n\t\terr = -ENOSPC;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t/* Register new MAC */\r\n\ttable->refs[free] = 1;\r\n\ttable->entries[free] = cpu_to_be32(vlan | MLX4_VLAN_VALID);\r\n\r\n\terr = mlx4_set_port_vlan_table(dev, port, table->entries);\r\n\tif (unlikely(err)) {\r\n\t\tmlx4_warn(dev, \"Failed adding vlan: %u\\n\", vlan);\r\n\t\ttable->refs[free] = 0;\r\n\t\ttable->entries[free] = 0;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t*index = free;\r\n\t++table->total;\r\nout:\r\n\tmutex_unlock(&table->mutex);\r\n\treturn err;\r\n}\r\nEXPORT_SYMBOL_GPL(mlx4_register_vlan);\r\n\r\nvoid mlx4_unregister_vlan(struct mlx4_dev *dev, u8 port, int index)\r\n{\r\n\tstruct mlx4_vlan_table *table = &mlx4_priv(dev)->port[port].vlan_table;\r\n\r\n\tif (index < MLX4_VLAN_REGULAR) {\r\n\t\tmlx4_warn(dev, \"Trying to free special vlan index %d\\n\", index);\r\n\t\treturn;\r\n\t}\r\n\r\n",
+  "extraction_status": "unsupported_multi_function_scope",
+  "extraction_reason": "vulnerable-side scope spans 4 top-level constructs (functions/declarations), not a single function",
+  "fixed_line_range": null,
+  "fixed_snippet": null
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "C_596__1",
+  "sample_id": "D/C/596",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2007-6761",
+  "cve_summary": "drivers/media/video/videobuf-vmalloc.c in the Linux kernel before 2.6.24 does not initialize videobuf_mapping data structures, which allows local users to trigger an incorrect count value and videobuf leak via unspecified vectors, a different vulnerability than CVE-2010-5321.",
+  "commit_message": "V4L/DVB (6751): V4L: Memory leak!  Fix count in videobuf-vmalloc mmap\n\nThis is pretty serious bug.  map->count is never initialized after the\ncall to kmalloc making the count start at some random trash value.  The\nend result is leaking videobufs.\n\nAlso, fix up the debug statements to print unsigned values.\n\nPushed to http://ifup.org/hg/v4l-dvb too\n\nSigned-off-by: Brandon Philips <bphilips@suse.de>\nSigned-off-by: Mauro Carvalho Chehab <mchehab@infradead.org>",
+  "changed_file": "drivers/media/video/videobuf-vmalloc.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Closes a video buffer mapping associated with a virtual memory area.  \n *  \n * Parameters:  \n * vma (struct vm_area_struct *): Pointer to the virtual memory area structure.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function decreases the reference count of the video buffer mapping. If the count reaches zero, it releases the associated buffers in the video queue, ensuring proper cleanup by locking the queue, iterating through the buffers, and calling the buffer release operation. Finally, it frees the mapping structure.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    60,
+    90
+  ],
+  "vulnerable_snippet": "static void\r\nvideobuf_vm_close(struct vm_area_struct *vma)\r\n{\r\n\tstruct videobuf_mapping *map = vma->vm_private_data;\r\n\tstruct videobuf_queue *q = map->q;\r\n\tint i;\r\n\r\n\tdprintk(2,\"vm_close %p [count=%d,vma=%08lx-%08lx]\\n\",map,\r\n\t\tmap->count,vma->vm_start,vma->vm_end);\r\n\r\n\tmap->count--;\r\n\tif (0 == map->count) {\r\n\t\tdprintk(1,\"munmap %p q=%p\\n\",map,q);\r\n\t\tmutex_lock(&q->lock);\r\n\t\tfor (i = 0; i < VIDEO_MAX_FRAME; i++) {\r\n\t\t\tif (NULL == q->bufs[i])\r\n\t\t\t\tcontinue;\r\n\r\n\t\t\tif (q->bufs[i]->map != map)\r\n\t\t\t\tcontinue;\r\n\r\n\t\t\tq->ops->buf_release(q,q->bufs[i]);\r\n\r\n\t\t\tq->bufs[i]->map   = NULL;\r\n\t\t\tq->bufs[i]->baddr = 0;\r\n\t\t}\r\n\t\tmutex_unlock(&q->lock);\r\n\t\tkfree(map);\r\n\t}\r\n\treturn;\r\n}\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    60,
+    90
+  ],
+  "fixed_snippet": "static void\r\nvideobuf_vm_close(struct vm_area_struct *vma)\r\n{\r\n\tstruct videobuf_mapping *map = vma->vm_private_data;\r\n\tstruct videobuf_queue *q = map->q;\r\n\tint i;\r\n\r\n\tdprintk(2,\"vm_close %p [count=%u,vma=%08lx-%08lx]\\n\",map,\r\n\t\tmap->count,vma->vm_start,vma->vm_end);\r\n\r\n\tmap->count--;\r\n\tif (0 == map->count) {\r\n\t\tdprintk(1,\"munmap %p q=%p\\n\",map,q);\r\n\t\tmutex_lock(&q->lock);\r\n\t\tfor (i = 0; i < VIDEO_MAX_FRAME; i++) {\r\n\t\t\tif (NULL == q->bufs[i])\r\n\t\t\t\tcontinue;\r\n\r\n\t\t\tif (q->bufs[i]->map != map)\r\n\t\t\t\tcontinue;\r\n\r\n\t\t\tq->ops->buf_release(q,q->bufs[i]);\r\n\r\n\t\t\tq->bufs[i]->map   = NULL;\r\n\t\t\tq->bufs[i]->baddr = 0;\r\n\t\t}\r\n\t\tmutex_unlock(&q->lock);\r\n\t\tkfree(map);\r\n\t}\r\n\treturn;\r\n}"
+}

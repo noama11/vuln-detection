@@ -1,0 +1,25 @@
+{
+  "case_id": "C_701__0",
+  "sample_id": "D/C/701",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18261",
+  "cve_summary": "The arch_timer_reg_read_stable macro in arch/arm64/include/asm/arch_timer.h in the Linux kernel before 4.13 allows local users to cause a denial of service (infinite recursion) by writing to a file under /sys/kernel/debug in certain circumstances, as demonstrated by a scenario involving debugfs, ftrace, PREEMPT_TRACER, and FUNCTION_GRAPH_TRACER.",
+  "commit_message": "clocksource/drivers/arm_arch_timer: Avoid infinite recursion when ftrace is enabled\n\nOn platforms with an arch timer erratum workaround, it's possible for\narch_timer_reg_read_stable() to recurse into itself when certain\ntracing options are enabled, leading to stack overflows and related\nproblems.\n\nFor example, when PREEMPT_TRACER and FUNCTION_GRAPH_TRACER are\nselected, it's possible to trigger this with:\n\n$ mount -t debugfs nodev /sys/kernel/debug/\n$ echo function_graph > /sys/kernel/debug/tracing/current_tracer\n\nThe problem is that in such cases, preempt_disable() instrumentation\nattempts to acquire a timestamp via trace_clock(), resulting in a call\nback to arch_timer_reg_read_stable(), and hence recursion.\n\nThis patch changes arch_timer_reg_read_stable() to use\npreempt_{disable,enable}_notrace(), which avoids this.\n\nThis problem is similar to the fixed by upstream commit 96b3d28bf4\n(\"sched/clock: Prevent tracing recursion in sched_clock_cpu()\").\n\nFixes: 6acc71ccac71 (\"arm64: arch_timer: Allows a CPU-specific erratum to only affect a subset of CPUs\")\nSigned-off-by: Ding Tianhong <dingtianhong@huawei.com>\nAcked-by: Mark Rutland <mark.rutland@arm.com>\nAcked-by: Marc Zyngier <marc.zyngier@arm.com>\nSigned-off-by: Daniel Lezcano <daniel.lezcano@linaro.org>",
+  "changed_file": "arch/arm64/include/asm/arch_timer.h",
+  "docstring": "Summary: This code fragment defines a macro for reading architecture timer registers with a workaround for unstable timer counters if necessary.\n\nParameters: N/A\n\nReturns: u64: the value read from the specified timer register.\n\nLogic: The macro `arch_timer_reg_read_stable` checks if a workaround for unstable timer counters is needed by calling `needs_unstable_timer_counter_workaround()`. If the workaround is required, it disables preemption and retrieves the appropriate workaround function from the current CPU's context using `__this_cpu_read`. If a valid workaround function exists for the specified register, it calls that function; otherwise, it reads the register directly using `read_sysreg(reg)`. If no workaround is needed, it directly reads the register. After the operation, preemption is re-enabled. The final value read from the register is returned. This macro ensures that timer register reads are stable and reliable in the presence of potential errata.",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    63,
+    79
+  ],
+  "vulnerable_snippet": "#define arch_timer_reg_read_stable(reg)\t\t\t\t\t\\\r\n({\t\t\t\t\t\t\t\t\t\\\r\n\tu64 _val;\t\t\t\t\t\t\t\\\r\n\tif (needs_unstable_timer_counter_workaround()) {\t\t\\\r\n\t\tconst struct arch_timer_erratum_workaround *wa;\t\t\\\r\n\t\tpreempt_disable();\t\t\t\t\t\\\r\n\t\twa = __this_cpu_read(timer_unstable_counter_workaround); \\\r\n\t\tif (wa && wa->read_##reg)\t\t\t\t\\\r\n\t\t\t_val = wa->read_##reg();\t\t\t\\\r\n\t\telse\t\t\t\t\t\t\t\\\r\n\t\t\t_val = read_sysreg(reg);\t\t\t\\\r\n\t\tpreempt_enable();\t\t\t\t\t\\\r\n\t} else {\t\t\t\t\t\t\t\\\r\n\t\t_val = read_sysreg(reg);\t\t\t\t\\\r\n\t}\t\t\t\t\t\t\t\t\\\r\n\t_val;\t\t\t\t\t\t\t\t\\\r\n})\r\n",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "fixed_line_range": [
+    63,
+    79
+  ],
+  "fixed_snippet": "#define arch_timer_reg_read_stable(reg)\t\t\t\t\t\\\r\n({\t\t\t\t\t\t\t\t\t\\\r\n\tu64 _val;\t\t\t\t\t\t\t\\\r\n\tif (needs_unstable_timer_counter_workaround()) {\t\t\\\r\n\t\tconst struct arch_timer_erratum_workaround *wa;\t\t\\\r\n\t\tpreempt_disable_notrace();\t\t\t\t\\\r\n\t\twa = __this_cpu_read(timer_unstable_counter_workaround); \\\r\n\t\tif (wa && wa->read_##reg)\t\t\t\t\\\r\n\t\t\t_val = wa->read_##reg();\t\t\t\\\r\n\t\telse\t\t\t\t\t\t\t\\\r\n\t\t\t_val = read_sysreg(reg);\t\t\t\\\r\n\t\tpreempt_enable_notrace();\t\t\t\t\\\r\n\t} else {\t\t\t\t\t\t\t\\\r\n\t\t_val = read_sysreg(reg);\t\t\t\t\\\r\n\t}\t\t\t\t\t\t\t\t\\\r\n\t_val;\t\t\t\t\t\t\t\t\\\r\n}"
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "C_262__0",
+  "sample_id": "D/C/262",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7915",
+  "cve_summary": "The hid_input_field function in drivers/hid/hid-core.c in the Linux kernel before 4.6 allows physically proximate attackers to obtain sensitive information from kernel memory or cause a denial of service (out-of-bounds read) by connecting a device, as demonstrated by a Logitech DJ receiver.",
+  "commit_message": "HID: core: prevent out-of-bound readings\n\nPlugging a Logitech DJ receiver with KASAN activated raises a bunch of\nout-of-bound readings.\n\nThe fields are allocated up to MAX_USAGE, meaning that potentially, we do\nnot have enough fields to fit the incoming values.\nAdd checks and silence KASAN.\n\nSigned-off-by: Benjamin Tissoires <benjamin.tissoires@redhat.com>\nSigned-off-by: Jiri Kosina <jkosina@suse.cz>",
+  "changed_file": "drivers/hid/hid-core.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses input data from a HID (Human Interface Device) field and triggers events based on the extracted values.\n\nParameters: \nhid (struct hid_device *): Pointer to the HID device structure.\nfield (struct hid_field *): Pointer to the HID field structure containing field properties.\ndata (__u8 *): Pointer to the input data buffer from which values are extracted.\ninterrupt (int): Flag indicating whether the processing is interrupt-driven.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function allocates memory for storing extracted values and processes each value based on its logical range. It checks for specific conditions to determine if an event should be triggered for each value. If the value falls within the defined limits and matches certain criteria, it invokes the `hid_process_event` function. Finally, it copies the processed values back to the field structure and frees the allocated memory.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    1271,
+    1324
+  ],
+  "vulnerable_snippet": "static void hid_input_field(struct hid_device *hid, struct hid_field *field,\r\n\t\t\t    __u8 *data, int interrupt)\r\n{\r\n\tunsigned n;\r\n\tunsigned count = field->report_count;\r\n\tunsigned offset = field->report_offset;\r\n\tunsigned size = field->report_size;\r\n\t__s32 min = field->logical_minimum;\r\n\t__s32 max = field->logical_maximum;\r\n\t__s32 *value;\r\n\r\n\tvalue = kmalloc(sizeof(__s32) * count, GFP_ATOMIC);\r\n\tif (!value)\r\n\t\treturn;\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tvalue[n] = min < 0 ?\r\n\t\t\tsnto32(hid_field_extract(hid, data, offset + n * size,\r\n\t\t\t       size), size) :\r\n\t\t\thid_field_extract(hid, data, offset + n * size, size);\r\n\r\n\t\t/* Ignore report if ErrorRollOver */\r\n\t\tif (!(field->flags & HID_MAIN_ITEM_VARIABLE) &&\r\n\t\t    value[n] >= min && value[n] <= max &&\r\n\t\t    field->usage[value[n] - min].hid == HID_UP_KEYBOARD + 1)\r\n\t\t\tgoto exit;\r\n\t}\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tif (HID_MAIN_ITEM_VARIABLE & field->flags) {\r\n\t\t\thid_process_event(hid, field, &field->usage[n], value[n], interrupt);\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (field->value[n] >= min && field->value[n] <= max\r\n\t\t\t&& field->usage[field->value[n] - min].hid\r\n\t\t\t&& search(value, field->value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[field->value[n] - min], 0, interrupt);\r\n\r\n\t\tif (value[n] >= min && value[n] <= max\r\n\t\t\t&& field->usage[value[n] - min].hid\r\n\t\t\t&& search(field->value, value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[value[n] - min], 1, interrupt);\r\n\t}\r\n\r\n\tmemcpy(field->value, value, count * sizeof(__s32));\r\nexit:\r\n\tkfree(value);\r\n}\r\n\r\n/*\r\n * Output the field into the report.\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'hid_input_field'",
+  "fixed_line_range": [
+    1303,
+    1306
+  ],
+  "fixed_snippet": "\t\tif (HID_MAIN_ITEM_VARIABLE & field->flags) {\r\n\t\t\thid_process_event(hid, field, &field->usage[n], value[n], interrupt);\r\n\t\t\tcontinue;\r\n\t\t}"
+}

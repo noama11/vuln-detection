@@ -1,0 +1,25 @@
+{
+  "case_id": "C_142__0",
+  "sample_id": "D/C/142",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6410",
+  "cve_summary": "The __udf_read_inode function in fs/udf/inode.c in the Linux kernel through 3.16.3 does not restrict the amount of ICB indirection, which allows physically proximate attackers to cause a denial of service (infinite loop or stack consumption) via a UDF filesystem with a crafted inode.",
+  "commit_message": "udf: Avoid infinite loop when processing indirect ICBs\n\nWe did not implement any bound on number of indirect ICBs we follow when\nloading inode. Thus corrupted medium could cause kernel to go into an\ninfinite loop, possibly causing a stack overflow.\n\nFix the possible stack overflow by removing recursion from\n__udf_read_inode() and limit number of indirect ICBs we follow to avoid\ninfinite loops.\n\nSigned-off-by: Jan Kara <jack@suse.cz>",
+  "changed_file": "fs/udf/inode.c",
+  "docstring": "Summary: This code fragment defines a constant for the maximum length of a linked list in an ICB hierarchy and begins the definition of a function to read an inode.\n\nParameters: \nN/A\n\nReturns: \nNone\n\nLogic: The constant `UDF_MAX_ICB_NESTING` is set to 1024, which serves as a limit for the depth of the linked list formed by the ICB hierarchy. This value is chosen to prevent excessive looping in cases of corrupted media while ensuring that it does not restrict legitimate use cases on write-once media. The function `__udf_read_inode` is declared as a static function, indicating it is only accessible within the same source file. It initializes a pointer to a `buffer_head` structure, which is likely used for managing buffer data, and a pointer to a `fileEntry` structure, which will presumably be used to access file metadata during the inode reading process. Further implementation details are not provided in this fragment.",
+  "heuristic_leakage_flag": true,
+  "vulnerable_line_range": [
+    1270,
+    1283
+  ],
+  "vulnerable_snippet": "\treturn 0;\r\n}\r\n\r\nstatic void __udf_read_inode(struct inode *inode)\r\n{\r\n\tstruct buffer_head *bh = NULL;\r\n\tstruct fileEntry *fe;\r\n\tstruct extendedFileEntry *efe;\r\n\tuint16_t ident;\r\n\tstruct udf_inode_info *iinfo = UDF_I(inode);\r\n\tstruct udf_sb_info *sbi = UDF_SB(inode->i_sb);\r\n\tunsigned int link_count;\r\n\r\n\t/*\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier '__udf_read_inode'",
+  "fixed_line_range": [
+    1207,
+    1271
+  ],
+  "fixed_snippet": "int udf_setsize(struct inode *inode, loff_t newsize)\r\n{\r\n\tint err;\r\n\tstruct udf_inode_info *iinfo;\r\n\tint bsize = 1 << inode->i_blkbits;\r\n\r\n\tif (!(S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode) ||\r\n\t      S_ISLNK(inode->i_mode)))\r\n\t\treturn -EINVAL;\r\n\tif (IS_APPEND(inode) || IS_IMMUTABLE(inode))\r\n\t\treturn -EPERM;\r\n\r\n\tiinfo = UDF_I(inode);\r\n\tif (newsize > inode->i_size) {\r\n\t\tdown_write(&iinfo->i_data_sem);\r\n\t\tif (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {\r\n\t\t\tif (bsize <\r\n\t\t\t    (udf_file_entry_alloc_offset(inode) + newsize)) {\r\n\t\t\t\terr = udf_expand_file_adinicb(inode);\r\n\t\t\t\tif (err)\r\n\t\t\t\t\treturn err;\r\n\t\t\t\tdown_write(&iinfo->i_data_sem);\r\n\t\t\t} else {\r\n\t\t\t\tiinfo->i_lenAlloc = newsize;\r\n\t\t\t\tgoto set_size;\r\n\t\t\t}\r\n\t\t}\r\n\t\terr = udf_extend_file(inode, newsize);\r\n\t\tif (err) {\r\n\t\t\tup_write(&iinfo->i_data_sem);\r\n\t\t\treturn err;\r\n\t\t}\r\nset_size:\r\n\t\ttruncate_setsize(inode, newsize);\r\n\t\tup_write(&iinfo->i_data_sem);\r\n\t} else {\r\n\t\tif (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {\r\n\t\t\tdown_write(&iinfo->i_data_sem);\r\n\t\t\tudf_clear_extent_cache(inode);\r\n\t\t\tmemset(iinfo->i_ext.i_data + iinfo->i_lenEAttr + newsize,\r\n\t\t\t       0x00, bsize - newsize -\r\n\t\t\t       udf_file_entry_alloc_offset(inode));\r\n\t\t\tiinfo->i_lenAlloc = newsize;\r\n\t\t\ttruncate_setsize(inode, newsize);\r\n\t\t\tup_write(&iinfo->i_data_sem);\r\n\t\t\tgoto update_time;\r\n\t\t}\r\n\t\terr = block_truncate_page(inode->i_mapping, newsize,\r\n\t\t\t\t\t  udf_get_block);\r\n\t\tif (err)\r\n\t\t\treturn err;\r\n\t\tdown_write(&iinfo->i_data_sem);\r\n\t\tudf_clear_extent_cache(inode);\r\n\t\ttruncate_setsize(inode, newsize);\r\n\t\tudf_truncate_extents(inode);\r\n\t\tup_write(&iinfo->i_data_sem);\r\n\t}\r\nupdate_time:\r\n\tinode->i_mtime = inode->i_ctime = current_fs_time(inode->i_sb);\r\n\tif (IS_SYNC(inode))\r\n\t\tudf_sync_inode(inode);\r\n\telse\r\n\t\tmark_inode_dirty(inode);\r\n\treturn 0;\r\n}"
+}

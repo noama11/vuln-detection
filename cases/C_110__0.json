@@ -1,0 +1,25 @@
+{
+  "case_id": "C_110__0",
+  "sample_id": "D/C/110",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-0311",
+  "cve_summary": "The translate_desc function in drivers/vhost/vhost.c in the Linux kernel before 3.7 does not properly handle cross-region descriptors, which allows guest OS users to obtain host OS privileges by leveraging KVM guest OS privileges.",
+  "commit_message": "vhost: fix length for cross region descriptor\n\nIf a single descriptor crosses a region, the\nsecond chunk length should be decremented\nby size translated so far, instead it includes\nthe full descriptor length.\n\nSigned-off-by: Michael S. Tsirkin <mst@redhat.com>\nAcked-by: Jason Wang <jasowang@redhat.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "drivers/vhost/vhost.c",
+  "docstring": "\"\"\"\nSummary: \nTranslates a memory address range into an array of I/O vector structures.\n\nParameters: \ndev (struct vhost_dev *): Pointer to the vhost device structure.\naddr (u64): The starting address to translate.\nlen (u32): The length of the address range to translate.\niov (struct iovec[]): Array of I/O vector structures to be filled.\niov_size (int): The size of the I/O vector array.\n\nReturns: \nint: The number of I/O vectors filled, or a negative error code on failure.\n\nLogic: \nThe function locks the read access to the device's memory, iterates over the specified address range, and populates the provided I/O vector array with the corresponding user-space addresses and lengths. It checks for buffer overflows and invalid memory regions, returning appropriate error codes if encountered. Finally, it unlocks the read access and returns the count of filled I/O vectors.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "vulnerable_line_range": [
+    1054,
+    1089
+  ],
+  "vulnerable_snippet": "static int translate_desc(struct vhost_dev *dev, u64 addr, u32 len,\r\n\t\t\t  struct iovec iov[], int iov_size)\r\n{\r\n\tconst struct vhost_memory_region *reg;\r\n\tstruct vhost_memory *mem;\r\n\tstruct iovec *_iov;\r\n\tu64 s = 0;\r\n\tint ret = 0;\r\n\r\n\trcu_read_lock();\r\n\r\n\tmem = rcu_dereference(dev->memory);\r\n\twhile ((u64)len > s) {\r\n\t\tu64 size;\r\n\t\tif (unlikely(ret >= iov_size)) {\r\n\t\t\tret = -ENOBUFS;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\treg = find_region(mem, addr, len);\r\n\t\tif (unlikely(!reg)) {\r\n\t\t\tret = -EFAULT;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\t_iov = iov + ret;\r\n\t\tsize = reg->memory_size - addr + reg->guest_phys_addr;\r\n\t\t_iov->iov_len = min((u64)len, size);\r\n\t\t_iov->iov_base = (void __user *)(unsigned long)\r\n\t\t\t(reg->userspace_addr + addr - reg->guest_phys_addr);\r\n\t\ts += size;\r\n\t\taddr += size;\r\n\t\t++ret;\r\n\t}\r\n\r\n\trcu_read_unlock();\r\n\treturn ret;\r\n}\r\n",
+  "extraction_status": "suspect_identifier_mismatch",
+  "extraction_reason": "located fixed-side function does not contain identifier 'translate_desc'",
+  "fixed_line_range": [
+    1073,
+    1076
+  ],
+  "fixed_snippet": "\t\tif (unlikely(!reg)) {\r\n\t\t\tret = -EFAULT;\r\n\t\t\tbreak;\r\n\t\t}"
+}
