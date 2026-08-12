@@ -1,0 +1,143 @@
+// This file implements methods from the QPDF class that involve
+// encryption.
+
+#include <qpdf/QPDF.hh>
+
+#include <qpdf/QPDFExc.hh>
+
+#include <qpdf/QTC.hh>
+#include <qpdf/QUtil.hh>
+#include <qpdf/Pl_RC4.hh>
+#include <qpdf/Pl_AES_PDF.hh>
+#include <qpdf/Pl_Buffer.hh>
+#include <qpdf/Pl_SHA2.hh>
+#include <qpdf/RC4.hh>
+#include <qpdf/MD5.hh>
+
+#include <algorithm>
+#include <assert.h>
+#include <string.h>
+
+static unsigned char const padding_string[] = {
+    0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41,
+    0x64, 0x00, 0x4e, 0x56, 0xff, 0xfa, 0x01, 0x08,
+    0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80,
+    0x2f, 0x0c, 0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a
+};
+
+static unsigned int const key_bytes = 32;
+
+// V4 key lengths apply to V <= 4
+static unsigned int const OU_key_bytes_V4 = sizeof(MD5::Digest);
+
+static unsigned int const OU_key_bytes_V5 = 48;
+static unsigned int const OUE_key_bytes_V5 = 32;
+static unsigned int const Perms_key_bytes_V5 = 16;
+
+int
+QPDF::EncryptionData::getV() const
+{
+    return this->V;
+}
+
+int
+QPDF::EncryptionData::getR() const
+{
+    return this->R;
+}
+
+int
+QPDF::EncryptionData::getLengthBytes() const
+{
+    return this->Length_bytes;
+}
+
+int
+QPDF::EncryptionData::getP() const
+{
+    return this->P;
+}
+
+/* ... (406 lines omitted) ... */
+    memcpy(key, digest, OU_key_bytes_V4);
+}
+
+static std::string
+compute_O_value(std::string const& user_password,
+		std::string const& owner_password,
+		QPDF::EncryptionData const& data)
+{
+    // Algorithm 3.3 from the PDF 1.7 Reference Manual
+
+    unsigned char O_key[OU_key_bytes_V4];
+    compute_O_rc4_key(user_password, owner_password, data, O_key);
+
+    char upass[key_bytes];
+    pad_or_truncate_password_V4(user_password, upass);
+    iterate_rc4(QUtil::unsigned_char_pointer(upass), key_bytes,
+		O_key, data.getLengthBytes(),
+                (data.getR() >= 3) ? 20 : 1, false);
+    return std::string(upass, key_bytes);
+}
+
+static
+std::string
+compute_U_value_R2(std::string const& user_password,
+		   QPDF::EncryptionData const& data)
+{
+    // Algorithm 3.4 from the PDF 1.7 Reference Manual
+
+    std::string k1 = QPDF::compute_encryption_key(user_password, data);
+    char udata[key_bytes];
+    pad_or_truncate_password_V4("", udata);
+    iterate_rc4(QUtil::unsigned_char_pointer(udata), key_bytes,
+		QUtil::unsigned_char_pointer(k1),
+                data.getLengthBytes(), 1, false);
+    return std::string(udata, key_bytes);
+}
+
+static
+std::string
+compute_U_value_R3(std::string const& user_password,
+/* [MASKED: this function's body has been removed. Implement it from the specification you were given separately - do not guess its original contents from anything in this file.] */
+{
+    if (data.getR() >= 3)
+    {
+	return compute_U_value_R3(user_password, data);
+    }
+
+    return compute_U_value_R2(user_password, data);
+}
+
+static bool
+check_user_password_V4(std::string const& user_password,
+                       QPDF::EncryptionData const& data)
+{
+    // Algorithm 3.6 from the PDF 1.7 Reference Manual
+
+    std::string u_value = compute_U_value(user_password, data);
+    int to_compare = ((data.getR() >= 3) ? sizeof(MD5::Digest)
+                      : key_bytes);
+    return (memcmp(data.getU().c_str(), u_value.c_str(), to_compare) == 0);
+}
+
+static bool
+check_user_password_V5(std::string const& user_password,
+                       QPDF::EncryptionData const& data)
+{
+    // Algorithm 3.11 from the PDF 1.7 extension level 3
+
+    std::string user_data = data.getU().substr(0, 32);
+    std::string validation_salt = data.getU().substr(32, 8);
+    std::string password = truncate_password_V5(user_password);
+    return (hash_V5(password, validation_salt, "", data) == user_data);
+}
+
+static bool
+check_user_password(std::string const& user_password,
+		    QPDF::EncryptionData const& data)
+{
+    if (data.getV() < 5)
+    {
+        return check_user_password_V4(user_password, data);
+/* ... (974 lines omitted) ... */

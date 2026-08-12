@@ -1,0 +1,143 @@
+/*
+ * INET		An implementation of the TCP/IP protocol suite for the LINUX
+ *		operating system.  INET is implemented using the  BSD Socket
+ *		interface as the means of communication with the user level.
+ *
+ *		Implementation of the Transmission Control Protocol(TCP).
+ *
+ * Authors:	Ross Biro
+ *		Fred N. van Kempen, <waltje@uWalt.NL.Mugnet.ORG>
+ *		Mark Evans, <evansmp@uhura.aston.ac.uk>
+ *		Corey Minyard <wf-rch!minyard@relay.EU.net>
+ *		Florian La Roche, <flla@stud.uni-sb.de>
+ *		Charles Hedrick, <hedrick@klinzhai.rutgers.edu>
+ *		Linus Torvalds, <torvalds@cs.helsinki.fi>
+ *		Alan Cox, <gw4pts@gw4pts.ampr.org>
+ *		Matthew Dillon, <dillon@apollo.west.oic.com>
+ *		Arnt Gulbrandsen, <agulbra@nvg.unit.no>
+ *		Jorge Cwik, <jorge@laser.satlink.net>
+ *
+ * Fixes:
+ *		Alan Cox	:	Numerous verify_area() calls
+ *		Alan Cox	:	Set the ACK bit on a reset
+ *		Alan Cox	:	Stopped it crashing if it closed while
+ *					sk->inuse=1 and was trying to connect
+ *					(tcp_err()).
+ *		Alan Cox	:	All icmp error handling was broken
+ *					pointers passed where wrong and the
+ *					socket was looked up backwards. Nobody
+ *					tested any icmp error code obviously.
+ *		Alan Cox	:	tcp_err() now handled properly. It
+ *					wakes people on errors. poll
+ *					behaves and the icmp error race
+ *					has gone by moving it into sock.c
+ *		Alan Cox	:	tcp_send_reset() fixed to work for
+ *					everything not just packets for
+ *					unknown sockets.
+ *		Alan Cox	:	tcp option processing.
+ *		Alan Cox	:	Reset tweaked (still not 100%) [Had
+ *					syn rule wrong]
+ *		Herp Rosmanith  :	More reset fixes
+ *		Alan Cox	:	No longer acks invalid rst frames.
+ *					Acking any kind of RST is right out.
+ *		Alan Cox	:	Sets an ignore me flag on an rst
+ *					receive otherwise odd bits of prattle
+ *					escape still
+ *		Alan Cox	:	Fixed another acking RST frame bug.
+ *					Should stop LAN workplace lockups.
+ *		Alan Cox	: 	Some tidyups using the new skb list
+ *					facilities
+ *		Alan Cox	:	sk->keepopen now seems to work
+ *		Alan Cox	:	Pulls options out correctly on accepts
+ *		Alan Cox	:	Fixed assorted sk->rqueue->next errors
+ *		Alan Cox	:	PSH doesn't end a TCP read. Switched a
+ *					bit to skb ops.
+ *		Alan Cox	:	Tidied tcp_data to avoid a potential
+ *					nasty.
+ *		Alan Cox	:	Added some better commenting, as the
+ *					tcp is hard to follow
+ *		Alan Cox	:	Removed incorrect check for 20 * psh
+ *	Michael O'Reilly	:	ack < copied bug fix.
+/* ... (2168 lines omitted) ... */
+		}
+	}
+	if (sk->sk_state != TCP_CLOSE) {
+		sk_mem_reclaim(sk);
+		if (tcp_check_oom(sk, 0)) {
+			tcp_set_state(sk, TCP_CLOSE);
+			tcp_send_active_reset(sk, GFP_ATOMIC);
+			__NET_INC_STATS(sock_net(sk),
+					LINUX_MIB_TCPABORTONMEMORY);
+		}
+	}
+
+	if (sk->sk_state == TCP_CLOSE) {
+		struct request_sock *req = tcp_sk(sk)->fastopen_rsk;
+		/* We could get here with a non-NULL req if the socket is
+		 * aborted (e.g., closed with unread data) before 3WHS
+		 * finishes.
+		 */
+		if (req)
+			reqsk_fastopen_remove(sk, req, false);
+		inet_csk_destroy_sock(sk);
+	}
+	/* Otherwise, socket is reprieved until protocol close. */
+
+out:
+	bh_unlock_sock(sk);
+	local_bh_enable();
+	sock_put(sk);
+}
+EXPORT_SYMBOL(tcp_close);
+
+/* These states need RST on ABORT according to RFC793 */
+
+static inline bool tcp_need_reset(int state)
+{
+	return (1 << state) &
+	       (TCPF_ESTABLISHED | TCPF_CLOSE_WAIT | TCPF_FIN_WAIT1 |
+		TCPF_FIN_WAIT2 | TCPF_SYN_RECV);
+}
+
+/* [MASKED: this function's body has been removed. Implement it from the specification you were given separately - do not guess its original contents from anything in this file.] */
+	return ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN) &&
+		(sk->sk_state != TCP_LISTEN);
+}
+
+static int tcp_repair_set_window(struct tcp_sock *tp, char __user *optbuf, int len)
+{
+	struct tcp_repair_window opt;
+
+	if (!tp->repair)
+		return -EPERM;
+
+	if (len != sizeof(opt))
+		return -EINVAL;
+
+	if (copy_from_user(&opt, optbuf, sizeof(opt)))
+		return -EFAULT;
+
+	if (opt.max_window < opt.snd_wnd)
+		return -EINVAL;
+
+	if (after(opt.snd_wl1, tp->rcv_nxt + opt.rcv_wnd))
+		return -EINVAL;
+
+	if (after(opt.rcv_wup, tp->rcv_nxt))
+		return -EINVAL;
+
+	tp->snd_wl1	= opt.snd_wl1;
+	tp->snd_wnd	= opt.snd_wnd;
+	tp->max_window	= opt.max_window;
+
+	tp->rcv_wnd	= opt.rcv_wnd;
+	tp->rcv_wup	= opt.rcv_wup;
+
+	return 0;
+}
+
+static int tcp_repair_options_est(struct tcp_sock *tp,
+		struct tcp_repair_opt __user *optbuf, unsigned int len)
+{
+	struct tcp_repair_opt opt;
+/* ... (1074 lines omitted) ... */

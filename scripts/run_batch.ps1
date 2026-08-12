@@ -12,13 +12,17 @@
 
 .PARAMETER Run
   "pilot" (default) uses pilot/pilot_cases.json; "full_run" uses every case
-  in cases/ with extraction_status "ok".
+  in cases/ with extraction_status "ok"; "ablation_baseline"/"ablation_context"
+  use pilot/ablation_cases.json and invoke the matching ablation-arm command
+  (see scripts/build_masked_context.py and the wider-context ablation notes
+  in PROGRESS.md).
 
 .EXAMPLE
   pwsh scripts/run_batch.ps1 -Run pilot
+  pwsh scripts/run_batch.ps1 -Run ablation_context
 #>
 param(
-    [ValidateSet("pilot", "full_run")]
+    [ValidateSet("pilot", "full_run", "ablation_baseline", "ablation_context")]
     [string]$Run = "pilot"
 )
 
@@ -31,9 +35,14 @@ $logsDir = Join-Path $resultsDir "logs"
 New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
+$slashCommand = "/run-case"
 if ($Run -eq "pilot") {
     $pilotPath = Join-Path $root "pilot\pilot_cases.json"
     $caseIds = (Get-Content $pilotPath -Raw | ConvertFrom-Json) | ForEach-Object { $_.case_id }
+} elseif ($Run -eq "ablation_baseline" -or $Run -eq "ablation_context") {
+    $ablationPath = Join-Path $root "pilot\ablation_cases.json"
+    $caseIds = (Get-Content $ablationPath -Raw | ConvertFrom-Json) | ForEach-Object { $_.case_id }
+    $slashCommand = "/run-case-$($Run -replace '_', '-')"
 } else {
     $caseIds = Get-ChildItem $casesDir -Filter "*.json" | ForEach-Object {
         $data = Get-Content $_.FullName -Raw | ConvertFrom-Json
@@ -63,7 +72,7 @@ foreach ($caseId in $caseIds) {
         $attempt++
         Write-Host "[$($done + $skippedExisting + 1)/$($caseIds.Count)] $caseId (attempt $attempt)..."
         try {
-            & claude -p "/run-case $caseFile" *>> $logPath
+            & claude -p "$slashCommand $caseFile" *>> $logPath
             if (Test-Path $resultPath) {
                 $success = $true
             } else {

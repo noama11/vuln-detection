@@ -1,0 +1,143 @@
+/*
+** Copyright (C) 2004-2017 Erik de Castro Lopo <erikd@mega-nerd.com>
+** Copyright (C) 2004 Tobias Gehrig <tgehrig@ira.uka.de>
+**
+** This program is free software ; you can redistribute it and/or modify
+** it under the terms of the GNU Lesser General Public License as published by
+** the Free Software Foundation ; either version 2.1 of the License, or
+** (at your option) any later version.
+**
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY ; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU Lesser General Public License for more details.
+**
+** You should have received a copy of the GNU Lesser General Public License
+** along with this program ; if not, write to the Free Software
+** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+*/
+
+#include	"sfconfig.h"
+
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<fcntl.h>
+#include	<string.h>
+#include	<ctype.h>
+#include	<math.h>
+
+#include	"sndfile.h"
+#include	"common.h"
+
+#if HAVE_EXTERNAL_XIPH_LIBS
+
+#include	<FLAC/stream_decoder.h>
+#include	<FLAC/stream_encoder.h>
+#include	<FLAC/metadata.h>
+
+/*------------------------------------------------------------------------------
+** Private static functions.
+*/
+
+#define	FLAC_DEFAULT_COMPRESSION_LEVEL	5
+
+#define ENC_BUFFER_SIZE 8192
+
+typedef enum
+{	PFLAC_PCM_SHORT = 50,
+	PFLAC_PCM_INT = 51,
+	PFLAC_PCM_FLOAT = 52,
+	PFLAC_PCM_DOUBLE = 53
+} PFLAC_PCM ;
+
+typedef struct
+{
+	FLAC__StreamDecoder *fsd ;
+	FLAC__StreamEncoder *fse ;
+
+	PFLAC_PCM pcmtype ;
+	void* ptr ;
+	unsigned pos, len, remain ;
+/* ... (279 lines omitted) ... */
+		return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR ;
+
+	return FLAC__STREAM_DECODER_SEEK_STATUS_OK ;
+} /* sf_flac_seek_callback */
+
+static FLAC__StreamDecoderTellStatus
+sf_flac_tell_callback (const FLAC__StreamDecoder * UNUSED (decoder), FLAC__uint64 *absolute_byte_offset, void *client_data)
+{	SF_PRIVATE *psf = (SF_PRIVATE*) client_data ;
+
+	*absolute_byte_offset = psf_ftell (psf) ;
+	if (psf->error)
+		return FLAC__STREAM_DECODER_TELL_STATUS_ERROR ;
+
+	return FLAC__STREAM_DECODER_TELL_STATUS_OK ;
+} /* sf_flac_tell_callback */
+
+static FLAC__StreamDecoderLengthStatus
+sf_flac_length_callback (const FLAC__StreamDecoder * UNUSED (decoder), FLAC__uint64 *stream_length, void *client_data)
+{	SF_PRIVATE *psf = (SF_PRIVATE*) client_data ;
+
+	if ((*stream_length = psf->filelength) == 0)
+		return FLAC__STREAM_DECODER_LENGTH_STATUS_ERROR ;
+
+	return FLAC__STREAM_DECODER_LENGTH_STATUS_OK ;
+} /* sf_flac_length_callback */
+
+static FLAC__bool
+sf_flac_eof_callback (const FLAC__StreamDecoder *UNUSED (decoder), void *client_data)
+{	SF_PRIVATE *psf = (SF_PRIVATE*) client_data ;
+
+	if (psf_ftell (psf) == psf->filelength)
+		return SF_TRUE ;
+
+	return SF_FALSE ;
+} /* sf_flac_eof_callback */
+
+static FLAC__StreamDecoderWriteStatus
+sf_flac_write_callback (const FLAC__StreamDecoder * UNUSED (decoder), const FLAC__Frame *frame, const int32_t * const buffer [], void *client_data)
+{	SF_PRIVATE *psf = (SF_PRIVATE*) client_data ;
+	FLAC_PRIVATE* pflac = (FLAC_PRIVATE*) psf->codec_data ;
+/* [MASKED: this function's body has been removed. Implement it from the specification you were given separately - do not guess its original contents from anything in this file.] */
+{	static FLAC_TAG tags [] =
+	{ 	{ "title", SF_STR_TITLE },
+		{ "copyright", SF_STR_COPYRIGHT },
+		{ "software", SF_STR_SOFTWARE },
+		{ "artist", SF_STR_ARTIST },
+		{ "comment", SF_STR_COMMENT },
+		{ "date", SF_STR_DATE },
+		{ "album", SF_STR_ALBUM },
+		{ "license", SF_STR_LICENSE },
+		{ "tracknumber", SF_STR_TRACKNUMBER },
+		{ "genre", SF_STR_GENRE }
+		} ;
+
+	const char *value, *cptr ;
+	int k, tag_num ;
+
+	for (k = 0 ; k < ARRAY_LEN (tags) ; k++)
+	{	tag_num = FLAC__metadata_object_vorbiscomment_find_entry_from (metadata, 0, tags [k].tag) ;
+
+		if (tag_num < 0)
+			continue ;
+
+		value = (const char*) metadata->data.vorbis_comment.comments [tag_num].entry ;
+		if ((cptr = strchr (value, '=')) != NULL)
+			value = cptr + 1 ;
+
+		psf_log_printf (psf, "  %-12s : %s\n", tags [k].tag, value) ;
+		psf_store_string (psf, tags [k].type, value) ;
+		} ;
+
+	return ;
+} /* sf_flac_meta_get_vorbiscomments */
+
+static void
+sf_flac_meta_callback (const FLAC__StreamDecoder * UNUSED (decoder), const FLAC__StreamMetadata *metadata, void *client_data)
+{	SF_PRIVATE *psf = (SF_PRIVATE*) client_data ;
+	FLAC_PRIVATE* pflac = (FLAC_PRIVATE*) psf->codec_data ;
+	int bitwidth = 0, i ;
+
+	switch (metadata->type)
+/* ... (983 lines omitted) ... */

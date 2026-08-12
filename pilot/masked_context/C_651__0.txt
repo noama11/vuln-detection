@@ -1,0 +1,143 @@
+/*
+** class.c - Class class
+**
+** See Copyright Notice in mruby.h
+*/
+
+#include <stdarg.h>
+#include <mruby.h>
+#include <mruby/array.h>
+#include <mruby/class.h>
+#include <mruby/numeric.h>
+#include <mruby/proc.h>
+#include <mruby/string.h>
+#include <mruby/variable.h>
+#include <mruby/error.h>
+#include <mruby/data.h>
+#include <mruby/istruct.h>
+
+KHASH_DEFINE(mt, mrb_sym, mrb_method_t, TRUE, kh_int_hash_func, kh_int_hash_equal)
+
+void
+mrb_gc_mark_mt(mrb_state *mrb, struct RClass *c)
+{
+  khiter_t k;
+  khash_t(mt) *h = c->mt;
+
+  if (!h) return;
+  for (k = kh_begin(h); k != kh_end(h); k++) {
+    if (kh_exist(h, k)) {
+      mrb_method_t m = kh_value(h, k);
+
+      if (MRB_METHOD_PROC_P(m)) {
+        struct RProc *p = MRB_METHOD_PROC(m);
+        mrb_gc_mark(mrb, (struct RBasic*)p);
+      }
+    }
+  }
+}
+
+size_t
+mrb_gc_mark_mt_size(mrb_state *mrb, struct RClass *c)
+{
+  khash_t(mt) *h = c->mt;
+
+  if (!h) return 0;
+  return kh_size(h);
+}
+
+void
+mrb_gc_free_mt(mrb_state *mrb, struct RClass *c)
+{
+  kh_destroy(mt, mrb, c->mt);
+}
+
+void
+mrb_class_name_class(mrb_state *mrb, struct RClass *outer, struct RClass *c, mrb_sym id)
+{
+  mrb_value name;
+  mrb_sym nsym = mrb_intern_lit(mrb, "__classname__");
+
+/* ... (1662 lines omitted) ... */
+MRB_API mrb_bool
+mrb_obj_respond_to(mrb_state *mrb, struct RClass* c, mrb_sym mid)
+{
+  mrb_method_t m;
+
+  m = mrb_method_search_vm(mrb, &c, mid);
+  if (MRB_METHOD_UNDEF_P(m)) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+MRB_API mrb_bool
+mrb_respond_to(mrb_state *mrb, mrb_value obj, mrb_sym mid)
+{
+  return mrb_obj_respond_to(mrb, mrb_class(mrb, obj), mid);
+}
+
+MRB_API mrb_value
+mrb_class_path(mrb_state *mrb, struct RClass *c)
+{
+  mrb_value path;
+  mrb_sym nsym = mrb_intern_lit(mrb, "__classname__");
+
+  path = mrb_obj_iv_get(mrb, (struct RObject*)c, nsym);
+  if (mrb_nil_p(path)) {
+    /* no name (yet) */
+    return mrb_class_find_path(mrb, c);
+  }
+  else if (mrb_symbol_p(path)) {
+    /* toplevel class/module */
+    const char *str;
+    mrb_int len;
+
+    str = mrb_sym2name_len(mrb, mrb_symbol(path), &len);
+    return mrb_str_new(mrb, str, len);
+  }
+  return mrb_str_dup(mrb, path);
+}
+
+/* [MASKED: this function's body has been removed. Implement it from the specification you were given separately - do not guess its original contents from anything in this file.] */
+
+MRB_API const char*
+mrb_class_name(mrb_state *mrb, struct RClass* c)
+{
+  mrb_value path = mrb_class_path(mrb, c);
+  if (mrb_nil_p(path)) {
+    path = mrb_str_new_lit(mrb, "#<Class:");
+    mrb_str_concat(mrb, path, mrb_ptr_to_str(mrb, c));
+    mrb_str_cat_lit(mrb, path, ">");
+  }
+  return RSTRING_PTR(path);
+}
+
+MRB_API const char*
+mrb_obj_classname(mrb_state *mrb, mrb_value obj)
+{
+  return mrb_class_name(mrb, mrb_obj_class(mrb, obj));
+}
+
+/*!
+ * Ensures a class can be derived from super.
+ *
+ * \param super a reference to an object.
+ * \exception TypeError if \a super is not a Class or \a super is a singleton class.
+ */
+static void
+mrb_check_inheritable(mrb_state *mrb, struct RClass *super)
+{
+  if (super->tt != MRB_TT_CLASS) {
+    mrb_raisef(mrb, E_TYPE_ERROR, "superclass must be a Class (%S given)", mrb_obj_value(super));
+  }
+  if (super->tt == MRB_TT_SCLASS) {
+    mrb_raise(mrb, E_TYPE_ERROR, "can't make subclass of singleton class");
+  }
+  if (super == mrb->class_class) {
+    mrb_raise(mrb, E_TYPE_ERROR, "can't make subclass of Class");
+  }
+}
+
+/*!
+/* ... (740 lines omitted) ... */

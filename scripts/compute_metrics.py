@@ -62,6 +62,13 @@ def load_pilot_case_ids():
     return [c["case_id"] for c in json.loads(pilot_path.read_text(encoding="utf-8"))]
 
 
+def load_ablation_case_ids():
+    ablation_path = ROOT / "pilot" / "ablation_cases.json"
+    if not ablation_path.exists():
+        return None
+    return [c["case_id"] for c in json.loads(ablation_path.read_text(encoding="utf-8"))]
+
+
 def load_existing_human_review(csv_path):
     """Preserve any human labels already filled into a previous CSV so
     re-running this script doesn't clobber manual review work."""
@@ -76,7 +83,13 @@ def load_existing_human_review(csv_path):
 def flatten_to_csv(run_name, results_dir, csv_path):
     all_cases = load_all_cases()
     pilot_ids = load_pilot_case_ids()
-    case_ids = pilot_ids if run_name == "pilot" and pilot_ids else sorted(all_cases.keys())
+    ablation_ids = load_ablation_case_ids()
+    if run_name == "pilot" and pilot_ids:
+        case_ids = pilot_ids
+    elif run_name in ("ablation_baseline", "ablation_context") and ablation_ids:
+        case_ids = ablation_ids
+    else:
+        case_ids = sorted(all_cases.keys())
     prior_human = load_existing_human_review(csv_path)
 
     rows = []
@@ -86,6 +99,14 @@ def flatten_to_csv(run_name, results_dir, csv_path):
             continue
         result_fp = results_dir / f"{cid}.json"
         result = json.loads(result_fp.read_text(encoding="utf-8")) if result_fp.exists() else None
+        if result is not None and case.get("extraction_status") != "ok":
+            # Guards against stale leftover result files for cases whose
+            # extraction was later found broken/reclassified (see
+            # PILOT_INSIGHTS.md Finding 1) - the case's *current* status is
+            # authoritative, not whatever it was when the result was
+            # generated. Treat as not-yet-run rather than silently counting
+            # a result computed against a since-invalidated extraction.
+            result = None
 
         row = {
             "case_id": cid,

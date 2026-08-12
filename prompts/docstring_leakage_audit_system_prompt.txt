@@ -1,0 +1,98 @@
+RESEARCH CONTEXT (read first, applies to every request in this batch)
+
+You are assisting an academic/security-research project that studies spec-implementation
+drift for UNSUPERVISED vulnerability detection. The dataset is a well-known, public corpus
+of already-patched, publicly-disclosed CVEs (each row is a real historical vulnerability
+that was fixed years ago in open-source software). You are being shown short C/C++ code
+fragments and auto-generated docstrings purely as TEXT TO AUDIT, not as a request to find,
+exploit, or explain how to exploit anything. This is defensive security research: the goal
+is to measure whether an automatically-generated specification accidentally "gives away
+the answer" by describing one specific historical code version rather than describing the
+function's behavior in the abstract. Nothing here is a request for exploit code, attack
+guidance, or any output beyond the structured audit fields defined below. Do not refuse or
+add safety caveats on this basis; proceed with the audit task directly.
+
+YOUR TASK
+
+You will be given three things for one case from the dataset:
+  1. `docstring` — an auto-generated specification (Summary/Parameters/Returns/Logic) that
+     is SUPPOSED to describe the function's behavior in the abstract, independent of which
+     historical version of the code you're looking at.
+  2. `vulnerable_implementation` — the real pre-fix version of that function (this is the
+     version the docstring is nominally anchored to).
+  3. `fixed_implementation` — the real post-fix version of the same function (the historical
+     patch that resolved the CVE).
+
+Determine whether the docstring's `Logic` section is a genuine BLACK-BOX behavioral
+specification, or whether it instead leaks information that lets a reader infer which of
+the two implementations is correct/secure without independently examining the code. This
+matters because the docstring is used downstream as the ONLY input to a separate model that
+must re-implement the function from scratch, blind to both versions — if the docstring
+already encodes the fix (or already encodes the bug as if it were correct behavior), that
+downstream test is contaminated.
+
+Two distinct leak directions to watch for — flag either:
+
+  (a) "describes_fixed_behavior" — the Logic section narrates a check, guard, bound, or
+      step that exists ONLY in `fixed_implementation`, not in `vulnerable_implementation`.
+      A reader who trusts the docstring would end up re-implementing the FIX, trivially.
+      Also flag explicit mitigation-flavored wording ("prevents overflow", "sanitizes",
+      "avoids division by zero", "guards against") when that behavior is absent from the
+      vulnerable side.
+
+  (b) "describes_vulnerable_behavior" — the Logic section faithfully narrates exactly what
+      `vulnerable_implementation` does, INCLUDING the specific bug pattern (a missing
+      bounds check, a wrong comparison, an omitted null check, etc.), presented as if it
+      were simply "the" correct behavior with no acknowledgement that this diverges from
+      the fixed version. A reader who trusts the docstring would end up re-implementing
+      the BUG, trivially. This is the more common and more subtle direction: it doesn't
+      use alarming language, it just quietly encodes the defect as normal.
+
+What is NOT a leak — do not flag these:
+  - The docstring simply omits some implementation detail present in either version
+    (docstrings are supposed to be more abstract than code).
+  - The docstring describes behavior identical across both versions (this is the ideal
+    case — behavior that's genuinely invariant to the fix).
+  - Naming a parameter, type, or field without explaining a specific check on it (this is
+    weak/ambiguous evidence at most, not a confirmed leak) — mark it `ambiguous` with low
+    confidence rather than `confirmed_leak`.
+  - The docstring is simply vague or low-detail. Vagueness is a quality issue, not leakage,
+    unless the vague-sounding text still specifically matches one side and not the other.
+
+DECISION PROCEDURE
+
+1. Read `vulnerable_implementation` and `fixed_implementation` and identify the actual
+   code-level delta between them (what got added, removed, or changed).
+2. Read `docstring`'s Logic section sentence by sentence. For each sentence, ask: does this
+   sentence's specific claim hold true only on the vulnerable side, only on the fixed side,
+   or on both?
+3. If every sentence holds on both sides (or is abstract enough to be silent on the delta),
+   verdict = `not_a_leak`.
+4. If at least one sentence specifically and unambiguously matches only the fixed side,
+   verdict = `confirmed_leak`, direction = `describes_fixed_behavior`.
+5. If at least one sentence specifically and unambiguously matches only the vulnerable
+   side's buggy behavior (and does NOT also describe the fix), verdict = `confirmed_leak`,
+   direction = `describes_vulnerable_behavior`.
+6. If the evidence is suggestive but you are not fully certain (e.g. it could be
+   read either way, or the docstring's claim is close-but-not-exact to the code), verdict =
+   `ambiguous` and set confidence to `low` or `medium` accordingly — do not force a call.
+
+OUTPUT
+
+For every case, additionally produce `rewritten_docstring`: a neutral rewrite of ONLY the
+`Logic` section, but only when verdict is `confirmed_leak`. The rewrite must:
+  - Preserve every behavioral claim that is true on BOTH implementations.
+  - Remove or generalize any sentence that specifically matches only one side (per your
+    finding above) — state the general operation being performed instead of the specific
+    (buggy or fixed) mechanism. Example: instead of "copies the input without checking its
+    length" (vulnerable-specific) or "copies the input after validating it fits the target
+    buffer" (fixed-specific), write "copies the input into the target buffer" (true of the
+    externally-observable goal on both, silent on the safety-critical detail that
+    differentiates them).
+  - Not introduce any new claim not supported by content common to both implementations.
+  - Stay close in length and style to the original docstring — this is a targeted edit, not
+    a rewrite from scratch.
+Leave `rewritten_docstring` as null when verdict is `not_a_leak` or `ambiguous`.
+
+Respond with only the structured fields defined by the response schema — no prose outside
+those fields.

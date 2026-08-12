@@ -1,0 +1,29 @@
+{
+  "case_id": "C_761__0",
+  "sample_id": "D/C/761",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2019-13299",
+  "cve_summary": "ImageMagick 7.0.8-50 Q16 has a heap-based buffer over-read at MagickCore/pixel-accessor.h in GetPixelChannel.",
+  "changed_file": "MagickCore/pixel-accessor.h",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves the value of a specified pixel channel from an image.  \n *  \n * Parameters:  \n * image (const Image *): Pointer to the image from which to retrieve the pixel channel.  \n * channel (const PixelChannel): The specific channel to access within the pixel.  \n * pixel (const Quantum *): Pointer to the pixel data array.  \n *  \n * Returns:  \n * Quantum: The value of the specified pixel channel, or 0 if the channel is undefined.  \n *  \n * Logic:\n * The function checks whether the relevant channel traits are undefined. If so, it returns 0.\n * Otherwise, it retrieves and returns the value from the pixel data array at the channel's offset.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "ablation_arm": "context",
+  "masked_context_file": "pilot/masked_context/C_761__0.txt",
+  "note": "re-run after cases/C_761__0.json's docstring was corrected by the LLM leakage audit (previous docstring described the vulnerable-side traits check specifically, not the fix's double-indirect channel_map lookup - see reports/docstring_audit/C_761__0.json). Freshly generated with docstring + masked_context_file against the corrected, neutral docstring (supersedes the pre-fix context-arm result).",
+  "generated_code": "static inline Quantum GetPixelChannel(const Image *magick_restrict image,\n  const PixelChannel channel, const Quantum *magick_restrict pixel)\n{\n  if (image->channel_map[channel].traits == UndefinedPixelTrait)\n    return((Quantum) 0);\n  return(pixel[image->channel_map[channel].offset]);\n}",
+  "generator_model": "haiku",
+  "judge_model": "sonnet",
+  "judge_vs_vulnerable": {"score": 10, "category": "equivalent_implementation_difference", "security_relevant": false, "confidence": "high", "rationale": "The two implementations are identical in logic, differing only by a single whitespace character after a comma in the parameter list, which has no behavioral effect."},
+  "judge_vs_fixed": {"score": 2, "category": "security_vulnerability_concern", "security_relevant": true, "confidence": "high", "rationale": "This is the well-known CVE-2019-13299 GetPixelChannel out-of-bounds read in ImageMagick. The candidate checks image->channel_map[channel].traits directly, while the reference (fixed) version checks image->channel_map[image->channel_map[channel].offset].traits - i.e. it looks up the traits at the mapped offset rather than at the raw channel index. Because channel_map entries can be aliased/remapped, the candidate's direct lookup can incorrectly conclude a channel is defined when the actual storage slot at that offset is undefined, causing pixel[offset] to be read out of the intended bounds."},
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": false,
+    "notes": "Docstring leakage was already fixed before this run, and this case is a striking context-arm regression: with the masked vulnerable-side file as context, the Generator reproduced the CVE's exact vulnerable one-liner (image->channel_map[channel].traits) verbatim - it copied the vulnerable pattern straight from the provided file context rather than writing an independent implementation. That flips this case from a correct detection in the docstring-only baseline arm (flag=true) to a failure here (flag=false, ranking=false), since the candidate is now scored identical (10/equivalent) to vulnerable and only diverges from fixed. This is the clearest evidence in the corrected 6-case set that giving the Generator the masked source file can directly leak/reproduce the vulnerable pattern, defeating the point of the ablation."
+  }
+}

@@ -120,3 +120,119 @@ escalating the Generator to Sonnet for object-heavy C++ cases.
 - [ ] Apply the pre-registered decision bands: Paired Flag Accuracy ≥80% →
       go to full 792-case run; 60-80% → expand pilot to ~60 cases; <60% →
       rework rubric/prompts before scaling.
+
+## 6. Wider-context ablation (done)
+
+Note: by the time this ran, the extraction-bug fix from `PILOT_INSIGHTS.md`
+Finding 1 had already been applied to `scripts/extract_cases.py` (added
+`suspect_identifier_mismatch`/`unsupported_multi_function_scope` statuses).
+Re-running it dropped the "ok" fraction of all 792 cases from the old ~94%
+figure to **392/792 (49%)** and shrank the original 27-case pilot to just
+**14 still-"ok" cases** (`pilot/ablation_cases.json`) - the other 13 are now
+correctly excluded rather than silently polluting results.
+
+Tested whether Finding 2 (cheap Generator's context-free reimplementation
+differs from *both* references in similar, unrelated ways, swamping the real
+signal) can be mitigated by giving the Generator the real vulnerable-side
+file with the target function masked out, instead of only the docstring.
+Built via `scripts/build_masked_context.py` (windowed to file header + ~40
+lines around the mask to bound prompt size; never shows the target
+function's real body on either side, so no fix-leakage risk). Wired into
+`.claude/agents/vuln-generator.md` as an optional `file_context` field, and
+into two new reproducible slash commands
+(`.claude/commands/run-case-ablation-{baseline,context}.md`) plus
+`scripts/run_batch.ps1 -Run ablation_baseline|ablation_context` for future
+headless re-runs.
+
+**Result** (`reports/ablation_report.md`, full detail): on the 14-case
+ablation set, wider context raised **Paired Flag Accuracy from 15.4% to
+38.5%** (2/13 → 5/13 non-degenerate cases, +23.1pp) with **zero
+regressions** - every case correct at baseline stayed correct with context,
+and 3 more (`C_591__0`, `C_623__0`, `C_199__0`) flipped from wrong to right,
+in each case converging on essentially the real-world CVE fix without being
+told about the CVE. ROC-AUC moved less (0.592 → 0.615). Both arms are still
+below the pre-registered go/no-go bands (<60%) at this sample size, so this
+is a promising direction-of-effect result, not a green light to scale yet.
+
+Two follow-ups the ablation surfaced (see `reports/ablation_report.md` for
+detail): (1) the masking window should preserve the target function's own
+signature line - `Cpp_270__0` shows the Generator picking the wrong sibling
+function when the signature is masked away entirely; (2) `C_761__0` revealed
+a second docstring-leakage pattern (spec faithfully describing the
+*vulnerable* behavior, not the fix) that the existing
+`heuristic_leakage_flag` regex doesn't catch.
+
+**Correction history (superseded by the final fresh re-run below):** an
+initial pass over the 156-case heuristic-flagged subset found 3 of the 14
+ablation cases leaked and gave a corrected Paired Flag Accuracy of 9.1% →
+27.3%. Running the audit over the **full** ~392-case pool found 3 *more*
+leaks inside the same 14-case ablation set that the smaller pass missed,
+including `C_591__0` - previously counted as a genuinely clean win. **6 of 14
+ablation cases were confirmed leaked, not 3.** Excluding all 6 (rather than
+regenerating them) gave a leakage-*excluded* Paired Flag Accuracy of **0%
+baseline vs. 12.5% (1/8) context** - a single case, not distinguishable from
+chance.
+
+**Final: both arms regenerated end-to-end against corrected docstrings
+(done).** Rather than continuing to exclude the 6 leaked cases, they were
+regenerated from scratch - fresh Generator and Judge calls, both arms -
+against the corrected, neutral docstrings applied in §7. This gives a clean,
+non-excluded, apples-to-apples 14-case comparison for the first time:
+**Paired Flag Accuracy ties at 15.4% (2/13) for both arms**, and Pairwise
+Ranking Accuracy actually **favors the docstring-only baseline** (38.5% vs.
+30.8%). One case (`C_761__0`) surfaced a new negative finding: with the
+masked source file in context, the Generator directly reproduced the CVE's
+exact vulnerable one-liner instead of reconstructing it independently -
+i.e., file context can leak the vulnerable pattern itself, not just via
+docstring wording. `C_623__0` remains the only clean context-arm win (its
+docstring was never leaked). **Current verdict: context does not clearly
+help on this sample - a tie on the primary metric, a loss on the secondary
+one.** Both arms remain below the go/no-go bands (<60%). See
+`reports/ablation_report.md` § Headline metrics (final) / § Verdict (final)
+for the complete writeup, including the full per-case table and follow-ups.
+
+## 7. LLM-based docstring-leakage audit (done for the 156-case candidate set)
+
+The cheap heuristic screen (`scripts/audit_docstring_alignment.py`, §
+`reports/docstring_alignment_audit.md`) sized the leakage problem across all
+392 "ok" cases (23.2% vulnerable-echo-leaning, 14.5% fix-leak-leaning) and
+produced 156 candidates (`pilot/leakage_audit_candidates.json`). Built an LLM
+verification pass on top: `prompts/docstring_leakage_audit_system_prompt.txt`
+(explicit non-malicious/defensive-research framing + a precise
+confirmed/not/ambiguous decision procedure + a neutral-rewrite request) and
+two equivalent batch-runner scripts,
+`scripts/audit_docstrings_llm.py` (Anthropic Batches API) and
+`scripts/audit_docstrings_llm_openai.py` (OpenAI Batches + Responses API,
+used for the actual run - both write to the same `reports/docstring_audit/`
+so they're interchangeable). Both support `--resume-batch-id` to reconnect
+to an already-submitted batch if the local process is interrupted (the batch
+itself keeps running server-side regardless).
+
+**Result on the 156-case candidate set** (`gpt-5.6-terra`):
+**81 confirmed_leak (52%), 58 not_a_leak (37%), 17 ambiguous (11%)**. Each
+confirmed-leak result includes a proposed neutral rewrite of just the `Logic`
+section, sitting in `reports/docstring_audit/<case_id>.json` - **not yet
+applied to `cases/*.json`**, pending a decision on how/whether to splice
+these back into the corpus (the docstring format varies enough across cases -
+plain, triple-quoted, C-block-comment - that a mechanical splice needs
+per-format handling, and applying at all raises the question of what happens
+to already-published results that reference the pre-fix docstring text, as
+above).
+
+**Applied.** `scripts/apply_docstring_fixes.py` spliced all 81 rewritten
+`Logic` sections into `cases/*.json`'s `docstring` field (format-preserving
+across plain/triple-quoted/`/** */`/banner styles - verified via dry-run spot
+checks first, then a real run: 81/81 succeeded, 0 needed manual attention).
+Each diff touches only the `docstring` field, nothing else. This means
+`cases/*.json` and the docstrings referenced in already-published results
+(`results/pilot/`, `results/ablation_*/`) now diverge for any case that was
+both audited and previously run - expected and intentional (ground truth was
+corrected; historical results are understood as "measured against the
+pre-fix docstring," per the correction notes above and in
+`reports/ablation_report.md`). Any *new* run from this point on uses the
+fixed docstrings automatically.
+
+**What's left**: whether to run the audit over the full ~392-case pool
+(`--scope all`) rather than just the heuristic-flagged 156 - the 156 were a
+high-recall prefilter, so real leaks likely exist outside that set too, just
+at lower density.

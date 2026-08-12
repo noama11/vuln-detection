@@ -1,0 +1,94 @@
+/*
+ * SCSI Device emulation
+ *
+ * Copyright (c) 2006 CodeSourcery.
+ * Based on code by Fabrice Bellard
+ *
+ * Written by Paul Brook
+ * Modifications:
+ *  2009-Dec-12 Artyom Tarasenko : implemented stamdard inquiry for the case
+ *                                 when the allocation length of CDB is smaller
+ *                                 than 36.
+ *  2009-Oct-13 Artyom Tarasenko : implemented the block descriptor in the
+ *                                 MODE SENSE response.
+ *
+ * This code is licensed under the LGPL.
+ *
+ * Note that this file only handles the SCSI architecture model and device
+ * commands.  Emulation of interface/link layer protocols is handled by
+ * the host adapter emulator.
+ */
+
+//#define DEBUG_SCSI
+
+#ifdef DEBUG_SCSI
+#define DPRINTF(fmt, ...) \
+do { printf("scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(fmt, ...) do {} while(0)
+#endif
+
+#define BADF(fmt, ...) \
+do { fprintf(stderr, "scsi-disk: " fmt , ## __VA_ARGS__); } while (0)
+
+#include "qemu-common.h"
+#include "qemu-error.h"
+#include "scsi.h"
+#include "scsi-defs.h"
+#include "sysemu.h"
+#include "blockdev.h"
+#include "block_int.h"
+
+#define SCSI_DMA_BUF_SIZE    131072
+#define SCSI_MAX_INQUIRY_LEN 256
+
+#define SCSI_REQ_STATUS_RETRY           0x01
+#define SCSI_REQ_STATUS_RETRY_TYPE_MASK 0x06
+#define SCSI_REQ_STATUS_RETRY_READ      0x00
+#define SCSI_REQ_STATUS_RETRY_WRITE     0x02
+#define SCSI_REQ_STATUS_RETRY_FLUSH     0x04
+
+typedef struct SCSIDiskState SCSIDiskState;
+
+/* [MASKED: this function's body has been removed. Implement it from the specification you were given separately - do not guess its original contents from anything in this file.] */
+struct SCSIDiskState
+{
+    SCSIDevice qdev;
+    BlockDriverState *bs;
+    /* The qemu block layer uses a fixed 512 byte sector size.
+       This is the number of 512 byte blocks in a single scsi sector.  */
+    int cluster_size;
+    uint32_t removable;
+    uint64_t max_lba;
+    QEMUBH *bh;
+    char *version;
+    char *serial;
+    bool tray_open;
+    bool tray_locked;
+};
+
+static int scsi_handle_rw_error(SCSIDiskReq *r, int error, int type);
+static int scsi_disk_emulate_command(SCSIDiskReq *r, uint8_t *outbuf);
+
+static void scsi_free_request(SCSIRequest *req)
+{
+    SCSIDiskReq *r = DO_UPCAST(SCSIDiskReq, req, req);
+
+    qemu_vfree(r->iov.iov_base);
+}
+
+/* Helper function for command completion with sense.  */
+static void scsi_check_condition(SCSIDiskReq *r, SCSISense sense)
+{
+    DPRINTF("Command complete tag=0x%x sense=%d/%d/%d\n",
+            r->req.tag, sense.key, sense.asc, sense.ascq);
+    scsi_req_build_sense(&r->req, sense);
+    scsi_req_complete(&r->req, CHECK_CONDITION);
+}
+
+/* Cancel a pending data transfer.  */
+static void scsi_cancel_io(SCSIRequest *req)
+{
+    SCSIDiskReq *r = DO_UPCAST(SCSIDiskReq, req, req);
+
+/* ... (1245 lines omitted) ... */
