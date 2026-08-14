@@ -333,6 +333,12 @@ def main():
             rec["func_name"] = func_name_
             rec["anchor_strategy"] = {"vulnerable": vuln_strategy, "fixed": fixed_strategy}
 
+            if looks_like_macro(vuln_snippet[:vuln_snippet.find("{")]):
+                fail("skipped_macro_not_function",
+                     f"'{func_name_}' is a preprocessor macro with a statement-"
+                     "expression body, not a function")
+                continue
+
             if not is_single_clean_function(vuln_snippet):
                 fail("skipped_vulnerable_not_single_function",
                      "extracted vulnerable side is not exactly one complete function")

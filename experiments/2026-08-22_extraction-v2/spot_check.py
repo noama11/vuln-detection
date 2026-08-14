@@ -66,10 +66,15 @@ def main():
             else:
                 failures.append((c["case_id"], f"{side} snippet is not a substring of {path}"))
 
-            # 2. the recorded line range points at that slice
+            # 2. the recorded line range points at that slice. The snippet ends
+            # at the function's closing brace, so anything the source puts after
+            # it on the same line - `} /* cypress_open */` is common in
+            # libsndfile and cypress_m8 - is outside the snippet by design.
+            # The invariant is therefore prefix, not equality.
             lo, hi = c[f"{side}_line_range"]
             lines = text.split("\n")
-            if "\n".join(lines[lo - 1:hi]).strip() == snippet.strip():
+            window = "\n".join(lines[lo - 1:hi])
+            if window.startswith(snippet) and snippet.count("\n") == hi - lo:
                 checks[f"{side}: line range agrees"] += 1
             else:
                 failures.append((c["case_id"], f"{side}_line_range {lo}-{hi} does not match snippet"))
