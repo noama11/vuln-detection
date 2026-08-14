@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_prompts import load_agent_prompt, prompt_sha  # noqa: E402
+from corpus_sha import corpus_sha  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES_DIR = ROOT / "cases"
@@ -294,6 +295,12 @@ def run_case(case, client, prompts, args, max_model_len):
             "max_model_len": max_model_len,
             "judge_key_order": "rationale_first",
             "prompt_sha": prompts["sha"],
+            # Which corpus this number came from. Without it a result is only
+            # traceable to "whatever cases/ held at the time", which is what
+            # made the extraction defect expensive to find.
+            "corpus_sha": prompts["corpus_sha"],
+            "corpus_dir": prompts["corpus_dir"],
+            "corpus_n_ok": prompts["corpus_n_ok"],
         },
     }
     return "ok", record
@@ -315,7 +322,7 @@ def write_outputs(record, case, results_dir):
 
 def select_cases(args):
     all_cases = {}
-    for fp in sorted(CASES_DIR.glob("*.json")):
+    for fp in sorted(Path(args.cases_dir).glob("*.json")):
         d = json.loads(fp.read_text(encoding="utf-8"))
         all_cases[d["case_id"]] = d
 
@@ -337,6 +344,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run", default="qwen_full", help="results/<run>/ subdirectory")
     p.add_argument("--cases", default=None, help="optional case-list JSON (e.g. pilot/pilot_cases.json)")
+    p.add_argument("--cases-dir", default=str(CASES_DIR),
+                   help="corpus directory (default: cases/). Its corpus_sha is "
+                        "recorded in every result, so a run is traceable to the "
+                        "exact corpus that produced it.")
     p.add_argument("--limit", type=int, default=0, help="only the first N selected cases")
     p.add_argument("--concurrency", type=int, default=8)
     p.add_argument("--base-url", default=None)
@@ -370,6 +381,11 @@ def main():
         "judge": load_agent_prompt("vuln-judge"),
     }
     prompts["sha"] = prompt_sha(prompts["generator"], prompts["judge"])
+    csha, cn = corpus_sha(args.cases_dir)
+    cdir = Path(args.cases_dir)
+    prompts["corpus_sha"] = csha
+    prompts["corpus_n_ok"] = cn
+    prompts["corpus_dir"] = str(cdir.relative_to(ROOT) if cdir.is_relative_to(ROOT) else cdir)
 
     results_dir = ROOT / "results" / args.run
     logs_dir = results_dir / "logs"
@@ -382,6 +398,8 @@ def main():
 
     print(f"endpoint      : {base_url}  (model {served_model}, max_model_len {max_model_len})")
     print(f"prompts sha   : {prompts['sha']}  (from .claude/agents/*.md)")
+    print(f"corpus        : {prompts['corpus_dir']}  "
+          f"sha {prompts['corpus_sha']}  ({prompts['corpus_n_ok']} ok cases)")
     print(f"thinking      : {args.thinking}")
     print(f"run           : {args.run} -> {results_dir}")
     print(f"cases         : {len(cases)} eligible, {already} already done, {len(todo)} to run")

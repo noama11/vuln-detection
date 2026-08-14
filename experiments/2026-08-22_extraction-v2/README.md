@@ -44,13 +44,61 @@ reconstructed from a docstring — 7 of the published 392 are these.
 
 ```bash
 python3 experiments/2026-08-22_extraction-v2/extract_v2.py     # -> cases_v2/ (~20s, no GPU)
-python3 experiments/2026-08-22_extraction-v2/spot_check.py     # structural checks over all 626
+python3 scripts/validate_corpus.py --cases-dir experiments/2026-08-22_extraction-v2/cases_v2
 python3 experiments/2026-08-22_extraction-v2/audit_current.py  # defect rate + PFA split
 python3 experiments/2026-08-22_extraction-v2/report.py         # -> report.md
 ```
 
-`spot_check.py --show 4` prints unified diffs of sampled recovered cases for
-reading by eye.
+`spot_check.py --show 4` runs the same gate and then prints unified diffs of
+sampled recovered cases for reading by eye.
+
+## What this arm changed outside itself
+
+The defect survived eight arms because `extraction_status: "ok"` was written by
+the same code that had the bug, and the one validity check ever run — brace
+balance — could not see the failure mode. Two project-level gaps followed from
+that, and both are now closed in `scripts/`:
+
+**`scripts/validate_corpus.py`** — structural validation independent of whatever
+produced the corpus. Seven invariants, checked against the raw files in `D.zip`;
+exit code 1 on any failure, so it works as a gate. Run it on any corpus before
+trusting a number derived from it.
+
+```
+$ python3 scripts/validate_corpus.py                      # the published corpus
+  [ok  ] snippet is a verbatim substring of D.zip     784/784
+  [FAIL] recorded line range agrees with the snippet  771/784
+  [FAIL] exactly one complete function per side       553/784
+  [FAIL] not a preprocessor macro                     765/784
+  [FAIL] same function identifier on both sides       326/392
+329 FAILURES across 261 cases          CORPUS INVALID   (exit 1)
+
+$ python3 scripts/validate_corpus.py --cases-dir .../cases_v2
+all checks passed                                       (exit 0)
+```
+
+**261 of the published 392 cases (67%) fail at least one invariant.** The gate
+also surfaced a defect neither the audit nor `FINDINGS.md` had recorded: on 13
+cases the dataset's `scope` range runs past the end of the file (`C_591__0`
+claims lines 771–803 of a 788-line file), and the literal slice clamps silently,
+so the stored `vulnerable_line_range` describes more lines than the snippet holds.
+
+**`scripts/corpus_sha.py`** — content-addresses a corpus the way
+`agent_prompts.py` content-addresses the rubric. Every result already carried
+`prompt_sha`; there was no equivalent for the corpus, so swapping `cases/`
+changed every downstream figure with no trace in any artifact. That is precisely
+why the eight published arms cannot say which corpus they ran against.
+
+| corpus | ok cases | `corpus_sha` |
+|---|---:|---|
+| `cases/` | 392 | `d98dcc64782d` |
+| `cases_v2/` | 626 | `b60b2d62fbd0` |
+
+`run_cases_local.py` now takes `--cases-dir` and stamps `corpus_sha`,
+`corpus_dir` and `corpus_n_ok` into every result record's `runtime` block,
+alongside the existing `prompt_sha`. Defaults are unchanged — with no flag it
+selects the same 392 cases from `cases/` as before, so this is additive to the
+record schema and inert for reproduction of the published arms.
 
 ## Output
 
@@ -76,6 +124,10 @@ is the published case schema plus:
   located function, 9 patch file scope, 7 are macros, 2 lose the function on the
   fixed side. Each is a case the method cannot pose, not a case the new
   extractor failed on.
-- **`run_cases_local.py:35` hardcodes `CASES_DIR = ROOT / "cases"`** with no
-  override. Running inference on `cases_v2/` needs either a `--cases-dir` flag
-  (touches `scripts/`, breaking additivity) or a thin runner in this arm.
+- **The additivity rule now cuts both ways.** Freezing `scripts/` and `cases/`
+  kept the published arms byte-reproducible, and it is also why a known defect
+  sat in the base for weeks with no path to being fixed. The resolution is to
+  *version* the base rather than freeze it: tag the pre-change commit so
+  everything published so far stays reproducible, then let `scripts/` move
+  forward. `corpus_sha` is what makes that safe — a result now names the corpus
+  it came from, so the two can no longer be silently confused.

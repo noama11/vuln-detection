@@ -1,153 +1,90 @@
-"""Spot check for the v2 corpus - independent of the extractor's own logic.
+"""Read the v2 corpus by eye.
 
-The self-check inside extract_v2.py verifies the guard it applied. This verifies
-the *claim*: that each emitted pair is the same function on both sides, that the
-snippets are byte-for-byte substrings of the raw files in D.zip, and that the
-patch is actually visible in the diff.
+The structural invariants live in `scripts/validate_corpus.py` and are asserted
+there, for any corpus - this script only runs that gate and then renders sampled
+pairs as unified diffs, so a human can confirm that a "recovered" case really is
+the same function on both sides with the CVE fix visible between them.
 
-Runs the structural checks over all 635 usable cases, then prints unified diffs
-for a sample so the pairs can be read by eye.
-
-Usage:
-  python3 experiments/2026-08-22_extraction-v2/spot_check.py            # checks only
-  python3 experiments/2026-08-22_extraction-v2/spot_check.py --show 10  # + diffs
+    python3 experiments/2026-08-22_extraction-v2/spot_check.py
+    python3 experiments/2026-08-22_extraction-v2/spot_check.py --show 6
 """
 import argparse
 import difflib
 import json
-import re
+import random
 import sys
-import zipfile
 from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-sys.path.insert(0, str(HERE))
-from extract_v2 import is_single_clean_function  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from validate_corpus import validate  # noqa: E402
 
 CASES_V2 = HERE / "cases_v2"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--show", type=int, default=0, help="print N sample diffs")
+    ap.add_argument("--cases-dir", default=str(CASES_V2))
+    ap.add_argument("--show", type=int, default=0, help="render N sample diffs")
     ap.add_argument("--seed", type=int, default=1234)
     args = ap.parse_args()
 
-    zf = zipfile.ZipFile(ROOT / "D.zip")
+    n, passes, failures, kinds = validate(args.cases_dir)
+    print(f"{n} usable cases; {len(failures)} structural failures")
+    if failures:
+        for cid, check, detail in failures[:10]:
+            print(f"  {cid}: {check}: {detail}")
+        print("\nCORPUS INVALID - run scripts/validate_corpus.py for the full report")
+        return 1
+    print("all structural checks passed "
+          "(scripts/validate_corpus.py is the authority)")
+
+    if not args.show:
+        return 0
+
     published = {}
     for f in (ROOT / "cases").glob("*.json"):
         d = json.loads(f.read_text(encoding="utf-8"))
         published[d["case_id"]] = d["extraction_status"]
 
-    cases = []
-    for f in sorted(CASES_V2.glob("*.json")):
-        d = json.loads(f.read_text(encoding="utf-8"))
-        if d["extraction_status"] == "ok":
-            cases.append(d)
+    cases = [json.loads(f.read_text(encoding="utf-8"))
+             for f in sorted(Path(args.cases_dir).glob("*.json"))]
+    cases = [c for c in cases if c["extraction_status"] == "ok"]
 
-    checks = Counter()
-    failures = []
-    file_cache = {}
-
-    for c in cases:
-        ext = "cpp" if c["language"] == "cpp" else "c"
-        for side, key in (("vulnerable", "vulnerable_snippet"), ("fixed", "fixed_snippet")):
-            path = f"{c['sample_id']}/{side}.{ext}"
-            if path not in file_cache:
-                file_cache[path] = zf.read(path).decode("utf-8", "replace")
-            text = file_cache[path]
-            snippet = c[key]
-
-            # 1. the snippet is a verbatim slice of the raw file
-            if snippet in text:
-                checks[f"{side}: verbatim substring of D.zip"] += 1
-            else:
-                failures.append((c["case_id"], f"{side} snippet is not a substring of {path}"))
-
-            # 2. the recorded line range points at that slice. The snippet ends
-            # at the function's closing brace, so anything the source puts after
-            # it on the same line - `} /* cypress_open */` is common in
-            # libsndfile and cypress_m8 - is outside the snippet by design.
-            # The invariant is therefore prefix, not equality.
-            lo, hi = c[f"{side}_line_range"]
-            lines = text.split("\n")
-            window = "\n".join(lines[lo - 1:hi])
-            if window.startswith(snippet) and snippet.count("\n") == hi - lo:
-                checks[f"{side}: line range agrees"] += 1
-            else:
-                failures.append((c["case_id"], f"{side}_line_range {lo}-{hi} does not match snippet"))
-
-            # 3. exactly one complete function
-            if is_single_clean_function(snippet):
-                checks[f"{side}: single complete function"] += 1
-            else:
-                failures.append((c["case_id"], f"{side} is not a single complete function"))
-
-        # 4. both sides are the same function
-        name = c["func_name"]
-        if (re.search(r"\b" + re.escape(name) + r"\s*\(", c["vulnerable_snippet"])
-                and re.search(r"\b" + re.escape(name) + r"\s*\(", c["fixed_snippet"])):
-            checks["pair: same function identifier on both sides"] += 1
-        else:
-            failures.append((c["case_id"], f"identifier '{name}' missing from one side"))
-
-        # 5. the patch is visible
-        if c["vulnerable_snippet"].strip() != c["fixed_snippet"].strip():
-            checks["pair: vulnerable and fixed differ"] += 1
-        else:
-            failures.append((c["case_id"], "vulnerable and fixed are identical"))
-
-        # 6. the docstring is present and non-trivial
-        if len((c["docstring"] or "").strip()) >= 40:
-            checks["pair: docstring >= 40 chars"] += 1
-        else:
-            failures.append((c["case_id"], "docstring missing or trivially short"))
-
-    n = len(cases)
-    print(f"structural checks over all {n} usable cases\n")
-    for k, v in sorted(checks.items()):
-        mark = "ok  " if v == n else "FAIL"
-        print(f"  [{mark}] {k:46s} {v}/{n}")
-    if failures:
-        print(f"\n{len(failures)} FAILURES:")
-        for cid, why in failures[:20]:
-            print(f"  {cid}: {why}")
-        sys.exit(1)
-    print("\nall structural checks passed")
-
-    if not args.show:
-        return
-
-    # Sample diffs, weighted to the two recovered classes so the fix is visible.
-    import random
+    # Weight the sample to the two recovered classes, so what is rendered is
+    # the evidence the fix works rather than cases that already passed.
     rnd = random.Random(args.seed)
-    by_origin = {"suspect_identifier_mismatch": [], "unsupported_multi_function_scope": [],
-                 "ok": [], "skipped": []}
+    by_origin = {}
     for c in cases:
-        by_origin.setdefault(published.get(c["case_id"], "?"), []).append(c)
+        by_origin.setdefault(published.get(c["case_id"], "absent"), []).append(c)
 
     picks = []
     for origin in ("suspect_identifier_mismatch", "unsupported_multi_function_scope"):
         pool = by_origin.get(origin, [])
         picks += [(origin, c) for c in rnd.sample(pool, min(args.show // 2, len(pool)))]
 
+    print(f"\nrecovered-from distribution: "
+          f"{dict(Counter(o for o in by_origin for _ in by_origin[o]))}")
+
     for origin, c in picks:
         print("\n" + "=" * 72)
         print(f"{c['case_id']}   func={c['func_name']}   {c['repo']}  {c['cve_id']}")
         print(f"recovered from: {origin}")
-        print(f"vulnerable lines {c['vulnerable_line_range']}  fixed lines {c['fixed_line_range']}")
+        print(f"vulnerable lines {c['vulnerable_line_range']}  "
+              f"fixed lines {c['fixed_line_range']}")
         print("=" * 72)
-        diff = difflib.unified_diff(
+        body = list(difflib.unified_diff(
             c["vulnerable_snippet"].splitlines(),
             c["fixed_snippet"].splitlines(),
-            fromfile="vulnerable", tofile="fixed", lineterm="", n=2)
-        body = [l for l in diff]
+            fromfile="vulnerable", tofile="fixed", lineterm="", n=2))
         print("\n".join(body[:40]))
         if len(body) > 40:
             print(f"... ({len(body)-40} more diff lines)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -56,6 +56,15 @@ from extract_cases import (  # noqa: E402
     split_lines_strict,
 )
 
+# The structural predicates live in scripts/validate_corpus.py, which is the
+# gate any corpus must pass. Importing them here rather than keeping a second
+# copy means the extractor cannot drift from the check that validates it.
+from validate_corpus import (  # noqa: E402
+    is_single_clean_function,
+    looks_like_macro,
+    top_level_pairs,
+)
+
 ZIP_PATH = ROOT / "D.zip"
 DEFAULT_OUT = HERE / "cases_v2"
 
@@ -91,17 +100,6 @@ def looks_like_wrapper(header):
     return bool(WRAPPER_RE.search(h))
 
 
-def looks_like_macro(header):
-    """True if `header` is a preprocessor directive rather than a signature.
-
-    A multi-line `#define` whose body is a GCC statement expression - `#define
-    m(x) ({ ... })` - presents a brace pair with a `name(args)` header, so it is
-    otherwise indistinguishable from a function. `C_701__0`
-    (`arch_timer_reg_read_stable`) is one; there is no function to reconstruct
-    from a docstring, so it is dropped rather than emitted.
-    """
-    return any(l.lstrip().startswith("#") for l in header.splitlines())
-
 
 def locate_enclosing_function(text, brace_pairs, anchor_idx):
     """Return (start_idx, end_idx, open_idx) of the function enclosing
@@ -136,30 +134,6 @@ def function_name(text, start_idx, open_idx):
     return names[0] if names else None
 
 
-def top_level_pairs(snippet):
-    pairs = compute_brace_pairs(snippet)
-    return sorted(
-        (s, e) for i, (s, e) in enumerate(pairs)
-        if not any(j != i and pairs[j][0] < s and e < pairs[j][1]
-                   for j in range(len(pairs)))
-    )
-
-
-def is_single_clean_function(snippet):
-    """Exactly one complete top-level function, a signature before it, and
-    nothing glued on after its closing brace.
-
-    Replaces `count_top_level_braces`, which counted only *matched* pairs and so
-    silently accepted `target_function + truncated fragment of the next one`
-    (B3) - the single most common defect in the published corpus.
-    """
-    top = top_level_pairs(snippet)
-    if len(top) != 1:
-        return False
-    open_idx, end_idx = top[0]
-    if snippet[end_idx:].strip():
-        return False
-    return bool(snippet[:open_idx].strip())
 
 
 def line_offsets(text):
@@ -333,7 +307,7 @@ def main():
             rec["func_name"] = func_name_
             rec["anchor_strategy"] = {"vulnerable": vuln_strategy, "fixed": fixed_strategy}
 
-            if looks_like_macro(vuln_snippet[:vuln_snippet.find("{")]):
+            if looks_like_macro(vuln_snippet):
                 fail("skipped_macro_not_function",
                      f"'{func_name_}' is a preprocessor macro with a statement-"
                      "expression body, not a function")

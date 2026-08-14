@@ -24,7 +24,8 @@ ROOT = HERE.parent.parent
 sys.path.insert(0, str(ROOT / "experiments" / "common"))
 sys.path.insert(0, str(HERE))
 
-from extract_v2 import is_single_clean_function, top_level_pairs  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts"))
+from validate_corpus import is_single_clean_function, top_level_pairs  # noqa: E402,F401
 
 CASES_V2 = HERE / "cases_v2"
 
