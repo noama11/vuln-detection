@@ -1,0 +1,49 @@
+{
+  "case_id": "C_141__5",
+  "sample_id": "D/C/141",
+  "func_idx": 5,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a single ticket for the Ceph authentication client, handling decryption and updating session keys.\n\nParameters: \nac (struct ceph_auth_client *): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key *): Pointer to the secret cryptographic key used for decryption.\np (void **): Pointer to the data buffer containing the ticket information.\nend (void *): Pointer to the end of the data buffer.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function decodes the ticket type and structure version, retrieves the appropriate ticket handler, and decrypts the ticket data. It updates the session key and ticket blob based on the validity and expiration information. If decoding fails, it handles the error appropriately before returning the error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int process_one_ticket(struct ceph_auth_client *v1,\n                  struct ceph_crypto_key *v17,\n                  void **v15, void *v6)\n{\n    struct ceph_x_info *v24 = v1->private;\n    int v22;\n    u8 v20, blob_struct_v;\n    struct ceph_x_ticket_handler *v18;\n    void *v3 = NULL;\n    void *v5, *dend;\n    int v4;\n    char v7;\n    struct timespec v23;\n    struct ceph_crypto_key v13;\n    void *v19 = NULL;\n    void *v21, *tpend;\n    struct ceph_timespec v12;\n    struct ceph_crypto_key v10;\n    struct ceph_buffer *v11;\n    unsigned long v8, new_renew_after;\n    u64 v9;\n    int v16;\n    ceph_decode_need(v15, v6, sizeof(u32) + 1, v2);\n    v22 = ceph_decode_32(v15);\n    dout(\" ticket v22 %d %s\\n\", v22, ceph_entity_type_name(v22));\n    v20 = ceph_decode_8(v15);\n    if (v20 != 1)\n        goto v2;\n    v18 = get_ticket_handler(v1, v22);\n    if (IS_ERR(v18)) {\n        v16 = PTR_ERR(v18);\n        goto v14;\n    }\n    v4 = ceph_x_decrypt(v17, v15, v6, &v3, 0);\n    if (v4 <= 0) {\n        v16 = v4;\n        goto v14;\n    }\n    dout(\" decrypted %d bytes\\n\", v4);\n    v5 = v3;\n    dend = v5 + v4;\n    v20 = ceph_decode_8(&v5);\n    if (v20 != 1)\n        goto v2;\n    memcpy(&v13, &v18->session_key, sizeof(v13));\n    v16 = ceph_crypto_key_decode(&v10, &v5, dend);\n    if (v16)\n        goto v14;\n    ceph_decode_copy(&v5, &v12, sizeof(v12));\n    ceph_decode_timespec(&v23, &v12);\n    v8 = get_seconds() + v23.tv_sec;\n    new_renew_after = v8 - (v23.tv_sec / 4);\n    dout(\" expires=%lu renew_after=%lu\\n\", v8,\n         new_renew_after);\n    ceph_decode_8_safe(v15, v6, v7, v2);\n    if (v7) {\n        dout(\" encrypted ticket\\n\");\n        v4 = ceph_x_decrypt(&v13, v15, v6, &v19, 0);\n        if (v4 < 0) {\n            v16 = v4;\n            goto v14;\n        }\n        v21 = v19;\n        v4 = ceph_decode_32(&v21);\n    } else {\n        ceph_decode_32_safe(v15, v6, v4, v2);\n        v19 = kmalloc(v4, GFP_NOFS);\n        if (!v19) {\n            v16 = -ENOMEM;\n            goto v14;\n        }\n        v21 = v19;\n        ceph_decode_need(v15, v6, v4, v2);\n        ceph_decode_copy(v15, v19, v4);\n    }\n    tpend = v21 + v4;\n    dout(\" ticket blob is %d bytes\\n\", v4);\n    ceph_decode_need(&v21, tpend, 1 + sizeof(u64), v2);\n    blob_struct_v = ceph_decode_8(&v21);\n    v9 = ceph_decode_64(&v21);\n    v16 = ceph_decode_buffer(&v11, &v21, tpend);\n    if (v16)\n        goto v14;\n    ceph_crypto_key_destroy(&v18->session_key);\n    if (v18->ticket_blob)\n        ceph_buffer_put(v18->ticket_blob);\n    v18->session_key = v10;\n    v18->ticket_blob = v11;\n    v18->v23 = v12;\n    v18->secret_id = v9;\n    v18->expires = v8;\n    v18->renew_after = new_renew_after;\n    dout(\" got ticket service %d (%s) secret_id %lld len %d\\n\",\n         v22, ceph_entity_type_name(v22), v18->secret_id,\n         (int)v18->ticket_blob->vec.iov_len);\n    v24->have_keys |= v18->service;\nv14:\n    kfree(v19);\n    kfree(v3);\n    return v16;\nv2:\n    v16 = -EINVAL;\n    goto v14;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 24
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of processing a ticket, decrypting data, and updating session keys. Both handle ticket structure validation, decryption, and blob processing in a similar manner. The only differences are in variable names and code structure, which do not affect the observable behavior or security properties of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both decode the ticket type and structure version, retrieve the appropriate ticket handler, and decrypt the ticket data. They both handle encrypted and unencrypted ticket blobs similarly, update the session key and ticket blob, and manage memory cleanup in the same way. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

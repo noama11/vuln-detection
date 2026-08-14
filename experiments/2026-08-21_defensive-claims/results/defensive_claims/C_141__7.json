@@ -1,0 +1,130 @@
+{
+  "case_id": "C_141__7",
+  "sample_id": "D/C/141",
+  "func_idx": 7,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: \nVerifies the authorizer reply in the Ceph authentication process.\n\nParameters: \nac (struct ceph_auth_client *): Pointer to the authentication client structure.\na (struct ceph_authorizer *): Pointer to the authorizer structure.\nlen (size_t): Length of the reply buffer.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function retrieves the ticket handler for the specified service and checks for errors. It then attempts to decrypt the reply using the session key. If decryption fails or the decrypted size does not match the expected size, it returns an error. The function also verifies that the nonce from the authorizer matches the expected value. Finally, it logs the verification result and returns the appropriate status code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int verify_authorizer_reply(struct ceph_auth_client *ac, struct ceph_authorizer *a, size_t len) {\n    struct ceph_auth_ticket_handler *handler;\n    int ret = -EINVAL;\n    size_t decrypted_len;\n    uint64_t expected_nonce;\n\n    if (!ac || !a) {\n        return -EINVAL;\n    }\n\n    handler = get_ticket_handler(ac, a->service); // Assume this function retrieves the handler\n    if (!handler) {\n        return -ENOENT;\n    }\n\n    // Attempt to decrypt the reply\n    decrypted_len = 0;\n    ret = decrypt_reply(ac, a->reply, len, handler->session_key, &decrypted_len);\n    if (ret < 0) {\n        return ret;\n    }\n\n    // Check if the decrypted size matches the expected size\n    if (decrypted_len != a->expected_decrypted_size) {\n        return -EINVAL;\n    }\n\n    // Verify the nonce\n    expected_nonce = a->nonce;\n    if (memcmp(a->reply_nonce, &expected_nonce, sizeof(expected_nonce)) != 0) {\n        return -EINVAL;\n    }\n\n    // Log the verification result\n    log_verification_result(ac, a, 0); // Assume this function logs the result\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if ticket handler exists",
+      "protects_against": "missing ticket handler for the specified service"
+    },
+    {
+      "step": "check for decryption errors",
+      "protects_against": "failed decryption of the reply"
+    },
+    {
+      "step": "verify decrypted size",
+      "protects_against": "incorrect decrypted size"
+    },
+    {
+      "step": "verify nonce",
+      "protects_against": "mismatched nonce values"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers. However, it uses the `IS_ERR` macro to check the result of `get_ticket_handler`, which may return an error code if the handler is invalid or null. This is not a direct null pointer check, but it guards against invalid pointer usage.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if ticket handler exists — protects against: missing ticket handler for the specified service",
+        "reasoning": "The implementation calls `get_ticket_handler(ac, au->service)` and checks if the result is an error using `IS_ERR`. This ensures that the ticket handler exists and is valid before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for decryption errors — protects against: failed decryption of the reply",
+        "reasoning": "The implementation calls `ceph_x_decrypt` and checks if the return value is negative. If it is, it returns the error code immediately, which guards against decryption errors.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify decrypted size — protects against: incorrect decrypted size",
+        "reasoning": "The implementation checks if the return value of `ceph_x_decrypt` is not equal to `sizeof(reply)`. If it is not, it returns `-EPERM`, which guards against incorrect decrypted sizes.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify nonce — protects against: mismatched nonce values",
+        "reasoning": "The implementation checks if `au->nonce + 1` is not equal to `le64_to_cpu(reply.nonce_plus_one)`. If they do not match, it sets `ret` to `-EPERM`, which guards against mismatched nonce values.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers. However, the code uses `IS_ERR(th)` to check for error pointers returned by `get_ticket_handler`, which is a form of error handling but not a direct null pointer check. The code may dereference `au` or `th` if they are null or invalid, which could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if ticket handler exists — protects against: missing ticket handler for the specified service",
+        "reasoning": "The implementation calls `get_ticket_handler(ac, au->service)` and checks if the result is an error pointer using `IS_ERR(th)`. If the ticket handler does not exist, `get_ticket_handler` would return an error pointer, and the function returns the error code immediately.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for decryption errors — protects against: failed decryption of the reply",
+        "reasoning": "The implementation calls `ceph_x_decrypt` and checks if the return value is negative. If it is, the function returns the error code immediately. This handles decryption errors.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify decrypted size — protects against: incorrect decrypted size",
+        "reasoning": "The implementation checks if the return value of `ceph_x_decrypt` is not equal to `sizeof(reply)`. If it is not, the function returns `-EPERM`. This ensures the decrypted size is correct.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify nonce — protects against: mismatched nonce values",
+        "reasoning": "The implementation checks if `au->nonce + 1` is equal to `le64_to_cpu(reply.nonce_plus_one)`. If not, it returns `-EPERM`. This ensures the nonce values match.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

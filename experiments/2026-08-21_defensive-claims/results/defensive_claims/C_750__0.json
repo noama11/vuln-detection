@@ -1,0 +1,82 @@
+{
+  "case_id": "C_750__0",
+  "sample_id": "D/C/750",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick6",
+  "cve_id": "CVE-2019-14980",
+  "cve_summary": "In ImageMagick 7.x before 7.0.8-42 and 6.x before 6.9.10-42, there is a use after free vulnerability in the UnmapBlob function that allows an attacker to cause a denial of service by sending a crafted file.",
+  "changed_file": "magick/blob.c",
+  "docstring": "Summary:  \nDetaches a blob from the BlobInfo structure, releasing associated resources.\n\nParameters:  \nblob_info (BlobInfo *): Specifies a pointer to a BlobInfo structure.\n\nReturns:  \nunsigned char *: A pointer to the detached blob data, or NULL if the operation fails.\n\nLogic: The function first checks that the blob_info pointer is not NULL and logs an event if debugging is enabled. If the blob is mapped, it unmaps the blob data and relinquishes the mapped resource. It then resets the blob_info state and detaches its data pointer.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming the BlobInfo structure is defined as:\n// typedef struct {\n//     unsigned char *data;\n//     size_t size;\n//     int is_mapped;\n// } BlobInfo;\n\nunsigned char *detach_blob(BlobInfo *blob_info) {\n    if (blob_info == NULL) {\n        return NULL;\n    }\n\n    // Save the data pointer before resetting the structure\n    unsigned char *data = blob_info->data;\n\n    // If the blob is mapped, unmap it\n    if (blob_info->is_mapped && blob_info->data != NULL) {\n        // Assuming munmap is used for unmapping\n        //munmap(blob_info->data, blob_info->size);\n        blob_info->data = NULL;\n        blob_info->size = 0;\n    }\n\n    // Reset the blob_info state\n    blob_info->data = NULL;\n    blob_info->size = 0;\n    blob_info->is_mapped = 0;\n\n    return data;\n}",
+  "defensive_steps": [
+    {
+      "step": "check that blob_info is not NULL",
+      "protects_against": "NULL pointer dereference"
+    },
+    {
+      "step": "verify data pointer is not NULL before attempting to unmap",
+      "protects_against": "dereferencing a NULL pointer during unmap"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check that blob_info is not NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation uses `assert(blob_info != (BlobInfo *) NULL);` to ensure the blob_info pointer is not NULL. This is a direct check against NULL pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify data pointer is not NULL before attempting to unmap — protects against: dereferencing a NULL pointer during unmap",
+        "reasoning": "The implementation calls `UnmapBlob(blob_info->data, blob_info->length);` without checking if `blob_info->data` is NULL. There is no conditional check to ensure the data pointer is valid before unmap is attempted.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check that blob_info is not NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation uses `assert(blob_info != (BlobInfo *) NULL);` to ensure the blob_info pointer is not NULL. This is a defensive check against NULL pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify data pointer is not NULL before attempting to unmap — protects against: dereferencing a NULL pointer during unmap",
+        "reasoning": "The implementation calls `UnmapBlob(blob_info->data, blob_info->length);` without checking if `blob_info->data` is NULL. There is no conditional check to ensure `blob_info->data` is not NULL before attempting to unmap it, which could lead to a NULL pointer dereference during the unmap operation.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

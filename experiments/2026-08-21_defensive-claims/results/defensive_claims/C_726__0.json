@@ -1,0 +1,146 @@
+{
+  "case_id": "C_726__0",
+  "sample_id": "D/C/726",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "OP-TEE/optee_os",
+  "cve_id": "CVE-2019-1010297",
+  "cve_summary": "Linaro/OP-TEE OP-TEE 3.3.0 and earlier is affected by: Buffer Overflow. The impact is: Execution of code in TEE core (kernel) context. The component is: optee_os. The fixed version is: 3.4.0 and later.",
+  "changed_file": "core/tee/tee_svc_cryp.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Generates a cryptographic key for a specified object, ensuring it meets  \n * certain criteria and constraints.  \n *  \n * Parameters:  \n * obj (unsigned long): The object identifier for which the key is generated.  \n * key_size (unsigned long): The desired size of the key in bits.  \n * usr_params (const struct utee_attribute*): User-defined attributes for key generation.  \n * param_count (unsigned long): The number of user-defined attributes.  \n *  \n * Returns:  \n * TEE_Result: Indicates the success or failure of the key generation process.  \n *  \n * Logic:  \n * The function retrieves the current session and checks the object's state.  \n * It validates the key size against type properties and allocates memory for  \n * attributes. Depending on the object type (e.g., AES, RSA, DSA), it generates  \n * the key using appropriate methods, handling errors and freeing resources as needed.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "TEE_Result generate_key(unsigned long obj, unsigned long key_size, const struct utee_attribute* usr_params, unsigned long param_count) {\n    TEE_Session* session = TEE_GetCurrentSession();\n    if (!session) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    if (key_size == 0) {\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    if (usr_params && param_count > 0) {\n        if (param_count > TEE_MAX_ATTRIBUTES) {\n            return TEE_ERROR_BAD_PARAMETERS;\n        }\n\n        struct utee_attribute* attributes = malloc(param_count * sizeof(struct utee_attribute));\n        if (!attributes) {\n            return TEE_ERROR_OUT_OF_MEMORY;\n        }\n\n        for (unsigned long i = 0; i < param_count; ++i) {\n            attributes[i] = usr_params[i];\n        }\n\n        TEE_Result result = TEE_ValidateKeySize(obj, key_size);\n        if (result != TEE_SUCCESS) {\n            free(attributes);\n            return result;\n        }\n\n        switch (obj) {\n            case TEE_TYPE_AES:\n                result = TEE_GenerateAESKey(key_size, attributes, param_count);\n                break;\n            case TEE_TYPE_RSA:\n                result = TEE_GenerateRSAKey(key_size, attributes, param_count);\n                break;\n            case TEE_TYPE_DSA:\n                result = TEE_GenerateDSAKey(key_size, attributes, param_count);\n                break;\n            default:\n                result = TEE_ERROR_NOT_SUPPORTED;\n                break;\n        }\n\n        free(attributes);\n        return result;\n    } else {\n        TEE_Result result = TEE_ValidateKeySize(obj, key_size);\n        if (result != TEE_SUCCESS) {\n            return result;\n        }\n\n        switch (obj) {\n            case TEE_TYPE_AES:\n                return TEE_GenerateAESKey(key_size, NULL, 0);\n            case TEE_TYPE_RSA:\n                return TEE_GenerateRSAKey(key_size, NULL, 0);\n            case TEE_TYPE_DSA:\n                return TEE_GenerateDSAKey(key_size, NULL, 0);\n            default:\n                return TEE_ERROR_NOT_SUPPORTED;\n        }\n    }\n}",
+  "defensive_steps": [
+    {
+      "step": "check session validity",
+      "protects_against": "invalid or null session pointer"
+    },
+    {
+      "step": "validate key size is non-zero",
+      "protects_against": "zero key size which would cause invalid key generation"
+    },
+    {
+      "step": "check parameter count against maximum allowed attributes",
+      "protects_against": "excessive parameter count that could cause memory allocation issues"
+    },
+    {
+      "step": "allocate memory for attributes and check success",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "validate key size against object type constraints",
+      "protects_against": "invalid key size for the specified object type"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check session validity — protects against: invalid or null session pointer",
+        "reasoning": "The implementation calls `tee_ta_get_current_session(&sess)` and returns an error if the result is not `TEE_SUCCESS`, which implies the session is invalid or null.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate key size is non-zero — protects against: zero key size which would cause invalid key generation",
+        "reasoning": "The implementation does not explicitly check for a zero key size. It checks for key size constraints against `min_size`, but if `min_size` is greater than zero, a zero key size would be caught. However, if `min_size` is zero, this check would be omitted.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check parameter count against maximum allowed attributes — protects against: excessive parameter count that could cause memory allocation issues",
+        "reasoning": "The implementation does not explicitly check `param_count` against a maximum allowed value before allocating memory for the attributes.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "allocate memory for attributes and check success — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for the attributes using `malloc` and checks if the allocation was successful by verifying if `params` is `NULL`. If it is, it returns `TEE_ERROR_OUT_OF_MEMORY`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate key size against object type constraints — protects against: invalid key size for the specified object type",
+        "reasoning": "The implementation checks if the key size is divisible by the object type's quanta, and if it is within the `min_size` and `max_size` constraints defined by the object type properties.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation uses a labeled `goto out` to jump to a cleanup section that calls `free(params)` regardless of the error condition, ensuring the allocated memory is freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check session validity — protects against: invalid or null session pointer",
+        "reasoning": "The implementation calls `tee_ta_get_current_session(&sess)` and returns an error if the result is not `TEE_SUCCESS`. This ensures the session is valid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate key size is non-zero — protects against: zero key size which would cause invalid key generation",
+        "reasoning": "The implementation does not explicitly check for a zero key size. It checks for key size constraints against `min_size`, but if `min_size` is greater than zero, a zero key size would be caught. However, if `min_size` is zero, this check would be omitted.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check parameter count against maximum allowed attributes — protects against: excessive parameter count that could cause memory allocation issues",
+        "reasoning": "The implementation uses `MUL_OVERFLOW` to check for overflow when calculating the allocation size for `params`. This guards against excessive parameter counts that could cause overflow and allocation issues.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for attributes and check success — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `params` using `malloc` and checks if the result is `NULL`. If it is, it returns `TEE_ERROR_OUT_OF_MEMORY`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate key size against object type constraints — protects against: invalid key size for the specified object type",
+        "reasoning": "The implementation checks that the key size is a multiple of the object type's quanta and that it is within the `min_size` and `max_size` bounds defined by the object type properties.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation uses a labeled `out` block that unconditionally calls `free(params)` before returning, ensuring that the allocated memory is freed on all error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

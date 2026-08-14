@@ -1,0 +1,39 @@
+{
+  "case_id": "C_889__0",
+  "implementation": "#include <linux/fs.h>\n#include <linux/uaccess.h>\n#include <linux/spinlock.h>\n#include <linux/wait.h>\n#include <linux/usb.h>\n\nssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    struct hid_gadget_request *req;\n    ssize_t bytes_written = 0;\n    int ret = 0;\n\n    if (!access_ok(VERIFY_READ, buffer, count)) {\n        return -EFAULT;\n    }\n\n    spin_lock(&hid_gadget_lock);\n\n    while (hid_gadget_write_pending) {\n        ret = wait_event_interruptible(hid_gadget_write_wait, !hid_gadget_write_pending);\n        if (ret < 0) {\n            spin_unlock(&hid_gadget_lock);\n            return ret;\n        }\n    }\n\n    req = hid_gadget_alloc_request();\n    if (!req) {\n        spin_unlock(&hid_gadget_lock);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(req->data, buffer, count)) {\n        hid_gadget_free_request(req);\n        spin_unlock(&hid_gadget_lock);\n        return -EFAULT;\n    }\n\n    req->length = count;\n\n    if (hid_gadget_queue_request(req) < 0) {\n        hid_gadget_free_request(req);\n        hid_gadget_write_pending = 0;\n        wake_up_interruptible(&hid_gadget_write_wait);\n        spin_unlock(&hid_gadget_lock);\n        return -EIO;\n    }\n\n    bytes_written = count;\n\n    hid_gadget_write_pending = 1;\n    wake_up_interruptible(&hid_gadget_write_wait);\n    spin_unlock(&hid_gadget_lock);\n\n    return bytes_written;\n}",
+  "defensive_steps": [
+    {
+      "step": "check buffer accessibility with access_ok",
+      "protects_against": "invalid or inaccessible user buffer pointer"
+    },
+    {
+      "step": "use spinlock to manage concurrent access",
+      "protects_against": "race conditions on shared write queue"
+    },
+    {
+      "step": "wait for write condition to be available",
+      "protects_against": "overwriting pending writes or resource exhaustion"
+    },
+    {
+      "step": "validate copy_from_user return",
+      "protects_against": "partial or failed user buffer copy"
+    },
+    {
+      "step": "check request allocation result",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check queue request result",
+      "protects_against": "queueing failure during transmission"
+    },
+    {
+      "step": "ensure lock is released on all paths",
+      "protects_against": "deadlock from un-released lock"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

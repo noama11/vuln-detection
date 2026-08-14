@@ -1,0 +1,49 @@
+{
+  "case_id": "C_123__1",
+  "sample_id": "D/C/123",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1182",
+  "cve_summary": "kernel/signal.c in the Linux kernel before 2.6.39 allows local users to spoof the uid and pid of a signal sender via a sigqueueinfo system call.",
+  "changed_file": "kernel/signal.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Sends a signal to a specific thread in a process, using the provided signal  \n * information.  \n *  \n * Parameters:  \n * tgid (pid_t): The thread group ID of the target process.  \n * pid (pid_t): The process ID of the target thread.  \n * sig (int): The signal number to be sent.  \n * info (siginfo_t*): A pointer to a structure containing additional signal  \n * information.  \n *  \n * Returns:  \n * long: Returns 0 on success, or a negative error code on failure (e.g.,  \n * -EINVAL for invalid IDs, -EPERM for permission errors).  \n *  \n * Logic:  \n * The function first checks if the provided process and thread IDs are valid.  \n * It then verifies that the signal information code is appropriate for sending  \n * a signal. If all checks pass, it calls another function to send the signal  \n * to the specified thread.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int iucv_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t     struct msghdr *msg, size_t len, int flags)\r\n{\r\n\tint noblock = flags & MSG_DONTWAIT;\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct iucv_sock *iucv = iucv_sk(sk);\r\n\tunsigned int copied, rlen;\r\n\tstruct sk_buff *skb, *rskb, *cskb;\r\n\tint err = 0;\r\n\r\n\tmsg->msg_namelen = 0;\r\n\r\n\tif ((sk->sk_state == IUCV_DISCONN) &&\r\n\t    skb_queue_empty(&iucv->backlog_skb_q) &&\r\n\t    skb_queue_empty(&sk->sk_receive_queue) &&\r\n\t    list_empty(&iucv->message_q.list))\r\n\t\treturn 0;\r\n\r\n\tif (flags & (MSG_OOB))\r\n\t\treturn -EOPNOTSUPP;\r\n\r\n\t/* receive/dequeue next skb:\r\n\t * the function understands MSG_PEEK and, thus, does not dequeue skb */\r\n\tskb = skb_recv_datagram(sk, flags, noblock, &err);\r\n\tif (!skb) {\r\n\t\tif (sk->sk_shutdown & RCV_SHUTDOWN)\r\n\t\t\treturn 0;\r\n\t\treturn err;\r\n\t}\r\n\r\n\trlen   = skb->len;\t\t/* real length of skb */\r\n\tcopied = min_t(unsigned int, rlen, len);\r\n\tif (!rlen)\r\n\t\tsk->sk_shutdown = sk->sk_shutdown | RCV_SHUTDOWN;\r\n\r\n\tcskb = skb;\r\n\tif (skb_copy_datagram_iovec(cskb, 0, msg->msg_iov, copied)) {\r\n\t\tif (!(flags & MSG_PEEK))\r\n\t\t\tskb_queue_head(&sk->sk_receive_queue, skb);\r\n\t\treturn -EFAULT;\r\n\t}\r\n\r\n\t/* SOCK_SEQPACKET: set MSG_TRUNC if recv buf size is too small */\r\n\tif (sk->sk_type == SOCK_SEQPACKET) {\r\n\t\tif (copied < rlen)\r\n\t\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t\t/* each iucv message contains a complete record */\r\n\t\tmsg->msg_flags |= MSG_EOR;\r\n\t}\r\n\r\n\t/* create control message to store iucv msg target class:\r\n\t * get the trgcls from the control buffer of the skb due to\r\n\t * fragmentation of original iucv message. */\r\n\terr = put_cmsg(msg, SOL_IUCV, SCM_IUCV_TRGCLS,\r\n\t\t\tCB_TRGCLS_LEN, CB_TRGCLS(skb));\r\n\tif (err) {\r\n\t\tif (!(flags & MSG_PEEK))\r\n\t\t\tskb_queue_head(&sk->sk_receive_queue, skb);\r\n\t\treturn err;\r\n\t}\r\n\r\n\t/* Mark read part of skb as used */\r\n\tif (!(flags & MSG_PEEK)) {\r\n\r\n\t\t/* SOCK_STREAM: re-queue skb if it contains unreceived data */\r\n\t\tif (sk->sk_type == SOCK_STREAM) {\r\n\t\t\tskb_pull(skb, copied);\r\n\t\t\tif (skb->len) {\r\n\t\t\t\tskb_queue_head(&sk->sk_receive_queue, skb);\r\n\t\t\t\tgoto done;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\tkfree_skb(skb);\r\n\t\tif (iucv->transport == AF_IUCV_TRANS_HIPER) {\r\n\t\t\tatomic_inc(&iucv->msg_recv);\r\n\t\t\tif (atomic_read(&iucv->msg_recv) > iucv->msglimit) {\r\n\t\t\t\tWARN_ON(1);\r\n\t\t\t\tiucv_sock_close(sk);\r\n\t\t\t\treturn -EFAULT;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\t/* Queue backlog skbs */\r\n\t\tspin_lock_bh(&iucv->message_q.lock);\r\n\t\trskb = skb_dequeue(&iucv->backlog_skb_q);\r\n\t\twhile (rskb) {\r\n\t\t\tif (sock_queue_rcv_skb(sk, rskb)) {\r\n\t\t\t\tskb_queue_head(&iucv->backlog_skb_q,\r\n\t\t\t\t\t\trskb);\r\n\t\t\t\tbreak;\r\n\t\t\t} else {\r\n\t\t\t\trskb = skb_dequeue(&iucv->backlog_skb_q);\r\n\t\t\t}\r\n\t\t}\r\n\t\tif (skb_queue_empty(&iucv->backlog_skb_q)) {\r\n\t\t\tif (!list_empty(&iucv->message_q.list))\r\n\t\t\t\tiucv_process_message_q(sk);\r\n\t\t\tif (atomic_read(&iucv->msg_recv) >=\r\n\t\t\t\t\t\t\tiucv->msglimit / 2) {\r\n\t\t\t\terr = iucv_send_ctrl(sk, AF_IUCV_FLAG_WIN);\r\n\t\t\t\tif (err) {\r\n\t\t\t\t\tsk->sk_state = IUCV_DISCONN;\r\n\t\t\t\t\tsk->sk_state_change(sk);\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t}\r\n\t\tspin_unlock_bh(&iucv->message_q.lock);\r\n\t}\r\n\r\ndone:\r\n\t/* SOCK_SEQPACKET: return real length if MSG_TRUNC is set */\r\n\tif (sk->sk_type == SOCK_SEQPACKET && (flags & MSG_TRUNC))\r\n\t\tcopied = rlen;\r\n\r\n\treturn copied;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_73__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to handle socket message reception, not signal sending. The reference implementation aligns with the specification by validating signal information and calling a function to send the signal. The candidate implementation is incoherent and off-topic relative to the specification.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and the specification. The candidate implementation is for a socket receive function (`iucv_sock_recvmsg`), while the reference implementation is for sending a signal to a thread (`do_rt_tgsigqueueinfo`). The two functions serve entirely different purposes and are not behaviorally equivalent. This is a degenerate case where the candidate implementation is off-topic relative to the specification.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

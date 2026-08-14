@@ -1,0 +1,49 @@
+{
+  "case_id": "C_827__0",
+  "sample_id": "D/C/827",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "net/atm/pvc.c",
+  "docstring": "Summary: This function retrieves the name associated with a given socket and fills a sockaddr structure with the appropriate address information.\n\nParameters: \n- sock (struct socket *): Pointer to the socket from which to retrieve the name.\n- sockaddr (struct sockaddr *): Pointer to the sockaddr structure to be filled with address information.\n- sockaddr_len (int *): Pointer to an integer that will hold the length of the sockaddr structure.\n- peer (int): Indicates whether the address is for a peer connection.\n\nReturns: int: Returns 0 on success, or -ENOTCONN if the socket is not connected.\n\nLogic: The function checks if the associated ATM virtual circuit (vcc) is valid and connected. If not, it returns an error. If valid, it initializes the sockaddr structure with the ATM PVC address details, including the interface number, VPI, and VCI, and sets the length of the sockaddr.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static ssize_t bat_socket_read(struct file *file, char __user *buf,\r\n\t\t\t       size_t count, loff_t *ppos)\r\n{\r\n\tstruct socket_client *socket_client = file->private_data;\r\n\tstruct socket_packet *socket_packet;\r\n\tsize_t packet_len;\r\n\tint error;\r\n\r\n\tif ((file->f_flags & O_NONBLOCK) && (socket_client->queue_len == 0))\r\n\t\treturn -EAGAIN;\r\n\r\n\tif ((!buf) || (count < sizeof(struct icmp_packet)))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (!access_ok(VERIFY_WRITE, buf, count))\r\n\t\treturn -EFAULT;\r\n\r\n\terror = wait_event_interruptible(socket_client->queue_wait,\r\n\t\t\t\t\t socket_client->queue_len);\r\n\r\n\tif (error)\r\n\t\treturn error;\r\n\r\n\tspin_lock_bh(&socket_client->lock);\r\n\r\n\tsocket_packet = list_first_entry(&socket_client->queue_list,\r\n\t\t\t\t\t struct socket_packet, list);\r\n\tlist_del(&socket_packet->list);\r\n\tsocket_client->queue_len--;\r\n\r\n\tspin_unlock_bh(&socket_client->lock);\r\n\r\n\tpacket_len = min(count, socket_packet->icmp_len);\r\n\terror = copy_to_user(buf, &socket_packet->icmp_packet, packet_len);\r\n\r\n\tkfree(socket_packet);\r\n\r\n\tif (error)\r\n\t\treturn -EFAULT;\r\n\r\n\treturn packet_len;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_120__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is a function for reading data from a socket, while the reference implementation is for retrieving address information from a socket. The two functions serve entirely different purposes and are not related to the same specification. Therefore, they are not equivalent.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is a function for reading data from a socket, while the reference implementation is for retrieving address information from a socket. These functions serve entirely different purposes and are not comparable in terms of behavior or functionality.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

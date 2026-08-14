@@ -1,0 +1,48 @@
+{
+  "case_id": "C_450__0",
+  "sample_id": "D/C/450",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-9075",
+  "cve_summary": "The sctp_v6_create_accept_sk function in net/sctp/ipv6.c in the Linux kernel through 4.11.1 mishandles inheritance, which allows local users to cause a denial of service or possibly have unspecified other impact via crafted system calls, a related issue to CVE-2017-8890.",
+  "changed_file": "net/sctp/ipv6.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Creates and initializes a new SCTP socket for IPv6, accepting an existing  \n * socket and association parameters.  \n *  \n * Parameters:  \n * sk (struct sock *): The existing socket from which to create the new socket.  \n * asoc (struct sctp_association *): The SCTP association associated with the new socket.  \n * kern (bool): Indicates if the socket is for kernel use.  \n *  \n * Returns:  \n * struct sock *: A pointer to the newly created socket, or NULL on failure.  \n *  \n * Logic:  \n * The function allocates a new socket, initializes it by copying data from  \n * the existing socket, and sets up IPv6-specific parameters. It handles  \n * socket options and prepares the new socket for communication. If the  \n * initialization of the new socket fails, it releases the socket and returns  \n * NULL.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static struct sock *sctp_v6_create_accept_sk(struct sock *sk,\r\n\t\t\t\t\t     struct sctp_association *asoc,\r\n\t\t\t\t\t     bool kern)\r\n{\r\n\tstruct sock *newsk;\r\n\tstruct ipv6_pinfo *newnp, *np = inet6_sk(sk);\r\n\tstruct sctp6_sock *newsctp6sk;\r\n\tstruct ipv6_txoptions *opt;\r\n\r\n\tnewsk = sk_alloc(sock_net(sk), PF_INET6, GFP_KERNEL, sk->sk_prot, kern);\r\n\tif (!newsk)\r\n\t\tgoto out;\r\n\r\n\tsock_init_data(NULL, newsk);\r\n\r\n\tsctp_copy_sock(newsk, sk, asoc);\r\n\tsock_reset_flag(sk, SOCK_ZAPPED);\r\n\r\n\tnewsctp6sk = (struct sctp6_sock *)newsk;\r\n\tinet_sk(newsk)->pinet6 = &newsctp6sk->inet6;\r\n\r\n\tsctp_sk(newsk)->v4mapped = sctp_sk(sk)->v4mapped;\r\n\r\n\tnewnp = inet6_sk(newsk);\r\n\r\n\tmemcpy(newnp, np, sizeof(struct ipv6_pinfo));\r\n\tnewnp->ipv6_mc_list = NULL;\r\n\tnewnp->ipv6_ac_list = NULL;\r\n\tnewnp->ipv6_fl_list = NULL;\r\n\r\n\trcu_read_lock();\r\n\topt = rcu_dereference(np->opt);\r\n\tif (opt)\r\n\t\topt = ipv6_dup_options(newsk, opt);\r\n\tRCU_INIT_POINTER(newnp->opt, opt);\r\n\trcu_read_unlock();\r\n\r\n\t/* Initialize sk's sport, dport, rcv_saddr and daddr for getsockname()\r\n\t * and getpeername().\r\n\t */\r\n\tsctp_v6_to_sk_daddr(&asoc->peer.primary_addr, newsk);\r\n\r\n\tnewsk->sk_v6_rcv_saddr = sk->sk_v6_rcv_saddr;\r\n\r\n\tsk_refcnt_debug_inc(newsk);\r\n\r\n\tif (newsk->sk_prot->init(newsk)) {\r\n\t\tsk_common_release(newsk);\r\n\t\tnewsk = NULL;\r\n\t}\r\n\r\nout:\r\n\treturn newsk;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes additional lines that set newnp->ipv6_mc_list, newnp->ipv6_ac_list, and newnp->ipv6_fl_list to NULL, which are not present in the reference implementation. This could lead to differences in behavior if these fields are used later in the code. However, the difference is not security-relevant and does not affect the core functionality of socket creation and initialization.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate and reference implementations are identical in their code and logic. They both allocate a new socket, initialize it, copy data from the existing socket, set up IPv6-specific parameters, handle socket options, and perform error checking. There are no observable behavioral differences for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

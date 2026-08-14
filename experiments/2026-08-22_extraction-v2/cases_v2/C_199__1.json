@@ -1,0 +1,36 @@
+{
+  "case_id": "C_199__1",
+  "sample_id": "D/C/199",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "bonzini/qemu",
+  "cve_id": "CVE-2011-3346",
+  "cve_summary": "Buffer overflow in hw/scsi-disk.c in the SCSI subsystem in QEMU before 0.15.2, as used by Xen, might allow local guest users with permission to access the CD-ROM to cause a denial of service (guest crash) via a crafted SAI READ CAPACITY SCSI command.  NOTE: this is only a vulnerability when root has manually modified certain permissions or ACLs.",
+  "commit_message": "scsi-disk: lazily allocate bounce buffer\n\nIt will not be needed for reads and writes if the HBA provides a sglist.\nIn addition, this lets scsi-disk refuse commands with an excessive\nallocation length, as well as limit memory on usual well-behaved guests.\n\nSigned-off-by: Paolo Bonzini <pbonzini@redhat.com>\nSigned-off-by: Kevin Wolf <kwolf@redhat.com>",
+  "changed_file": "hw/scsi-disk.c",
+  "docstring": "\"\"\"\nSummary: \nRestarts the SCSI DMA operation by processing queued requests.\n\nParameters: \nopaque (void*): A pointer to the SCSIDiskState structure containing the state of the SCSI disk.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function first deletes any existing bottom half (bh) associated with the SCSIDiskState. It then iterates through the requests in the SCSI device's request queue. For each request that has a retry status, it clears the retry flags and processes the request based on its retry type, which can be a read, write, or flush operation. Depending on the type, it either reads or writes data or emulates a command and completes the request if successful.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    309,
+    342
+  ],
+  "vulnerable_line_range": [
+    300,
+    333
+  ],
+  "vulnerable_snippet": "static void scsi_dma_restart_bh(void *opaque)\r\n{\r\n    SCSIDiskState *s = opaque;\r\n    SCSIRequest *req;\r\n    SCSIDiskReq *r;\r\n\r\n    qemu_bh_delete(s->bh);\r\n    s->bh = NULL;\r\n\r\n    QTAILQ_FOREACH(req, &s->qdev.requests, next) {\r\n        r = DO_UPCAST(SCSIDiskReq, req, req);\r\n        if (r->status & SCSI_REQ_STATUS_RETRY) {\r\n            int status = r->status;\r\n            int ret;\r\n\r\n            r->status &=\r\n                ~(SCSI_REQ_STATUS_RETRY | SCSI_REQ_STATUS_RETRY_TYPE_MASK);\r\n\r\n            switch (status & SCSI_REQ_STATUS_RETRY_TYPE_MASK) {\r\n            case SCSI_REQ_STATUS_RETRY_READ:\r\n                scsi_read_data(&r->req);\r\n                break;\r\n            case SCSI_REQ_STATUS_RETRY_WRITE:\r\n                scsi_write_data(&r->req);\r\n                break;\r\n            case SCSI_REQ_STATUS_RETRY_FLUSH:\r\n                ret = scsi_disk_emulate_command(r, r->iov.iov_base);\r\n                if (ret == 0) {\r\n                    scsi_req_complete(&r->req, GOOD);\r\n                }\r\n            }\r\n        }\r\n    }\r\n}",
+  "fixed_line_range": [
+    309,
+    342
+  ],
+  "fixed_snippet": "static void scsi_dma_restart_bh(void *opaque)\r\n{\r\n    SCSIDiskState *s = opaque;\r\n    SCSIRequest *req;\r\n    SCSIDiskReq *r;\r\n\r\n    qemu_bh_delete(s->bh);\r\n    s->bh = NULL;\r\n\r\n    QTAILQ_FOREACH(req, &s->qdev.requests, next) {\r\n        r = DO_UPCAST(SCSIDiskReq, req, req);\r\n        if (r->status & SCSI_REQ_STATUS_RETRY) {\r\n            int status = r->status;\r\n            int ret;\r\n\r\n            r->status &=\r\n                ~(SCSI_REQ_STATUS_RETRY | SCSI_REQ_STATUS_RETRY_TYPE_MASK);\r\n\r\n            switch (status & SCSI_REQ_STATUS_RETRY_TYPE_MASK) {\r\n            case SCSI_REQ_STATUS_RETRY_READ:\r\n                scsi_read_data(&r->req);\r\n                break;\r\n            case SCSI_REQ_STATUS_RETRY_WRITE:\r\n                scsi_write_data(&r->req);\r\n                break;\r\n            case SCSI_REQ_STATUS_RETRY_FLUSH:\r\n                ret = scsi_disk_emulate_command(r);\r\n                if (ret == 0) {\r\n                    scsi_req_complete(&r->req, GOOD);\r\n                }\r\n            }\r\n        }\r\n    }\r\n}",
+  "func_name": "scsi_dma_restart_bh",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

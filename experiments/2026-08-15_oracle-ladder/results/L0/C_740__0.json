@@ -1,0 +1,48 @@
+{
+  "case_id": "C_740__0",
+  "sample_id": "D/C/740",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-15919",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.10. SMB2_write in fs/cifs/smb2pdu.c has a use-after-free.",
+  "changed_file": "fs/cifs/smb2pdu.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the SMB2 write operation by preparing and sending a write request to the server.\n\nParameters: \nxid (unsigned int): Transaction ID for the SMB operation. \nio_parms (struct cifs_io_parms *): Parameters for the I/O operation, including connection and file identifiers. \nnbytes (unsigned int *): Pointer to store the number of bytes written. \niov (struct kvec *): Array of scatter-gather vectors for the data to be written. \nn_vec (int): Number of vectors in the iov array.\n\nReturns: \nint: Returns 0 on success or an error code on failure.\n\nLogic: \nThe function initializes a write request, checks connection validity, and prepares the request structure. It then sends the request using the `cifs_send_recv` function and processes the response to update the number of bytes written. Error handling is included to manage failures during the send operation, and resources are released before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int\r\nSMB2_write(const unsigned int xid, struct cifs_io_parms *io_parms,\r\n\t   unsigned int *nbytes, struct kvec *iov, int n_vec)\r\n{\r\n\tstruct smb_rqst rqst;\r\n\tint rc = 0;\r\n\tstruct smb2_write_req *req = NULL;\r\n\tstruct smb2_write_rsp *rsp = NULL;\r\n\tint resp_buftype;\r\n\tstruct kvec rsp_iov;\r\n\tint flags = 0;\r\n\tunsigned int total_len;\r\n\r\n\t*nbytes = 0;\r\n\r\n\tif (n_vec < 1)\r\n\t\treturn rc;\r\n\r\n\trc = smb2_plain_req_init(SMB2_WRITE, io_parms->tcon, (void **) &req,\r\n\t\t\t     &total_len);\r\n\tif (rc)\r\n\t\treturn rc;\r\n\r\n\tif (io_parms->tcon->ses->server == NULL)\r\n\t\treturn -ECONNABORTED;\r\n\r\n\tif (smb3_encryption_required(io_parms->tcon))\r\n\t\tflags |= CIFS_TRANSFORM_REQ;\r\n\r\n\treq->sync_hdr.ProcessId = cpu_to_le32(io_parms->pid);\r\n\r\n\treq->PersistentFileId = io_parms->persistent_fid;\r\n\treq->VolatileFileId = io_parms->volatile_fid;\r\n\treq->WriteChannelInfoOffset = 0;\r\n\treq->WriteChannelInfoLength = 0;\r\n\treq->Channel = 0;\r\n\treq->Length = cpu_to_le32(io_parms->length);\r\n\treq->Offset = cpu_to_le64(io_parms->offset);\r\n\treq->DataOffset = cpu_to_le16(\r\n\t\t\t\toffsetof(struct smb2_write_req, Buffer));\r\n\treq->RemainingBytes = 0;\r\n\r\n\ttrace_smb3_write_enter(xid, io_parms->persistent_fid,\r\n\t\tio_parms->tcon->tid, io_parms->tcon->ses->Suid,\r\n\t\tio_parms->offset, io_parms->length);\r\n\r\n\tiov[0].iov_base = (char *)req;\r\n\t/* 1 for Buffer */\r\n\tiov[0].iov_len = total_len - 1;\r\n\r\n\tmemset(&rqst, 0, sizeof(struct smb_rqst));\r\n\trqst.rq_iov = iov;\r\n\trqst.rq_nvec = n_vec + 1;\r\n\r\n\trc = cifs_send_recv(xid, io_parms->tcon->ses, &rqst,\r\n\t\t\t    &resp_buftype, flags, &rsp_iov);\r\n\trsp = (struct smb2_write_rsp *)rsp_iov.iov_base;\r\n\r\n\tif (rc) {\r\n\t\ttrace_smb3_write_err(xid, req->PersistentFileId,\r\n\t\t\t\t     io_parms->tcon->tid,\r\n\t\t\t\t     io_parms->tcon->ses->Suid,\r\n\t\t\t\t     io_parms->offset, io_parms->length, rc);\r\n\t\tcifs_stats_fail_inc(io_parms->tcon, SMB2_WRITE_HE);\r\n\t\tcifs_dbg(VFS, \"Send error in write = %d\\n\", rc);\r\n\t} else {\r\n\t\t*nbytes = le32_to_cpu(rsp->DataLength);\r\n\t\ttrace_smb3_write_done(xid, req->PersistentFileId,\r\n\t\t\t\t     io_parms->tcon->tid,\r\n\t\t\t\t     io_parms->tcon->ses->Suid,\r\n\t\t\t\t     io_parms->offset, *nbytes);\r\n\t}\r\n\r\n\tcifs_small_buf_release(req);\r\n\tfree_rsp_buf(resp_buftype, rsp);\r\n\treturn rc;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being the order in which `cifs_small_buf_release(req)` and `rsp = (struct smb2_write_rsp *)rsp_iov.iov_base;` are executed. This difference does not affect the observable behavior of the function, as both implementations release the request buffer and process the response correctly. The outcome for all inputs remains the same.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of code and behavior. All logic, variable assignments, and control flow are the same, and there are no observable differences in how they handle inputs or produce outputs.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

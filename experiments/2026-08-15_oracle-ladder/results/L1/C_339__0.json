@@ -1,0 +1,49 @@
+{
+  "case_id": "C_339__0",
+  "sample_id": "D/C/339",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2686",
+  "cve_summary": "net/socket.c in the Linux kernel 3.19 before 3.19.3 does not validate certain range data for (1) sendto and (2) recvfrom system calls, which allows local users to gain privileges by leveraging a subsystem that uses the copy_from_iter function in the iov_iter interface, as demonstrated by the Bluetooth subsystem.",
+  "changed_file": "net/socket.c",
+  "docstring": "Summary: This function implements the `sendto` system call for sending data to a specified address using a socket.\n\nParameters:\n- fd (int): The file descriptor of the socket.\n- buff (void __user *): A pointer to the buffer containing the data to be sent.\n- len (size_t): The length of the data in bytes.\n- flags (unsigned int): Flags that modify the behavior of the send operation.\n- addr (struct sockaddr __user *): A pointer to the address structure where the data is to be sent.\n- addr_len (int): The length of the address structure.\n\nReturns: int - The number of bytes sent on success, or a negative error code on failure.\n\nLogic: The function first limits the buffer length to a valid range. It retrieves the socket associated with the file descriptor and prepares the message header. If an address is provided, it converts it to kernel space. It sets the message flags based on the socket's non-blocking status and then calls `sock_sendmsg` to send the data. Finally, it releases the socket reference and returns the result of the send operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "SYSCALL_DEFINE6(sendto, int, fd, void __user *, buff, size_t, len,\n        unsigned int, flags, struct sockaddr __user *, addr,\n        int, addr_len)\n{\n    struct socket *v8;\n    struct sockaddr_storage v1;\n    int v2;\n    struct msghdr v5;\n    struct iovec v4;\n    int v3;\n    if (len > INT_MAX)\n        len = INT_MAX;\n    if (unlikely(!access_ok(VERIFY_READ, buff, len)))\n        return -EFAULT;\n    v8 = sockfd_lookup_light(fd, &v2, &v3);\n    if (!v8)\n        goto v6;\n    v4.iov_base = buff;\n    v4.iov_len = len;\n    v5.msg_name = NULL;\n    iov_iter_init(&v5.msg_iter, WRITE, &v4, 1, len);\n    v5.msg_control = NULL;\n    v5.msg_controllen = 0;\n    v5.msg_namelen = 0;\n    if (addr) {\n        v2 = move_addr_to_kernel(addr, addr_len, &v1);\n        if (v2 < 0)\n            goto v7;\n        v5.msg_name = (struct sockaddr *)&v1;\n        v5.msg_namelen = addr_len;\n    }\n    if (v8->file->f_flags & O_NONBLOCK)\n        flags |= MSG_DONTWAIT;\n    v5.msg_flags = flags;\n    v2 = sock_sendmsg(v8, &v5, len);\nv7:\n    fput_light(v8->file, v3);\nv6:\n    return v2;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both perform the same steps: limit the buffer length, validate the buffer, retrieve the socket, prepare the message header, handle the address if provided, set message flags based on non-blocking status, and call `sock_sendmsg`. The only differences are in variable names and code structure, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both handle buffer length clamping, validate the buffer with `access_ok`, retrieve the socket, construct the message header, and handle address conversion if provided. The logic for setting the `MSG_DONTWAIT` flag and calling `sock_sendmsg` is also the same. There are no observable behavioral differences for any realistic or edge-case input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

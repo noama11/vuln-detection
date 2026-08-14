@@ -1,0 +1,39 @@
+{
+  "case_id": "C_315__0",
+  "implementation": "int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent)\n{\n    int err;\n    struct net_device *netdev = NULL;\n    void *priv = NULL;\n\n    err = pci_enable_device(pdev);\n    if (err)\n        return err;\n\n    err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));\n    if (err) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    err = pci_request_regions(pdev, \"ATL2\");\n    if (err) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    netdev = alloc_etherdev(sizeof(*priv));\n    if (!netdev) {\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return -ENOMEM;\n    }\n\n    priv = netdev_priv(netdev);\n    netdev->irq = pdev->irq;\n    netdev->base_addr = pci_resource_start(pdev, 0);\n\n    pci_set_drvdata(pdev, netdev);\n\n    err = atl2_init_hw(pdev, netdev);\n    if (err) {\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    ether_addr_copy(netdev->dev_addr, atl2_get_mac_addr(pdev));\n\n    setup_timer(&priv->watchdog_timer, atl2_watchdog_timer, (unsigned long)netdev);\n    setup_timer(&priv->phy_config_timer, atl2_phy_config_timer, (unsigned long)netdev);\n\n    netdev->netdev_ops = &atl2_netdev_ops;\n\n    err = register_netdev(netdev);\n    if (err) {\n        del_timer_sync(&priv->watchdog_timer);\n        del_timer_sync(&priv->phy_config_timer);\n        atl2_shutdown(pdev);\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of pci_enable_device",
+      "protects_against": "failure to enable the PCI device"
+    },
+    {
+      "step": "check return value of pci_set_dma_mask",
+      "protects_against": "inability to set the DMA mask"
+    },
+    {
+      "step": "check return value of pci_request_regions",
+      "protects_against": "failure to request PCI regions"
+    },
+    {
+      "step": "check return value of alloc_etherdev",
+      "protects_against": "failure to allocate the network device"
+    },
+    {
+      "step": "check return value of atl2_init_hw",
+      "protects_against": "failure to initialize hardware"
+    },
+    {
+      "step": "check return value of register_netdev",
+      "protects_against": "failure to register the network device"
+    },
+    {
+      "step": "perform cleanup on error paths",
+      "protects_against": "resource leaks and inconsistent state"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

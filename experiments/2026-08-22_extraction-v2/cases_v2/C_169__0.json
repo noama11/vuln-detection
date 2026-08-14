@@ -1,0 +1,36 @@
+{
+  "case_id": "C_169__0",
+  "sample_id": "D/C/169",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "commit_message": "filter: prevent nla extensions to peek beyond the end of the message\n\nThe BPF_S_ANC_NLATTR and BPF_S_ANC_NLATTR_NEST extensions fail to check\nfor a minimal message length before testing the supplied offset to be\nwithin the bounds of the message. This allows the subtraction of the nla\nheader to underflow and therefore -- as the data type is unsigned --\nallowing far to big offset and length values for the search of the\nnetlink attribute.\n\nThe remainder calculation for the BPF_S_ANC_NLATTR_NEST extension is\nalso wrong. It has the minuend and subtrahend mixed up, therefore\ncalculates a huge length value, allowing to overrun the end of the\nmessage while looking for the netlink attribute.\n\nThe following three BPF snippets will trigger the bugs when attached to\na UNIX datagram socket and parsing a message with length 1, 2 or 3.\n\n ,-[ PoC for missing size check in BPF_S_ANC_NLATTR ]--\n | ld\t#0x87654321\n | ldx\t#42\n | ld\t#nla\n | ret\ta\n `---\n\n ,-[ PoC for the same bug in BPF_S_ANC_NLATTR_NEST ]--\n | ld\t#0x87654321\n | ldx\t#42\n | ld\t#nlan\n | ret\ta\n `---\n\n ,-[ PoC for wrong remainder calculation in BPF_S_ANC_NLATTR_NEST ]--\n | ; (needs a fake netlink header at offset 0)\n | ld\t#0\n | ldx\t#42\n | ld\t#nlan\n | ret\ta\n `---\n\nFix the first issue by ensuring the message length fulfills the minimal\nsize constrains of a nla header. Fix the second bug by getting the math\nfor the remainder calculation right.\n\nFixes: 4738c1db15 (\"[SKFILTER]: Add SKF_ADF_NLATTR instruction\")\nFixes: d214c7537b (\"filter: add SKF_AD_NLATTR_NEST to look for nested..\")\nCc: Patrick McHardy <kaber@trash.net>\nCc: Pablo Neira Ayuso <pablo@netfilter.org>\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nAcked-by: Daniel Borkmann <dborkman@redhat.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the offset of a netlink attribute from a socket buffer.\n\nParameters: \nctx (u64): Context pointer to the socket buffer.\nA (u64): Offset in the socket buffer where the search for the netlink attribute begins.\nX (u64): The type of netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the netlink attribute within the socket buffer, or 0 if not found or if conditions are not met.\n\nLogic: The function first checks if the socket buffer is non-linear or if its length is less than the size of a netlink attribute. It then verifies that the provided offset A is valid. If all checks pass, it searches for the netlink attribute of type X starting from the calculated position. If found, it returns the offset of the attribute relative to the start of the socket buffer; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    595,
+    614
+  ],
+  "vulnerable_line_range": [
+    595,
+    611
+  ],
+  "vulnerable_snippet": "static u64 __skb_get_nlattr(u64 ctx, u64 A, u64 X, u64 r4, u64 r5)\r\n{\r\n\tstruct sk_buff *skb = (struct sk_buff *)(long) ctx;\r\n\tstruct nlattr *nla;\r\n\r\n\tif (skb_is_nonlinear(skb))\r\n\t\treturn 0;\r\n\r\n\tif (A > skb->len - sizeof(struct nlattr))\r\n\t\treturn 0;\r\n\r\n\tnla = nla_find((struct nlattr *) &skb->data[A], skb->len - A, X);\r\n\tif (nla)\r\n\t\treturn (void *) nla - (void *) skb->data;\r\n\r\n\treturn 0;\r\n}",
+  "fixed_line_range": [
+    595,
+    614
+  ],
+  "fixed_snippet": "static u64 __skb_get_nlattr(u64 ctx, u64 A, u64 X, u64 r4, u64 r5)\r\n{\r\n\tstruct sk_buff *skb = (struct sk_buff *)(long) ctx;\r\n\tstruct nlattr *nla;\r\n\r\n\tif (skb_is_nonlinear(skb))\r\n\t\treturn 0;\r\n\r\n\tif (skb->len < sizeof(struct nlattr))\r\n\t\treturn 0;\r\n\r\n\tif (A > skb->len - sizeof(struct nlattr))\r\n\t\treturn 0;\r\n\r\n\tnla = nla_find((struct nlattr *) &skb->data[A], skb->len - A, X);\r\n\tif (nla)\r\n\t\treturn (void *) nla - (void *) skb->data;\r\n\r\n\treturn 0;\r\n}",
+  "func_name": "__skb_get_nlattr",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

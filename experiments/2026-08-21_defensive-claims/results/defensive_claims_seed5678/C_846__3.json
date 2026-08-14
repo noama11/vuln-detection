@@ -1,0 +1,114 @@
+{
+  "case_id": "C_846__3",
+  "sample_id": "D/C/846",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a sound timer device into a user-provided buffer.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sound timer device.\nbuffer (char __user *): Pointer to the user buffer where data will be copied.\ncount (size_t): The maximum number of bytes to read from the device.\noffset (loff_t *): Pointer to the offset in the file from which to read.\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: \nThe function locks the device's mutex and spinlock to ensure thread safety while reading data. It checks if there is data available to read and waits if the queue is empty, handling non-blocking and interruptible conditions. Data is copied from the device's queue to the user buffer, and the function updates the read position accordingly. It handles errors during the read process and returns the number of bytes successfully read or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/fs.h>\n#include <linux/uaccess.h>\n#include <linux/mutex.h>\n#include <linux/wait.h>\n\nssize_t sound_timer_read(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    struct sound_timer_dev *dev = file->private_data;\n    ssize_t bytes_read = 0;\n    int ret = 0;\n\n    if (!dev || !buffer || count == 0) {\n        return -EINVAL;\n    }\n\n    mutex_lock(&dev->mutex);\n    spin_lock_irq(&dev->spinlock);\n\n    while (dev->queue_head == dev->queue_tail) {\n        if ((file->f_flags & O_NONBLOCK) || signal_pending(current)) {\n            spin_unlock_irq(&dev->spinlock);\n            mutex_unlock(&dev->mutex);\n            return -EAGAIN;\n        }\n\n        wait_event_interruptible(dev->read_queue, dev->queue_head != dev->queue_tail);\n    }\n\n    while (bytes_read < count && dev->queue_head != dev->queue_tail) {\n        char data = dev->queue[dev->queue_head++]; \n        dev->queue_head %= dev->queue_size;\n\n        if (copy_to_user(buffer + bytes_read, &data, 1)) {\n            ret = -EFAULT;\n            break;\n        }\n        bytes_read++;\n    }\n\n    spin_unlock_irq(&dev->spinlock);\n    mutex_unlock(&dev->mutex);\n\n    if (ret < 0) {\n        return ret;\n    }\n\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers and zero count",
+      "protects_against": "null pointer dereference or invalid read of zero bytes"
+    },
+    {
+      "step": "handle non-blocking and interruptible conditions",
+      "protects_against": "deadlock or unresponsive system when waiting for data"
+    },
+    {
+      "step": "validate copy to user buffer",
+      "protects_against": "invalid memory access during user space copy"
+    },
+    {
+      "step": "ensure proper locking and unlocking of mutex and spinlock",
+      "protects_against": "race conditions or data corruption in concurrent access"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointers and zero count — protects against: null pointer dereference or invalid read of zero bytes",
+        "reasoning": "The implementation does not explicitly check for null pointers or zero count. However, the loop condition `(long)count - result >= unit` ensures that the function will not attempt to read if `count` is zero or insufficient for the data unit size. This implicitly prevents invalid reads of zero bytes, but does not explicitly check for null pointers.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "handle non-blocking and interruptible conditions — protects against: deadlock or unresponsive system when waiting for data",
+        "reasoning": "The implementation checks for `O_NONBLOCK` and handles it by returning `-EAGAIN` if no data is available. It also checks for `signal_pending(current)` and returns `-ERESTARTSYS` if a signal is pending, ensuring the function is interruptible.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate copy to user buffer — protects against: invalid memory access during user space copy",
+        "reasoning": "The implementation uses `copy_to_user` and checks its return value. If it returns non-zero, the function sets `err = -EFAULT` and exits, which prevents invalid memory access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper locking and unlocking of mutex and spinlock — protects against: race conditions or data corruption in concurrent access",
+        "reasoning": "The implementation uses `spin_lock_irq` and `spin_unlock_irq` for the `qlock` spinlock and `mutex_lock` and `mutex_unlock` for the `ioctl_lock` mutex. These are used appropriately to protect shared data and ensure thread safety.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers and zero count — protects against: null pointer dereference or invalid read of zero bytes",
+        "reasoning": "The implementation does not explicitly check for null pointers or zero count. However, the loop condition `(long)count - result >= unit` implies that if `count` is zero, the loop will not execute, and the function will return 0. This prevents an invalid read of zero bytes. However, there is no explicit check for null `buffer`, which could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "handle non-blocking and interruptible conditions — protects against: deadlock or unresponsive system when waiting for data",
+        "reasoning": "The implementation checks for the `O_NONBLOCK` flag and returns `-EAGAIN` if the queue is empty and the file is opened in non-blocking mode. It also checks for `signal_pending(current)` and returns `-ERESTARTSYS` if a signal is pending, which handles interruptible conditions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate copy to user buffer — protects against: invalid memory access during user space copy",
+        "reasoning": "The implementation uses `copy_to_user` and checks its return value. If it returns non-zero, the function sets `err = -EFAULT`, which indicates an invalid memory access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper locking and unlocking of mutex and spinlock — protects against: race conditions or data corruption in concurrent access",
+        "reasoning": "The implementation acquires and releases both the `ioctl_lock` mutex and the `qlock` spinlock in a consistent manner. It also releases the locks before calling `schedule()` and reacquires them afterward, ensuring that the locks are properly managed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

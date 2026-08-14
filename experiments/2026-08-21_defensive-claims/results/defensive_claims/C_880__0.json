@@ -1,0 +1,98 @@
+{
+  "case_id": "C_880__0",
+  "sample_id": "D/C/880",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "acassen/keepalived",
+  "cve_id": "CVE-2018-19045",
+  "cve_summary": "keepalived 2.0.8 used mode 0666 when creating new temporary files upon a call to PrintData or PrintStats, potentially leaking sensitive information.",
+  "changed_file": "keepalived/core/main.c",
+  "docstring": "Summary: Sets the file creation mask (umask) based on the provided string argument.\n\nParameters: \n- optarg (const char *): A string representing the desired umask value.\n\nReturns: \n- mode_t: The new umask value set, or 0 if the input was invalid.\n\nLogic: The function converts the input string to a long integer and checks for validity. If the conversion fails or the value is out of range, it prints an error message and exits without applying a new umask. If valid, it applies the umask and updates a global flag indicating that the umask has been set from the command line.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/stat.h>\n#include <limits.h>\n\n// Global flag to indicate umask was set from command line\nint umask_set_by_user = 0;\n\nmode_t set_umask_from_string(const char *optarg) {\n    char *endptr;\n    long umask_value;\n\n    // Validate input is not NULL\n    if (optarg == NULL) {\n        fprintf(stderr, \"Error: NULL input provided for umask value.\\n\");\n        return 0;\n    }\n\n    // Convert string to long integer\n    umask_value = strtol(optarg, &endptr, 10);\n\n    // Check for conversion errors\n    if (optarg == endptr) {\n        fprintf(stderr, \"Error: No digits were found in the input.\\n\");\n        return 0;\n    }\n\n    if (*endptr != '\\0') {\n        fprintf(stderr, \"Error: Non-numeric characters found in input.\\n\");\n        return 0;\n    }\n\n    // Check for overflow and out-of-range values\n    if (umask_value < 0 || umask_value > USHRT_MAX) {\n        fprintf(stderr, \"Error: Umask value is out of valid range (0 to %u).\\n\", USHRT_MAX);\n        return 0;\n    }\n\n    // Apply the new umask\n    mode_t new_umask = (mode_t)umask_value;\n    umask_set_by_user = 1;\n\n    return new_umask;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for NULL input",
+      "protects_against": "dereferencing a NULL pointer when accessing optarg"
+    },
+    {
+      "step": "check for conversion errors in strtol",
+      "protects_against": "invalid or malformed numeric input strings"
+    },
+    {
+      "step": "check for overflow and out-of-range values",
+      "protects_against": "values that cannot be safely stored in a mode_t or are outside the valid umask range"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for NULL input — protects against: dereferencing a NULL pointer when accessing optarg",
+        "reasoning": "The implementation does not check if optarg is NULL before using it in the call to strtoll. Dereferencing a NULL pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for conversion errors in strtol — protects against: invalid or malformed numeric input strings",
+        "reasoning": "The implementation uses the endptr to check if there are any leftover characters after conversion, which indicates a conversion error. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for overflow and out-of-range values — protects against: values that cannot be safely stored in a mode_t or are outside the valid umask range",
+        "reasoning": "The implementation checks if the value is negative or if it has bits outside the 0777 mask, which ensures the value is within the valid umask range. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for NULL input — protects against: dereferencing a NULL pointer when accessing optarg",
+        "reasoning": "The implementation does not check if optarg is NULL before using it in the call to strtoll. Dereferencing a NULL pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for conversion errors in strtol — protects against: invalid or malformed numeric input strings",
+        "reasoning": "The implementation uses the endptr to check if there are any non-numeric characters after the conversion, which indicates a conversion error. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for overflow and out-of-range values — protects against: values that cannot be safely stored in a mode_t or are outside the valid umask range",
+        "reasoning": "The implementation checks if the converted value is negative or exceeds the valid umask range (0777). This ensures the value is within the valid range for a mode_t and a umask.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

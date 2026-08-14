@@ -1,0 +1,98 @@
+{
+  "case_id": "C_304__0",
+  "sample_id": "D/C/304",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-3135",
+  "cve_summary": "Integer overflow in the xt_alloc_table_info function in net/netfilter/x_tables.c in the Linux kernel through 4.5.2 on 32-bit platforms allows local users to gain privileges or cause a denial of service (heap memory corruption) via an IPT_SO_SET_REPLACE setsockopt call.",
+  "changed_file": "net/netfilter/x_tables.c",
+  "docstring": "Summary: Allocates and initializes a new `xt_table_info` structure with a specified size.\n\nParameters: \n- size (unsigned int): The size of the table to allocate.\n\nReturns: \n- struct xt_table_info*: A pointer to the allocated and initialized `xt_table_info` structure, or NULL if allocation fails.\n\nLogic: The function calculates the total size required for the `xt_table_info` structure. It ensures that the requested size does not exceed available memory pages. If the size is manageable, it attempts to allocate memory using `kmalloc` first; if that fails, it falls back to `vmalloc`. The allocated memory is then zeroed out, and the size is set in the structure before returning the pointer.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\nstruct xt_table_info {\n    unsigned int size;\n    // Assume other fields are defined here\n};\n\nstruct xt_table_info* allocate_xt_table_info(unsigned int size) {\n    struct xt_table_info* table_info = NULL;\n    size_t total_size = sizeof(struct xt_table_info);\n\n    // Check for overflow in size calculation\n    if (size > (SIZE_MAX - sizeof(struct xt_table_info)) / sizeof(unsigned int)) {\n        return NULL;\n    }\n\n    total_size += size * sizeof(unsigned int);\n\n    // Try to allocate memory using kmalloc equivalent (malloc in C)\n    table_info = (struct xt_table_info*)malloc(total_size);\n\n    // If kmalloc fails, try vmalloc equivalent (malloc in C)\n    if (table_info == NULL) {\n        table_info = (struct xt_table_info*)malloc(total_size);\n    }\n\n    // If allocation failed, return NULL\n    if (table_info == NULL) {\n        return NULL;\n    }\n\n    // Zero out the allocated memory\n    memset(table_info, 0, total_size);\n\n    // Set the size in the structure\n    table_info->size = size;\n\n    return table_info;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for overflow in size calculation",
+      "protects_against": "malformed size parameter that could cause integer overflow"
+    },
+    {
+      "step": "check for NULL pointer after allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "zero out allocated memory",
+      "protects_against": "uninitialized memory contents"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for overflow in size calculation — protects against: malformed size parameter that could cause integer overflow",
+        "reasoning": "The implementation calculates `sz` as `sizeof(*info) + size`, but there is no explicit check to ensure this addition does not overflow. If `size` is large enough to cause an overflow, the resulting `sz` could be smaller than expected, leading to insufficient memory allocation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for NULL pointer after allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the result of `kmalloc` and `vmalloc` and returns NULL if both fail, which ensures that a NULL pointer is not returned to the caller.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "zero out allocated memory — protects against: uninitialized memory contents",
+        "reasoning": "The implementation uses `memset(info, 0, sizeof(*info))` to zero out the allocated memory, ensuring that the `xt_table_info` structure is initialized to zero.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for overflow in size calculation — protects against: malformed size parameter that could cause integer overflow",
+        "reasoning": "The implementation checks if the calculated size `sz` is less than `sizeof(*info)`, which would indicate an overflow (since adding `size` to `sizeof(*info)` resulted in a smaller value). This guards against overflow in the size calculation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for NULL pointer after allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if `kmalloc` returns NULL and falls back to `vmalloc`. It also checks if `vmalloc` returns NULL and returns NULL in that case. This ensures that allocation failures are handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "zero out allocated memory — protects against: uninitialized memory contents",
+        "reasoning": "The implementation uses `memset(info, 0, sizeof(*info))` to zero out the allocated memory. However, it only zeroes the `xt_table_info` structure and not the entire allocated buffer (which includes the `size` bytes). This means the rest of the allocated memory may contain uninitialized data.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

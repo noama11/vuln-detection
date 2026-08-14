@@ -1,0 +1,48 @@
+{
+  "case_id": "C_642__0",
+  "sample_id": "D/C/642",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-13405",
+  "cve_summary": "The inode_init_owner function in fs/inode.c in the Linux kernel through 4.17.4 allows local users to create files with an unintended group ownership, in a scenario where a directory is SGID to a certain group and is writable by a user who is not a member of that group. Here, the non-member can trigger creation of a plain file whose group ownership is that group. The intended behavior was that the non-member can trigger creation of a directory (but not a plain file) whose group ownership is that group. The non-member can escalate privileges by making the plain file executable and SGID.",
+  "changed_file": "fs/inode.c",
+  "docstring": "Summary: Initializes the owner attributes of an inode structure based on the specified directory and mode.\n\nParameters:\n- inode (struct inode *): Pointer to the inode structure to be initialized.\n- dir (const struct inode *): Pointer to the directory inode from which to inherit group ID and permissions, if applicable.\n- mode (umode_t): The mode that defines the permissions for the inode.\n\nReturns: None\n\nLogic: The function sets the user ID of the inode to the current file system user ID. If a directory is provided and has the set-group-ID (S_ISGID) bit set, it inherits the group ID from the directory. The function also adjusts the mode so that directories inherit the S_ISGID bit. Finally, it assigns the mode to the inode.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void inode_init_owner(struct inode *inode, const struct inode *dir,\r\n\t\t\tumode_t mode)\r\n{\r\n\tinode->i_uid = current_fsuid();\r\n\tif (dir && dir->i_mode & S_ISGID) {\r\n\t\tinode->i_gid = dir->i_gid;\r\n\r\n\t\t/* Directories are special, and always inherit S_ISGID */\r\n\t\tif (S_ISDIR(mode))\r\n\t\t\tmode |= S_ISGID;\r\n\t\telse if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP) &&\r\n\t\t\t !in_group_p(inode->i_gid) &&\r\n\t\t\t !capable_wrt_inode_uidgid(dir, CAP_FSETID))\r\n\t\t\tmode &= ~S_ISGID;\r\n\t} else\r\n\t\tinode->i_gid = current_fsgid();\r\n\tinode->i_mode = mode;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation includes an additional conditional check that removes the S_ISGID bit from the mode under specific conditions involving group permissions and capabilities, which is not present in the reference implementation. This introduces a behavioral difference that could affect the mode of the inode in certain cases, particularly for non-directory inodes. This difference is reachable via attacker-influenced inputs and touches permission settings, which are relevant to security.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate and reference implementations are identical in code and logic. Both set the inode's user ID to the current file system user ID, inherit the group ID from the directory if the S_ISGID bit is set, and handle the S_ISGID bit for directories and executable files in the same way. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

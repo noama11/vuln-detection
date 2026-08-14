@@ -1,0 +1,18 @@
+void close_video_buffer_mapping(struct vm_area_struct *vma) {
+    struct video_buffer_mapping *mapping = vma->vm_private_data;
+
+    if (!mapping)
+        return;
+
+    if (atomic_dec_and_test(&mapping->ref_count)) {
+        struct video_buffer *buf, *tmp;
+        spin_lock(&mapping->queue_lock);
+        list_for_each_entry_safe(buf, tmp, &mapping->buffer_list, list) {
+            if (buf->ops && buf->ops->release)
+                buf->ops->release(buf);
+            list_del(&buf->list);
+        }
+        spin_unlock(&mapping->queue_lock);
+        kfree(mapping);
+    }
+}

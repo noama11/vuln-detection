@@ -1,0 +1,130 @@
+{
+  "case_id": "C_102__0",
+  "sample_id": "D/C/102",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1767",
+  "cve_summary": "Use-after-free vulnerability in the shmem_remount_fs function in mm/shmem.c in the Linux kernel before 3.7.10 allows local users to gain privileges or cause a denial of service (system crash) by remounting a tmpfs filesystem without specifying a required mpol (aka mempolicy) mount option.",
+  "changed_file": "mm/shmem.c",
+  "docstring": "Summary: This function remounts a shared memory filesystem with new configuration options.\n\nParameters:\n- sb (struct super_block *): Pointer to the super block representing the filesystem.\n- flags (int *): Pointer to an integer that holds flags for the remount operation.\n- data (char *): String containing options for the remount configuration.\n\nReturns: \n- int: Returns 0 on success, or -EINVAL if the remount operation fails due to invalid parameters.\n\nLogic: The function first parses the options provided in the `data` string into a temporary configuration structure. It then acquires a lock to safely check and update the filesystem's inode and block usage against the new limits. If the new configuration is valid, it updates the filesystem's maximum blocks, inodes, and memory policy configuration. Finally, it releases the lock and returns the appropriate error code or success indicator.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int remount_shmem(struct super_block *sb, int *flags, const char *data) {\n    struct shmem_config temp_config = {0};\n    int result = -EINVAL;\n\n    if (!sb || !flags || !data) {\n        return -EINVAL;\n    }\n\n    if (parse_shmem_options(data, &temp_config) != 0) {\n        return -EINVAL;\n    }\n\n    if (temp_config.max_blocks <= 0 || temp_config.max_inodes <= 0) {\n        return -EINVAL;\n    }\n\n    down_write(&sb->s_umount);\n\n    if (sb->s_bdev && bdev_max_blocks(sb->s_bdev) < temp_config.max_blocks) {\n        temp_config.max_blocks = bdev_max_blocks(sb->s_bdev);\n    }\n\n    if (sb->s_bdev && bdev_max_inodes(sb->s_bdev) < temp_config.max_inodes) {\n        temp_config.max_inodes = bdev_max_inodes(sb->s_bdev);\n    }\n\n    if (temp_config.max_blocks < sb->s_blocks || temp_config.max_inodes < sb->s_inodes) {\n        goto out;\n    }\n\n    sb->s_max_blocks = temp_config.max_blocks;\n    sb->s_max_inodes = temp_config.max_inodes;\n    sb->s_policy = temp_config.policy;\n\n    result = 0;\n\nout:\n    up_write(&sb->s_umount);\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate parsed configuration values",
+      "protects_against": "invalid or negative configuration values"
+    },
+    {
+      "step": "check if new configuration exceeds device limits",
+      "protects_against": "setting values that exceed device capabilities"
+    },
+    {
+      "step": "ensure new limits are not smaller than current usage",
+      "protects_against": "reducing limits below current usage"
+    },
+    {
+      "step": "use lock to protect shared data",
+      "protects_against": "race conditions during configuration update"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the `sb`, `flags`, or `data` parameters. However, the function is likely called in a context where these parameters are guaranteed to be non-null, such as within the VFS remount logic. Without evidence of a reachable path where a null pointer could be passed, this is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate parsed configuration values — protects against: invalid or negative configuration values",
+        "reasoning": "The implementation calls `shmem_parse_options(data, &config, true)`, which presumably parses and validates the configuration values. If the parsing fails, the function returns `-EINVAL`. This indicates that the implementation does perform validation of the parsed configuration values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if new configuration exceeds device limits — protects against: setting values that exceed device capabilities",
+        "reasoning": "The implementation does not explicitly check if the new configuration exceeds device limits. The function does not appear to have access to device-specific limits, and the code does not perform such a check. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "ensure new limits are not smaller than current usage — protects against: reducing limits below current usage",
+        "reasoning": "The implementation checks if the new block and inode limits are not smaller than the current usage. It uses `percpu_counter_compare` to compare the current block usage with the new block limit and checks if the new inode limit is not smaller than the current inodes in use. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use lock to protect shared data — protects against: race conditions during configuration update",
+        "reasoning": "The implementation uses a spinlock (`spin_lock` and `spin_unlock`) to protect the shared data during the configuration update. This ensures that the shared data is accessed in a thread-safe manner, preventing race conditions.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the `sb`, `flags`, or `data` parameters. However, the function is likely called in a context where these parameters are guaranteed to be non-null, and no null pointer dereference is observed in the code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate parsed configuration values — protects against: invalid or negative configuration values",
+        "reasoning": "The implementation calls `shmem_parse_options(data, &config, true)`, which is responsible for parsing the configuration values. The function returns an error if parsing fails, implying that the parsing function likely performs validation of the configuration values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if new configuration exceeds device limits — protects against: setting values that exceed device capabilities",
+        "reasoning": "The implementation does not perform a check against device limits. It only compares the current usage with the new configuration values and ensures the new limits are not smaller than current usage.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "ensure new limits are not smaller than current usage — protects against: reducing limits below current usage",
+        "reasoning": "The implementation checks if the new block and inode limits are not smaller than the current usage by comparing `sbinfo->used_blocks` with `config.max_blocks` and `config.max_inodes` with the current inodes in use. If the new limits are smaller, the function returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use lock to protect shared data — protects against: race conditions during configuration update",
+        "reasoning": "The implementation acquires a lock (`spin_lock(&sbinfo->stat_lock)`) before checking and updating the shared data and releases it afterward (`spin_unlock(&sbinfo->stat_lock)`), ensuring that the shared data is protected during the update.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

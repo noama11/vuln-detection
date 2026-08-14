@@ -1,0 +1,49 @@
+{
+  "case_id": "C_25__1",
+  "sample_id": "D/C/25",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-4913",
+  "cve_summary": "The rose_parse_ccitt function in net/rose/rose_subr.c in the Linux kernel before 2.6.39 does not validate the FAC_CCITT_DEST_NSAP and FAC_CCITT_SRC_NSAP fields, which allows remote attackers to (1) cause a denial of service (integer underflow, heap memory corruption, and panic) via a small length value in data sent to a ROSE socket, or (2) conduct stack-based buffer overflow attacks via a large length value in data sent to a ROSE socket.",
+  "changed_file": "net/rose/rose_subr.c",
+  "docstring": "\"\"\"\nSummary: \nParses CCITT facilities information from a given byte stream.\n\nParameters: \np (unsigned char *): Pointer to the byte stream to be parsed.\nfacilities (struct rose_facilities_struct *): Pointer to a structure where parsed facilities will be stored.\nlen (int): Length of the byte stream to be parsed.\n\nReturns: \nint: The number of bytes processed from the stream, or -1 if an error occurs (e.g., invalid length).\n\nLogic: The function iterates through the byte stream, processing different cases based on the first two bits of each byte. It updates the pointer and counts the number of bytes processed. If a specific facility type is detected, it extracts the source or destination address and callsign. The function continues until a termination byte (0x00) is encountered or the specified length is exhausted.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static size_t WritePSDChannel(const PSDInfo *psd_info,\r\n  const ImageInfo *image_info,Image *image,Image *next_image,\r\n  const QuantumType quantum_type, unsigned char *compact_pixels,\r\n  MagickOffsetType size_offset,const MagickBooleanType separate,\r\n  ExceptionInfo *exception)\r\n{\r\n  int\r\n    y;\r\n\r\n  MagickBooleanType\r\n    monochrome;\r\n\r\n  QuantumInfo\r\n    *quantum_info;\r\n\r\n  register const Quantum\r\n    *p;\r\n\r\n  register ssize_t\r\n    i;\r\n\r\n  size_t\r\n    count,\r\n    length;\r\n\r\n  unsigned char\r\n    *pixels;\r\n\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n\r\n#define CHUNK 16384\r\n\r\n  int\r\n    flush,\r\n    level;\r\n\r\n  unsigned char\r\n    *compressed_pixels;\r\n\r\n  z_stream\r\n    stream;\r\n\r\n  compressed_pixels=(unsigned char *) NULL;\r\n  flush=Z_NO_FLUSH;\r\n#endif\r\n  count=0;\r\n  if (separate != MagickFalse)\r\n    {\r\n      size_offset=TellBlob(image)+2;\r\n      count+=WriteCompressionStart(psd_info,image,next_image,1);\r\n    }\r\n  if (next_image->depth > 8)\r\n    next_image->depth=16;\r\n  monochrome=IsImageMonochrome(image) && (image->depth == 1) ?\r\n    MagickTrue : MagickFalse;\r\n  quantum_info=AcquireQuantumInfo(image_info,next_image);\r\n  if (quantum_info == (QuantumInfo *) NULL)\r\n    return(0);\r\n  pixels=(unsigned char *) GetQuantumPixels(quantum_info);\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n  if (next_image->compression == ZipCompression)\r\n    {\r\n      compressed_pixels=(unsigned char *) AcquireQuantumMemory(CHUNK,\r\n        sizeof(*compressed_pixels));\r\n      if (compressed_pixels == (unsigned char *) NULL)\r\n        {\r\n          quantum_info=DestroyQuantumInfo(quantum_info);\r\n          return(0);\r\n        }\r\n      ResetMagickMemory(&stream,0,sizeof(stream));\r\n      stream.data_type=Z_BINARY;\r\n      level=Z_DEFAULT_COMPRESSION;\r\n      if ((image_info->quality > 0 && image_info->quality < 10))\r\n        level=(int) image_info->quality;\r\n      if (deflateInit(&stream,level) != Z_OK)\r\n        {\r\n          quantum_info=DestroyQuantumInfo(quantum_info);\r\n          return(0);\r\n        }\r\n    }\r\n#endif\r\n  for (y=0; y < (ssize_t) next_image->rows; y++)\r\n  {\r\n    p=GetVirtualPixels(next_image,0,y,next_image->columns,1,exception);\r\n    if (p == (const Quantum *) NULL)\r\n      break;\r\n    length=ExportQuantumPixels(next_image,(CacheView *) NULL,quantum_info,\r\n      quantum_type,pixels,exception);\r\n    if (monochrome != MagickFalse)\r\n      for (i=0; i < (ssize_t) length; i++)\r\n        pixels[i]=(~pixels[i]);\r\n    if (next_image->compression == RLECompression)\r\n      {\r\n        length=PSDPackbitsEncodeImage(image,length,pixels,compact_pixels,\r\n          exception);\r\n        count+=WriteBlob(image,length,compact_pixels);\r\n        size_offset+=WritePSDOffset(psd_info,image,length,size_offset);\r\n      }\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n    else if (next_image->compression == ZipCompression)\r\n      {\r\n        stream.avail_in=(uInt) length;\r\n        stream.next_in=(Bytef *) pixels;\r\n        if (y == (ssize_t) next_image->rows-1)\r\n          flush=Z_FINISH;\r\n        do {\r\n            stream.avail_out=(uInt) CHUNK;\r\n            stream.next_out=(Bytef *) compressed_pixels;\r\n            if (deflate(&stream,flush) == Z_STREAM_ERROR)\r\n              break;\r\n            length=(size_t) CHUNK-stream.avail_out;\r\n            if (length > 0)\r\n              count+=WriteBlob(image,length,compressed_pixels);\r\n        } while (stream.avail_out == 0);\r\n      }\r\n#endif\r\n    else\r\n      count+=WriteBlob(image,length,pixels);\r\n  }\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n  if (next_image->compression == ZipCompression)\r\n    {\r\n      (void) deflateEnd(&stream);\r\n      compressed_pixels=(unsigned char *) RelinquishMagickMemory(\r\n        compressed_pixels);\r\n    }\r\n#endif\r\n  quantum_info=DestroyQuantumInfo(quantum_info);\r\n  return(count);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_500__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and does not appear to parse CCITT facilities information from a byte stream as described in the specification. The candidate implementation is related to writing PSD image data, while the reference implementation processes byte streams for CCITT facilities. This is a fundamental mismatch in functionality.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and does not appear to parse CCITT facilities information from a byte stream as described in the specification. The candidate implementation is related to writing PSD image data, while the reference implementation processes byte stream data for CCITT facilities. This is a clear mismatch in functionality and purpose, making the implementations non-equivalent.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

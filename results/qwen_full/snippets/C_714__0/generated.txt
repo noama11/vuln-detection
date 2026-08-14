@@ -1,0 +1,51 @@
+Gif_Stream* read_gif_stream(Gif_Reader* grr, int read_flags, const char* landmark, Gif_ReadErrorHandler handler) {
+    if (!grr || !landmark || !handler) {
+        return NULL;
+    }
+
+    Gif_Stream* stream = (Gif_Stream*)malloc(sizeof(Gif_Stream));
+    if (!stream) {
+        return NULL;
+    }
+
+    // Validate GIF signature
+    if (strncmp(grr->signature, "GIF", 3) != 0) {
+        handler(GIF_ERROR_INVALID_SIGNATURE, landmark);
+        free(stream);
+        return NULL;
+    }
+
+    // Initialize GIF stream structure
+    memset(stream, 0, sizeof(Gif_Stream));
+    stream->read_flags = read_flags;
+
+    // Process image blocks, extensions, and terminators
+    while (1) {
+        int block_type = read_next_block(grr);
+        if (block_type == GIF_BLOCK_TERMINATOR) {
+            break;
+        } else if (block_type == GIF_BLOCK_IMAGE) {
+            Gif_Image* image = process_image_block(grr);
+            if (!image) {
+                handler(GIF_ERROR_IMAGE_PROCESSING, landmark);
+                free_stream(stream);
+                return NULL;
+            }
+            add_image_to_stream(stream, image);
+        } else if (block_type == GIF_BLOCK_EXTENSION) {
+            Gif_Extension* extension = process_extension_block(grr);
+            if (!extension) {
+                handler(GIF_ERROR_EXTENSION_PROCESSING, landmark);
+                free_stream(stream);
+                return NULL;
+            }
+            add_extension_to_stream(stream, extension);
+        } else {
+            handler(GIF_ERROR_UNKNOWN_BLOCK, landmark);
+            free_stream(stream);
+            return NULL;
+        }
+    }
+
+    return stream;
+}

@@ -1,0 +1,58 @@
+{
+  "case_id": "C_526__0",
+  "sample_id": "D/C/526",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-10145",
+  "cve_summary": "Off-by-one error in coders/wpg.c in ImageMagick allows remote attackers to have unspecified impact via vectors related to a string copy.",
+  "changed_file": "coders/wpg.c",
+  "docstring": "\"\"\"\nSummary: \nExtracts a Postscript image from a given image and returns a modified image.\n\nParameters: \nimage (Image *): The source image from which to extract the Postscript.\nimage_info (const ImageInfo *): Information about the image.\nPS_Offset (MagickOffsetType): The offset in the image where the Postscript data begins.\nPS_Size (ssize_t): The size of the Postscript data to extract.\nexception (ExceptionInfo *): Structure to report any exceptions that occur.\n\nReturns: \nImage *: A pointer to the newly created image containing the extracted Postscript data, or the original image if extraction fails.\n\nLogic: \nThe function clones the provided image info, acquires a unique filename for temporary storage, and writes the Postscript data to this file. It then checks the file format using magic number detection. If successful, it reads the nested image and replaces the current image with the new one while preserving attributes. Finally, it cleans up temporary resources and handles exceptions appropriately.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "Image *ExtractPostscriptImage(Image *image, const ImageInfo *image_info, MagickOffsetType PS_Offset, ssize_t PS_Size, ExceptionInfo *exception) {\n  ImageInfo *clone_info;\n  Image *new_image;\n  StringInfo *blob;\n  char filename[MaxTextLength];\n  FILE *file;\n\n  clone_info = CloneImageInfo(image_info);\n  if (clone_info == (ImageInfo *) NULL)\n    return (Image *) image;\n\n  GetPathComponent(image->filename, TailPath, filename);\n  (void) FormatLocaleString(filename, MaxTextLength, \"%s/PS_image_%s\", GetTempDirectory(0, exception), filename);\n\n  file = fopen(filename, \"wb\");\n  if (file == (FILE *) NULL) {\n    ThrowFileException(exception, FileOpenError, filename, image->filename);\n    return (Image *) image;\n  }\n\n  blob = CloneStringInfo(image->blob);\n  if (blob == (StringInfo *) NULL) {\n    fclose(file);\n    return (Image *) image;\n  }\n\n  if (WriteBlobString(blob, (const char *) NULL, (size_t) PS_Offset, file) != MagickTrue) {\n    fclose(file);\n    return (Image *) image;\n  }\n\n  if (WriteBlobString(blob, (const char *) NULL, (size_t) PS_Size, file) != MagickTrue) {\n    fclose(file);\n    return (Image *) image;\n  }\n\n  fclose(file);\n\n  new_image = ReadImage(clone_info, exception);\n  if (new_image == (Image *) NULL)\n    return (Image *) image;\n\n  (void) CloneImageAttributes(image, new_image);\n  (void) CloneImageProfiles(image, new_image);\n  (void) CloneImageArtifacts(image, new_image);\n\n  (void) DestroyImageList(image);\n  image = new_image;\n\n  return image;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [
+      "error handling for CloneStringInfo",
+      "error handling for WriteBlobString",
+      "file close in error paths",
+      "metadata cloning functions"
+    ],
+    "candidate_missing_steps": [
+      "null check after CloneImageInfo",
+      "null check after fopen",
+      "goto-based cleanup path",
+      "magic number buffer size check"
+    ],
+    "n_reference_missing": 4,
+    "n_candidate_missing": 4,
+    "confidence": "medium",
+    "rationale": "Implementation 1 includes a bounds check for the magic number buffer and uses a goto-based cleanup path to ensure resources are released. It also checks for null pointers after CloneImageInfo and fopen. Implementation 2 includes explicit error handling for CloneStringInfo and WriteBlobString, and ensures the file is closed in error paths. It also uses CloneImageAttributes and related functions to preserve metadata, which adds defensive robustness. Neither implementation includes a check for PS_Size overflow or validation of PS_Offset and PS_Size against the image blob size, which could lead to out-of-bounds reads.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 includes a bounds check for the magic number buffer and uses a label-based cleanup structure, ensuring resources are released even on error. It also checks the return value of CloneImageInfo and fopen. Implementation 2 includes error handling for CloneImageInfo, fopen, and CloneStringInfo, and uses explicit error reporting via ThrowFileException. It also includes a more structured cleanup of resources on failure. Neither implementation performs defensive steps the other does not in a way that introduces meaningful exposure.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

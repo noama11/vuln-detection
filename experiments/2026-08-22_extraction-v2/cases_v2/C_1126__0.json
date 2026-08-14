@@ -1,0 +1,36 @@
+{
+  "case_id": "C_1126__0",
+  "sample_id": "D/C/1126",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2011-3108",
+  "cve_summary": "Use-after-free vulnerability in Google Chrome before 19.0.1084.52 allows remote attackers to execute arbitrary code via vectors related to the browser cache.",
+  "commit_message": "Http cache: Test deleting an entry with a pending_entry when\nadding the truncated flag.\n\nBUG=125159\nTEST=net_unittests\nReview URL: https://chromiumcodereview.appspot.com/10356113\n\ngit-svn-id: svn://svn.chromium.org/chrome/trunk/src@139331 0039d316-1c4b-4281-b951-d872f2087c98",
+  "changed_file": "net/http/http_cache_unittest.cc",
+  "docstring": "Summary:  \nThis test function verifies the behavior of the HTTP cache when handling an incomplete resource request that is subsequently canceled.\n\nParameters:  \nNone\n\nReturns:  \nNone\n\nLogic:  \nThe function sets up a mock HTTP cache and transaction, simulating a GET request with incomplete resource data. It creates a truncated cache entry and initiates a regular request while queuing another request to the same transaction. The test checks that the transaction starts correctly and that data can be read from the cache. After canceling the requests, it verifies the state of the cache, ensuring that the expected number of transactions and cache operations occurred. Finally, it cleans up by removing the mock transaction.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    4021,
+    4077
+  ],
+  "vulnerable_line_range": [
+    4021,
+    4069
+  ],
+  "vulnerable_snippet": "TEST(HttpCache, GET_IncompleteResource_Cancel) {\r\n  MockHttpCache cache;\r\n  AddMockTransaction(&kRangeGET_TransactionOK);\r\n\r\n  std::string raw_headers(\"HTTP/1.1 200 OK\\n\"\r\n                          \"Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\\n\"\r\n                          \"ETag: \\\"foo\\\"\\n\"\r\n                          \"Accept-Ranges: bytes\\n\"\r\n                          \"Content-Length: 80\\n\");\r\n  CreateTruncatedEntry(raw_headers, &cache);\r\n  RemoveMockTransaction(&kRangeGET_TransactionOK);\r\n\r\n  // Now make a regular request.\r\n  MockTransaction transaction(kRangeGET_TransactionOK);\r\n  transaction.request_headers = EXTRA_HEADER;\r\n  std::string response_headers(transaction.response_headers);\r\n  response_headers += (\"Cache-Control: no-store\\n\");\r\n  transaction.response_headers = response_headers.c_str();\r\n  transaction.data = \"rg: 00-09 rg: 10-19 rg: 20-29 rg: 30-39 rg: 40-49 \"\r\n                     \"rg: 50-59 rg: 60-69 rg: 70-79 \";\r\n  AddMockTransaction(&transaction);\r\n\r\n  MockHttpRequest request(transaction);\r\n  Context* c = new Context();\r\n\r\n  int rv = cache.http_cache()->CreateTransaction(&c->trans);\r\n  EXPECT_EQ(net::OK, rv);\r\n\r\n  rv = c->trans->Start(&request, c->callback.callback(), net::BoundNetLog());\r\n  EXPECT_EQ(net::OK, c->callback.GetResult(rv));\r\n\r\n  // Make sure that the entry has some data stored.\r\n  scoped_refptr<net::IOBufferWithSize> buf(new net::IOBufferWithSize(5));\r\n  rv = c->trans->Read(buf, buf->size(), c->callback.callback());\r\n  EXPECT_EQ(5, c->callback.GetResult(rv));\r\n\r\n  // Cancel the request.\r\n  delete c;\r\n\r\n  EXPECT_EQ(1, cache.network_layer()->transaction_count());\r\n  EXPECT_EQ(1, cache.disk_cache()->open_count());\r\n  EXPECT_EQ(1, cache.disk_cache()->create_count());\r\n\r\n  // Verify that the disk entry was deleted.\r\n  disk_cache::Entry* entry;\r\n  EXPECT_FALSE(cache.OpenBackendEntry(kRangeGET_TransactionOK.url, &entry));\r\n  MessageLoop::current()->RunAllPending();\r\n  RemoveMockTransaction(&transaction);\r\n}",
+  "fixed_line_range": [
+    4021,
+    4077
+  ],
+  "fixed_snippet": "TEST(HttpCache, GET_IncompleteResource_Cancel) {\r\n  MockHttpCache cache;\r\n  AddMockTransaction(&kRangeGET_TransactionOK);\r\n\r\n  std::string raw_headers(\"HTTP/1.1 200 OK\\n\"\r\n                          \"Last-Modified: Sat, 18 Apr 2007 01:10:43 GMT\\n\"\r\n                          \"ETag: \\\"foo\\\"\\n\"\r\n                          \"Accept-Ranges: bytes\\n\"\r\n                          \"Content-Length: 80\\n\");\r\n  CreateTruncatedEntry(raw_headers, &cache);\r\n  RemoveMockTransaction(&kRangeGET_TransactionOK);\r\n\r\n  // Now make a regular request.\r\n  MockTransaction transaction(kRangeGET_TransactionOK);\r\n  transaction.request_headers = EXTRA_HEADER;\r\n  std::string response_headers(transaction.response_headers);\r\n  response_headers += (\"Cache-Control: no-store\\n\");\r\n  transaction.response_headers = response_headers.c_str();\r\n  transaction.data = \"rg: 00-09 rg: 10-19 rg: 20-29 rg: 30-39 rg: 40-49 \"\r\n                     \"rg: 50-59 rg: 60-69 rg: 70-79 \";\r\n  AddMockTransaction(&transaction);\r\n\r\n  MockHttpRequest request(transaction);\r\n  Context* c = new Context();\r\n\r\n  int rv = cache.http_cache()->CreateTransaction(&c->trans);\r\n  EXPECT_EQ(net::OK, rv);\r\n\r\n  // Queue another request to this transaction. We have to start this request\r\n  // before the first one gets the response from the server and dooms the entry,\r\n  // otherwise it will just create a new entry without being queued to the first\r\n  // request.\r\n  Context* pending = new Context();\r\n  EXPECT_EQ(net::OK, cache.http_cache()->CreateTransaction(&pending->trans));\r\n\r\n  rv = c->trans->Start(&request, c->callback.callback(), net::BoundNetLog());\r\n  EXPECT_EQ(net::ERR_IO_PENDING,\r\n            pending->trans->Start(&request, pending->callback.callback(),\r\n                                  net::BoundNetLog()));\r\n  EXPECT_EQ(net::OK, c->callback.GetResult(rv));\r\n\r\n  // Make sure that the entry has some data stored.\r\n  scoped_refptr<net::IOBufferWithSize> buf(new net::IOBufferWithSize(5));\r\n  rv = c->trans->Read(buf, buf->size(), c->callback.callback());\r\n  EXPECT_EQ(5, c->callback.GetResult(rv));\r\n\r\n  // Cancel the requests.\r\n  delete c;\r\n  delete pending;\r\n\r\n  EXPECT_EQ(1, cache.network_layer()->transaction_count());\r\n  EXPECT_EQ(1, cache.disk_cache()->open_count());\r\n  EXPECT_EQ(2, cache.disk_cache()->create_count());\r\n\r\n  MessageLoop::current()->RunAllPending();\r\n  RemoveMockTransaction(&transaction);\r\n}",
+  "func_name": "TEST",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

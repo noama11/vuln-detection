@@ -1,0 +1,36 @@
+{
+  "case_id": "C_860__0",
+  "sample_id": "D/C/860",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2017-9608",
+  "cve_summary": "The dnxhd decoder in FFmpeg before 3.2.6, and 3.3.x before 3.3.3 allows remote attackers to cause a denial of service (NULL pointer dereference) via a crafted mov file.",
+  "commit_message": "avcodec/dnxhd_parser: Do not return invalid value from dnxhd_find_frame_end() on error\n\nFixes: Null pointer dereference\n\nFixes: CVE-2017-9608\nFound-by: Yihan Lian\nSigned-off-by: Michael Niedermayer <michael@niedermayer.cc>",
+  "changed_file": "libavcodec/dnxhd_parser.c",
+  "docstring": "\"\"\"\nSummary: \nFinds the end of a DNXHD frame in the provided buffer.\n\nParameters: \ndctx (DNXHDParserContext *): The parser context containing state information.\nbuf (const uint8_t *): The buffer containing the data to be parsed.\nbuf_size (int): The size of the buffer.\n\nReturns: \nint: The number of bytes remaining in the frame if found, or END_NOT_FOUND if the end is not found.\n\nLogic: \nThe function checks if a frame start has been found. If not, it scans the buffer for a header prefix. Once a frame start is detected, it processes the buffer to determine the frame dimensions and remaining bytes. If the end of the frame is reached, it resets the parser state and returns the remaining bytes. If the end is not found, it updates the parser state and returns a constant indicating that the end was not found.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    37,
+    112
+  ],
+  "vulnerable_line_range": [
+    37,
+    110
+  ],
+  "vulnerable_snippet": "static int dnxhd_find_frame_end(DNXHDParserContext *dctx,\r\n                                const uint8_t *buf, int buf_size)\r\n{\r\n    ParseContext *pc = &dctx->pc;\r\n    uint64_t state = pc->state64;\r\n    int pic_found = pc->frame_start_found;\r\n    int i = 0;\r\n\r\n    if (!pic_found) {\r\n        for (i = 0; i < buf_size; i++) {\r\n            state = (state << 8) | buf[i];\r\n            if (ff_dnxhd_check_header_prefix(state & 0xffffffffff00LL) != 0) {\r\n                i++;\r\n                pic_found = 1;\r\n                dctx->cur_byte = 0;\r\n                dctx->remaining = 0;\r\n                break;\r\n            }\r\n        }\r\n    }\r\n\r\n    if (pic_found && !dctx->remaining) {\r\n        if (!buf_size) /* EOF considered as end of frame */\r\n            return 0;\r\n        for (; i < buf_size; i++) {\r\n            dctx->cur_byte++;\r\n            state = (state << 8) | buf[i];\r\n\r\n            if (dctx->cur_byte == 24) {\r\n                dctx->h = (state >> 32) & 0xFFFF;\r\n            } else if (dctx->cur_byte == 26) {\r\n                dctx->w = (state >> 32) & 0xFFFF;\r\n            } else if (dctx->cur_byte == 42) {\r\n                int cid = (state >> 32) & 0xFFFFFFFF;\r\n\r\n                if (cid <= 0)\r\n                    continue;\r\n\r\n                dctx->remaining = avpriv_dnxhd_get_frame_size(cid);\r\n                if (dctx->remaining <= 0) {\r\n                    dctx->remaining = ff_dnxhd_get_hr_frame_size(cid, dctx->w, dctx->h);\r\n                    if (dctx->remaining <= 0)\r\n                        return dctx->remaining;\r\n                }\r\n                if (buf_size - i + 47 >= dctx->remaining) {\r\n                    int remaining = dctx->remaining;\r\n\r\n                    pc->frame_start_found = 0;\r\n                    pc->state64 = -1;\r\n                    dctx->cur_byte = 0;\r\n                    dctx->remaining = 0;\r\n                    return remaining;\r\n                } else {\r\n                    dctx->remaining -= buf_size;\r\n                }\r\n            }\r\n        }\r\n    } else if (pic_found) {\r\n        if (dctx->remaining > buf_size) {\r\n            dctx->remaining -= buf_size;\r\n        } else {\r\n            int remaining = dctx->remaining;\r\n\r\n            pc->frame_start_found = 0;\r\n            pc->state64 = -1;\r\n            dctx->cur_byte = 0;\r\n            dctx->remaining = 0;\r\n            return remaining;\r\n        }\r\n    }\r\n    pc->frame_start_found = pic_found;\r\n    pc->state64 = state;\r\n    return END_NOT_FOUND;\r\n}",
+  "fixed_line_range": [
+    37,
+    112
+  ],
+  "fixed_snippet": "static int dnxhd_find_frame_end(DNXHDParserContext *dctx,\r\n                                const uint8_t *buf, int buf_size)\r\n{\r\n    ParseContext *pc = &dctx->pc;\r\n    uint64_t state = pc->state64;\r\n    int pic_found = pc->frame_start_found;\r\n    int i = 0;\r\n\r\n    if (!pic_found) {\r\n        for (i = 0; i < buf_size; i++) {\r\n            state = (state << 8) | buf[i];\r\n            if (ff_dnxhd_check_header_prefix(state & 0xffffffffff00LL) != 0) {\r\n                i++;\r\n                pic_found = 1;\r\n                dctx->cur_byte = 0;\r\n                dctx->remaining = 0;\r\n                break;\r\n            }\r\n        }\r\n    }\r\n\r\n    if (pic_found && !dctx->remaining) {\r\n        if (!buf_size) /* EOF considered as end of frame */\r\n            return 0;\r\n        for (; i < buf_size; i++) {\r\n            dctx->cur_byte++;\r\n            state = (state << 8) | buf[i];\r\n\r\n            if (dctx->cur_byte == 24) {\r\n                dctx->h = (state >> 32) & 0xFFFF;\r\n            } else if (dctx->cur_byte == 26) {\r\n                dctx->w = (state >> 32) & 0xFFFF;\r\n            } else if (dctx->cur_byte == 42) {\r\n                int cid = (state >> 32) & 0xFFFFFFFF;\r\n                int remaining;\r\n\r\n                if (cid <= 0)\r\n                    continue;\r\n\r\n                remaining = avpriv_dnxhd_get_frame_size(cid);\r\n                if (remaining <= 0) {\r\n                    remaining = ff_dnxhd_get_hr_frame_size(cid, dctx->w, dctx->h);\r\n                    if (remaining <= 0)\r\n                        continue;\r\n                }\r\n                dctx->remaining = remaining;\r\n                if (buf_size - i + 47 >= dctx->remaining) {\r\n                    int remaining = dctx->remaining;\r\n\r\n                    pc->frame_start_found = 0;\r\n                    pc->state64 = -1;\r\n                    dctx->cur_byte = 0;\r\n                    dctx->remaining = 0;\r\n                    return remaining;\r\n                } else {\r\n                    dctx->remaining -= buf_size;\r\n                }\r\n            }\r\n        }\r\n    } else if (pic_found) {\r\n        if (dctx->remaining > buf_size) {\r\n            dctx->remaining -= buf_size;\r\n        } else {\r\n            int remaining = dctx->remaining;\r\n\r\n            pc->frame_start_found = 0;\r\n            pc->state64 = -1;\r\n            dctx->cur_byte = 0;\r\n            dctx->remaining = 0;\r\n            return remaining;\r\n        }\r\n    }\r\n    pc->frame_start_found = pic_found;\r\n    pc->state64 = state;\r\n    return END_NOT_FOUND;\r\n}",
+  "func_name": "dnxhd_find_frame_end",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

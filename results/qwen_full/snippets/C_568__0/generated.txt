@@ -1,0 +1,51 @@
+Image *ExtractPostscriptImage(Image *image, const ImageInfo *image_info,
+                               MagickOffsetType PS_Offset, ssize_t PS_Size,
+                               ExceptionInfo *exception) {
+  Image *new_image = (Image *) NULL;
+  ImageInfo *clone_info = (ImageInfo *) CloneImageInfo(image_info);
+  char filename[MagickPathExtent];
+  FILE *file = (FILE *) NULL;
+  MagickBooleanType status = MagickFalse;
+
+  GetPathComponent(image->filename, HeadPath, filename, MagickPathExtent);
+  (void) ConcatenateMagickPath(filename, "ps_", filename);
+  (void) AppendToPath(filename, "tmp");
+
+  file = fopen(filename, "wb");
+  if (file != (FILE *) NULL) {
+    if (PS_Size > 0) {
+      size_t bytes_written = (size_t) fwrite((void *) (image->pixels + PS_Offset),
+                                            sizeof(PixelPacket), (size_t) PS_Size,
+                                            file);
+      if ((ssize_t) bytes_written == PS_Size) {
+        fclose(file);
+        clone_info->filename = (char *) filename;
+        new_image = ReadImage(clone_info, exception);
+        if (new_image != (Image *) NULL) {
+          status = DestroyImage(&image);
+          if (status == MagickFalse) {
+            (void) ThrowMagickException(exception, GetMagickModule(), ImageError,
+                                        "UnableToDestroyImage", " ");
+          }
+          image = new_image;
+        }
+      }
+      else {
+        (void) ThrowMagickException(exception, GetMagickModule(), ImageError,
+                                    "UnableToWritePostscriptData", " ");
+      }
+    }
+    else {
+      (void) ThrowMagickException(exception, GetMagickModule(), ImageError,
+                                  "InvalidPostscriptSize", " ");
+    }
+    (void) fclose(file);
+  }
+  else {
+    (void) ThrowMagickException(exception, GetMagickModule(), ImageError,
+                                "UnableToCreateTemporaryFile", " ");
+  }
+
+  (void) RelinquishMagickResource(filename);
+  return image;
+}

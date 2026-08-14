@@ -1,0 +1,48 @@
+{
+  "case_id": "C_788__0",
+  "sample_id": "D/C/788",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libarchive/libarchive",
+  "cve_id": "CVE-2019-11463",
+  "cve_summary": "A memory leak in archive_read_format_zip_cleanup in archive_read_support_format_zip.c in libarchive 3.3.4-dev allows remote attackers to cause a denial of service via a crafted ZIP file because of a HAVE_LZMA_H typo. NOTE: this only affects users who downloaded the development code from GitHub. Users of the product's official releases are unaffected.",
+  "changed_file": "libarchive/archive_read_support_format_zip.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Cleans up resources associated with a ZIP archive read operation.  \n *  \n * Parameters:  \n * a (struct archive_read *): Pointer to the archive read structure containing  \n *                             format-specific data.  \n *  \n * Returns:  \n * int: Returns ARCHIVE_OK upon successful cleanup.  \n *  \n * Logic:  \n * The function releases various resources allocated during the ZIP archive  \n * reading process, including decompressing streams, buffers, and entries.  \n * It checks for the validity of different compression streams (zlib, LZMA,  \n * BZ2) and frees associated resources. It also iterates through the linked  \n * list of ZIP entries to free each entry and its resources. Finally, it  \n * frees the main ZIP structure and sets the format data pointer to NULL.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int\r\narchive_read_format_zip_cleanup(struct archive_read *a)\r\n{\r\n\tstruct zip *zip;\r\n\tstruct zip_entry *zip_entry, *next_zip_entry;\r\n\r\n\tzip = (struct zip *)(a->format->data);\r\n\r\n#ifdef HAVE_ZLIB_H\r\n\tif (zip->stream_valid)\r\n\t\tinflateEnd(&zip->stream);\r\n#endif\r\n\r\n#if HAVE_LZMA_H && HAVE_LIBLZMA\r\n    if (zip->zipx_lzma_valid) {\r\n\t\tlzma_end(&zip->zipx_lzma_stream);\r\n\t}\r\n#endif\r\n\r\n#ifdef HAVE_BZLIB_H\r\n\tif (zip->bzstream_valid) {\r\n\t\tBZ2_bzDecompressEnd(&zip->bzstream);\r\n\t}\r\n#endif\r\n\r\n\tfree(zip->uncompressed_buffer);\r\n\r\n\tif (zip->ppmd8_valid)\r\n\t\t__archive_ppmd8_functions.Ppmd8_Free(&zip->ppmd8);\r\n\r\n\tif (zip->zip_entries) {\r\n\t\tzip_entry = zip->zip_entries;\r\n\t\twhile (zip_entry != NULL) {\r\n\t\t\tnext_zip_entry = zip_entry->next;\r\n\t\t\tarchive_string_free(&zip_entry->rsrcname);\r\n\t\t\tfree(zip_entry);\r\n\t\t\tzip_entry = next_zip_entry;\r\n\t\t}\r\n\t}\r\n\tfree(zip->decrypted_buffer);\r\n\tif (zip->cctx_valid)\r\n\t\tarchive_decrypto_aes_ctr_release(&zip->cctx);\r\n\tif (zip->hctx_valid)\r\n\t\tarchive_hmac_sha1_cleanup(&zip->hctx);\r\n\tfree(zip->iv);\r\n\tfree(zip->erd);\r\n\tfree(zip->v_data);\r\n\tarchive_string_free(&zip->format_name);\r\n\tfree(zip);\r\n\t(a->format->data) = NULL;\r\n\treturn (ARCHIVE_OK);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional `free(zip->iv);` call compared to the reference implementation, which is missing this line. This difference could lead to a memory leak in the reference implementation if `zip->iv` is dynamically allocated. Since this memory is attacker-influenced (e.g., via ZIP archive content), the leak could be exploited for denial-of-service or information exposure. This is a security-relevant difference.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being that the candidate implementation includes an additional call to `free(zip->iv)` and `free(zip->erd)` that is not present in the reference implementation. This discrepancy could lead to a memory leak in the reference implementation if `zip->iv` and `zip->erd` are dynamically allocated. Since these fields are likely attacker-influenced (e.g., through ZIP archive content), the missing free operations could be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

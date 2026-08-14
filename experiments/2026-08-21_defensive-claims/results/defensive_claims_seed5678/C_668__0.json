@@ -1,0 +1,98 @@
+{
+  "case_id": "C_668__0",
+  "sample_id": "D/C/668",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ARMmbed/mbedtls",
+  "cve_id": "CVE-2018-9989",
+  "cve_summary": "ARM mbed TLS before 2.1.11, before 2.7.2, and before 2.8.0 has a buffer over-read in ssl_parse_server_psk_hint() that could cause a crash on invalid input.",
+  "changed_file": "library/ssl_cli.c",
+  "docstring": "\"\"\"\nSummary: Parses the server's PSK (Pre-Shared Key) hint from the SSL context.\n\nParameters:\nssl (mbedtls_ssl_context *): Pointer to the SSL context.\np (unsigned char **): Pointer to the current position in the data buffer.\nend (unsigned char *): Pointer to the end of the data buffer.\n\nReturns:\nint: Returns 0 on success, or an error code indicating the type of failure.\n\nLogic: The function reads the length of the PSK identity hint and updates the pointer to skip over the hint data. Currently, the function ignores the actual hint since only one PSK is supported on the client side. If parsing fails, an appropriate error code is returned.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int mbedtls_ssl_psk_hint_parse(mbedtls_ssl_context *ssl, unsigned char **p, unsigned char *end) {\n    size_t len;\n\n    if (ssl == NULL || p == NULL || *p >= end) {\n        return MBEDTLS_ERR_SSL_BAD_INPUT_DATA;\n    }\n\n    if ((size_t)(end - *p) < 2) {\n        return MBEDTLS_ERR_SSL_TRUNCATED_HELLO; /* Incomplete length field */\n    }\n\n    len = ((size_t)(**p) << 8) | (size_t)(*( *p + 1 ));\n    *p += 2;\n\n    if ((size_t)(end - *p) < len) {\n        return MBEDTLS_ERR_SSL_TRUNCATED_HELLO; /* Incomplete PSK hint data */\n    }\n\n    *p += len;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check ssl and p for NULL and *p for being before end",
+      "protects_against": "NULL pointer dereference or invalid pointer arithmetic"
+    },
+    {
+      "step": "check if there are at least 2 bytes remaining for the length field",
+      "protects_against": "reading beyond the end of the data buffer"
+    },
+    {
+      "step": "check if the calculated length is within the remaining buffer",
+      "protects_against": "reading beyond the end of the data buffer"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check ssl and p for NULL and *p for being before end — protects against: NULL pointer dereference or invalid pointer arithmetic",
+        "reasoning": "The implementation does not explicitly check if `ssl` or `p` is NULL, but it uses `(*p)[0]` and `(*p)[1]` which implies that `*p` must be a valid pointer before `end`. If `p` is NULL or `*p` is after `end`, this would result in undefined behavior. Therefore, the implementation omits this check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if there are at least 2 bytes remaining for the length field — protects against: reading beyond the end of the data buffer",
+        "reasoning": "The implementation reads the first two bytes of the buffer (`(*p)[0]` and `(*p)[1]`) to determine the length of the PSK identity hint. If there are fewer than 2 bytes remaining, this would result in reading beyond the end of the buffer. The implementation does not perform this check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if the calculated length is within the remaining buffer — protects against: reading beyond the end of the data buffer",
+        "reasoning": "The implementation checks if `(*p) + len` exceeds `end` before advancing the pointer by `len` bytes. This check ensures that the PSK identity hint data does not extend beyond the end of the buffer. The implementation performs this check.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check ssl and p for NULL and *p for being before end — protects against: NULL pointer dereference or invalid pointer arithmetic",
+        "reasoning": "The implementation does not explicitly check if `ssl` or `p` are NULL. However, the function uses `(*p)` and dereferences it, which could cause a NULL pointer dereference if `p` is NULL. Additionally, it does not check if `*p` is before `end` initially, but it does check if `(*p) > end - 2` later, which implies that `*p` is expected to be valid and within the buffer. Therefore, the implementation omits the check for `ssl` and `p` being NULL.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if there are at least 2 bytes remaining for the length field — protects against: reading beyond the end of the data buffer",
+        "reasoning": "The implementation checks if `(*p) > end - 2`, which ensures that at least 2 bytes remain for the length field. This is a direct implementation of the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if the calculated length is within the remaining buffer — protects against: reading beyond the end of the data buffer",
+        "reasoning": "The implementation calculates the length from the first two bytes and then checks if `(*p) + len > end`, ensuring that the length is within the remaining buffer. This is a direct implementation of the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

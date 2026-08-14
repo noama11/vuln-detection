@@ -1,0 +1,114 @@
+{
+  "case_id": "C_68__1",
+  "sample_id": "D/C/68",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3302",
+  "cve_summary": "Race condition in the smb_send_rqst function in fs/cifs/transport.c in the Linux kernel before 3.7.2 allows local users to cause a denial of service (NULL pointer dereference and OOPS) or possibly have unspecified other impact via vectors involving a reconnection event.",
+  "changed_file": "fs/cifs/transport.c",
+  "docstring": "\"\"\"\nSummary: Sends an SMB request to a specified TCP server.\n\nParameters:\nserver (struct TCP_Server_Info *): Pointer to the TCP server information structure.\nrqst (struct smb_rqst *): Pointer to the SMB request structure containing the data to be sent.\n\nReturns: int: The result of the send operation; returns 0 on success or a negative error code on failure.\n\nLogic: The function prepares the socket for sending by setting the TCP_CORK option. The initial SMB request is sent using the `smb_send_kvec` function. If successful, it iterates through any additional pages in the request, sending each one. After sending, it uncorks the socket and checks if the total bytes sent match the expected length. If not, it marks the server's TCP status for reconnection. Finally, it logs any errors encountered during the send process and returns the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst) {\n    int result = 0;\n    int total_bytes_sent = 0;\n    int expected_length = 0;\n\n    if (!server || !rqst) {\n        return -EINVAL;\n    }\n\n    if (rqst->rq_nvec <= 0) {\n        return -EINVAL;\n    }\n\n    for (int i = 0; i < rqst->rq_nvec; i++) {\n        expected_length += rqst->rq_iov[i].iov_len;\n    }\n\n    result = setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){1}, sizeof(int));\n    if (result < 0) {\n        return result;\n    }\n\n    total_bytes_sent = smb_send_kvec(server, rqst->rq_iov, 0);\n    if (total_bytes_sent < 0) {\n        result = total_bytes_sent;\n        goto uncork;\n    }\n\n    for (int i = 1; i < rqst->rq_nvec; i++) {\n        int bytes_sent = smb_send_kvec(server, &rqst->rq_iov[i], 0);\n        if (bytes_sent < 0) {\n            result = bytes_sent;\n            goto uncork;\n        }\n        total_bytes_sent += bytes_sent;\n    }\n\nuncork:\n    result = setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int));\n    if (result < 0) {\n        return result;\n    }\n\n    if (total_bytes_sent != expected_length) {\n        server->tcp_status = TCP_STATUS_NEED_RECONNECT;\n        return -EIO;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check server and rqst pointers for NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate rq_nvec is positive",
+      "protects_against": "invalid or negative vector count"
+    },
+    {
+      "step": "validate iov_len and total bytes sent against expected length",
+      "protects_against": "incorrect data transmission or buffer overflow"
+    },
+    {
+      "step": "ensure TCP_CORK is uncorked on all paths",
+      "protects_against": "resource leak or socket state inconsistency"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check server and rqst pointers for NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `server` or `rqst` are NULL before dereferencing them. Dereferencing a NULL pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate rq_nvec is positive — protects against: invalid or negative vector count",
+        "reasoning": "The implementation uses `rq_nvec` directly without checking if it is positive or valid. A negative or invalid value could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate iov_len and total bytes sent against expected length — protects against: incorrect data transmission or buffer overflow",
+        "reasoning": "The implementation does check if the total bytes sent match the expected length (`smb_buf_length + 4`) and takes action if they do not. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure TCP_CORK is uncorked on all paths — protects against: resource leak or socket state inconsistency",
+        "reasoning": "The implementation uses a labeled block (`uncork`) to ensure that the socket is uncorked regardless of the success or failure of the send operations. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check server and rqst pointers for NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if 'server' or 'rqst' are NULL before dereferencing them. Dereferencing a NULL pointer would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate rq_nvec is positive — protects against: invalid or negative vector count",
+        "reasoning": "The implementation uses 'rq_nvec' directly without checking if it is positive. If 'rq_nvec' is negative or invalid, it could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate iov_len and total bytes sent against expected length — protects against: incorrect data transmission or buffer overflow",
+        "reasoning": "The implementation checks if the total bytes sent match the expected length after sending data. If they do not match, it marks the server's TCP status for reconnection. This ensures that the correct amount of data is sent.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure TCP_CORK is uncorked on all paths — protects against: resource leak or socket state inconsistency",
+        "reasoning": "The implementation includes a labeled 'uncork' block that ensures the socket is uncorked regardless of the success or failure of the send operation. This ensures that the socket state is consistent.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_844__0",
+  "sample_id": "D/C/844",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-4578",
+  "cve_summary": "sound/core/timer.c in the Linux kernel through 4.6 does not initialize certain r1 data structures, which allows local users to obtain sensitive information from kernel stack memory via crafted use of the ALSA timer interface, related to the (1) snd_timer_user_ccallback and (2) snd_timer_user_tinterrupt functions.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function handles user callbacks for a sound timer instance, processing  \n * timer events and managing associated data.  \n *  \n * Parameters:  \n * timeri (struct snd_timer_instance*): Pointer to the timer instance.  \n * event (int): The event type, indicating the timer event (e.g., start, pause).  \n * tstamp (struct timespec*): Pointer to the timestamp of the event.  \n * resolution (unsigned long): The resolution value associated with the event.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function checks if the event is within the valid range and updates the  \n * timestamp if it is. It then verifies if the event should be processed based  \n * on a filter and whether a read operation is available. If valid, it prepares  \n * a timer read structure, locks the associated queue, appends the read to the  \n * timer queue, and then unlocks the queue. Finally, it signals any waiting  \n * processes and wakes up any sleeping threads waiting for changes in the queue.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void snd_timer_user_ccallback(struct snd_timer_instance *timeri,\r\n\t\t\t\t     int event,\r\n\t\t\t\t     struct timespec *tstamp,\r\n\t\t\t\t     unsigned long resolution)\r\n{\r\n\tstruct snd_timer_user *tu = timeri->callback_data;\r\n\tstruct snd_timer_tread r1;\r\n\tunsigned long flags;\r\n\r\n\tif (event >= SNDRV_TIMER_EVENT_START &&\r\n\t    event <= SNDRV_TIMER_EVENT_PAUSE)\r\n\t\ttu->tstamp = *tstamp;\r\n\tif ((tu->filter & (1 << event)) == 0 || !tu->tread)\r\n\t\treturn;\r\n\tmemset(&r1, 0, sizeof(r1));\r\n\tr1.event = event;\r\n\tr1.tstamp = *tstamp;\r\n\tr1.val = resolution;\r\n\tspin_lock_irqsave(&tu->qlock, flags);\r\n\tsnd_timer_user_append_to_tqueue(tu, &r1);\r\n\tspin_unlock_irqrestore(&tu->qlock, flags);\r\n\tkill_fasync(&tu->fasync, SIGIO, POLL_IN);\r\n\twake_up(&tu->qchange_sleep);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a call to `memset(&r1, 0, sizeof(r1))` before assigning values to the `r1` structure, while the reference implementation does not. This difference ensures that the candidate implementation explicitly initializes the structure to zero, which may prevent uninitialized data from being present. However, since the structure is immediately filled with known values, this difference is not likely to affect observable behavior. It is a minor quality difference rather than a functional or security issue.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations are identical in code and logic. They update the timestamp for valid events, check the filter and tread flag, prepare a timer read structure, append it to the queue under a lock, and signal waiting processes. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

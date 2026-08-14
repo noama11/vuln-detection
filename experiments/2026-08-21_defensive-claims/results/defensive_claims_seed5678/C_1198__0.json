@@ -1,0 +1,178 @@
+{
+  "case_id": "C_1198__0",
+  "sample_id": "D/C/1198",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2014-1710",
+  "cve_summary": "The AsyncPixelTransfersCompletedQuery::End function in gpu/command_buffer/service/query_manager.cc in Google Chrome, as used in Google Chrome OS before 33.0.1750.152, does not check whether a certain position is within the bounds of a shared-memory segment, which allows remote attackers to cause a denial of service (GPU command-buffer memory corruption) or possibly have unspecified other impact via unknown vectors.",
+  "changed_file": "gpu/command_buffer/service/query_manager.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Finalizes the asynchronous pixel transfer operation by setting up memory  \n * parameters and notifying the completion manager.  \n *  \n * Parameters:  \n * submit_count (base::subtle::Atomic32): The count of submitted pixel transfers.  \n *  \n * Returns:  \n * bool: Returns true if the operation was successfully added to the pending  \n * transfer queue, false otherwise.  \n *  \n * Logic:  \n * The function retrieves a shared memory buffer and checks its validity. It  \n * then sets up memory parameters for the pixel transfer and creates an  \n * observer for completion notifications. Finally, it requests the  \n * AsyncPixelTransferManager to notify when all previous transfers are done  \n * and adds the operation to the pending transfer queue.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdbool.h>\n#include <stdatomic.h>\n\n// Assume the following types and functions are defined elsewhere:\n// - SharedMemoryBuffer: A structure representing a shared memory buffer.\n// - get_shared_memory_buffer(): A function that returns a SharedMemoryBuffer*.\n// - AsyncPixelTransferManager: A structure managing pixel transfer operations.\n// - request_notification(AsyncPixelTransferManager*, void*): A function that requests a notification.\n// - add_to_pending_queue(AsyncPixelTransferManager*, void*): A function that adds an operation to the pending queue.\n\n// Forward declaration of the operation structure\ntypedef struct {\n  // Fields for memory parameters and observer setup\n} PixelTransferOperation;\n\nbool finalize_pixel_transfer(atomic_int32_t submit_count) {\n  // Retrieve the shared memory buffer\n  SharedMemoryBuffer* buffer = get_shared_memory_buffer();\n  if (!buffer) {\n    return false;\n  }\n\n  // Create the pixel transfer operation\n  PixelTransferOperation* operation = (PixelTransferOperation*)malloc(sizeof(PixelTransferOperation));\n  if (!operation) {\n    return false;\n  }\n\n  // Initialize the operation with memory parameters\n  // (Assuming setup_memory_parameters is a function that returns a bool indicating success)\n  if (!setup_memory_parameters(operation, buffer)) {\n    free(operation);\n    return false;\n  }\n\n  // Create an observer for completion notifications\n  // (Assuming create_observer is a function that returns a bool indicating success)\n  if (!create_observer(operation)) {\n    free(operation);\n    return false;\n  }\n\n  // Request the AsyncPixelTransferManager to notify when all previous transfers are done\n  AsyncPixelTransferManager* manager = get_async_pixel_transfer_manager();\n  if (!manager) {\n    free(operation);\n    return false;\n  }\n\n  if (!request_notification(manager, operation)) {\n    free(operation);\n    return false;\n  }\n\n  // Add the operation to the pending transfer queue\n  if (!add_to_pending_queue(manager, operation)) {\n    free(operation);\n    return false;\n  }\n\n  // Increment the submit count\n  atomic_fetch_add(&submit_count, 1);\n\n  return true;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if get_shared_memory_buffer returns null",
+      "protects_against": "null pointer dereference when accessing shared memory buffer"
+    },
+    {
+      "step": "check if malloc returns null",
+      "protects_against": "null pointer dereference when accessing the operation structure"
+    },
+    {
+      "step": "check if setup_memory_parameters returns false",
+      "protects_against": "invalid memory parameters setup"
+    },
+    {
+      "step": "check if create_observer returns false",
+      "protects_against": "invalid observer setup"
+    },
+    {
+      "step": "check if get_async_pixel_transfer_manager returns null",
+      "protects_against": "null pointer dereference when accessing the manager"
+    },
+    {
+      "step": "check if request_notification returns false",
+      "protects_against": "notification request failure"
+    },
+    {
+      "step": "check if add_to_pending_queue returns false",
+      "protects_against": "queue addition failure"
+    },
+    {
+      "step": "free operation on error paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 15,
+    "n_omits": 4,
+    "n_performs": 1,
+    "n_na": 3,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check if get_shared_memory_buffer returns null — protects against: null pointer dereference when accessing shared memory buffer",
+        "reasoning": "The implementation checks if `buffer.shared_memory` is null and returns false if it is, thus preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if malloc returns null — protects against: null pointer dereference when accessing the operation structure",
+        "reasoning": "The implementation does not use `malloc` to allocate memory for the operation structure. It uses `new` to create the observer object, and no explicit null check is performed for this allocation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if setup_memory_parameters returns false — protects against: invalid memory parameters setup",
+        "reasoning": "The implementation does not call a function named `setup_memory_parameters`. Instead, it manually sets the `mem_params` structure, so there is no need for a check on a setup function's return value.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if create_observer returns false — protects against: invalid observer setup",
+        "reasoning": "The implementation does not perform a check on the result of `new AsyncPixelTransferCompletionObserverImpl(submit_count)`. It assumes the allocation is successful and assigns the result to `observer_` without validation.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if get_async_pixel_transfer_manager returns null — protects against: null pointer dereference when accessing the manager",
+        "reasoning": "The implementation calls `manager()->decoder()->GetAsyncPixelTransferManager()` but does not check if the result is null before calling `AsyncNotifyCompletion` on it. This could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check if request_notification returns false — protects against: notification request failure",
+        "reasoning": "The implementation does not call a function named `request_notification`. Instead, it directly calls `AsyncNotifyCompletion`, and there is no check for its success or failure.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if add_to_pending_queue returns false — protects against: queue addition failure",
+        "reasoning": "The implementation calls `AddToPendingTransferQueue(submit_count)` but does not check its return value. It assumes the function succeeds and returns its result directly.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free operation on error paths — protects against: memory leak",
+        "reasoning": "The implementation allocates an observer using `new` but does not have any error path that frees it. If any error occurs before the observer is used, it will leak.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 23,
+    "n_omits": 5,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if get_shared_memory_buffer returns null — protects against: null pointer dereference when accessing shared memory buffer",
+        "reasoning": "The implementation checks if `buffer.shared_memory` is null and returns false if it is, thus preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if malloc returns null — protects against: null pointer dereference when accessing the operation structure",
+        "reasoning": "The implementation uses `new` to allocate the observer, but there is no explicit check for a null return from the allocation. Since the code proceeds without checking for allocation failure, this step is omitted.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if setup_memory_parameters returns false — protects against: invalid memory parameters setup",
+        "reasoning": "The implementation does not call a function named `setup_memory_parameters`. Instead, it manually sets up `mem_params`. There is no explicit function call that could return false to check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if create_observer returns false — protects against: invalid observer setup",
+        "reasoning": "The implementation directly calls `new AsyncPixelTransferCompletionObserverImpl(submit_count)` and does not check for any return value or failure condition. There is no explicit `create_observer` function or check for its success.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if get_async_pixel_transfer_manager returns null — protects against: null pointer dereference when accessing the manager",
+        "reasoning": "The implementation calls `manager()->decoder()->GetAsyncPixelTransferManager()` and proceeds to call a method on the result without checking if the result is null. This could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check if request_notification returns false — protects against: notification request failure",
+        "reasoning": "The implementation calls `AsyncNotifyCompletion` on the result of `GetAsyncPixelTransferManager()` but does not check if the call returns false or fails in any way.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if add_to_pending_queue returns false — protects against: queue addition failure",
+        "reasoning": "The implementation calls `AddToPendingTransferQueue(submit_count)` and returns its result directly. It does not perform any additional checks or handle the case where it might return false.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free operation on error paths — protects against: memory leak",
+        "reasoning": "The implementation allocates an observer using `new`, but there is no error path that frees this memory if any of the subsequent operations fail. This could lead to a memory leak.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

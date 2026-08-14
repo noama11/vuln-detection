@@ -1,0 +1,130 @@
+{
+  "case_id": "C_414__0",
+  "sample_id": "D/C/414",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-12663",
+  "cve_summary": "ImageMagick 7.0.6-2 has a memory leak vulnerability in WriteMAPImage in coders/map.c.",
+  "changed_file": "coders/map.c",
+  "docstring": "Summary:  \nUnregisters the \"MAP\" image format from the Magick library and writes an image to a file in MAP format, including colormap bytes and pixel indexes.\n\nParameters:  \nimage_info (const ImageInfo *): Contains information about the image to be written.  \nimage (Image *): The image object that is being processed.\n\nReturns:  \nMagickBooleanType: Indicates success (MagickTrue) or failure (MagickFalse) of the write operation.\n\nLogic: The function first validates the input parameters and opens the output file for writing. It transforms the image colorspace to sRGB and allocates memory for the colormap and pixel data. It then writes the colormap to the file, handling both 256-color and higher-color images. Finally, it writes the pixel indexes to the file. If any memory allocation fails, it throws an exception.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "MagickBooleanType WriteMAPImage(const ImageInfo *image_info, Image *image) {\n  MagickBooleanType status = MagickTrue;\n  FILE *file = (FILE *) NULL;\n  size_t colormap_length = 0;\n  register PixelIndex *p;\n  PixelIndex *indexes = (PixelIndex *) NULL;\n  register unsigned char *q;\n  unsigned char *colormap = (unsigned char *) NULL;\n  size_t length;\n\n  if ((image_info == (ImageInfo *) NULL) || (image == (Image *) NULL))\n    return (MagickFalse);\n\n  if ((image->storage_class != PseudoClass) || (image->colors > 256)) {\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      ImageError, \"ImageNotPseudoClass\",\"%s is not a PseudoClass image\",\n      image->filename);\n    return (MagickFalse);\n  }\n\n  if (image->colors == 0) {\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      ImageError, \"ImageHasNoColors\",\"%s has no colors\",\n      image->filename);\n    return (MagickFalse);\n  }\n\n  if ((file = fopen(image->filename, \"wb\")) == (FILE *) NULL) {\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      FileError, \"UnableToCreateFile\",\"%s\", image->filename);\n    return (MagickFalse);\n  }\n\n  if (image->colors > 256) {\n    colormap_length = image->colors * 3;\n  } else {\n    colormap_length = 256 * 3;\n  }\n\n  colormap = (unsigned char *) AcquireMemory(colormap_length);\n  if (colormap == (unsigned char *) NULL) {\n    (void) fclose(file);\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      ResourceLimitError, \"UnableToAllocateMemory\",\"%s\",\n      \"colormap\");\n    return (MagickFalse);\n  }\n\n  p = GetPixelIndexes(image);\n  if (p == (PixelIndex *) NULL) {\n    (void) fclose(file);\n    RelinquishMemory(colormap);\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      ResourceLimitError, \"UnableToAllocateMemory\",\"%s\",\n      \"pixel indexes\");\n    return (MagickFalse);\n  }\n\n  for (length = 0; length < image->colors; length++) {\n    colormap[length * 3] = (unsigned char) ScaleQuantumToChar(image->colormap[length].red);\n    colormap[length * 3 + 1] = (unsigned char) ScaleQuantumToChar(image->colormap[length].green);\n    colormap[length * 3 + 2] = (unsigned char) ScaleQuantumToChar(image->colormap[length].blue);\n  }\n\n  if (fwrite(colormap, 1, colormap_length, file) != colormap_length) {\n    (void) fclose(file);\n    RelinquishMemory(colormap);\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      FileError, \"UnableToWriteFile\",\"%s\", image->filename);\n    return (MagickFalse);\n  }\n\n  indexes = GetPixelIndexes(image);\n  if (indexes == (PixelIndex *) NULL) {\n    (void) fclose(file);\n    RelinquishMemory(colormap);\n    (void) ThrowMagickException(&image->exception, GetMagickModule(),\n      ResourceLimitError, \"UnableToAllocateMemory\",\"%s\",\n      \"pixel indexes\");\n    return (MagickFalse);\n  }\n\n  for (length = 0; length < image->columns * image->rows; length++) {\n    if (fwrite(indexes + length, 1, 1, file) != 1) {\n      (void) fclose(file);\n      RelinquishMemory(colormap);\n      (void) ThrowMagickException(&image->exception, GetMagickModule(),\n        FileError, \"UnableToWriteFile\",\"%s\", image->filename);\n      return (MagickFalse);\n    }\n  }\n\n  (void) fclose(file);\n  RelinquishMemory(colormap);\n  return (status);\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check file open success",
+      "protects_against": "file operation failure"
+    },
+    {
+      "step": "check memory allocation success",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check file write success",
+      "protects_against": "file write failure"
+    },
+    {
+      "step": "release resources on error paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `assert()` to verify that `image_info` and `image` are non-null and have the correct signature. This guards against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file open success — protects against: file operation failure",
+        "reasoning": "The implementation calls `OpenBlob()` and checks the return value. If it fails, it returns `status` immediately, which is `MagickFalse`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation success — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `pixels` and `colormap` using `AcquireQuantumMemory()`. It checks if either allocation is `NULL` and throws an exception if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file write success — protects against: file write failure",
+        "reasoning": "The implementation calls `WriteBlob()` to write the colormap and pixel data to the file, but does not check the return value of `WriteBlob()` to confirm success. If the write fails, the function continues as if it succeeded.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "release resources on error paths — protects against: resource leaks",
+        "reasoning": "The implementation releases `colormap` and `pixels` using `RelinquishMagickMemory()` before returning. However, if an error occurs during the pixel writing loop (e.g., `GetVirtualPixels()` returns NULL), the function breaks out of the loop and returns without releasing `pixels` in that case.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `assert()` to verify that `image_info` and `image` are not NULL and that their signatures are valid. This guards against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file open success — protects against: file operation failure",
+        "reasoning": "The implementation calls `OpenBlob()` and checks if the result is `MagickFalse`. If so, it returns early, protecting against further operations on a failed file open.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation success — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `pixels` and `colormap` and checks if either allocation fails. If so, it releases any allocated memory and throws an exception.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file write success — protects against: file write failure",
+        "reasoning": "The implementation calls `WriteBlob()` but does not check the return value to determine if the write was successful. There is no error handling for failed writes.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "release resources on error paths — protects against: resource leaks",
+        "reasoning": "The implementation checks for memory allocation failure and releases any allocated memory before throwing an exception. However, it does not check the success of `WriteBlob()` calls, so if a write fails, the implementation does not clean up the allocated memory before returning.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

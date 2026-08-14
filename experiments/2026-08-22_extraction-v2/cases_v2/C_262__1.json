@@ -1,0 +1,36 @@
+{
+  "case_id": "C_262__1",
+  "sample_id": "D/C/262",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7915",
+  "cve_summary": "The hid_input_field function in drivers/hid/hid-core.c in the Linux kernel before 4.6 allows physically proximate attackers to obtain sensitive information from kernel memory or cause a denial of service (out-of-bounds read) by connecting a device, as demonstrated by a Logitech DJ receiver.",
+  "commit_message": "HID: core: prevent out-of-bound readings\n\nPlugging a Logitech DJ receiver with KASAN activated raises a bunch of\nout-of-bound readings.\n\nThe fields are allocated up to MAX_USAGE, meaning that potentially, we do\nnot have enough fields to fit the incoming values.\nAdd checks and silence KASAN.\n\nSigned-off-by: Benjamin Tissoires <benjamin.tissoires@redhat.com>\nSigned-off-by: Jiri Kosina <jkosina@suse.cz>",
+  "changed_file": "drivers/hid/hid-core.c",
+  "docstring": "/**\n * Summary: Processes input data from a HID device field and triggers events based on the extracted values.\n * \n * Parameters:\n * hid (struct hid_device *): Pointer to the HID device structure.\n * field (struct hid_field *): Pointer to the HID field structure containing report details.\n * data (__u8 *): Pointer to the input data buffer from the HID device.\n * interrupt (int): Interrupt flag indicating the context of the event processing.\n * \n * Returns: None\n * \n * Logic: The function allocates memory for storing extracted values from the HID input data. It iterates over the report count to extract values based on the field's logical range and checks for specific conditions to trigger events. If the conditions are met, it processes the event using the `hid_process_event` function. Finally, it copies the processed values back to the field structure and frees the allocated memory.\n */",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1271,
+    1324
+  ],
+  "vulnerable_line_range": [
+    1271,
+    1321
+  ],
+  "vulnerable_snippet": "static void hid_input_field(struct hid_device *hid, struct hid_field *field,\r\n\t\t\t    __u8 *data, int interrupt)\r\n{\r\n\tunsigned n;\r\n\tunsigned count = field->report_count;\r\n\tunsigned offset = field->report_offset;\r\n\tunsigned size = field->report_size;\r\n\t__s32 min = field->logical_minimum;\r\n\t__s32 max = field->logical_maximum;\r\n\t__s32 *value;\r\n\r\n\tvalue = kmalloc(sizeof(__s32) * count, GFP_ATOMIC);\r\n\tif (!value)\r\n\t\treturn;\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tvalue[n] = min < 0 ?\r\n\t\t\tsnto32(hid_field_extract(hid, data, offset + n * size,\r\n\t\t\t       size), size) :\r\n\t\t\thid_field_extract(hid, data, offset + n * size, size);\r\n\r\n\t\t/* Ignore report if ErrorRollOver */\r\n\t\tif (!(field->flags & HID_MAIN_ITEM_VARIABLE) &&\r\n\t\t    value[n] >= min && value[n] <= max &&\r\n\t\t    field->usage[value[n] - min].hid == HID_UP_KEYBOARD + 1)\r\n\t\t\tgoto exit;\r\n\t}\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tif (HID_MAIN_ITEM_VARIABLE & field->flags) {\r\n\t\t\thid_process_event(hid, field, &field->usage[n], value[n], interrupt);\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (field->value[n] >= min && field->value[n] <= max\r\n\t\t\t&& field->usage[field->value[n] - min].hid\r\n\t\t\t&& search(value, field->value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[field->value[n] - min], 0, interrupt);\r\n\r\n\t\tif (value[n] >= min && value[n] <= max\r\n\t\t\t&& field->usage[value[n] - min].hid\r\n\t\t\t&& search(field->value, value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[value[n] - min], 1, interrupt);\r\n\t}\r\n\r\n\tmemcpy(field->value, value, count * sizeof(__s32));\r\nexit:\r\n\tkfree(value);\r\n}",
+  "fixed_line_range": [
+    1271,
+    1324
+  ],
+  "fixed_snippet": "static void hid_input_field(struct hid_device *hid, struct hid_field *field,\r\n\t\t\t    __u8 *data, int interrupt)\r\n{\r\n\tunsigned n;\r\n\tunsigned count = field->report_count;\r\n\tunsigned offset = field->report_offset;\r\n\tunsigned size = field->report_size;\r\n\t__s32 min = field->logical_minimum;\r\n\t__s32 max = field->logical_maximum;\r\n\t__s32 *value;\r\n\r\n\tvalue = kmalloc(sizeof(__s32) * count, GFP_ATOMIC);\r\n\tif (!value)\r\n\t\treturn;\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tvalue[n] = min < 0 ?\r\n\t\t\tsnto32(hid_field_extract(hid, data, offset + n * size,\r\n\t\t\t       size), size) :\r\n\t\t\thid_field_extract(hid, data, offset + n * size, size);\r\n\r\n\t\t/* Ignore report if ErrorRollOver */\r\n\t\tif (!(field->flags & HID_MAIN_ITEM_VARIABLE) &&\r\n\t\t    value[n] >= min && value[n] <= max &&\r\n\t\t    value[n] - min < field->maxusage &&\r\n\t\t    field->usage[value[n] - min].hid == HID_UP_KEYBOARD + 1)\r\n\t\t\tgoto exit;\r\n\t}\r\n\r\n\tfor (n = 0; n < count; n++) {\r\n\r\n\t\tif (HID_MAIN_ITEM_VARIABLE & field->flags) {\r\n\t\t\thid_process_event(hid, field, &field->usage[n], value[n], interrupt);\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (field->value[n] >= min && field->value[n] <= max\r\n\t\t\t&& field->value[n] - min < field->maxusage\r\n\t\t\t&& field->usage[field->value[n] - min].hid\r\n\t\t\t&& search(value, field->value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[field->value[n] - min], 0, interrupt);\r\n\r\n\t\tif (value[n] >= min && value[n] <= max\r\n\t\t\t&& value[n] - min < field->maxusage\r\n\t\t\t&& field->usage[value[n] - min].hid\r\n\t\t\t&& search(field->value, value[n], count))\r\n\t\t\t\thid_process_event(hid, field, &field->usage[value[n] - min], 1, interrupt);\r\n\t}\r\n\r\n\tmemcpy(field->value, value, count * sizeof(__s32));\r\nexit:\r\n\tkfree(value);\r\n}",
+  "func_name": "hid_input_field",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": "C_262__0"
+}

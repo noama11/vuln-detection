@@ -1,0 +1,146 @@
+{
+  "case_id": "C_368__0",
+  "sample_id": "D/C/368",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15868",
+  "cve_summary": "The bnep_add_connection function in net/bluetooth/bnep/core.c in the Linux kernel before 3.19 does not ensure that an l2cap socket is available, which allows local users to gain privileges via a crafted application.",
+  "changed_file": "net/bluetooth/bnep/core.c",
+  "docstring": "\"\"\"\nSummary: \nAdds a Bluetooth Network Encapsulation Protocol (BNEP) connection by allocating a network device and initializing a session.\n\nParameters: \nreq (struct bnep_connadd_req *): Pointer to the connection request structure containing device information and role.\nsock (struct socket *): Pointer to the socket associated with the connection.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function allocates a network device for the BNEP session and retrieves the source and destination addresses. It checks if a session already exists for the destination address and if it is connected, returning an error if so. The function then initializes the session structure, sets up multicast and protocol filters if configured, and registers the network device. A kernel thread is created to handle the session, and if any step fails, it cleans up by unregistering the device and freeing resources. Finally, it updates the request structure with the device name and returns success.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/netdevice.h>\n#include <linux/slab.h>\n#include <linux/err.h>\n\nint bnep_connadd(struct bnep_connadd_req *req, struct socket *sock) {\n    struct net_device *dev;\n    int ret = -ENOMEM;\n\n    if (!req || !sock) {\n        return -EINVAL;\n    }\n\n    dev = alloc_netdev(0, \"bnep%d\", NET_NAME_UNKNOWN, ether_setup);\n    if (!dev) {\n        return -ENOMEM;\n    }\n\n    /* Check if a session already exists for the destination address */\n    if (bnep_session_exists(req->dst_addr)) {\n        ret = -EEXIST;\n        goto error;\n    }\n\n    /* Initialize the session structure */\n    if (bnep_session_init(dev, req, sock)) {\n        goto error;\n    }\n\n    /* Set up multicast and protocol filters if configured */\n    if (req->flags & BNEP_CONNADD_FLAG_MULTICAST) {\n        dev->flags |= IFF_MULTICAST;\n    }\n\n    if (req->flags & BNEP_CONNADD_FLAG_PROTO_FILTER) {\n        dev->flags |= IFF_PROMISC;\n    }\n\n    /* Register the network device */\n    ret = register_netdev(dev);\n    if (ret) {\n        goto error;\n    }\n\n    /* Create a kernel thread to handle the session */\n    ret = kernel_thread(bnep_session_handler, dev, CLONE_KERNEL);\n    if (ret < 0) {\n        unregister_netdev(dev);\n        goto error;\n    }\n\n    /* Update the request structure with the device name */\n    snprintf(req->dev_name, IFNAMSIZ, \"%s\", dev->name);\n\n    return 0;\n\nerror:\n    if (dev) {\n        free_netdev(dev);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing req or sock"
+    },
+    {
+      "step": "check if session already exists",
+      "protects_against": "creating multiple sessions for the same destination address"
+    },
+    {
+      "step": "initialize session structure",
+      "protects_against": "uninitialized session data leading to undefined behavior"
+    },
+    {
+      "step": "register network device",
+      "protects_against": "memory leak if device allocation succeeds but registration fails"
+    },
+    {
+      "step": "create kernel thread",
+      "protects_against": "unhandled errors in thread creation leading to resource leaks"
+    },
+    {
+      "step": "clean up on error",
+      "protects_against": "resource leaks if any step fails during initialization"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing req or sock",
+        "reasoning": "The implementation does not explicitly check if req or sock are null before dereferencing them. It assumes they are valid pointers.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check if session already exists — protects against: creating multiple sessions for the same destination address",
+        "reasoning": "The implementation checks if a session already exists for the destination address by calling __bnep_get_session(dst) and checking its state. If a connected session exists, it returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize session structure — protects against: uninitialized session data leading to undefined behavior",
+        "reasoning": "The implementation initializes the session structure by copying source and destination addresses, setting the device, socket, role, and state. It also sets protocol and multicast filters if configured.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "register network device — protects against: memory leak if device allocation succeeds but registration fails",
+        "reasoning": "The implementation registers the network device with register_netdev(dev). If registration fails, it jumps to the 'failed' label, which unregisters the device and frees resources.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "create kernel thread — protects against: unhandled errors in thread creation leading to resource leaks",
+        "reasoning": "The implementation creates a kernel thread with kthread_run. If the thread creation fails, it cleans up by calling module_put, unregister_netdev, and __bnep_unlink_session before returning an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up on error — protects against: resource leaks if any step fails during initialization",
+        "reasoning": "The implementation has a 'failed' label that unregisters the device, releases the semaphore, and frees the allocated netdev in case of any error during initialization.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing req or sock",
+        "reasoning": "The implementation does not explicitly check if req or sock is NULL before dereferencing them. It directly accesses fields of req and sock without validation.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check if session already exists — protects against: creating multiple sessions for the same destination address",
+        "reasoning": "The implementation checks if a session already exists for the destination address using __bnep_get_session(dst) and verifies its state. If a connected session exists, it returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize session structure — protects against: uninitialized session data leading to undefined behavior",
+        "reasoning": "The implementation initializes the session structure by copying source and destination addresses, setting the device, socket, role, and state. It also sets protocol and multicast filters if enabled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "register network device — protects against: memory leak if device allocation succeeds but registration fails",
+        "reasoning": "The implementation registers the network device using register_netdev(dev). If registration fails, it jumps to the 'failed' label and cleans up the allocated device.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "create kernel thread — protects against: unhandled errors in thread creation leading to resource leaks",
+        "reasoning": "The implementation creates a kernel thread using kthread_run. If the thread creation fails, it cleans up by un-registering the device, un-linking the session, and releasing the module reference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up on error — protects against: resource leaks if any step fails during initialization",
+        "reasoning": "The implementation has a 'failed' label that unregisters the device, releases the semaphore, and frees the allocated device memory if any step fails.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "case_id": "C_141__5",
+  "implementation": "int process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    if (!ac || !secret || !p || !end) {\n        return -EINVAL;\n    }\n\n    if (*p >= end) {\n        return -EINVAL;\n    }\n\n    size_t remaining = (char *)end - (char *)*p;\n    if (remaining < sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    uint32_t ticket_type = *(uint32_t *)*p;\n    *p += sizeof(uint32_t);\n    remaining -= sizeof(uint32_t);\n\n    if (remaining < sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    uint32_t version = *(uint32_t *)*p;\n    *p += sizeof(uint32_t);\n    remaining -= sizeof(uint32_t);\n\n    if (ticket_type >= CEPH_AUTH_MAX_TICKET_TYPES || version >= CEPH_AUTH_MAX_TICKET_VERSIONS) {\n        return -EINVAL;\n    }\n\n    if (!ac->ticket_handlers[ticket_type] || !ac->ticket_handlers[ticket_type][version]) {\n        return -ENOTSUP;\n    }\n\n    int (*handler)(struct ceph_auth_client *, struct ceph_crypto_key *, void **, void *) = \n        ac->ticket_handlers[ticket_type][version];\n\n    int ret = handler(ac, secret, p, end);\n    if (ret < 0) {\n        return ret;\n    }\n\n    if (*p > end) {\n        return -EINVAL;\n    }\n\n    if (ac->session_key.data) {\n        ceph_crypto_key_free(ac->session_key);\n    }\n\n    ac->session_key = ceph_crypto_key_dup(secret);\n    if (!ac->session_key) {\n        return -ENOMEM;\n    }\n\n    if (ac->ticket_blob) {\n        free(ac->ticket_blob);\n    }\n\n    size_t blob_len = (char *)end - (char *)*p;\n    ac->ticket_blob = malloc(blob_len);\n    if (!ac->ticket_blob) {\n        return -ENOMEM;\n    }\n\n    memcpy(ac->ticket_blob, *p, blob_len);\n    ac->ticket_blob_len = blob_len;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check all input pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify buffer bounds before reading",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate ticket type and version against known limits",
+      "protects_against": "invalid or out-of-bounds ticket type/version"
+    },
+    {
+      "step": "check if the handler exists before calling it",
+      "protects_against": "calling a null function pointer"
+    },
+    {
+      "step": "verify buffer bounds after handler execution",
+      "protects_against": "handler modifying pointer beyond buffer"
+    },
+    {
+      "step": "check for memory allocation failures",
+      "protects_against": "memory allocation failure during session key or blob creation"
+    },
+    {
+      "step": "initialize new memory before use",
+      "protects_against": "use of uninitialized memory"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

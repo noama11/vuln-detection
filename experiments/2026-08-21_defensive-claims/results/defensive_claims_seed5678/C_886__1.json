@@ -1,0 +1,162 @@
+{
+  "case_id": "C_886__1",
+  "sample_id": "D/C/886",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "OISF/suricata",
+  "cve_id": "CVE-2019-1010251",
+  "cve_summary": "Open Information Security Foundation Suricata prior to version 4.1.2 is affected by: Denial of Service - DNS detection bypass. The impact is: An attacker can evade a signature detection with a specialy formed network packet. The component is: app-layer-detect-proto.c, decode.c, decode-teredo.c and decode-ipv6.c (https://github.com/OISF/suricata/pull/3590/commits/11f3659f64a4e42e90cb3c09fcef66894205aefe, https://github.com/OISF/suricata/pull/3590/commits/8357ef3f8ffc7d99ef6571350724160de356158b). The attack vector is: An attacker can trigger the vulnerability by sending a specifically crafted network request. The fixed version is: 4.1.2.",
+  "changed_file": "src/app-layer-detect-proto.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Detects the application layer protocol for a given flow based on various  \n * detection methods.  \n *  \n * Parameters:  \n * tctx (AppLayerProtoDetectThreadCtx *): Context for the protocol detection thread.  \n * f (Flow *): The flow object representing the data stream.  \n * buf (uint8_t *): Buffer containing the data to analyze.  \n * buflen (uint32_t): Length of the data buffer.  \n * ipproto (uint8_t): IP protocol type of the flow.  \n * direction (uint8_t): Direction of the flow (to server or to client).  \n *  \n * Returns:  \n * AppProto: The detected application protocol, or ALPROTO_UNKNOWN if not detected.  \n *  \n * Logic:\n * The function first checks if the flow has completed passive monitoring (PM). If not, it attempts\n * to detect the protocol using PM methods. It then checks other applicable detection methods. If PM\n * is complete, it checks for protocol detection using post-processing (PP) methods. Finally, it\n * checks against an expectation list if the protocol is still unknown. The function returns the\n * most specific protocol detected.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "AppProto DetectAppLayerProtocol(AppLayerProtoDetectThreadCtx *tctx, Flow *f, uint8_t *buf, uint32_t buflen, uint8_t ipproto, uint8_t direction) {\n    AppProto alproto = ALPROTO_UNKNOWN;\n\n    if (!f) {\n        return alproto;\n    }\n\n    if (!buf || buflen == 0) {\n        return alproto;\n    }\n\n    if (buflen > UINT32_MAX - 1) {\n        buflen = UINT32_MAX - 1;\n    }\n\n    if (!tctx) {\n        return alproto;\n    }\n\n    if (!tctx->pm_initialized) {\n        return alproto;\n    }\n\n    if (!tctx->pp_initialized) {\n        return alproto;\n    }\n\n    if (ipproto == 0) {\n        return alproto;\n    }\n\n    if (direction > 1) {\n        return alproto;\n    }\n\n    if (!f->alproto) {\n        f->alproto = ALPROTO_UNKNOWN;\n    }\n\n    if (f->alproto != ALPROTO_UNKNOWN) {\n        return f->alproto;\n    }\n\n    if (tctx->pm_complete) {\n        if (tctx->pp_methods && tctx->pp_methods->detect) {\n            alproto = tctx->pp_methods->detect(tctx, f, buf, buflen, ipproto, direction);\n            if (alproto != ALPROTO_UNKNOWN) {\n                f->alproto = alproto;\n                return alproto;\n            }\n        }\n    }\n\n    if (tctx->pm_methods && tctx->pm_methods->detect) {\n        alproto = tctx->pm_methods->detect(tctx, f, buf, buflen, ipproto, direction);\n        if (alproto != ALPROTO_UNKNOWN) {\n            f->alproto = alproto;\n            return alproto;\n        }\n    }\n\n    if (tctx->expectations && tctx->expectations->detect) {\n        alproto = tctx->expectations->detect(tctx, f, buf, buflen, ipproto, direction);\n        if (alproto != ALPROTO_UNKNOWN) {\n            f->alproto = alproto;\n            return alproto;\n        }\n    }\n\n    return ALPROTO_UNKNOWN;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null flow pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null buffer or zero buffer length",
+      "protects_against": "null pointer dereference or invalid memory access"
+    },
+    {
+      "step": "bound buffer length to prevent overflow",
+      "protects_against": "integer overflow or buffer overflow"
+    },
+    {
+      "step": "check for null thread context pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for invalid ip protocol value",
+      "protects_against": "invalid protocol processing"
+    },
+    {
+      "step": "check for invalid direction value",
+      "protects_against": "invalid direction processing"
+    },
+    {
+      "step": "initialize flow protocol to unknown if not set",
+      "protects_against": "uninitialized memory usage"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 37,
+    "n_omits": 6,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null flow pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for a null flow pointer before using it. The function uses the flow pointer in macros like FLOW_IS_PM_DONE and in function calls, which could lead to a null pointer dereference if f is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null buffer or zero buffer length — protects against: null pointer dereference or invalid memory access",
+        "reasoning": "The implementation does not check for a null buffer or zero buffer length before using the buffer in function calls. This could lead to a null pointer dereference or invalid memory access if buf is null or buflen is zero.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound buffer length to prevent overflow — protects against: integer overflow or buffer overflow",
+        "reasoning": "The implementation does not explicitly bound the buffer length to prevent overflow. It passes buflen directly to functions without any checks or bounds enforcement.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for null thread context pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check for a null thread context pointer before using it in function calls like AppLayerProtoDetectPMGetProto.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for invalid ip protocol value — protects against: invalid protocol processing",
+        "reasoning": "The implementation does not check for invalid ip protocol values before using them in function calls. This could lead to invalid protocol processing.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for invalid direction value — protects against: invalid direction processing",
+        "reasoning": "The implementation does not check for invalid direction values before using them in macros like FLOW_IS_PM_DONE and in function calls. This could lead to invalid direction processing.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "initialize flow protocol to unknown if not set — protects against: uninitialized memory usage",
+        "reasoning": "The implementation initializes alproto to ALPROTO_UNKNOWN at the beginning of the function, which ensures that the variable is initialized even if no protocol is detected.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 36,
+    "n_omits": 6,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null flow pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the flow pointer is null before using it. It directly calls macros and functions that use the flow pointer (e.g., FLOW_IS_PM_DONE).",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null buffer or zero buffer length — protects against: null pointer dereference or invalid memory access",
+        "reasoning": "The implementation does not check if the buffer is null or if the buffer length is zero before using them. It directly passes them to functions like AppLayerProtoDetectPMGetProto.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound buffer length to prevent overflow — protects against: integer overflow or buffer overflow",
+        "reasoning": "The implementation does not perform any explicit bounds checking on the buffer length before using it. It directly passes the buffer and its length to other functions.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null thread context pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check if the thread context pointer is null before using it. It directly passes it to AppLayerProtoDetectPMGetProto.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for invalid ip protocol value — protects against: invalid protocol processing",
+        "reasoning": "The implementation does not check if the ip protocol value is valid before using it. It directly uses it in function calls.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for invalid direction value — protects against: invalid direction processing",
+        "reasoning": "The implementation does not check if the direction value is valid before using it. It directly uses it in macros and function calls.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "initialize flow protocol to unknown if not set — protects against: uninitialized memory usage",
+        "reasoning": "The implementation initializes the alproto variable to ALPROTO_UNKNOWN at the start of the function, ensuring it has a default value before any conditional assignments.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

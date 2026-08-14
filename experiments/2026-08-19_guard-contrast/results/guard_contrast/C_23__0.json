@@ -1,0 +1,58 @@
+{
+  "case_id": "C_23__0",
+  "sample_id": "D/C/23",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0038",
+  "cve_summary": "Integer overflow in the xfs_acl_from_disk function in fs/xfs/xfs_acl.c in the Linux kernel before 3.1.9 allows local users to cause a denial of service (panic) via a filesystem with a malformed ACL, leading to a heap-based buffer overflow.",
+  "changed_file": "fs/xfs/xfs_acl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Converts an XFS ACL structure from disk format to a POSIX ACL structure.  \n *  \n * Parameters:  \n * aclp (struct xfs_acl*): Pointer to the XFS ACL structure to convert.  \n *  \n * Returns:  \n * struct posix_acl*: Pointer to the newly allocated POSIX ACL structure on success,  \n * or an error pointer on failure.  \n *  \n * Logic:\n * The function reads the count of ACL entries and allocates memory for the POSIX ACL. It then\n * iterates through each entry, converting the tag and permissions from disk format to core format.\n * Depending on the tag type, it assigns the appropriate ID or marks it as undefined. If any errors\n * occur during this process, it releases the allocated ACL and returns an error pointer.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct posix_acl *convert_xfs_acl_to_posix(struct xfs_acl *aclp) {\n    int count = aclp->count;\n    struct posix_acl *posix_acl;\n    int i;\n\n    if (count < 0 || count > XFS_ACL_MAX_ENTRIES)\n        return ERR_PTR(-EINVAL);\n\n    posix_acl = kmalloc(sizeof(struct posix_acl) + count * sizeof(struct posix_acl_entry), GFP_KERNEL);\n    if (!posix_acl)\n        return ERR_PTR(-ENOMEM);\n\n    posix_acl->a_count = count;\n    for (i = 0; i < count; i++) {\n        struct xfs_acl_entry *entry = &aclp->entries[i];\n        struct posix_acl_entry *posix_entry = &posix_acl->a_entries[i];\n\n        switch (entry->tag) {\n            case XFS_ACL_TAG_USER_OBJ:\n                posix_entry->e_tag = POSIX_ACL_USER_OBJ;\n                break;\n            case XFS_ACL_TAG_GROUP_OBJ:\n                posix_entry->e_tag = POSIX_ACL_GROUP_OBJ;\n                break;\n            case XFS_ACL_TAG_OTHER:\n                posix_entry->e_tag = POSIX_ACL_OTHER;\n                break;\n            case XFS_ACL_TAG_USER:\n                posix_entry->e_tag = POSIX_ACL_USER;\n                posix_entry->e_id = entry->id;\n                break;\n            case XFS_ACL_TAG_GROUP:\n                posix_entry->e_tag = POSIX_ACL_GROUP;\n                posix_entry->e_id = entry->id;\n                break;\n            default:\n                posix_entry->e_tag = POSIX_ACL_UNDEFINED;\n                break;\n        }\n\n        posix_entry->e_perm = entry->perm;\n    }\n\n    return posix_acl;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 3,
+    "reference_missing_steps": [
+      "explicit bounds check on count of ACL entries",
+      "explicit memory allocation check"
+    ],
+    "candidate_missing_steps": [
+      "bounds check on tag type in default case",
+      "error handling for invalid tag types"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 includes a bounds check for the default tag case and error handling for invalid tags, while implementation 2 lacks these checks. Implementation 2 includes a bounds check on the count of ACL entries and a memory allocation check, which implementation 1 does not. These differences expose each implementation to different risks.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 6,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "bounds_check_with_error_return",
+      "byte_order_conversion",
+      "error_cleanup_on_failure"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 3,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check on the ACL entry count before processing and includes error handling for invalid tags, releasing the allocated ACL on failure. It also performs byte-order conversion on the tag and permission fields. Implementation 2 performs a bounds check on the ACL entry count and uses a single allocation for the entire ACL structure, but it does not release the allocated memory on error and does not handle invalid tags with an explicit error path. It also does not perform byte-order conversion on the input fields.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

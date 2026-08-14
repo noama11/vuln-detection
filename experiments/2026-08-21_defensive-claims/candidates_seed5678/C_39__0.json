@@ -1,0 +1,31 @@
+{
+  "case_id": "C_39__0",
+  "implementation": "#include <linux/sem.h>\n#include <linux/uaccess.h>\n\nlong sys_semtimedop(int semid, struct oabi_sembuf __user *tsops, unsigned nsops, const struct timespec __user *timeout) {\n    struct oabi_sembuf *sops;\n    struct timespec tspec;\n    long ret = -EINVAL;\n\n    if (nsops == 0) {\n        return -EINVAL;\n    }\n\n    sops = kmalloc_array(nsops, sizeof(struct oabi_sembuf), GFP_KERNEL);\n    if (!sops) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(sops, tsops, nsops * sizeof(struct oabi_sembuf))) {\n        goto out_free;\n    }\n\n    if (timeout) {\n        if (copy_from_user(&tspec, timeout, sizeof(struct timespec))) {\n            goto out_free;\n        }\n        timeout = &tspec;\n    }\n\n    ret = do_semtimedop(semid, sops, nsops, timeout);\n\nout_free:\n    kfree(sops);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check nsops is non-zero",
+      "protects_against": "invalid zero operation count"
+    },
+    {
+      "step": "allocate memory with kmalloc_array",
+      "protects_against": "integer overflow in array allocation"
+    },
+    {
+      "step": "check copy_from_user returns success",
+      "protects_against": "invalid user pointer or corrupted data"
+    },
+    {
+      "step": "check timeout copy_from_user returns success",
+      "protects_against": "invalid timeout pointer"
+    },
+    {
+      "step": "ensure memory is freed on all return paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

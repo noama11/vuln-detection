@@ -1,0 +1,98 @@
+{
+  "case_id": "C_169__0",
+  "sample_id": "D/C/169",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the offset of a netlink attribute from a socket buffer.\n\nParameters: \nctx (u64): Context pointer to the socket buffer.\nA (u64): Offset in the socket buffer where the search for the netlink attribute begins.\nX (u64): The type of netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the netlink attribute within the socket buffer, or 0 if not found or if conditions are not met.\n\nLogic: The function first checks whether the socket buffer is suitable for the search. It then verifies that the provided offset A is valid. If all checks pass, it searches for the netlink attribute of type X starting from the calculated position. If found, it returns the offset of the attribute relative to the start of the socket buffer; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "u64 find_netlink_attribute_offset(u64 ctx, u64 A, u64 X, u64 r4, u64 r5) {\n    // Assume ctx is a pointer to a socket buffer (skb)\n    struct sk_buff *skb = (struct sk_buff *)ctx;\n\n    // Check if the socket buffer is valid\n    if (!skb || skb->len == 0) {\n        return 0;\n    }\n\n    // Check if the offset A is within the bounds of the socket buffer\n    if (A >= skb->len) {\n        return 0;\n    }\n\n    // Calculate the position in the socket buffer to start the search\n    u64 position = A;\n\n    // Search for the netlink attribute of type X\n    while (position < skb->len) {\n        // Assume that the netlink attribute header is 4 bytes and contains the type and length\n        u32 attribute_header = *(u32 *)((u8 *)skb->data + position);\n\n        // Extract the type and length from the attribute header\n        u16 attribute_type = (attribute_header >> 16) & 0xFFFF;\n        u16 attribute_length = attribute_header & 0xFFFF;\n\n        // Check if the attribute type matches X\n        if (attribute_type == X) {\n            // Return the offset of the attribute relative to the start of the socket buffer\n            return position;\n        }\n\n        // Move to the next attribute\n        position += attribute_length;\n\n        // Check if the attribute length is valid and does not cause an overflow\n        if (position > skb->len) {\n            return 0;\n        }\n    }\n\n    // Netlink attribute not found\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if socket buffer is valid",
+      "protects_against": "null or invalid socket buffer pointer"
+    },
+    {
+      "step": "check if offset A is within bounds",
+      "protects_against": "offset A exceeding the length of the socket buffer"
+    },
+    {
+      "step": "check if attribute length is valid",
+      "protects_against": "attribute length causing an overflow when added to the current position"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket buffer is valid — protects against: null or invalid socket buffer pointer",
+        "reasoning": "The implementation casts `ctx` to a `struct sk_buff *` but does not explicitly check if the pointer is null or invalid. However, the subsequent call to `skb_is_nonlinear(skb)` would likely fail or cause undefined behavior if `skb` is null or invalid, making this step omitted.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if offset A is within bounds — protects against: offset A exceeding the length of the socket buffer",
+        "reasoning": "The implementation includes a check `if (A > skb->len - sizeof(struct nlattr)) return 0;`, which ensures that the offset A is within the bounds of the socket buffer. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if attribute length is valid — protects against: attribute length causing an overflow when added to the current position",
+        "reasoning": "The implementation does not explicitly check the length of the attribute returned by `nla_find`. It assumes that the attribute is valid and does not perform any bounds checking on the attribute's length. This step is omitted.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket buffer is valid — protects against: null or invalid socket buffer pointer",
+        "reasoning": "The implementation casts the context pointer `ctx` to a `struct sk_buff *` but does not explicitly check if it is null or invalid. However, the subsequent call to `skb_is_nonlinear(skb)` and the use of `skb->len` would likely cause a crash if `skb` were null or invalid, indicating that the check is omitted.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if offset A is within bounds — protects against: offset A exceeding the length of the socket buffer",
+        "reasoning": "The implementation includes a check `if (A > skb->len - sizeof(struct nlattr)) return 0;` which ensures that the offset A is within the bounds of the socket buffer, accounting for the size of the netlink attribute.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if attribute length is valid — protects against: attribute length causing an overflow when added to the current position",
+        "reasoning": "The implementation does not perform a check on the length of the attribute itself. The function `nla_find` is used, but the implementation does not include any validation of the attribute length before using it in a calculation that could lead to an overflow.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

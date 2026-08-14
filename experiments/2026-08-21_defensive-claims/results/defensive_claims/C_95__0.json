@@ -1,0 +1,114 @@
+{
+  "case_id": "C_95__0",
+  "sample_id": "D/C/95",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1828",
+  "cve_summary": "The sctp_getsockopt_assoc_stats function in net/sctp/socket.c in the Linux kernel before 3.8.4 does not validate a size value before proceeding to a copy_from_user operation, which allows local users to gain privileges via a crafted application that contains an SCTP_GET_ASSOC_STATS getsockopt system call.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves association statistics for a given SCTP socket.\n\nParameters: \nsk (struct sock *): Pointer to the socket from which to retrieve statistics. \nlen (int): Length of the user-provided buffer for the statistics. \noptval (char __user *): User buffer to store the retrieved association statistics. \noptlen (int __user *): User buffer to store the length of the returned statistics.\n\nReturns: \nint: 0 on success, or a negative error code indicating the failure reason.\n\nLogic: \nThe function first checks if the provided length is sufficient for the association ID. It then copies data from the user buffer into a local structure, retrieves the association statistics based on the association ID, and populates the statistics structure with various metrics. It updates the maximum observed RTO and prepares the statistics for return to the user. Finally, it copies the filled structure back to the user buffer and returns the appropriate status code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/uaccess.h>\n#include <linux/sctp.h>\n\nint sctp_get_assoc_stats(struct sock *sk, int len, char __user *optval, int __user *optlen)\n{\n    struct sctp_assoc_stats stats = {0};\n    struct sctp_association *asoc;\n    int assoc_id;\n    int ret = 0;\n\n    /* Check if the provided length is sufficient for the association ID. */\n    if (len < sizeof(assoc_id))\n        return -EINVAL;\n\n    /* Copy the association ID from user space. */\n    if (copy_from_user(&assoc_id, optval, sizeof(assoc_id)))\n        return -EFAULT;\n\n    /* Retrieve the association based on the ID. */\n    asoc = sctp_id2assoc(sk, assoc_id);\n    if (!asoc)\n        return -ENOENT;\n\n    /* Populate the statistics structure with various metrics. */\n    stats.assoc_id = assoc_id;\n    stats.cumu_flight = asoc->c.sack.cumu_flight;\n    stats.rto = asoc->rto;\n    stats.max_rto = asoc->rto_max;\n    stats.min_rto = asoc->rto_min;\n\n    /* Update the maximum observed RTO. */\n    if (asoc->rto > stats.max_rto)\n        stats.max_rto = asoc->rto;\n\n    /* Prepare the statistics for return to the user. */\n    if (copy_to_user(optval, &stats, sizeof(stats))) {\n        ret = -EFAULT;\n    } else {\n        if (put_user(sizeof(stats), optlen))\n            ret = -EFAULT;\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check provided length for association ID",
+      "protects_against": "buffer overflow due to insufficient buffer size"
+    },
+    {
+      "step": "copy_from_user for association ID",
+      "protects_against": "invalid or malicious user input causing access violations"
+    },
+    {
+      "step": "copy_to_user for statistics structure",
+      "protects_against": "invalid or malicious user buffer causing access violations"
+    },
+    {
+      "step": "put_user for optlen",
+      "protects_against": "invalid or malicious user buffer causing access violations"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check provided length for association ID — protects against: buffer overflow due to insufficient buffer size",
+        "reasoning": "The implementation checks if the provided length is at least the size of `sctp_assoc_t`, which is the size needed for the association ID. This ensures the buffer is large enough to hold the association ID.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_from_user for association ID — protects against: invalid or malicious user input causing access violations",
+        "reasoning": "The implementation uses `copy_from_user` to copy the association ID from the user buffer into a local structure. This is the correct way to safely copy data from user space to kernel space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_to_user for statistics structure — protects against: invalid or malicious user buffer causing access violations",
+        "reasoning": "The implementation uses `copy_to_user` to copy the filled statistics structure back to the user buffer. This is the correct way to safely copy data from kernel space to user space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "put_user for optlen — protects against: invalid or malicious user buffer causing access violations",
+        "reasoning": "The implementation uses `put_user` to write the length of the returned statistics to the user buffer. This is the correct way to safely write a single value to user space.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check provided length for association ID — protects against: buffer overflow due to insufficient buffer size",
+        "reasoning": "The implementation checks if the provided length is at least the size of `sctp_assoc_t` and returns an error if not. This ensures the buffer is large enough to hold the association ID.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_from_user for association ID — protects against: invalid or malicious user input causing access violations",
+        "reasoning": "The implementation uses `copy_from_user` to copy the association ID from the user buffer into a local structure, which protects against invalid or malicious user input.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_to_user for statistics structure — protects against: invalid or malicious user buffer causing access violations",
+        "reasoning": "The implementation uses `copy_to_user` to copy the filled statistics structure back to the user buffer, which protects against invalid or malicious user buffers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "put_user for optlen — protects against: invalid or malicious user buffer causing access violations",
+        "reasoning": "The implementation uses `put_user` to write the length of the returned data into the user buffer for `optlen`, which protects against invalid or malicious user buffers.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

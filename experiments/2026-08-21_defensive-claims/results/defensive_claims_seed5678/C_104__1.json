@@ -1,0 +1,114 @@
+{
+  "case_id": "C_104__1",
+  "sample_id": "D/C/104",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2013-1417",
+  "cve_summary": "do_tgs_req.c in the Key Distribution Center (KDC) in MIT Kerberos 5 (aka krb5) 1.11 before 1.11.4, when a single-component realm name is used, allows remote authenticated users to cause a denial of service (daemon crash) via a TGS-REQ request that triggers an attempted cross-realm referral for a host-based service principal.",
+  "changed_file": "src/kdc/do_tgs_req.c",
+  "docstring": "\"\"\"\nSummary: \nFinds the appropriate referral Ticket Granting Service (TGS) for a given KDC realm and request.\n\nParameters: \nkdc_active_realm (kdc_realm_t *): The currently active KDC realm.\nrequest (krb5_kdc_req *): The KDC request containing the server principal.\nkrbtgt_princ (krb5_principal *): Pointer to store the resulting TGT principal.\n\nReturns: \nkrb5_int32: Returns an error code indicating success or failure of the operation.\n\nLogic: \nThe function first checks if the request is a referral request. It then retrieves the hostname from the server principal and verifies it is a fully qualified domain name (FQDN). It attempts to find the realm associated with the hostname. If successful, it ensures that the realm is valid and not empty before constructing the TGT principal. The function cleans up allocated resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n#include <krb5/krb5.h>\n\nkrb5_int32 find_tgs_for_referral(kdc_realm_t *kdc_active_realm, krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = KRB5KDC_ERR_GENERIC;\n    krb5_data hostname = {0};\n    krb5_realm *target_realm = NULL;\n\n    if (!kdc_active_realm || !request || !krbtgt_princ) {\n        return KRB5KDC_ERR_BADOPTION;\n    }\n\n    if (!request->server) {\n        return KRB5KDC_ERR_BAD_SERVER;\n    }\n\n    ret = krb5_unparse_name(kdc_active_realm->context, request->server, &hostname);\n    if (ret != 0) {\n        return ret;\n    }\n\n    if (hostname.length == 0) {\n        krb5_free_unparsed_name(kdc_active_realm->context, &hostname);\n        return KRB5KDC_ERR_BAD_SERVER;\n    }\n\n    target_realm = find_realm_by_hostname(kdc_active_realm->context, hostname.data);\n    if (!target_realm) {\n        krb5_free_unparsed_name(kdc_active_realm->context, &hostname);\n        return KRB5KDC_ERR_REALM_UNKNOWN;\n    }\n\n    if (target_realm->length == 0) {\n        krb5_free_unparsed_name(kdc_active_realm->context, &hostname);\n        return KRB5KDC_ERR_REALM_UNKNOWN;\n    }\n\n    ret = krb5_build_principal(kdc_active_realm->context, krbtgt_princ, target_realm->length, target_realm->data, \"krbtgt\", target_realm->length, target_realm->data, NULL);\n    if (ret != 0) {\n        krb5_free_unparsed_name(kdc_active_realm->context, &hostname);\n        return ret;\n    }\n\n    krb5_free_unparsed_name(kdc_active_realm->context, &hostname);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate server principal",
+      "protects_against": "invalid or missing server principal"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak"
+    },
+    {
+      "step": "check for empty realm",
+      "protects_against": "invalid or empty realm"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the function parameters or intermediate results, but it uses goto cleanup on failure paths and returns an error code when allocations fail. However, it does not check if 'request->server' is null before accessing 'request->server->realm'.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate server principal — protects against: invalid or missing server principal",
+        "reasoning": "The implementation extracts the hostname from the server principal and checks if it is a FQDN (contains a '.'). It also checks if the hostname is non-null after allocation. However, it does not perform a more comprehensive validation of the server principal itself (e.g., checking if it is null or malformed).",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation includes a 'cleanup' label and calls 'krb5_free_host_realm' and 'free(hostname)' to release allocated resources before returning. This ensures that all allocated memory is freed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for empty realm — protects against: invalid or empty realm",
+        "reasoning": "The implementation checks if 'realms' is NULL or if 'realms[0]' is an empty string. It also checks if the retrieved realm matches the service realm and skips it in that case. These checks ensure that the realm is valid and non-empty.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not include any checks for null pointers in the provided code snippet. There is no indication that null pointer dereference is guarded against.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate server principal — protects against: invalid or missing server principal",
+        "reasoning": "The implementation does not include any validation of the server principal in the provided code snippet. There is no indication that invalid or missing server principal is guarded against.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation includes a `goto cleanup;` statement, which suggests that there is a cleanup section in the code where allocated memory is freed. However, the provided code snippet does not show the actual freeing of memory.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for empty realm — protects against: invalid or empty realm",
+        "reasoning": "The implementation does not include any checks for an empty realm in the provided code snippet. There is no indication that invalid or empty realm is guarded against.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

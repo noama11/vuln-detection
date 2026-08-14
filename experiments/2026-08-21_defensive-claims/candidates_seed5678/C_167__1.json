@@ -1,0 +1,27 @@
+{
+  "case_id": "C_167__1",
+  "implementation": "#include <linux/hid.h>\n#include <linux/input.h>\n\n#define TRACKPAD_REPORT_ID 0x11\n#define MOUSE_REPORT_ID 0x12\n#define DOUBLE_REPORT_ID 0x13\n\nint process_magic_input(struct hid_device *hdev, struct hid_report *report, u8 *data, int size)\n{\n    int i;\n    struct input_dev *input_dev = hidinput_input(hdev);\n\n    if (!input_dev)\n        return 0;\n\n    switch (data[0]) {\n        case TRACKPAD_REPORT_ID:\n            if (size < 2)\n                return 0;\n\n            /* Process trackpad touch points and clicks */\n            for (i = 1; i < size; i += 2) {\n                if (i + 1 >= size)\n                    break;\n\n                input_report_abs(input_dev, ABS_MT_POSITION_X, data[i]);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, data[i + 1]);\n                input_mt_sync_frame(input_dev);\n            }\n\n            if (data[1] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            break;\n\n        case MOUSE_REPORT_ID:\n            if (size < 4)\n                return 0;\n\n            /* Process mouse movement and button clicks */\n            input_report_rel(input_dev, REL_X, data[1]);\n            input_report_rel(input_dev, REL_Y, data[2]);\n\n            if (data[3] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            if (data[3] & 0x02)\n                input_report_key(input_dev, BTN_RIGHT, 1);\n            else\n                input_report_key(input_dev, BTN_RIGHT, 0);\n\n            break;\n\n        case DOUBLE_REPORT_ID:\n            if (size < 6)\n                return 0;\n\n            /* Process combined trackpad and mouse data */\n            for (i = 1; i < size; i += 2) {\n                if (i + 1 >= size)\n                    break;\n\n                input_report_abs(input_dev, ABS_MT_POSITION_X, data[i]);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, data[i + 1]);\n                input_mt_sync_frame(input_dev);\n            }\n\n            input_report_rel(input_dev, REL_X, data[4]);\n            input_report_rel(input_dev, REL_Y, data[5]);\n\n            if (data[3] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            if (data[3] & 0x02)\n                input_report_key(input_dev, BTN_RIGHT, 1);\n            else\n                input_report_key(input_dev, BTN_RIGHT, 0);\n\n            break;\n\n        default:\n            return 0;\n    }\n\n    input_sync(input_dev);\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check input_dev pointer before use",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size before processing data",
+      "protects_against": "buffer overflow and invalid memory access"
+    },
+    {
+      "step": "bound loop indices to data size",
+      "protects_against": "out-of-bounds memory access"
+    },
+    {
+      "step": "return 0 for unrecognized report types",
+      "protects_against": "processing invalid or unexpected data formats"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

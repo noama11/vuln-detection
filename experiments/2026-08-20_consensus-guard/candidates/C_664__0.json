@@ -1,0 +1,34 @@
+{
+  "case_id": "C_664__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "mrb_value\nmrb_io_init_copy(mrb_state *mrb, mrb_value copy)\n{\n  mrb_value orig;\n  struct mrb_io *io, *orig_io;\n  int oflags;\n\n  orig = mrb_get_args(mrb, \"o\", &orig);\n  if (!mrb_io_p(orig)) {\n    mrb_raise(mrb, E_TYPE_ERROR, \"IO required\");\n  }\n\n  io = mrb_io_get_struct(mrb, copy);\n  orig_io = mrb_io_get_struct(mrb, orig);\n\n  if (io->io != NULL) {\n    mrb_io_close(mrb, copy);\n  }\n\n  if (orig_io->io == NULL) {\n    mrb_raise(mrb, E_IO_ERROR, \"closed io\");\n  }\n\n  oflags = fcntl(mrb_io_fd(orig), F_GETFL);\n  if (oflags < 0) {\n    mrb_sys_fail(mrb, \"fcntl(F_GETFL)\");\n  }\n\n  if (dup2(mrb_io_fd(orig), mrb_io_fd(copy)) < 0) {\n    mrb_sys_fail(mrb, \"dup2\");\n  }\n\n  if (fcntl(mrb_io_fd(copy), F_SETFL, oflags) < 0) {\n    mrb_sys_fail(mrb, \"fcntl(F_SETFL)\");\n  }\n\n  io->mode = orig_io->mode;\n  io->path = orig_io->path;\n  io->sync = orig_io->sync;\n  io->binmode = orig_io->binmode;\n\n  return copy;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "mrb_value mrb_io_init_copy(mrb_state *mrb, mrb_value copy) {\n  mrb_value original;\n  mrb_io *io_orig, *io_dup;\n  struct RClass *cIO;\n\n  original = mrb_get_args(mrb, \"o\", &cIO);\n  if (mrb_obj_equal(mrb, copy, original)) {\n    return copy;\n  }\n\n  mrb_data_initialize(mrb, &copy, NULL, NULL);\n\n  io_orig = mrb_io_ptr(mrb, original);\n  io_dup = (mrb_io *)mrb_malloc(mrb, sizeof(*io_dup));\n  *io_dup = *io_orig;\n\n  if (io_orig->io != NULL) {\n    io_dup->io = mrb_io_dup(mrb, io_orig->io);\n    if (io_dup->io == NULL) {\n      mrb_free(mrb, io_dup);\n      mrb_raise(mrb, E_SYSTEM_ENOENT, \"Failed to duplicate IO object\");\n    }\n  }\n\n  mrb_data_init(&copy, io_dup, &mrb_io_type);\n\n  return copy;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "mrb_value\nmrb_io_init_copy(mrb_state *mrb, mrb_value copy)\n{\n  mrb_value original;\n  mrb_io *io, *orig_io;\n  int oflags, new_fd;\n\n  original = mrb_get_arg1(mrb);\n  if (!mrb_io_p(original)) {\n    mrb_raise(mrb, E_ARGUMENT_ERROR, \"original must be an IO object\");\n  }\n\n  orig_io = mrb_io_ptr(original);\n  io = mrb_io_ptr(copy);\n  mrb_data_object_free(mrb, copy); /* finalize existing data if any */\n\n  new_fd = dup(mrb->io);\n  if (new_fd == -1) {\n    mrb_sys_fail(mrb, \"dup\");\n  }\n\n  oflags = fcntl(mrb->io, F_GETFL, 0);\n  if (oflags == -1) {\n    mrb_sys_fail(mrb, \"fcntl\");\n  }\n\n  if (fcntl(new_fd, F_SETFL, oflags) == -1) {\n    mrb_sys_fail(mrb, \"fcntl\");\n  }\n\n  io->fd = new_fd;\n  io->readable = orig_io->readable;\n  io->writable = orig_io->writable;\n  io->sync = orig_io->sync;\n\n  mrb_obj_iv_copy(mrb, copy, original);\n\n  return copy;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "mrb_value\nmrb_io_init_copy(mrb_state *mrb, mrb_value copy)\n{\n  mrb_value orig;\n  struct mrb_io *io, *orig_io;\n  int oflags;\n  int new_fd;\n  int readable;\n  int writable;\n\n  orig = mrb_get_args(mrb, \"o\", &copy);\n  if (mrb_obj_equal(mrb, copy, orig)) {\n    return copy;\n  }\n\n  mrb_data_type *td = mrb->io_type;\n  mrb_data_check_type(mrb, orig, \"IO\");\n\n  orig_io = (struct mrb_io *)mrb_get_datatype(mrb, orig, td);\n  if (orig_io == NULL) {\n    mrb_raise(mrb, E_TYPE_ERROR, \"wrong argument type (expected IO)\");\n  }\n\n  mrb_data_init(mrb, copy, NULL, td);\n  io = (struct mrb_io *)mrb_get_datatype(mrb, copy, td);\n  if (io == NULL) {\n    mrb_raise(mrb, E_RUNTIME_ERROR, \"IO allocation failed\");\n  }\n\n  if (orig_io->fd != -1) {\n    new_fd = dup(orig_io->fd);\n    if (new_fd == -1) {\n      mrb_sys_fail(mrb, \"dup\");\n    }\n    io->fd = new_fd;\n    oflags = fcntl(orig_io->fd, F_GETFL, 0);\n    if (oflags == -1) {\n      mrb_sys_fail(mrb, \"fcntl\");\n    }\n    fcntl(new_fd, F_SETFL, oflags);\n  }\n\n  io->path = strdup(orig_io->path);\n  if (io->path == NULL) {\n    mrb_sys_fail(mrb, \"strdup\");\n  }\n\n  readable = orig_io->readable;\n  writable = orig_io->writable;\n\n  if (readable && (new_fd < 0)) {\n    mrb_raise(mrb, E_RUNTIME_ERROR, \"failed to duplicate readable IO\");\n  }\n\n  if (writable && (new_fd < 0)) {\n    mrb_raise(mrb, E_RUNTIME_ERROR, \"failed to duplicate writable IO\");\n  }\n\n  io->readable = readable;\n  io->writable = writable;\n  io->sync = orig_io->sync;\n\n  return copy;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "mrb_value mrb_io_init_copy(mrb_state *mrb, mrb_value copy) {\n  mrb_value original;\n  struct mrb_io *io, *orig_io;\n\n  original = mrb_get_args(mrb, \"o\", &copy);\n  if (mrb_equal(mrb, copy, original)) return copy;\n\n  Data_Get_Struct(mrb, copy, struct mrb_io, io);\n  Data_Get_Struct(mrb, original, struct mrb_io, orig_io);\n\n  if (io->fd >= 0) {\n    mrb_io_close(mrb, copy);\n  }\n\n  io->fd = dup(orig_io->fd);\n  if (io->fd < 0) {\n    mrb_sys_fail(mrb, \"dup\");\n  }\n\n  io->mode = orig_io->mode;\n  io->path = orig_io->path;\n  io->sync = orig_io->sync;\n  io->readable = orig_io->readable;\n  io->writable = orig_io->writable;\n\n  return copy;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "C_389__0",
+  "sample_id": "D/C/389",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "the-tcpdump-group/tcpdump",
+  "cve_id": "CVE-2017-13725",
+  "cve_summary": "The IPv6 routing header parser in tcpdump before 4.9.2 has a buffer over-read in print-rt6.c:rt6_print().",
+  "commit_message": "CVE-2017-13725/IPv6 R.H.: Check for the existence of all fields before fetching them.\n\nDon't fetch the length field from the header until after we've checked\nfor the existence of a field at or after that field.\n\n(Found by code inspection, not by a capture.)",
+  "changed_file": "print-rt6.c",
+  "docstring": "Summary:  \nPrints the details of an IPv6 routing header.\n\nParameters:  \nndo (netdissect_options *): options for packet dissection.  \nbp (const u_char *): pointer to the start of the routing header data.  \nbp2 (const u_char *): unused pointer for additional data.\n\nReturns:  \nint: the length of the printed routing header or -1 if truncated.\n\nLogic:  \nThe function begins by casting the input byte pointer to an IPv6 routing header structure. It checks the end of available data and prints the routing header's length, type, and the number of segments left. Depending on the routing header type, it processes the data accordingly, extracting and printing the addresses contained within. If the data is insufficient or malformed, it indicates truncation. The function returns the total length of the printed routing header or -1 if the data was truncated.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    24,
+    93
+  ],
+  "vulnerable_line_range": [
+    38,
+    93
+  ],
+  "vulnerable_snippet": "int\r\nrt6_print(netdissect_options *ndo, register const u_char *bp, const u_char *bp2 _U_)\r\n{\r\n\tregister const struct ip6_rthdr *dp;\r\n\tregister const struct ip6_rthdr0 *dp0;\r\n\tregister const u_char *ep;\r\n\tint i, len;\r\n\tregister const struct in6_addr *addr;\r\n\r\n\tdp = (const struct ip6_rthdr *)bp;\r\n\tlen = dp->ip6r_len;\r\n\r\n\t/* 'ep' points to the end of available data. */\r\n\tep = ndo->ndo_snapend;\r\n\r\n\tND_TCHECK(dp->ip6r_segleft);\r\n\r\n\tND_PRINT((ndo, \"srcrt (len=%d\", dp->ip6r_len));\t/*)*/\r\n\tND_PRINT((ndo, \", type=%d\", dp->ip6r_type));\r\n\tND_PRINT((ndo, \", segleft=%d\", dp->ip6r_segleft));\r\n\r\n\tswitch (dp->ip6r_type) {\r\n\tcase IPV6_RTHDR_TYPE_0:\r\n\tcase IPV6_RTHDR_TYPE_2:\t\t\t/* Mobile IPv6 ID-20 */\r\n\t\tdp0 = (const struct ip6_rthdr0 *)dp;\r\n\r\n\t\tND_TCHECK(dp0->ip6r0_reserved);\r\n\t\tif (dp0->ip6r0_reserved || ndo->ndo_vflag) {\r\n\t\t\tND_PRINT((ndo, \", rsv=0x%0x\",\r\n\t\t\t    EXTRACT_32BITS(&dp0->ip6r0_reserved)));\r\n\t\t}\r\n\r\n\t\tif (len % 2 == 1)\r\n\t\t\tgoto trunc;\r\n\t\tlen >>= 1;\r\n\t\taddr = &dp0->ip6r0_addr[0];\r\n\t\tfor (i = 0; i < len; i++) {\r\n\t\t\tif ((const u_char *)(addr + 1) > ep)\r\n\t\t\t\tgoto trunc;\r\n\r\n\t\t\tND_PRINT((ndo, \", [%d]%s\", i, ip6addr_string(ndo, addr)));\r\n\t\t\taddr++;\r\n\t\t}\r\n\t\t/*(*/\r\n\t\tND_PRINT((ndo, \") \"));\r\n\t\treturn((dp0->ip6r0_len + 1) << 3);\r\n\t\tbreak;\r\n\tdefault:\r\n\t\tgoto trunc;\r\n\t\tbreak;\r\n\t}\r\n\r\n trunc:\r\n\tND_PRINT((ndo, \"[|srcrt]\"));\r\n\treturn -1;\r\n}",
+  "fixed_line_range": [
+    38,
+    93
+  ],
+  "fixed_snippet": "int\r\nrt6_print(netdissect_options *ndo, register const u_char *bp, const u_char *bp2 _U_)\r\n{\r\n\tregister const struct ip6_rthdr *dp;\r\n\tregister const struct ip6_rthdr0 *dp0;\r\n\tregister const u_char *ep;\r\n\tint i, len;\r\n\tregister const struct in6_addr *addr;\r\n\r\n\tdp = (const struct ip6_rthdr *)bp;\r\n\r\n\t/* 'ep' points to the end of available data. */\r\n\tep = ndo->ndo_snapend;\r\n\r\n\tND_TCHECK(dp->ip6r_segleft);\r\n\r\n\tlen = dp->ip6r_len;\r\n\tND_PRINT((ndo, \"srcrt (len=%d\", dp->ip6r_len));\t/*)*/\r\n\tND_PRINT((ndo, \", type=%d\", dp->ip6r_type));\r\n\tND_PRINT((ndo, \", segleft=%d\", dp->ip6r_segleft));\r\n\r\n\tswitch (dp->ip6r_type) {\r\n\tcase IPV6_RTHDR_TYPE_0:\r\n\tcase IPV6_RTHDR_TYPE_2:\t\t\t/* Mobile IPv6 ID-20 */\r\n\t\tdp0 = (const struct ip6_rthdr0 *)dp;\r\n\r\n\t\tND_TCHECK(dp0->ip6r0_reserved);\r\n\t\tif (dp0->ip6r0_reserved || ndo->ndo_vflag) {\r\n\t\t\tND_PRINT((ndo, \", rsv=0x%0x\",\r\n\t\t\t    EXTRACT_32BITS(&dp0->ip6r0_reserved)));\r\n\t\t}\r\n\r\n\t\tif (len % 2 == 1)\r\n\t\t\tgoto trunc;\r\n\t\tlen >>= 1;\r\n\t\taddr = &dp0->ip6r0_addr[0];\r\n\t\tfor (i = 0; i < len; i++) {\r\n\t\t\tif ((const u_char *)(addr + 1) > ep)\r\n\t\t\t\tgoto trunc;\r\n\r\n\t\t\tND_PRINT((ndo, \", [%d]%s\", i, ip6addr_string(ndo, addr)));\r\n\t\t\taddr++;\r\n\t\t}\r\n\t\t/*(*/\r\n\t\tND_PRINT((ndo, \") \"));\r\n\t\treturn((dp0->ip6r0_len + 1) << 3);\r\n\t\tbreak;\r\n\tdefault:\r\n\t\tgoto trunc;\r\n\t\tbreak;\r\n\t}\r\n\r\n trunc:\r\n\tND_PRINT((ndo, \"[|srcrt]\"));\r\n\treturn -1;\r\n}",
+  "func_name": "rt6_print",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

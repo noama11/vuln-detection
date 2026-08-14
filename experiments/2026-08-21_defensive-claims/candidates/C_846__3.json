@@ -1,0 +1,39 @@
+{
+  "case_id": "C_846__3",
+  "implementation": "#include <linux/fs.h>\n#include <linux/uaccess.h>\n#include <linux/mutex.h>\n#include <linux/wait.h>\n\nssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    struct sound_timer_dev *dev = file->private_data;\n    ssize_t bytes_read = 0;\n\n    if (!dev || !buffer || !offset)\n        return -EINVAL;\n\n    mutex_lock(&dev->mutex);\n\n    while (1) {\n        unsigned int available = kfifo_len(&dev->queue);\n\n        if (available > 0) {\n            size_t to_read = min(count, available);\n\n            if (to_read > 0) {\n                if (kfifo_out_to_user(&dev->queue, buffer, to_read, &bytes_read)) {\n                    bytes_read = -EFAULT;\n                    goto out;\n                }\n                buffer += bytes_read;\n                count -= bytes_read;\n                *offset += bytes_read;\n            }\n            break;\n        }\n\n        if (file->f_flags & O_NONBLOCK) {\n            bytes_read = -EAGAIN;\n            goto out;\n        }\n\n        if (wait_event_interruptible(dev->wait_queue, kfifo_len(&dev->queue) > 0)) {\n            bytes_read = -ERESTARTSYS;\n            goto out;\n        }\n    }\n\n    bytes_read = count - count;\n\nout:\n    mutex_unlock(&dev->mutex);\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "use mutex lock",
+      "protects_against": "race conditions during concurrent access"
+    },
+    {
+      "step": "check for available data before reading",
+      "protects_against": "reading from an empty queue"
+    },
+    {
+      "step": "handle non-blocking flag",
+      "protects_against": "blocking on a non-blocking file descriptor"
+    },
+    {
+      "step": "use wait queue for empty queue",
+      "protects_against": "busy waiting when no data is available"
+    },
+    {
+      "step": "check for user space copy errors",
+      "protects_against": "invalid user space pointer access"
+    },
+    {
+      "step": "ensure mutex is unlocked on all exit paths",
+      "protects_against": "deadlock from un-released mutex"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

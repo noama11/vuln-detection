@@ -1,0 +1,62 @@
+{
+  "case_id": "C_95__0",
+  "sample_id": "D/C/95",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1828",
+  "cve_summary": "The sctp_getsockopt_assoc_stats function in net/sctp/socket.c in the Linux kernel before 3.8.4 does not validate a size value before proceeding to a copy_from_user operation, which allows local users to gain privileges via a crafted application that contains an SCTP_GET_ASSOC_STATS getsockopt system call.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves association statistics for a given SCTP socket.\n\nParameters: \nsk (struct sock *): Pointer to the socket from which to retrieve statistics. \nlen (int): Length of the user-provided buffer for the statistics. \noptval (char __user *): User buffer to store the retrieved association statistics. \noptlen (int __user *): User buffer to store the length of the returned statistics.\n\nReturns: \nint: 0 on success, or a negative error code indicating the failure reason.\n\nLogic: \nThe function first checks if the provided length is sufficient for the association ID. It then copies data from the user buffer into a local structure, retrieves the association statistics based on the association ID, and populates the statistics structure with various metrics. It updates the maximum observed RTO and prepares the statistics for return to the user. Finally, it copies the filled structure back to the user buffer and returns the appropriate status code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check that the user buffer is large enough to hold the full statistics structure",
+        "performed_by_count": 4,
+        "why_it_matters": "If the user buffer is not large enough, copying the full structure could cause a buffer overflow or incomplete data transfer, leading to memory corruption or incorrect behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that the majority of the independent implementations perform: checking that the length of the user buffer is sufficient to hold the entire statistics structure before copying data into it. Instead, the target uses `min_t` to limit the copy size to the user buffer length, which is a different approach but not a consensus step. The target also performs a unique defensive step of updating `asoc->stats.max_obs_rto` and copying an IP address, which is not seen in most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "bounds check and error return for memcpy of obs_rto_ipaddr",
+        "performed_by_count": 4,
+        "why_it_matters": "If the `obs_rto_ipaddr` field is malformed or the copy operation fails, the function could overwrite memory or return invalid data without error, leading to potential memory corruption or incorrect behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: it does not check the return value of the `memcpy` operation when copying the `obs_rto_ipaddr` field. A majority of the independent implementations perform explicit bounds checks and error returns for copy operations, but the target does not handle this particular copy defensively.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "case_id": "C_78__0",
+  "implementation": "int receive_message_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    if (!sk || !msg) {\n        return -EINVAL;\n    }\n\n    if (size == 0) {\n        return 0;\n    }\n\n    skb = skb_recv_datagram(sk, flags, &err);\n    if (!skb) {\n        return err;\n    }\n\n    copied = skb->len;\n\n    if (copied > size) {\n        copied = size;\n    }\n\n    if (memcpy_to_msg(msg, skb->data, copied) != copied) {\n        err = -EFAULT;\n    }\n\n    if (!(flags & MSG_PEEK)) {\n        __skb_pull(skb, copied);\n        if (skb->len == 0) {\n            sock_rfree(skb);\n        }\n    }\n\n    kfree_skb(skb);\n\n    return (err) ? err : copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "check socket and message header pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size is non-zero",
+      "protects_against": "attempting to copy zero bytes"
+    },
+    {
+      "step": "bound copy length to requested size",
+      "protects_against": "buffer overflow in the message header"
+    },
+    {
+      "step": "check memcpy_to_msg result",
+      "protects_against": "partial or failed memory copy to user space"
+    },
+    {
+      "step": "free socket buffer on all paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

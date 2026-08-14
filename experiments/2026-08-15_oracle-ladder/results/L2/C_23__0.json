@@ -1,0 +1,49 @@
+{
+  "case_id": "C_23__0",
+  "sample_id": "D/C/23",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0038",
+  "cve_summary": "Integer overflow in the xfs_acl_from_disk function in fs/xfs/xfs_acl.c in the Linux kernel before 3.1.9 allows local users to cause a denial of service (panic) via a filesystem with a malformed ACL, leading to a heap-based buffer overflow.",
+  "changed_file": "fs/xfs/xfs_acl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Converts an XFS ACL structure from disk format to a POSIX ACL structure.  \n *  \n * Parameters:  \n * aclp (struct xfs_acl*): Pointer to the XFS ACL structure to convert.  \n *  \n * Returns:  \n * struct posix_acl*: Pointer to the newly allocated POSIX ACL structure on success,  \n * or an error pointer on failure.  \n *  \n * Logic:\n * The function reads the count of ACL entries and allocates memory for the POSIX ACL. It then\n * iterates through each entry, converting the tag and permissions from disk format to core format.\n * Depending on the tag type, it assigns the appropriate ID or marks it as undefined. If any errors\n * occur during this process, it releases the allocated ACL and returns an error pointer.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int\r\nvc4_get_bcl(struct drm_device *dev, struct vc4_exec_info *exec)\r\n{\r\n\tstruct drm_vc4_submit_cl *args = exec->args;\r\n\tvoid *temp = NULL;\r\n\tvoid *bin;\r\n\tint ret = 0;\r\n\tuint32_t bin_offset = 0;\r\n\tuint32_t shader_rec_offset = roundup(bin_offset + args->bin_cl_size,\r\n\t\t\t\t\t     16);\r\n\tuint32_t uniforms_offset = shader_rec_offset + args->shader_rec_size;\r\n\tuint32_t exec_size = uniforms_offset + args->uniforms_size;\r\n\tuint32_t temp_size = exec_size + (sizeof(struct vc4_shader_state) *\r\n\t\t\t\t\t  args->shader_rec_count);\r\n\tstruct vc4_bo *bo;\r\n\r\n\tif (shader_rec_offset < args->bin_cl_size ||\r\n\t    uniforms_offset < shader_rec_offset ||\r\n\t    exec_size < uniforms_offset ||\r\n\t    args->shader_rec_count >= (UINT_MAX /\r\n\t\t\t\t\t  sizeof(struct vc4_shader_state)) ||\r\n\t    temp_size < exec_size) {\r\n\t\tDRM_ERROR(\"overflow in exec arguments\\n\");\r\n\t\tgoto fail;\r\n\t}\r\n\r\n\t/* Allocate space where we'll store the copied in user command lists\r\n\t * and shader records.\r\n\t *\r\n\t * We don't just copy directly into the BOs because we need to\r\n\t * read the contents back for validation, and I think the\r\n\t * bo->vaddr is uncached access.\r\n\t */\r\n\ttemp = drm_malloc_ab(temp_size, 1);\r\n\tif (!temp) {\r\n\t\tDRM_ERROR(\"Failed to allocate storage for copying \"\r\n\t\t\t  \"in bin/render CLs.\\n\");\r\n\t\tret = -ENOMEM;\r\n\t\tgoto fail;\r\n\t}\r\n\tbin = temp + bin_offset;\r\n\texec->shader_rec_u = temp + shader_rec_offset;\r\n\texec->uniforms_u = temp + uniforms_offset;\r\n\texec->shader_state = temp + exec_size;\r\n\texec->shader_state_size = args->shader_rec_count;\r\n\r\n\tif (copy_from_user(bin,\r\n\t\t\t   (void __user *)(uintptr_t)args->bin_cl,\r\n\t\t\t   args->bin_cl_size)) {\r\n\t\tret = -EFAULT;\r\n\t\tgoto fail;\r\n\t}\r\n\r\n\tif (copy_from_user(exec->shader_rec_u,\r\n\t\t\t   (void __user *)(uintptr_t)args->shader_rec,\r\n\t\t\t   args->shader_rec_size)) {\r\n\t\tret = -EFAULT;\r\n\t\tgoto fail;\r\n\t}\r\n\r\n\tif (copy_from_user(exec->uniforms_u,\r\n\t\t\t   (void __user *)(uintptr_t)args->uniforms,\r\n\t\t\t   args->uniforms_size)) {\r\n\t\tret = -EFAULT;\r\n\t\tgoto fail;\r\n\t}\r\n\r\n\tbo = vc4_bo_create(dev, exec_size, true);\r\n\tif (IS_ERR(bo)) {\r\n\t\tDRM_ERROR(\"Couldn't allocate BO for binning\\n\");\r\n\t\tret = PTR_ERR(bo);\r\n\t\tgoto fail;\r\n\t}\r\n\texec->exec_bo = &bo->base;\r\n\r\n\tlist_add_tail(&to_vc4_bo(&exec->exec_bo->base)->unref_head,\r\n\t\t      &exec->unref_list);\r\n\r\n\texec->ct0ca = exec->exec_bo->paddr + bin_offset;\r\n\r\n\texec->bin_u = bin;\r\n\r\n\texec->shader_rec_v = exec->exec_bo->vaddr + shader_rec_offset;\r\n\texec->shader_rec_p = exec->exec_bo->paddr + shader_rec_offset;\r\n\texec->shader_rec_size = args->shader_rec_size;\r\n\r\n\texec->uniforms_v = exec->exec_bo->vaddr + uniforms_offset;\r\n\texec->uniforms_p = exec->exec_bo->paddr + uniforms_offset;\r\n\texec->uniforms_size = args->uniforms_size;\r\n\r\n\tret = vc4_validate_bin_cl(dev,\r\n\t\t\t\t  exec->exec_bo->vaddr + bin_offset,\r\n\t\t\t\t  bin,\r\n\t\t\t\t  exec);\r\n\tif (ret)\r\n\t\tgoto fail;\r\n\r\n\tret = vc4_validate_shader_recs(dev, exec);\r\n\tif (ret)\r\n\t\tgoto fail;\r\n\r\n\t/* Block waiting on any previous rendering into the CS's VBO,\r\n\t * IB, or textures, so that pixels are actually written by the\r\n\t * time we try to read them.\r\n\t */\r\n\tret = vc4_wait_for_seqno(dev, exec->bin_dep_seqno, ~0ull, true);\r\n\r\nfail:\r\n\tdrm_free_large(temp);\r\n\treturn ret;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_494__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to be a function for handling graphics command lists, not for converting XFS ACLs to POSIX ACLs. The reference implementation correctly implements the logic described in the specification. This mismatch in purpose and functionality is significant and indicates a degenerate generation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to be a function for handling graphics command lists, not for converting XFS ACLs to POSIX ACLs. The reference implementation correctly follows the specification by converting an XFS ACL structure to a POSIX ACL structure. The candidate implementation is incoherent and off-topic relative to the specification.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

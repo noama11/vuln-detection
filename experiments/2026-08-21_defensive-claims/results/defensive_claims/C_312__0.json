@@ -1,0 +1,130 @@
+{
+  "case_id": "C_312__0",
+  "sample_id": "D/C/312",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2186",
+  "cve_summary": "The powermate_probe function in drivers/input/misc/powermate.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a crafted endpoints value in a USB device descriptor.",
+  "changed_file": "drivers/input/misc/powermate.c",
+  "docstring": "/**\n * Summary: Probes and initializes a Powermate USB device.\n * \n * Parameters:\n *   intf (struct usb_interface *): Pointer to the USB interface for the device.\n *   id (const struct usb_device_id *): Pointer to the USB device ID structure.\n * \n * Returns: int: 0 on success, negative error code on failure.\n * \n * Logic: This function examines the USB interface, allocates necessary resources for the Powermate device,\n * and sets up the input device structure. It configures the interrupt URB for receiving data from\n * the device and registers the input device with the input subsystem. If any allocation or setup\n * fails, it cleans up allocated resources and returns an appropriate error code. The function also\n * handles specific product IDs to set the device name and initializes the device's LED pulse\n * parameters.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int powermate_probe(struct usb_interface *intf, const struct usb_device_id *id) {\n    struct usb_device *udev = interface_to_usbdev(intf);\n    struct powermate_dev *dev;\n    int error = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    dev->udev = usb_get_dev(udev);\n    dev->intf = intf;\n\n    dev->input = input_allocate_device();\n    if (!dev->input)\n        goto err_free_dev;\n\n    dev->urb = usb_alloc_urb(0, GFP_KERNEL);\n    if (!dev->urb)\n        goto err_free_input;\n\n    usb_fill_int_urb(dev->urb, udev, usb_rcvintpipe(udev, 0x81),\n                     dev->data, sizeof(dev->data),\n                     powermate_irq, dev, 100);\n\n    dev->urb->transfer_flags |= URB_CUT_THROUGH;\n\n    error = input_register_device(dev->input);\n    if (error)\n        goto err_free_urb;\n\n    switch (le16_to_cpu(udev->descriptor.idProduct)) {\n        case 0x0001: /* PowerMate Classic */\n            dev->input->name = \"PowerMate Classic\";\n            break;\n        case 0x0002: /* PowerMate LED */\n            dev->input->name = \"PowerMate LED\";\n            dev->led_state = 0x01;\n            break;\n        default:\n            dev->input->name = \"PowerMate\";\n            break;\n    }\n\n    dev->input->id.bustype = BUS_USB;\n    dev->input->id.vendor = le16_to_cpu(udev->descriptor.idVendor);\n    dev->input->id.product = le16_to_cpu(udev->descriptor.idProduct);\n    dev->input->id.version = 0x0001;\n\n    usb_set_intfdata(intf, dev);\n\n    return 0;\n\nerr_free_urb:\n    usb_free_urb(dev->urb);\nerr_free_input:\n    input_free_device(dev->input);\nerr_free_dev:\n    kfree(dev);\n    return error;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null after kzalloc",
+      "protects_against": "memory allocation failure for the device structure"
+    },
+    {
+      "step": "check for null after input_allocate_device",
+      "protects_against": "memory allocation failure for the input device"
+    },
+    {
+      "step": "check for null after usb_alloc_urb",
+      "protects_against": "memory allocation failure for the URB"
+    },
+    {
+      "step": "clean up allocated resources on error paths",
+      "protects_against": "resource leaks in case of allocation or setup failures"
+    },
+    {
+      "step": "use kzalloc to zero-initialize memory",
+      "protects_against": "uninitialized memory usage"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after kzalloc — protects against: memory allocation failure for the device structure",
+        "reasoning": "The implementation uses `kzalloc` to allocate memory for `pm`, and then checks if `pm` is null in the condition `if (!pm || !input_dev)` before proceeding. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after input_allocate_device — protects against: memory allocation failure for the input device",
+        "reasoning": "The implementation uses `input_allocate_device()` to allocate memory for `input_dev`, and then checks if `input_dev` is null in the condition `if (!pm || !input_dev)` before proceeding. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after usb_alloc_urb — protects against: memory allocation failure for the URB",
+        "reasoning": "The implementation uses `usb_alloc_urb()` to allocate memory for `pm->irq` and `pm->config`, and then checks if the result is null in the conditions `if (!pm->irq)` and `if (!pm->config)` before proceeding. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on error paths — protects against: resource leaks in case of allocation or setup failures",
+        "reasoning": "The implementation includes a series of labeled error-handling paths (`fail1`, `fail2`, `fail3`, `fail4`, `fail5`) that clean up allocated resources in reverse order of allocation. This includes calling `input_free_device`, `kfree`, and `usb_free_urb`, as well as calling `powermate_free_buffers`. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kzalloc to zero-initialize memory — protects against: uninitialized memory usage",
+        "reasoning": "The implementation uses `kzalloc` to allocate memory for `pm`, which zero-initializes the memory. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after kzalloc — protects against: memory allocation failure for the device structure",
+        "reasoning": "The implementation uses `kzalloc` to allocate memory for `pm` and checks for null in the `if (!pm || !input_dev)` condition, which covers this step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after input_allocate_device — protects against: memory allocation failure for the input device",
+        "reasoning": "The implementation uses `input_allocate_device` to allocate memory for `input_dev` and checks for null in the `if (!pm || !input_dev)` condition, which covers this step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after usb_alloc_urb — protects against: memory allocation failure for the URB",
+        "reasoning": "The implementation uses `usb_alloc_urb` to allocate `pm->irq` and `pm->config`, and checks for null in the `if (!pm->irq)` and `if (!pm->config)` conditions, which covers this step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on error paths — protects against: resource leaks in case of allocation or setup failures",
+        "reasoning": "The implementation includes a series of labeled error-handling paths (`fail1`, `fail2`, `fail3`, `fail4`, `fail5`) that clean up allocated resources such as calling `input_free_device`, `powermate_free_buffers`, and `usb_free_urb`, which covers this step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kzalloc to zero-initialize memory — protects against: uninitialized memory usage",
+        "reasoning": "The implementation uses `kzalloc` to allocate memory for `pm`, which zero-initializes the memory, covering this step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

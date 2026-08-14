@@ -1,0 +1,114 @@
+{
+  "case_id": "C_19__0",
+  "sample_id": "D/C/19",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0957",
+  "cve_summary": "The override_release function in kernel/sys.c in the Linux kernel before 3.4.16 allows local users to obtain sensitive information from kernel stack memory via a uname system call in conjunction with a UNAME26 personality.",
+  "changed_file": "kernel/sys.c",
+  "docstring": "\"\"\"\nSummary: \nThis function modifies the Linux version string for compatibility with programs that cannot handle versions starting from \"Linux 3.0\".\n\nParameters: \nrelease (char __user *): A pointer to the user space buffer where the modified version string will be copied.\nlen (size_t): The length of the user space buffer.\n\nReturns: \nint: The number of bytes copied to the user buffer, or an error code on failure.\n\nLogic: \nThe function checks if the current process's personality indicates it is running in a 26-character uname mode. If so, it constructs a version string that maps the current version to a 2.6.x format, where x is derived from the current version code. It then copies this string to the user-provided buffer, ensuring it does not exceed the specified length.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <linux/unistd.h>\n#include <linux/personality.h>\n\nint format_uname(char __user *release, size_t len) {\n    int version = 2;\n    int patchlevel = 6;\n    int sublevel = 0;\n    char buffer[32];\n    int bytes_written;\n\n    if (personality(PER_LINUX) != PER_LINUX_26) {\n        return -1;\n    }\n\n    bytes_written = snprintf(buffer, sizeof(buffer), \"Linux %d.%d.%d\\n\", version, patchlevel, sublevel);\n\n    if (bytes_written < 0 || bytes_written >= len) {\n        return -1;\n    }\n\n    if (copy_to_user(release, buffer, bytes_written)) {\n        return -1;\n    }\n\n    return bytes_written;\n}",
+  "defensive_steps": [
+    {
+      "step": "check personality before proceeding",
+      "protects_against": "attempting to format the uname string for incompatible process personalities"
+    },
+    {
+      "step": "bound snprintf to buffer size",
+      "protects_against": "buffer overflow when constructing the version string"
+    },
+    {
+      "step": "check bytes_written against length before copying",
+      "protects_against": "copying more data than the user buffer can hold"
+    },
+    {
+      "step": "use copy_to_user with error checking",
+      "protects_against": "writing to invalid user space addresses"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check personality before proceeding — protects against: attempting to format the uname string for incompatible process personalities",
+        "reasoning": "The implementation checks if the current process's personality includes the UNAME26 flag before proceeding with the formatting logic.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound snprintf to buffer size — protects against: buffer overflow when constructing the version string",
+        "reasoning": "The implementation uses `snprintf` with the `len` parameter, which bounds the number of characters written to the buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check bytes_written against length before copying — protects against: copying more data than the user buffer can hold",
+        "reasoning": "The implementation uses `copy_to_user` with the `len` parameter, which limits the number of bytes copied to the user buffer. There is no explicit check for bytes written before the copy.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "use copy_to_user with error checking — protects against: writing to invalid user space addresses",
+        "reasoning": "The implementation uses `copy_to_user`, which is the correct mechanism for copying to user space. However, it does not check the return value of `copy_to_user` to detect or handle errors.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check personality before proceeding — protects against: attempting to format the uname string for incompatible process personalities",
+        "reasoning": "The implementation checks if the current process's personality includes UNAME26 before proceeding with the override logic.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound snprintf to buffer size — protects against: buffer overflow when constructing the version string",
+        "reasoning": "The implementation uses scnprintf with a bounded buffer size (min(sizeof(buf), max_t(size_t, 1, len))), ensuring the string is not written beyond the buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check bytes_written against length before copying — protects against: copying more data than the user buffer can hold",
+        "reasoning": "The implementation uses min(sizeof(buf), max_t(size_t, 1, len)) to ensure the copy size is bounded by the user buffer length.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use copy_to_user with error checking — protects against: writing to invalid user space addresses",
+        "reasoning": "The implementation uses copy_to_user to copy the buffer to user space, but does not check the return value for errors.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

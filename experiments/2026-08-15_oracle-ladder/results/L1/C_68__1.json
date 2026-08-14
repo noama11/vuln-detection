@@ -1,0 +1,49 @@
+{
+  "case_id": "C_68__1",
+  "sample_id": "D/C/68",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3302",
+  "cve_summary": "Race condition in the smb_send_rqst function in fs/cifs/transport.c in the Linux kernel before 3.7.2 allows local users to cause a denial of service (NULL pointer dereference and OOPS) or possibly have unspecified other impact via vectors involving a reconnection event.",
+  "changed_file": "fs/cifs/transport.c",
+  "docstring": "\"\"\"\nSummary: Sends an SMB request to a specified TCP server.\n\nParameters:\nserver (struct TCP_Server_Info *): Pointer to the TCP server information structure.\nrqst (struct smb_rqst *): Pointer to the SMB request structure containing the data to be sent.\n\nReturns: int: The result of the send operation; returns 0 on success or a negative error code on failure.\n\nLogic: The function prepares the socket for sending by setting the TCP_CORK option. The initial SMB request is sent using the `smb_send_kvec` function. If successful, it iterates through any additional pages in the request, sending each one. After sending, it uncorks the socket and checks if the total bytes sent match the expected length. If not, it marks the server's TCP status for reconnection. Finally, it logs any errors encountered during the send process and returns the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int\nsmb_send_rqst(struct TCP_Server_Info *v7, struct smb_rqst *v6)\n{\n    int v5;\n    struct kvec *v2 = v6->rq_iov;\n    int v3 = v6->rq_nvec;\n    unsigned int v8 = get_rfc1002_length(v2[0].iov_base);\n    unsigned int v1;\n    size_t v10 = 0, sent;\n    struct socket *v9 = v7->v9;\n    int v12 = 1;\n    if (v9 == NULL)\n        return -ENOTSOCK;\n    cFYI(1, \"Sending smb: smb_len=%u\", v8);\n    dump_smb(v2[0].iov_base, v2[0].iov_len);\n    kernel_setsockopt(v9, SOL_TCP, TCP_CORK,\n                (char *)&v12, sizeof(v12));\n    v5 = smb_send_kvec(v7, v2, v3, &sent);\n    if (v5 < 0)\n        goto v11;\n    v10 += sent;\n    for (v1 = 0; v1 < v6->rq_npages; v1++) {\n        struct kvec v4;\n        cifs_rqst_page_to_kvec(v6, v1, &v4);\n        v5 = smb_send_kvec(v7, &v4, 1, &sent);\n        kunmap(v6->rq_pages[v1]);\n        if (v5 < 0)\n            break;\n        v10 += sent;\n    }\nv11:\n    v12 = 0;\n    kernel_setsockopt(v9, SOL_TCP, TCP_CORK,\n                (char *)&v12, sizeof(v12));\n    if ((v10 > 0) && (v10 != v8 + 4)) {\n        cFYI(1, \"partial send (wanted=%u sent=%zu): terminating \"\n            \"session\", v8 + 4, v10);\n        v7->tcpStatus = CifsNeedReconnect;\n    }\n    if (v5 < 0 && v5 != -EINTR)\n        cERROR(1, \"Error %d sending data on socket to v7\", v5);\n    else\n        v5 = 0;\n    return v5;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 12
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both set the TCP_CORK option, send the initial SMB request using `smb_send_kvec`, iterate through additional pages, uncork the socket, and check if the total bytes sent match the expected length. The only differences are in variable names and code formatting, which do not affect behavior. There is no security-relevant or functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both set the TCP_CORK option, send the initial SMB request using `smb_send_kvec`, iterate through additional pages, uncork the socket, and check if the total bytes sent match the expected length. The only differences are in variable names and code formatting, which do not affect behavior. There is no security-relevant or functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

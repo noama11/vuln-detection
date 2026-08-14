@@ -1,0 +1,82 @@
+{
+  "case_id": "C_327__0",
+  "sample_id": "D/C/327",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-8830",
+  "cve_summary": "Integer overflow in the aio_setup_single_vector function in fs/aio.c in the Linux kernel 4.0 allows local users to cause a denial of service or possibly have unspecified other impact via a large AIO iovec.  NOTE: this vulnerability exists because of a CVE-2012-6701 regression.",
+  "changed_file": "fs/aio.c",
+  "docstring": "/**\n * Summary: Prepares a single I/O vector for asynchronous I/O operations.\n * \n * Parameters:\n * kiocb (struct kiocb*): The I/O control block representing the I/O operation.\n * rw (int): Indicates the type of operation (read or write).\n * buf (char __user*): Pointer to the user buffer for data transfer.\n * nr_segs (unsigned long*): Pointer to store the number of segments in the I/O vector.\n * iovec (struct iovec*): Pointer to the I/O vector structure to be filled.\n * \n * Returns: ssize_t - Returns 0 on success, or -EFAULT if the buffer is not accessible.\n * \n * Logic: The function verifies the accessibility of the user buffer and populates the I/O vector structure\n * with the buffer address and operation length, while also updating the number of segments.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t prepare_iovec(struct kiocb *kiocb, int rw, char __user *buf, unsigned long *nr_segs, struct iovec *iovec) {\n    size_t len = kiovec->ki_nbytes;\n\n    if (!access_ok(buf, len)) {\n        return -EFAULT;\n    }\n\n    iovec->iov_base = buf;\n    iovec->iov_len = len;\n    *nr_segs = 1;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check buffer accessibility with access_ok",
+      "protects_against": "invalid or inaccessible user buffer pointer"
+    },
+    {
+      "step": "bound buffer length to the size of the operation",
+      "protects_against": "buffer overflow or out-of-bounds memory access"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check buffer accessibility with access_ok — protects against: invalid or inaccessible user buffer pointer",
+        "reasoning": "The implementation uses `access_ok` to verify the accessibility of the user buffer before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound buffer length to the size of the operation — protects against: buffer overflow or out-of-bounds memory access",
+        "reasoning": "The implementation assigns `kiocb->ki_nbytes` directly to `iovec->iov_len` without any bounds checking or clamping to a maximum size.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check buffer accessibility with access_ok — protects against: invalid or inaccessible user buffer pointer",
+        "reasoning": "The implementation uses access_ok to check the buffer accessibility. It checks if the buffer is valid and accessible before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound buffer length to the size of the operation — protects against: buffer overflow or out-of-bounds memory access",
+        "reasoning": "The implementation bounds the buffer length by checking if len exceeds MAX_RW_COUNT and setting it to MAX_RW_COUNT if it does. This ensures the length is within a safe limit.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

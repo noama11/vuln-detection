@@ -1,0 +1,130 @@
+{
+  "case_id": "C_70__0",
+  "sample_id": "D/C/70",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3233",
+  "cve_summary": "The llcp_sock_recvmsg function in net/nfc/llcp/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable and a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/nfc/llcp/sock.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header structure to fill with received data.\nlen (size_t): The maximum length of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header or an error code.\n\nLogic: \nThe function first checks the socket state and whether the receive queue is empty. It handles non-blocking and out-of-band flags, retrieves a datagram from the socket, and copies the data into the provided message header. It also populates the address information if the socket type is datagram. Depending on the socket type, it manages the received data, either re-queuing or freeing the socket buffer. Finally, it returns the number of bytes received or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    if (sk->sk_state == TCP_LISTEN) {\n        return -EINVAL;\n    }\n\n    if (sk->sk_receive_queue.head == sk->sk_receive_queue.tail) {\n        if (flags & MSG_DONTWAIT) {\n            return -EAGAIN;\n        }\n\n        if (flags & MSG_OOB) {\n            skb = sk->sk_urg_data;\n        } else {\n            skb = skb_dequeue(&sk->sk_receive_queue);\n        }\n\n        if (!skb) {\n            return -EAGAIN;\n        }\n    } else {\n        skb = skb_peek(&sk->sk_receive_queue);\n    }\n\n    if (skb == NULL) {\n        return -EAGAIN;\n    }\n\n    if (skb->len > len) {\n        len = skb->len;\n    }\n\n    if (skb_copy_datagram_msg(skb, 0, msg, len, &copied) < 0) {\n        err = -EFAULT;\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        if (skb->cb[0] != 0) {\n            struct sockaddr_in *addr = (struct sockaddr_in *)&msg->msg_name;\n            addr->sin_family = AF_INET;\n            addr->sin_port = skb->cb[0];\n            addr->sin_addr.s_addr = skb->cb[1];\n            msg->msg_namelen = sizeof(struct sockaddr_in);\n        }\n\n        skb_free(skb);\n    } else {\n        skb_queue_head(&sk->sk_receive_queue, skb);\n    }\n\n    return (err < 0) ? err : copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "check socket state before proceeding",
+      "protects_against": "attempting to receive on a listening socket"
+    },
+    {
+      "step": "check receive queue before dequeuing",
+      "protects_against": "attempting to dequeue from an empty queue"
+    },
+    {
+      "step": "bound copy length to available data",
+      "protects_against": "copying more data than is available in the socket buffer"
+    },
+    {
+      "step": "validate socket type before processing",
+      "protects_against": "incorrect handling of socket buffer for different socket types"
+    },
+    {
+      "step": "check for errors during data copy",
+      "protects_against": "copying data to invalid memory locations"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check socket state before proceeding — protects against: attempting to receive on a listening socket",
+        "reasoning": "The implementation checks if the socket state is LLCP_CLOSED and the receive queue is empty before proceeding. This guards against invalid operations on a closed socket, but does not explicitly check for a listening socket state.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check receive queue before dequeuing — protects against: attempting to dequeue from an empty queue",
+        "reasoning": "The implementation checks if the receive queue is empty in conjunction with the socket state being LLCP_CLOSED. If both are true, it returns 0, which prevents dequeuing from an empty queue.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to available data — protects against: copying more data than is available in the socket buffer",
+        "reasoning": "The implementation uses `copied = min_t(unsigned int, rlen, len)` to ensure the copy length does not exceed the available data in the socket buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate socket type before processing — protects against: incorrect handling of socket buffer for different socket types",
+        "reasoning": "The implementation checks the socket type in multiple places, such as when handling address information and when deciding whether to re-queue or free the socket buffer. This ensures correct handling based on socket type.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors during data copy — protects against: copying data to invalid memory locations",
+        "reasoning": "The implementation checks the return value of `skb_copy_datagram_iovec`. If it fails, it re-queues the skb (if not MSG_PEEK) and returns -EFAULT, which indicates an error in the memory copy.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check socket state before proceeding — protects against: attempting to receive on a listening socket",
+        "reasoning": "The implementation checks `sk->sk_state` and returns 0 if the socket is in `LLCP_CLOSED` state and the receive queue is empty. This prevents receiving on a socket in an invalid state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check receive queue before dequeuing — protects against: attempting to dequeue from an empty queue",
+        "reasoning": "The implementation checks if the receive queue is empty in conjunction with the socket state. If both are empty, it returns 0, preventing dequeuing from an empty queue.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to available data — protects against: copying more data than is available in the socket buffer",
+        "reasoning": "The implementation uses `copied = min_t(unsigned int, rlen, len)` to ensure the copy length does not exceed the available data in the socket buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate socket type before processing — protects against: incorrect handling of socket buffer for different socket types",
+        "reasoning": "The implementation conditionally handles socket types (e.g., `SOCK_DGRAM`, `SOCK_STREAM`, `SOCK_SEQPACKET`) and applies different logic for each, ensuring correct handling based on socket type.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors during data copy — protects against: copying data to invalid memory locations",
+        "reasoning": "The implementation checks the return value of `skb_copy_datagram_iovec`. If it fails, it re-queues the skb (if `MSG_PEEK` is not set) and returns `-EFAULT`, indicating an error in the copy operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

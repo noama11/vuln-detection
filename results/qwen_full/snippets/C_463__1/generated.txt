@@ -1,0 +1,27 @@
+int dvb_usb_suspend(struct usb_interface *intf, pm_message_t msg)
+{
+    struct dvb_usb_device *d;
+    int ret = 0;
+
+    d = usb_get_intfdata(intf);
+    if (!d)
+        return -ENODEV;
+
+    /* Cancel remote controller polling */
+    if (d->rc)
+        dvb_rc_unregister(d->rc);
+
+    /* Stop streaming and suspend frontends */
+    for (int i = 0; i < d->num_adapters; i++) {
+        struct dvb_adapter *adapter = d->adapters[i];
+        struct dvb_frontend *fe = adapter->frontend;
+
+        if (fe && fe->ops.suspend) {
+            ret = fe->ops.suspend(fe);
+            if (ret < 0)
+                break;
+        }
+    }
+
+    return ret;
+}

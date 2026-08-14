@@ -1,0 +1,58 @@
+{
+  "case_id": "C_635__0",
+  "sample_id": "D/C/635",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "neomutt/neomutt",
+  "cve_id": "CVE-2018-14356",
+  "cve_summary": "An issue was discovered in Mutt before 1.10.1 and NeoMutt before 2018-07-16. pop.c mishandles a zero-length UID.",
+  "changed_file": "pop.c",
+  "docstring": "\"\"\"\nSummary: \nFetches and processes a unique identifier line, updating the context and header information.\n\nParameters: \nline (char *): The input string containing the unique identifier.\ndata (void *): A pointer to the context structure containing message and header data.\n\nReturns: \nint: Returns 0 on success, or -1 on failure.\n\nLogic: \nThe function converts the input line to an integer index, trims whitespace, and checks for a valid unique identifier. It searches for the identifier in the context's headers, adding a new header if it doesn't exist. If the header exists but the index does not match, it marks the cache for clearing. The function updates the reference number and index of the header before returning the status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_unique_identifier(char *line, void *data) {\n    struct context *ctx = (struct context *)data;\n    int index = 0;\n    char *endptr = NULL;\n\n    if (!line || !ctx) {\n        return -1;\n    }\n\n    // Convert line to integer index\n    index = strtol(line, &endptr, 10);\n    if (endptr == line || *endptr != '\\0') {\n        return -1;\n    }\n\n    // Trim whitespace from line\n    while (isspace((unsigned char)*line)) {\n        line++;\n    }\n\n    // Check for valid unique identifier\n    if (!line || !*line) {\n        return -1;\n    }\n\n    // Search for the identifier in the context's headers\n    int i;\n    int found = 0;\n    for (i = 0; i < ctx->header_count; i++) {\n        if (strcmp(ctx->headers[i].identifier, line) == 0) {\n            found = 1;\n\n            // If index does not match, mark cache for clearing\n            if (ctx->headers[i].index != index) {\n                ctx->clear_cache = 1;\n            }\n\n            // Update the reference number and index\n            ctx->headers[i].reference_number = ctx->message.reference_number;\n            ctx->headers[i].index = index;\n            break;\n        }\n    }\n\n    // If not found, add a new header\n    if (!found) {\n        if (ctx->header_count >= ctx->max_headers) {\n            return -1;\n        }\n\n        strncpy(ctx->headers[ctx->header_count].identifier, line, MAX_IDENTIFIER_LENGTH - 1);\n        ctx->headers[ctx->header_count].identifier[MAX_IDENTIFIER_LENGTH - 1] = '\\0';\n        ctx->headers[ctx->header_count].reference_number = ctx->message.reference_number;\n        ctx->headers[ctx->header_count].index = index;\n        ctx->header_count++;\n    }\n\n    return 0;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 7,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null_check_line_and_ctx",
+      "strtol_result_validation",
+      "empty_identifier_check",
+      "header_index_bounds_check"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 4,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs null checks on 'line' and 'ctx', validates the result of 'strtol' for conversion errors, and ensures the identifier is non-empty after trimming. It also bounds the header index to prevent overflow. Implementation 2 lacks these checks and assumes 'line' and 'ctx' are valid, and does not validate the result of 'strtol'. It also does not check for empty identifiers after trimming. These omissions in 2 leave it exposed to invalid input and potential memory issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 5,
+    "candidate_exposure": 2,
+    "reference_missing_steps": [
+      "null_check_line_and_ctx",
+      "strtol_conversion_validation"
+    ],
+    "candidate_missing_steps": [
+      "empty_string_check_after_trim"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 1,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a null check on 'line' and 'ctx' before processing, and validates that the string conversion to index was successful (endptr check). It also ensures the line is not empty after trimming. Implementation 2 does not perform a null check on 'line' or 'ctx', and does not validate the result of the string-to-integer conversion. However, it uses a function (mutt_str_strcmp) that likely includes defensive checks and performs a check for an empty string after trimming. The missing null checks in 2 and missing conversion validation in 2 increase exposure.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

@@ -1,0 +1,39 @@
+int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
+                 size_t len, int flags)
+{
+    struct sk_buff *skb;
+    int copied = 0;
+    int err = 0;
+
+    if (sock->sk->sk_state == TCP_LISTEN) {
+        return -EINVAL;
+    }
+
+    skb = skb_dequeue(&sock->sk->sk_receive_queue);
+    if (!skb) {
+        return -EAGAIN;
+    }
+
+    if (flags & MSG_OOB) {
+        /* Handle out-of-band data if supported by the socket type */
+        if (sock->type == SOCK_STREAM) {
+            copied = skb->len;
+            err = skb_copy_datagram_msg(skb, 0, msg, len);
+        } else {
+            err = -EOPNOTSUPP;
+        }
+    } else {
+        copied = skb->len;
+        err = skb_copy_datagram_msg(skb, 0, msg, len);
+    }
+
+    if (err < 0) {
+        skb_queue_head(&sock->sk->sk_receive_queue, skb);
+        return err;
+    }
+
+    sock->sk->sk_data_processed += copied;
+    sock->sk->sk_backlog.len--;
+
+    return copied;
+}

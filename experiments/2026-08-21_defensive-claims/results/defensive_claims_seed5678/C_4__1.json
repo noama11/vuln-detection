@@ -1,0 +1,98 @@
+{
+  "case_id": "C_4__1",
+  "sample_id": "D/C/4",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-4467",
+  "cve_summary": "The (1) do_siocgstamp and (2) do_siocgstampns functions in net/socket.c in the Linux kernel before 3.5.4 use an incorrect argument order, which allows local users to obtain sensitive information from kernel memory or cause a denial of service (system crash) via a crafted ioctl call.",
+  "changed_file": "net/socket.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the SIOCGSTAMPNS ioctl command for a socket, retrieving the timestamp in nanoseconds.\n\nParameters: \nnet (struct net *): The network namespace associated with the socket.\nsock (struct socket *): The socket for which the timestamp is being retrieved.\ncmd (unsigned int): The command identifier for the ioctl operation.\nup (void __user *): Pointer to user space where the timestamp will be written.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first saves the current memory segment state, then sets it to kernel mode. It calls `sock_do_ioctl` to perform the ioctl operation and retrieve the timestamp into a `timespec` structure. After restoring the original memory segment state, it attempts to copy the timestamp to user space using `compat_put_timespec`. The function returns the error code from the ioctl operation or the copy operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int handle_ioctl_sio_cstampns(struct net *net, struct socket *sock, unsigned int cmd, void __user *up)\n{\n    int ret = -EFAULT;\n    struct timespec ts;\n    mm_segment_t old_fs = get_fs();\n\n    set_fs(KERNEL_DS);\n    ret = sock_do_ioctl(net, sock, cmd, (unsigned long)&ts);\n    set_fs(old_fs);\n\n    if (ret < 0)\n        return ret;\n\n    if (copy_to_user(up, &ts, sizeof(ts)))\n        return -EFAULT;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check the return value of sock_do_ioctl",
+      "protects_against": "errors during the ioctl operation"
+    },
+    {
+      "step": "restore original memory segment state after operation",
+      "protects_against": "memory access violations due to incorrect segment state"
+    },
+    {
+      "step": "validate copy_to_user result",
+      "protects_against": "invalid user space pointer or insufficient permissions"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check the return value of sock_do_ioctl — protects against: errors during the ioctl operation",
+        "reasoning": "The implementation stores the return value of sock_do_ioctl in 'err' and uses it in the return statement. If 'err' is non-zero, it is returned directly, indicating that the return value is checked.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "restore original memory segment state after operation — protects against: memory access violations due to incorrect segment state",
+        "reasoning": "The implementation saves the original memory segment state in 'old_fs' and restores it after calling sock_do_ioctl, ensuring the segment state is reset.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate copy_to_user result — protects against: invalid user space pointer or insufficient permissions",
+        "reasoning": "The implementation uses 'compat_put_timespec' to copy the timestamp to user space and checks the return value of this operation. If 'err' is zero after the call to sock_do_ioctl, the result of 'compat_put_timespec' is stored in 'err' and returned, indicating the result is validated.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check the return value of sock_do_ioctl — protects against: errors during the ioctl operation",
+        "reasoning": "The implementation stores the return value of sock_do_ioctl in 'err' and uses it in the return statement. It also checks if 'err' is zero before proceeding to copy the timestamp to user space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "restore original memory segment state after operation — protects against: memory access violations due to incorrect segment state",
+        "reasoning": "The implementation saves the original memory segment state in 'old_fs' and restores it after calling sock_do_ioctl, ensuring the segment state is reset.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate copy_to_user result — protects against: invalid user space pointer or insufficient permissions",
+        "reasoning": "The implementation calls compat_put_timespec, which is a wrapper for a copy_to_user-like operation, and checks its return value by updating 'err' if it fails. The function returns 'err', which includes the result of the copy operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

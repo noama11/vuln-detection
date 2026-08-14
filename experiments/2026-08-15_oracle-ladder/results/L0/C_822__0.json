@@ -1,0 +1,48 @@
+{
+  "case_id": "C_822__0",
+  "sample_id": "D/C/822",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2007-6762",
+  "cve_summary": "In the Linux kernel before 2.6.20, there is an off-by-one bug in net/netlabel/netlabel_cipso_v4.c where it is possible to overflow the doi_def->tags[] array.",
+  "changed_file": "net/netlabel/netlabel_cipso_v4.c",
+  "docstring": "Summary: This function adds common attributes to a CIPSO v4 DOI (Data Object Identifier) structure based on the provided generic netlink information.\n\nParameters:\n- info (struct genl_info *): Contains the netlink attributes and metadata for the operation.\n- doi_def (struct cipso_v4_doi *): Pointer to the CIPSO v4 DOI structure to be populated with tags.\n\nReturns: \n- int: Returns 0 on success, or -EINVAL if validation fails or if the maximum number of tags is exceeded.\n\nLogic: The function retrieves the DOI from the netlink attributes, validates the nested tag list, and populates the DOI structure with tags from the list. It processes the tag list within the DOI tag storage and marks unused tag storage with an invalid tag value before returning success.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int netlbl_cipsov4_add_common(struct genl_info *info,\r\n\t\t\t\t     struct cipso_v4_doi *doi_def)\r\n{\r\n\tstruct nlattr *nla;\r\n\tint nla_rem;\r\n\tu32 iter = 0;\r\n\r\n\tdoi_def->doi = nla_get_u32(info->attrs[NLBL_CIPSOV4_A_DOI]);\r\n\r\n\tif (nla_validate_nested(info->attrs[NLBL_CIPSOV4_A_TAGLST],\r\n\t\t\t\tNLBL_CIPSOV4_A_MAX,\r\n\t\t\t\tnetlbl_cipsov4_genl_policy) != 0)\r\n\t\treturn -EINVAL;\r\n\r\n\tnla_for_each_nested(nla, info->attrs[NLBL_CIPSOV4_A_TAGLST], nla_rem)\r\n\t\tif (nla->nla_type == NLBL_CIPSOV4_A_TAG) {\r\n\t\t\tif (iter >= CIPSO_V4_TAG_MAXCNT)\r\n\t\t\t\treturn -EINVAL;\r\n\t\t\tdoi_def->tags[iter++] = nla_get_u8(nla);\r\n\t\t}\r\n\twhile (iter < CIPSO_V4_TAG_MAXCNT)\r\n\t\tdoi_def->tags[iter++] = CIPSO_V4_TAG_INVALID;\r\n\r\n\treturn 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the tag list iteration and the invalid tag assignment. The candidate implementation uses a while loop to fill all unused tag storage with invalid tags, while the reference implementation only assigns an invalid tag to the first unused position. Additionally, the candidate implementation checks for `iter >= CIPSO_V4_TAG_MAXCNT`, whereas the reference implementation checks for `iter > CIPSO_V4_TAG_MAXCNT`, which could lead to one more tag being processed before the limit is enforced. These differences could affect the DOI structure's state for malformed or edge-case inputs, but they do not involve security-critical checks or resource safety.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. Both retrieve the DOI, validate the nested tag list, process the tags, and mark unused storage with an invalid tag value. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

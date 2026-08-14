@@ -1,0 +1,34 @@
+{
+  "case_id": "C_718__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int copy_huge_page_entry(struct mm_struct *dst_mm, pte_t *dst_pte,\n                         struct vm_area_struct *dst_vma, unsigned long dst_addr,\n                         unsigned long src_addr, struct page **pagep) {\n    struct page *page;\n    int ret = 0;\n\n    if (!*pagep) {\n        page = alloc_huge_page();\n        if (!page)\n            return -ENOMEM;\n    } else {\n        page = *pagep;\n    }\n\n    if (copy_from_user(page_address(page), (void __user *)src_addr, HPAGE_PMD_SIZE)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    SetPageUptodate(page);\n    if (dst_vma->vm_flags & VM_SHARED)\n        set_page_dirty(page);\n    else\n        set_page_private(page, (unsigned long)page);\n\n    spin_lock(&dst_mm->page_table_lock);\n    set_pte(dst_pte, mk_pte(page, dst_vma->vm_page_prot));\n    spin_unlock(&dst_mm->page_table_lock);\n\n    *pagep = page;\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int copy_huge_page_entry(struct mm_struct *dst_mm, pte_t *dst_pte,\n                         struct vm_area_struct *dst_vma, unsigned long dst_addr,\n                         unsigned long src_addr, struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = -EFAULT;\n\n    if (!page) {\n        page = alloc_pages(GFP_HIGHUSER | __GFP_ZERO, HPAGE_SHIFT);\n        if (!page)\n            return -ENOMEM;\n        *pagep = page;\n    }\n\n    if (copy_from_user(page_address(page), (void __user *)src_addr, HPAGE_SIZE))\n        goto out;\n\n    set_page_dirty(page);\n    set_page_uptodate(page);\n\n    spin_lock(&dst_mm->page_table_lock);\n    set_pte_at(dst_mm, dst_addr, dst_pte, mk_pte(page, dst_vma->vm_page_prot));\n    spin_unlock(&dst_mm->page_table_lock);\n\n    ret = 0;\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int copy_huge_page_table_entry(struct mm_struct *dst_mm, pte_t *dst_pte,\n                               struct vm_area_struct *dst_vma, unsigned long dst_addr,\n                               unsigned long src_addr, struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = -ENOMEM;\n\n    if (!page) {\n        page = alloc_huge_page();\n        if (!page)\n            return -ENOMEM;\n        *pagep = page;\n    }\n\n    if (copy_from_user(page_address(page), (void __user *)src_addr, HPAGE_SIZE)) {\n        put_page(page);\n        return -EFAULT;\n    }\n\n    if (dst_vma->vm_flags & VM_SHARED) {\n        set_page_dirty(page);\n        set_page_shared(page);\n    } else {\n        set_page_private(page);\n    }\n\n    spin_lock(&dst_mm->page_table_lock);\n    set_pte(dst_pte, mk_pte(page, dst_vma->vm_page_prot));\n    spin_unlock(&dst_mm->page_table_lock);\n\n    smp_wmb();\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int copy_huge_page_entry(struct mm_struct *dst_mm, pte_t *dst_pte,\n                         struct vm_area_struct *dst_vma,\n                         unsigned long dst_addr, unsigned long src_addr,\n                         struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = 0;\n\n    if (!page) {\n        page = alloc_huge_page();\n        if (!page)\n            return -ENOMEM;\n    }\n\n    if (!copy_user_highpage(page, src_addr)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    SetPageUptodate(page);\n    lock_page(page);\n\n    {\n        pte_t pte = pte_mkhuge(pte_mksrwx(0));\n        pte = pte_set_flags(pte, PTE_DIRTY | PTE_ACCESSED);\n        set_pte_at(dst_mm, dst_addr, dst_pte, pte);\n    }\n\n    /* Ensure that the PTE write is visible to other CPUs before unlocking */\n    arch_flush_lazy_mmu();\n\n    if (dst_vma->vm_flags & VM_SHARED) {\n        /* Shared mapping: no further action */\n    } else {\n        /* Private mapping: take a reference for the new copy */\n        get_page(page);\n    }\n\n    *pagep = page;\n    unlock_page(page);\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int copy_huge_page_table_entry(struct mm_struct *dst_mm, pte_t *dst_pte,\n                               struct vm_area_struct *dst_vma,\n                               unsigned long dst_addr, unsigned long src_addr,\n                               struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = 0;\n\n    if (!page) {\n        page = alloc_huge_page();\n        if (!page) {\n            return -ENOMEM;\n        }\n        *pagep = page;\n    }\n\n    if (!copy_user_highpage(page, (void __user *)(unsigned long)src_addr)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    set_page_private(page, dst_addr);\n    set_page_state(page, HPAGE_PMD_NR);\n\n    spin_lock(&dst_mm->page_table_lock);\n    set_pte(dst_pte, pte_mkhuge(pte_mksrwx(pte_mkdirty(pte_mkwrite(pte_mksoft(pte_mkclean(PTE_NULL)))))));\n    spin_unlock(&dst_mm->page_table_lock);\n\n    smp_wmb();\n    flush_tlb_page(dst_vma, dst_addr);\n\n    return 0;\n\nout:\n    if (!*pagep) {\n        __free_huge_page(page);\n    }\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_390__1",
+  "sample_id": "D/C/390",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "acpica/acpica",
+  "cve_id": "CVE-2017-13694",
+  "cve_summary": "The acpi_ps_complete_final_op() function in drivers/acpi/acpica/psobject.c in the Linux kernel through 4.12.9 does not flush the node and node_ext caches and causes a kernel stack dump, which allows local users to obtain sensitive information from kernel memory and bypass the KASLR protection mechanism (in the kernel through 4.9) via a crafted ACPI table.",
+  "changed_file": "source/components/parser/psobject.c",
+  "docstring": "\"\"\"\nSummary: \nCompletes the final operation in an ACPI parse state and clears the scope stack.\n\nParameters: \nWalkState (ACPI_WALK_STATE*): Pointer to the current walk state during parsing. \nOp (ACPI_PARSE_OBJECT*): Pointer to the parse object representing the current operation. \nStatus (ACPI_STATUS): The status of the current operation.\n\nReturns: \nACPI_STATUS: The status of the completion process, indicating success or failure.\n\nLogic: The function processes the last operation in an AML package and clears the scope stack. It checks if there are any ascending callbacks to execute and handles operation completion while managing the scope stack. If errors occur during operation completion, it returns an appropriate status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ACPI_STATUS AcpiPsCompleteThisOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status) {\n    ACPI_STATUS Status2 = AE_OK;\n\n    if (!WalkState || !Op) {\n        return AE_BAD_PARAMETER;\n    }\n\n    if (WalkState->ScopeDepth <= 0) {\n        return AE_BAD_PARAMETER;\n    }\n\n    if (Status != AE_OK) {\n        return Status;\n    }\n\n    if (Op->Asl.Value.ArgList) {\n        AcpiUtDeleteObjectList(Op->Asl.Value.ArgList);\n        Op->Asl.Value.ArgList = NULL;\n    }\n\n    if (WalkState->Control.Method)\n    {\n        if (WalkState->Control.Method->Params && WalkState->Control.ParamCount > 0)\n        {\n            if (WalkState->Control.ParamCount > Op->Asl.Value.ArgCount)\n            {\n                return AE_AML_PARAMETERS;\n            }\n        }\n    }\n\n    if (WalkState->ScopeDepth > 0) {\n        WalkState->ScopeDepth--;\n    }\n\n    return Status2;\n}",
+  "defensive_steps": [
+    {
+      "step": "Check for null pointers",
+      "protects_against": "Null pointer dereference when WalkState or Op is null"
+    },
+    {
+      "step": "Validate ScopeDepth",
+      "protects_against": "Underflow or invalid ScopeDepth value"
+    },
+    {
+      "step": "Check for non-zero status",
+      "protects_against": "Propagating errors from the operation completion"
+    },
+    {
+      "step": "Validate ArgList before deletion",
+      "protects_against": "Deleting a null pointer or invalid memory"
+    },
+    {
+      "step": "Bound ScopeDepth decrement",
+      "protects_against": "Underflow of ScopeDepth"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 17,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "Check for null pointers — protects against: Null pointer dereference when WalkState or Op is null",
+        "reasoning": "The implementation checks if Op is null before dereferencing it in the do-while loop. However, it does not explicitly check if WalkState is null before using it. Dereferencing WalkState could lead to a null pointer dereference if it is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "Validate ScopeDepth — protects against: Underflow or invalid ScopeDepth value",
+        "reasoning": "The implementation does not explicitly validate the ScopeDepth value. It relies on AcpiPsPopScope to manage the scope stack, but there is no direct validation of ScopeDepth to prevent underflow or invalid values.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "Check for non-zero status — protects against: Propagating errors from the operation completion",
+        "reasoning": "The implementation checks if the status is a failure and returns it, preventing further processing. It also checks for specific status codes like AE_CTRL_PENDING and AE_CTRL_TERMINATE and handles them appropriately.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "Validate ArgList before deletion — protects against: Deleting a null pointer or invalid memory",
+        "reasoning": "The implementation does not explicitly validate the ArgList before deletion. It does not show any code that directly handles or deletes the ArgList, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "Bound ScopeDepth decrement — protects against: Underflow of ScopeDepth",
+        "reasoning": "The implementation uses AcpiPsPopScope to manage the scope stack, but it does not explicitly bound the ScopeDepth decrement to prevent underflow. There is no direct check to ensure that ScopeDepth does not go below zero.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "Check for null pointers — protects against: Null pointer dereference when WalkState or Op is null",
+        "reasoning": "The implementation checks if Op is null before dereferencing it in the do-while loop. However, it does not explicitly check if WalkState is null before using it. WalkState is used in the first line of the function and in the do-while loop, but no null check is performed.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "Validate ScopeDepth — protects against: Underflow or invalid ScopeDepth value",
+        "reasoning": "The implementation does not explicitly validate ScopeDepth. It relies on AcpiPsPopScope to handle the decrement of the scope stack, but there is no check to ensure ScopeDepth is valid before or after the decrement.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "Check for non-zero status — protects against: Propagating errors from the operation completion",
+        "reasoning": "The implementation checks the return status of AcpiPsCompleteThisOp and AcpiPsNextParseState and handles errors appropriately by setting ReturnStatus and breaking out of the loop or terminating the operation. It does not propagate errors blindly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "Validate ArgList before deletion — protects against: Deleting a null pointer or invalid memory",
+        "reasoning": "The implementation does not explicitly handle or delete an ArgList. The function does not perform any operations that suggest ArgList is being deleted or accessed, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "Bound ScopeDepth decrement — protects against: Underflow of ScopeDepth",
+        "reasoning": "The implementation calls AcpiPsPopScope, which presumably handles the decrement of ScopeDepth. However, there is no explicit check to bound or validate ScopeDepth before or after the decrement. The function assumes AcpiPsPopScope is safe, but no explicit bound check is performed.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

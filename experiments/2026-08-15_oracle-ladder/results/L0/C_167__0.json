@@ -1,0 +1,48 @@
+{
+  "case_id": "C_167__0",
+  "sample_id": "D/C/167",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3181",
+  "cve_summary": "Multiple stack-based buffer overflows in the magicmouse_raw_event function in drivers/hid/hid-magicmouse.c in the Magic Mouse HID driver in the Linux kernel through 3.16.3 allow physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that provides a large amount of (1) EHCI or (2) XHCI data associated with an event.",
+  "changed_file": "drivers/hid/hid-magicmouse.c",
+  "docstring": "\"\"\"\nSummary: Processes raw input events from a Magic Mouse or Magic Trackpad device.\n\nParameters:\nhdev (struct hid_device *): Pointer to the HID device structure.\nreport (struct hid_report *): Pointer to the HID report structure.\ndata (u8 *): Pointer to the raw data received from the device.\nsize (int): Size of the raw data.\n\nReturns: int: Returns 1 if the event is successfully processed, 0 otherwise.\n\nLogic: The function first retrieves the driver data associated with the HID device. It then checks the type of report received (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, or DOUBLE_REPORT_ID) and processes the corresponding touch data accordingly. For each report type, it validates the size of the data, extracts touch points, and emits touch events. It also handles button clicks and reports relative movement for the mouse or trackpad. Finally, it synchronizes the input state before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "\tswitch (data[0]) {\r\n\tcase TRACKPAD_REPORT_ID:\r\n\t\t/* Expect four bytes of prefix, and N*9 bytes of touch data. */\r\n\t\tif (size < 4 || ((size - 4) % 9) != 0)\r\n\t\t\treturn 0;\r\n\t\tnpoints = (size - 4) / 9;\r\n\t\tif (npoints > 15) {\r\n\t\t\thid_warn(hdev, \"invalid size value (%d) for TRACKPAD_REPORT_ID\\n\",\r\n\t\t\t\t\tsize);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tmsc->ntouches = 0;\r\n\t\tfor (ii = 0; ii < npoints; ii++)\r\n\t\t\tmagicmouse_emit_touch(msc, ii, data + ii * 9 + 4);\r\n\r\n\t\tclicks = data[1];\r\n\r\n\t\t/* The following bits provide a device specific timestamp. They\r\n\t\t * are unused here.\r\n\t\t *\r\n\t\t * ts = data[1] >> 6 | data[2] << 2 | data[3] << 10;\r\n\t\t */\r\n\t\tbreak;\r\n\tcase MOUSE_REPORT_ID:\r\n\t\t/* Expect six bytes of prefix, and N*8 bytes of touch data. */\r\n\t\tif (size < 6 || ((size - 6) % 8) != 0)\r\n\t\t\treturn 0;\r\n\t\tnpoints = (size - 6) / 8;\r\n\t\tif (npoints > 15) {\r\n\t\t\thid_warn(hdev, \"invalid size value (%d) for MOUSE_REPORT_ID\\n\",\r\n\t\t\t\t\tsize);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tmsc->ntouches = 0;\r\n\t\tfor (ii = 0; ii < npoints; ii++)\r\n\t\t\tmagicmouse_emit_touch(msc, ii, data + ii * 8 + 6);\r\n\r\n\t\t/* When emulating three-button mode, it is important\r\n\t\t * to have the current touch information before\r\n\t\t * generating a click event.\r\n\t\t */\r\n\t\tx = (int)(((data[3] & 0x0c) << 28) | (data[1] << 22)) >> 22;\r\n\t\ty = (int)(((data[3] & 0x30) << 26) | (data[2] << 22)) >> 22;\r\n\t\tclicks = data[3];\r\n\r\n\t\t/* The following bits provide a device specific timestamp. They\r\n\t\t * are unused here.\r\n\t\t *\r\n\t\t * ts = data[3] >> 6 | data[4] << 2 | data[5] << 10;\r\n\t\t */\r\n\t\tbreak;\r\n\tcase DOUBLE_REPORT_ID:\r\n\t\t/* Sometimes the trackpad sends two touch reports in one\r\n\t\t * packet.\r\n\t\t */\r\n\t\tmagicmouse_raw_event(hdev, report, data + 2, data[1]);\r\n\t\tmagicmouse_raw_event(hdev, report, data + 2 + data[1],\r\n\t\t\tsize - 2 - data[1]);\r\n\t\tbreak;\r\n\tdefault:\r\n\t\treturn 0;\r\n\t}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is missing the code that reports input events (e.g., buttons, relative movement, and synchronization) and the setup logic for the input device. This omission means it does not fully implement the required logic from the specification, which includes emitting touch events, handling button clicks, and synchronizing the input state. This is a functional mismatch that affects normal operation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in their logic and behavior for all inputs. They both perform the same checks for report types, validate the size of the data, extract touch points, and emit touch events. There are no observable differences in behavior for any realistic or edge-case input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

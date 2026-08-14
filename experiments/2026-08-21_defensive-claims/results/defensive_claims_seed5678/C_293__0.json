@@ -1,0 +1,146 @@
+{
+  "case_id": "C_293__0",
+  "sample_id": "D/C/293",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-4580",
+  "cve_summary": "The x25_negotiate_facilities function in net/x25/x25_facilities.c in the Linux kernel before 4.5.5 does not properly initialize a certain data structure, which allows attackers to obtain sensitive information from kernel stack memory via an X.25 Call Request.",
+  "changed_file": "net/x25/x25_facilities.c",
+  "docstring": "\"\"\"\nSummary: \nNegotiates X.25 facilities between two endpoints based on the provided socket buffer and socket.\n\nParameters: \nskb (struct sk_buff *): Pointer to the socket buffer containing the facilities to negotiate.\nsk (struct sock *): Pointer to the socket representing the connection.\nnew (struct x25_facilities *): Pointer to the structure where the negotiated facilities will be stored.\ndte (struct x25_dte_facilities *): Pointer to the structure where DTE facilities will be stored.\n\nReturns: \nint: The length of the parsed facilities on success, or a negative error code on failure.\n\nLogic: \nThe function initializes the facilities structures, parses the incoming facilities from the socket buffer, and checks for specific conditions such as reverse charging requests. It negotiates throughput, packet size, and window size based on the capabilities of both endpoints, updating the 'new' facilities structure accordingly. Debug messages are logged for significant negotiation decisions.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int x25_negotiate_facilities(struct sk_buff *skb, struct sock *sk, struct x25_facilities *new, struct x25_dte_facilities *dte) {\n    int len = 0;\n    u8 *data = skb->data;\n    int data_len = skb->len;\n\n    if (!skb || !sk || !new || !dte) {\n        return -EINVAL;\n    }\n\n    if (data_len < 2) {\n        return -EINVAL;\n    }\n\n    len = data[0];\n    if (len > data_len - 1) {\n        len = data_len - 1;\n    }\n\n    if (len < 2) {\n        return -EINVAL;\n    }\n\n    new->throughput = data[1];\n    new->window_size = data[2];\n    new->packet_size = data[3];\n\n    if (new->throughput > X25_MAX_THROUGHPUT) {\n        new->throughput = X25_MAX_THROUGHPUT;\n    }\n\n    if (new->window_size > X25_MAX_WINDOW_SIZE) {\n        new->window_size = X25_MAX_WINDOW_SIZE;\n    }\n\n    if (new->packet_size > X25_MAX_PACKET_SIZE) {\n        new->packet_size = X25_MAX_PACKET_SIZE;\n    }\n\n    if (data[4] & X25_REVERSE_CHARGE_REQUEST) {\n        new->reverse_charge = 1;\n    }\n\n    dte->throughput = data[5];\n    dte->window_size = data[6];\n    dte->packet_size = data[7];\n\n    if (dte->throughput > X25_MAX_THROUGHPUT) {\n        dte->throughput = X25_MAX_THROUGHPUT;\n    }\n\n    if (dte->window_size > X25_MAX_WINDOW_SIZE) {\n        dte->window_size = X25_MAX_WINDOW_SIZE;\n    }\n\n    if (dte->packet_size > X25_MAX_PACKET_SIZE) {\n        dte->packet_size = X25_MAX_PACKET_SIZE;\n    }\n\n    if (data[8] & X25_DTE_REVERSE_CHARGE_REQUEST) {\n        dte->reverse_charge = 1;\n    }\n\n    return len;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate data length",
+      "protects_against": "buffer underflow"
+    },
+    {
+      "step": "bound copy length to destination capacity",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "clamp throughput to maximum allowed value",
+      "protects_against": "excessive throughput request"
+    },
+    {
+      "step": "clamp window size to maximum allowed value",
+      "protects_against": "excessive window size request"
+    },
+    {
+      "step": "clamp packet size to maximum allowed value",
+      "protects_against": "excessive packet size request"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function is likely called in a context where these pointers are guaranteed to be non-null, or the system may crash if they are null, but the code does not handle it explicitly.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate data length — protects against: buffer underflow",
+        "reasoning": "The implementation calls `x25_parse_facilities`, which presumably parses the data in the socket buffer. However, there is no explicit validation of the data length in the implementation itself. The function returns the length of the parsed facilities, but it does not validate that the data length is sufficient or appropriate.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow",
+        "reasoning": "The implementation uses `memcpy(new, ours, sizeof(*new))`, which copies a fixed size (`sizeof(*new)`) and is therefore bounded by the size of the destination structure. This ensures no overflow occurs.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clamp throughput to maximum allowed value — protects against: excessive throughput request",
+        "reasoning": "The implementation compares the incoming throughput values with the local ones and selects the smaller of the two. This effectively clamps the throughput to the lesser of the two endpoints' capabilities.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clamp window size to maximum allowed value — protects against: excessive window size request",
+        "reasoning": "The implementation compares the incoming window size values with the local ones and selects the smaller of the two. This effectively clamps the window size to the lesser of the two endpoints' capabilities.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clamp packet size to maximum allowed value — protects against: excessive packet size request",
+        "reasoning": "The implementation compares the incoming packet size values with the local ones and selects the smaller of the two. This effectively clamps the packet size to the lesser of the two endpoints' capabilities.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 22,
+    "n_omits": 5,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, it uses these pointers directly (e.g., `memcpy(new, ours, sizeof(*new))`), which could lead to null pointer dereference if any of the pointers are null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate data length — protects against: buffer underflow",
+        "reasoning": "The implementation calls `x25_parse_facilities(skb, &theirs, dte, &x25->vc_facil_mask)` to parse the facilities from the socket buffer. It is assumed that this function validates the data length. However, the implementation does not perform any explicit validation of the data length itself.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow",
+        "reasoning": "The implementation uses `memcpy(new, ours, sizeof(*new))` and `memset(&theirs, 0, sizeof(theirs))`, which are bounded by the size of the structures. These are safe as the size is fixed and known at compile time.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clamp throughput to maximum allowed value — protects against: excessive throughput request",
+        "reasoning": "The implementation checks if the throughput values from the peer are less than the local ones and uses the smaller values. However, it does not clamp the throughput to a maximum allowed value (e.g., a system-wide or protocol-defined maximum).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "clamp window size to maximum allowed value — protects against: excessive window size request",
+        "reasoning": "The implementation uses the smaller of the peer's and local window sizes, but it does not clamp the window size to a maximum allowed value (e.g., a system-wide or protocol-defined maximum).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "clamp packet size to maximum allowed value — protects against: excessive packet size request",
+        "reasoning": "The implementation uses the smaller of the peer's and local packet sizes, but it does not clamp the packet size to a maximum allowed value (e.g., a system-wide or protocol-defined maximum).",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

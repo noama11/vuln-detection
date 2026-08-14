@@ -1,0 +1,38 @@
+int snd_timer_user_select(struct file *file, struct snd_timer_select __user *_tselect) {
+    struct snd_timer_user *tu = file->private_data;
+    struct snd_timer *timer;
+    struct snd_timer_select tselect;
+    int err;
+
+    if (tu->timer)
+        snd_timer_close(tu->timer);
+
+    if (copy_from_user(&tselect, _tselect, sizeof(tselect)))
+        return -EFAULT;
+
+    timer = snd_timer_new(tselect.card, tselect.id, &tselect, NULL);
+    if (!timer)
+        return -ENOMEM;
+
+    tu->timer = timer;
+    timer->private_data = tu;
+
+    if (snd_timer_open(timer, &tselect, NULL) < 0) {
+        snd_timer_close(timer);
+        return -EINVAL;
+    }
+
+    if (timer->queue_size > 0) {
+        tu->queue = kmalloc(timer->queue_size, GFP_KERNEL);
+        if (!tu->queue) {
+            snd_timer_close(timer);
+            return -ENOMEM;
+        }
+    }
+
+    timer->callback = snd_timer_user_callback;
+    timer->private_free = snd_timer_user_free;
+    timer->flags |= SNDRV_TIMER_FLG_FAST;
+
+    return 0;
+}

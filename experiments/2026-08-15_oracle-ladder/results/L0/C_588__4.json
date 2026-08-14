@@ -1,0 +1,48 @@
+{
+  "case_id": "C_588__4",
+  "sample_id": "D/C/588",
+  "func_idx": 4,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2014-9907",
+  "cve_summary": "coders/dds.c in ImageMagick allows remote attackers to cause a denial of service via a crafted DDS file.",
+  "changed_file": "coders/dds.c",
+  "docstring": "\"\"\"\nSummary: \nReads DXT5 compressed image data and decodes it into an Image structure.\n\nParameters: \nimage (Image *): Pointer to the Image structure where the decoded pixels will be stored.\ndds_info (DDSInfo *): Pointer to the DDSInfo structure containing image dimensions and metadata.\nexception (ExceptionInfo *): Pointer to the ExceptionInfo structure for error handling.\n\nReturns: \nMagickBooleanType: Returns MagickTrue if the image is successfully read and decoded, otherwise returns MagickFalse.\n\nLogic: The function processes the DXT5 compressed image data in 4x4 pixel blocks. It retrieves alpha values and color data from the compressed format, calculates the corresponding pixel colors, and sets them in the Image structure. The function handles the synchronization of pixel data and manages exceptions during the reading process.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "  for (y = 0; y < (ssize_t) dds_info->height; y += 4)\r\n  {\r\n    for (x = 0; x < (ssize_t) dds_info->width; x += 4)\r\n    {\r\n      /* Get 4x4 patch of pixels to write on */\r\n      q = QueueAuthenticPixels(image, x, y, MagickMin(4, dds_info->width - x),\r\n                         MagickMin(4, dds_info->height - y),exception);\r\n\r\n      if (q == (PixelPacket *) NULL)\r\n        return MagickFalse;\r\n\r\n      /* Read alpha values (8 bytes) */\r\n      a0 = ReadBlobLSBLong(image);\r\n      a1 = ReadBlobLSBLong(image);\r\n\r\n      /* Read 8 bytes of data from the image */\r\n      c0 = ReadBlobLSBShort(image);\r\n      c1 = ReadBlobLSBShort(image);\r\n      bits = ReadBlobLSBLong(image);\r\n\r\n      CalculateColors(c0, c1, &colors, MagickTrue);\r\n\r\n      /* Write the pixels */\r\n      for (j = 0; j < 4; j++)\r\n      {\r\n        for (i = 0; i < 4; i++)\r\n        {\r\n          if ((x + i) < (ssize_t) dds_info->width && (y + j) < (ssize_t) dds_info->height)\r\n            {\r\n              code = (bits >> ((4*j+i)*2)) & 0x3;\r\n              SetPixelRed(q,ScaleCharToQuantum(colors.r[code]));\r\n              SetPixelGreen(q,ScaleCharToQuantum(colors.g[code]));\r\n              SetPixelBlue(q,ScaleCharToQuantum(colors.b[code]));\r\n              /*\r\n                Extract alpha value: multiply 0..15 by 17 to get range 0..255\r\n              */\r\n              if (j < 2)\r\n                alpha = 17U * (unsigned char) ((a0 >> (4*(4*j+i))) & 0xf);\r\n              else\r\n                alpha = 17U * (unsigned char) ((a1 >> (4*(4*(j-2)+i))) & 0xf);\r\n              SetPixelAlpha(q,ScaleCharToQuantum((unsigned char)\r\n                alpha));\r\n              q++;\r\n            }\r\n        }\r\n      }\r\n\r\n      if (SyncAuthenticPixels(image,exception) == MagickFalse)\r\n        return MagickFalse;\r\n    }\r\n  }",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation is missing the call to `SkipDXTMipmaps(image, dds_info, 16);` at the end of the function, which is present in the reference implementation. This function likely handles skipping over the mipmap data in the DXT5 format, which is necessary for correct decoding of the image. The absence of this call could lead to incorrect decoding or processing of subsequent mipmap levels, potentially leading to malformed image data or memory issues if the function assumes the mipmap data has been skipped. This is a behavioral difference that affects the correctness of the decoding process.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being the presence of a comment in the candidate implementation that is absent in the reference implementation. This does not affect the observable behavior of the code for any input. All logic, variable usage, and control flow are the same.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

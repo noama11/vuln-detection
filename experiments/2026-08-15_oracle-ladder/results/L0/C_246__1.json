@@ -1,0 +1,48 @@
+{
+  "case_id": "C_246__1",
+  "sample_id": "D/C/246",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function performs a netlink dump operation, allocating a socket buffer and invoking a callback to fill it with data, while managing mutex locks and error handling.\n\nParameters:  \nsk (struct sock *): The socket associated with the netlink communication.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks the mutex associated with the netlink socket and checks if a callback is running. It then verifies if there is sufficient memory allocated for receiving data. Depending on the conditions, it allocates a socket buffer of appropriate size. The buffer is filled by calling the dump function from the callback. If the dump is successful, the function checks for filters and sends the buffer or frees it accordingly. Finally, it handles cleanup, including unlocking the mutex and releasing resources, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int netlink_dump(struct sock *sk)\r\n{\r\n\tstruct netlink_sock *nlk = nlk_sk(sk);\r\n\tstruct netlink_callback *cb;\r\n\tstruct sk_buff *skb = NULL;\r\n\tstruct nlmsghdr *nlh;\r\n\tstruct module *module;\r\n\tint len, err = -ENOBUFS;\r\n\tint alloc_min_size;\r\n\tint alloc_size;\r\n\r\n\tmutex_lock(nlk->cb_mutex);\r\n\tif (!nlk->cb_running) {\r\n\t\terr = -EINVAL;\r\n\t\tgoto errout_skb;\r\n\t}\r\n\r\n\tif (atomic_read(&sk->sk_rmem_alloc) >= sk->sk_rcvbuf)\r\n\t\tgoto errout_skb;\r\n\r\n\t/* NLMSG_GOODSIZE is small to avoid high order allocations being\r\n\t * required, but it makes sense to _attempt_ a 16K bytes allocation\r\n\t * to reduce number of system calls on dump operations, if user\r\n\t * ever provided a big enough buffer.\r\n\t */\r\n\tcb = &nlk->cb;\r\n\talloc_min_size = max_t(int, cb->min_dump_alloc, NLMSG_GOODSIZE);\r\n\r\n\tif (alloc_min_size < nlk->max_recvmsg_len) {\r\n\t\talloc_size = nlk->max_recvmsg_len;\r\n\t\tskb = alloc_skb(alloc_size, GFP_KERNEL |\r\n\t\t\t\t\t    __GFP_NOWARN | __GFP_NORETRY);\r\n\t}\r\n\tif (!skb) {\r\n\t\talloc_size = alloc_min_size;\r\n\t\tskb = alloc_skb(alloc_size, GFP_KERNEL);\r\n\t}\r\n\tif (!skb)\r\n\t\tgoto errout_skb;\r\n\r\n\t/* Trim skb to allocated size. User is expected to provide buffer as\r\n\t * large as max(min_dump_alloc, 16KiB (mac_recvmsg_len capped at\r\n\t * netlink_recvmsg())). dump will pack as many smaller messages as\r\n\t * could fit within the allocated skb. skb is typically allocated\r\n\t * with larger space than required (could be as much as near 2x the\r\n\t * requested size with align to next power of 2 approach). Allowing\r\n\t * dump to use the excess space makes it difficult for a user to have a\r\n\t * reasonable static buffer based on the expected largest dump of a\r\n\t * single netdev. The outcome is MSG_TRUNC error.\r\n\t */\r\n\tskb_reserve(skb, skb_tailroom(skb) - alloc_size);\r\n\tnetlink_skb_set_owner_r(skb, sk);\r\n\r\n\tlen = cb->dump(skb, cb);\r\n\r\n\tif (len > 0) {\r\n\t\tmutex_unlock(nlk->cb_mutex);\r\n\r\n\t\tif (sk_filter(sk, skb))\r\n\t\t\tkfree_skb(skb);\r\n\t\telse\r\n\t\t\t__netlink_sendskb(sk, skb);\r\n\t\treturn 0;\r\n\t}\r\n\r\n\tnlh = nlmsg_put_answer(skb, cb, NLMSG_DONE, sizeof(len), NLM_F_MULTI);\r\n\tif (!nlh)\r\n\t\tgoto errout_skb;\r\n\r\n\tnl_dump_check_consistent(cb, nlh);\r\n\r\n\tmemcpy(nlmsg_data(nlh), &len, sizeof(len));\r\n\r\n\tif (sk_filter(sk, skb))\r\n\t\tkfree_skb(skb);\r\n\telse\r\n\t\t__netlink_sendskb(sk, skb);\r\n\r\n\tif (cb->done)\r\n\t\tcb->done(cb);\r\n\r\n\tnlk->cb_running = false;\r\n\tmodule = cb->module;\r\n\tskb = cb->skb;\r\n\tmutex_unlock(nlk->cb_mutex);\r\n\tmodule_put(module);\r\n\tconsume_skb(skb);\r\n\treturn 0;\r\n\r\nerrout_skb:\r\n\tmutex_unlock(nlk->cb_mutex);\r\n\tkfree_skb(skb);\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being in the cleanup section. The candidate implementation includes `module = cb->module; skb = cb->skb;` and later calls `module_put(module); consume_skb(skb);`, while the reference implementation directly uses `module_put(cb->module); consume_skb(cb->skb);`. This difference is purely syntactic and does not affect the observable behavior of the function. Both versions perform the same operations on the same variables, and there is no security-relevant or functional difference.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same netlink dump operation, including mutex locking, buffer allocation, callback invocation, and resource cleanup. There are no observable behavioral differences for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

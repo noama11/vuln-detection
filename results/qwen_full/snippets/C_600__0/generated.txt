@@ -1,0 +1,56 @@
+int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {
+    int ret = 0;
+    size_t align_size = 0;
+    int order = 0;
+    int i;
+
+    if (!schp || !sfp || buff_size <= 0) {
+        return -EINVAL;
+    }
+
+    align_size = (buff_size + (1 << sfp->sg_def_sector_shift) - 1) &
+                 ~((size_t)(1 << sfp->sg_def_sector_shift) - 1);
+
+    if (align_size != (size_t)buff_size) {
+        ret = -EINVAL;
+        goto out;
+    }
+
+    schp->k_use = 0;
+    schp->k_nents = 0;
+
+    for (i = 0; i < SG_MAX_INDIRECT; i++) {
+        void *page = NULL;
+
+        page = (void *)__get_free_pages(GFP_KERNEL, order);
+        if (!page) {
+            ret = -ENOMEM;
+            goto free_pages;
+        }
+
+        schp->k_es[i].page = page;
+        schp->k_es[i].offset = 0;
+        schp->k_es[i].length = (1 << (order + PAGE_SHIFT));
+        schp->k_nents++;
+        schp->k_use += (1 << (order + PAGE_SHIFT));
+    }
+
+    if (schp->k_use < buff_size) {
+        ret = -ENOMEM;
+        goto free_pages;
+    }
+
+    return 0;
+
+free_pages:
+    for (i = 0; i < schp->k_nents; i++) {
+        if (schp->k_es[i].page) {
+            free_pages((unsigned long)schp->k_es[i].page, order);
+        }
+    }
+    schp->k_nents = 0;
+    schp->k_use = 0;
+
+out:
+    return ret;
+}

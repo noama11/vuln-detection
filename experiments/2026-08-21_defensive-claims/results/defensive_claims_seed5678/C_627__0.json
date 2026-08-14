@@ -1,0 +1,162 @@
+{
+  "case_id": "C_627__0",
+  "sample_id": "D/C/627",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libgit2/libgit2",
+  "cve_id": "CVE-2018-15501",
+  "cve_summary": "In ng_pkt in transports/smart_pkt.c in libgit2 before 0.26.6 and 0.27.x before 0.27.4, a remote attacker can send a crafted smart-protocol *ng* packet that lacks a '0' byte to trigger an out-of-bounds read that leads to DoS.",
+  "changed_file": "src/transports/smart_pkt.c",
+  "docstring": "Summary: Parses a network packet from a given line and stores the result in a git_pkt structure.\n\nParameters: \n- out (git_pkt **): Pointer to a pointer where the parsed packet will be stored.\n- line (const char *): The input string containing the packet data.\n- len (size_t): The length of the input string.\n\nReturns: \n- int: Returns 0 on success, or -1 if an error occurs during parsing.\n\nLogic: The function allocates memory for a new git_pkt_ng structure, checks for errors, and processes the input line to extract the reference and message components of the packet. It handles memory allocation and ensures proper cleanup in case of errors, returning an error code if the input does not conform to expected formats.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\n// Define the git_pkt structure\ntypedef struct {\n    char *ref;\n    char *msg;\n} git_pkt;\n\ntypedef struct {\n    git_pkt base;\n    // Additional fields can be added here if needed\n} git_pkt_ng;\n\nint parse_pkt_git_pkt(char **out, const char *line, size_t len) {\n    // Validate inputs\n    if (!out || !line || len == 0) {\n        return -1;\n    }\n\n    // Allocate memory for the git_pkt_ng structure\n    git_pkt_ng *pkt = (git_pkt_ng *)malloc(sizeof(git_pkt_ng));\n    if (!pkt) {\n        return -1;\n    }\n\n    // Initialize fields to NULL to ensure proper cleanup\n    pkt->base.ref = NULL;\n    pkt->base.msg = NULL;\n\n    // Find the separator between ref and msg\n    const char *sep = memchr(line, '\\0', len);\n    if (!sep) {\n        free(pkt);\n        return -1;\n    }\n\n    // Calculate lengths of ref and msg\n    size_t ref_len = sep - line;\n    size_t msg_len = len - (sep + 1 - line);\n\n    // Allocate and copy ref\n    pkt->base.ref = (char *)malloc(ref_len + 1);\n    if (!pkt->base.ref) {\n        free(pkt);\n        return -1;\n    }\n    memcpy(pkt->base.ref, line, ref_len);\n    pkt->base.ref[ref_len] = '\\0';\n\n    // Allocate and copy msg\n    pkt->base.msg = (char *)malloc(msg_len + 1);\n    if (!pkt->base.msg) {\n        free(pkt->base.ref);\n        free(pkt);\n        return -1;\n    }\n    memcpy(pkt->base.msg, sep + 1, msg_len);\n    pkt->base.msg[msg_len] = '\\0';\n\n    // Assign the output pointer\n    *out = (char *)pkt;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero length input",
+      "protects_against": "invalid or empty input"
+    },
+    {
+      "step": "check for memory allocation failures",
+      "protects_against": "out of memory conditions"
+    },
+    {
+      "step": "initialize fields to null",
+      "protects_against": "uninitialized memory access"
+    },
+    {
+      "step": "validate separator existence",
+      "protects_against": "malformed input without a separator"
+    },
+    {
+      "step": "bound copy length to allocated size",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "ensure proper cleanup on error",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the parameters 'out' or 'line'. Dereferencing a null pointer in 'out' or 'line' could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for zero length input — protects against: invalid or empty input",
+        "reasoning": "The implementation does not check if the input length 'len' is zero. If 'len' is zero, the parsing logic may attempt to process an empty string, leading to undefined behavior.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for memory allocation failures — protects against: out of memory conditions",
+        "reasoning": "The implementation uses 'git__malloc' and checks for allocation failures via 'GITERR_CHECK_ALLOC'. This macro likely returns early on failure, so the implementation does perform this step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize fields to null — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly sets 'pkt->ref = NULL' after allocating the 'pkt' structure. This ensures the 'ref' field is initialized to null, preventing uninitialized memory access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate separator existence — protects against: malformed input without a separator",
+        "reasoning": "The implementation checks for the presence of the separator ' ' and '\n' in the input string using 'strchr'. If the separator is missing, it jumps to the error handler, ensuring malformed input is rejected.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to allocated size — protects against: buffer overflow",
+        "reasoning": "The implementation calculates the required size for the 'ref' and 'msg' fields and allocates memory accordingly. It then copies the correct number of bytes and adds a null terminator, ensuring no buffer overflow occurs.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper cleanup on error — protects against: memory leaks",
+        "reasoning": "The implementation includes an error handler labeled 'out_err' that frees any allocated memory for 'pkt->ref' and 'pkt' before returning an error code, ensuring no memory leaks occur.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'out' or 'line' parameters. However, the function uses 'git__malloc' and 'memcpy' which are assumed to handle null pointers safely, and the code does not dereference 'line' before the first 'memchr' call. The 'out' pointer is dereferenced at the end, but only after the function has completed successfully.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for zero length input — protects against: invalid or empty input",
+        "reasoning": "The implementation checks if 'len < 3' early in the function, which covers the case of zero length input. If the input is too short to contain the expected 'ng ' prefix, the function returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failures — protects against: out of memory conditions",
+        "reasoning": "The implementation uses 'git__malloc' for memory allocation and checks for allocation failures using 'GITERR_CHECK_ALLOC'. If an allocation fails, the function jumps to the error handler and returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize fields to null — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly sets 'pkt->ref' to NULL before using it. This ensures that if an error occurs before 'pkt->ref' is assigned a valid value, it will be NULL and not point to uninitialized memory.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate separator existence — protects against: malformed input without a separator",
+        "reasoning": "The implementation uses 'memchr' to find the separator character (' ' and '\n') in the input string. If a separator is not found, the function jumps to the error handler and returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to allocated size — protects against: buffer overflow",
+        "reasoning": "The implementation calculates the length of the data to copy and ensures that the allocated size is sufficient by using 'GITERR_CHECK_ALLOC_ADD'. The 'memcpy' calls use the calculated length, which is bounded by the input and the allocated size, preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper cleanup on error — protects against: memory leaks",
+        "reasoning": "The implementation includes an error handler ('out_err') that frees any allocated memory ('pkt->ref' and 'pkt') before returning an error. This ensures that no memory is leaked in the case of an error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

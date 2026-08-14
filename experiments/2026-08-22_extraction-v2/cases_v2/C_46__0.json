@@ -1,0 +1,36 @@
+{
+  "case_id": "C_46__0",
+  "sample_id": "D/C/46",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2010-4250",
+  "cve_summary": "Memory leak in the inotify_init1 function in fs/notify/inotify/inotify_user.c in the Linux kernel before 2.6.37 allows local users to cause a denial of service (memory consumption) via vectors involving failed attempts to create files.",
+  "commit_message": "inotify: stop kernel memory leak on file creation failure\n\nIf inotify_init is unable to allocate a new file for the new inotify\ngroup we leak the new group.  This patch drops the reference on the\ngroup on file allocation failure.\n\nReported-by: Vegard Nossum <vegard.nossum@gmail.com>\ncc: stable@kernel.org\nSigned-off-by: Eric Paris <eparis@redhat.com>",
+  "changed_file": "fs/notify/inotify/inotify_user.c",
+  "docstring": "Summary: Initializes an inotify instance with specified flags and manages user limits for inotify instances.\n\nParameters:\n- flags (int): Bitwise flags to control the behavior of the inotify instance (e.g., IN_CLOEXEC, IN_NONBLOCK).\n\nReturns:\n- int: File descriptor for the inotify instance on success, or a negative error code on failure.\n\nLogic: The function first checks the validity of the provided flags against defined constants. It retrieves the current user and checks if the user has exceeded the maximum allowed inotify instances. If valid, it creates a new fsnotify group for inotify events. It then attempts to obtain a file descriptor for the inotify instance. If successful, it returns the file descriptor; otherwise, it cleans up by releasing resources and returns an error code.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    721,
+    760
+  ],
+  "vulnerable_line_range": [
+    721,
+    759
+  ],
+  "vulnerable_snippet": "SYSCALL_DEFINE1(inotify_init1, int, flags)\r\n{\r\n\tstruct fsnotify_group *group;\r\n\tstruct user_struct *user;\r\n\tint ret;\r\n\r\n\t/* Check the IN_* constants for consistency.  */\r\n\tBUILD_BUG_ON(IN_CLOEXEC != O_CLOEXEC);\r\n\tBUILD_BUG_ON(IN_NONBLOCK != O_NONBLOCK);\r\n\r\n\tif (flags & ~(IN_CLOEXEC | IN_NONBLOCK))\r\n\t\treturn -EINVAL;\r\n\r\n\tuser = get_current_user();\r\n\tif (unlikely(atomic_read(&user->inotify_devs) >=\r\n\t\t\tinotify_max_user_instances)) {\r\n\t\tret = -EMFILE;\r\n\t\tgoto out_free_uid;\r\n\t}\r\n\r\n\t/* fsnotify_obtain_group took a reference to group, we put this when we kill the file in the end */\r\n\tgroup = inotify_new_group(user, inotify_max_queued_events);\r\n\tif (IS_ERR(group)) {\r\n\t\tret = PTR_ERR(group);\r\n\t\tgoto out_free_uid;\r\n\t}\r\n\r\n\tatomic_inc(&user->inotify_devs);\r\n\r\n\tret = anon_inode_getfd(\"inotify\", &inotify_fops, group,\r\n\t\t\t\t  O_RDONLY | flags);\r\n\tif (ret >= 0)\r\n\t\treturn ret;\r\n\r\n\tatomic_dec(&user->inotify_devs);\r\nout_free_uid:\r\n\tfree_uid(user);\r\n\treturn ret;\r\n}",
+  "fixed_line_range": [
+    721,
+    760
+  ],
+  "fixed_snippet": "SYSCALL_DEFINE1(inotify_init1, int, flags)\r\n{\r\n\tstruct fsnotify_group *group;\r\n\tstruct user_struct *user;\r\n\tint ret;\r\n\r\n\t/* Check the IN_* constants for consistency.  */\r\n\tBUILD_BUG_ON(IN_CLOEXEC != O_CLOEXEC);\r\n\tBUILD_BUG_ON(IN_NONBLOCK != O_NONBLOCK);\r\n\r\n\tif (flags & ~(IN_CLOEXEC | IN_NONBLOCK))\r\n\t\treturn -EINVAL;\r\n\r\n\tuser = get_current_user();\r\n\tif (unlikely(atomic_read(&user->inotify_devs) >=\r\n\t\t\tinotify_max_user_instances)) {\r\n\t\tret = -EMFILE;\r\n\t\tgoto out_free_uid;\r\n\t}\r\n\r\n\t/* fsnotify_obtain_group took a reference to group, we put this when we kill the file in the end */\r\n\tgroup = inotify_new_group(user, inotify_max_queued_events);\r\n\tif (IS_ERR(group)) {\r\n\t\tret = PTR_ERR(group);\r\n\t\tgoto out_free_uid;\r\n\t}\r\n\r\n\tatomic_inc(&user->inotify_devs);\r\n\r\n\tret = anon_inode_getfd(\"inotify\", &inotify_fops, group,\r\n\t\t\t\t  O_RDONLY | flags);\r\n\tif (ret >= 0)\r\n\t\treturn ret;\r\n\r\n\tfsnotify_put_group(group);\r\n\tatomic_dec(&user->inotify_devs);\r\nout_free_uid:\r\n\tfree_uid(user);\r\n\treturn ret;\r\n}",
+  "func_name": "SYSCALL_DEFINE1",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

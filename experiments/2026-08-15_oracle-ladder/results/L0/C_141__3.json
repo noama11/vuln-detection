@@ -1,0 +1,48 @@
+{
+  "case_id": "C_141__3",
+  "sample_id": "D/C/141",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: Processes a single ticket for the Ceph authentication client, decoding and updating session keys and ticket information.\n\nParameters:\nac (struct ceph_auth_client *): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key *): Pointer to the secret key used for decryption.\np (void **): Pointer to the data buffer containing the ticket information.\nend (void *): Pointer to the end of the data buffer.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function begins by decoding the ticket type and structure version. It retrieves the appropriate ticket handler and decrypts the ticket data. It then extracts the new session key, validity period, and ticket blob. Depending on whether the ticket is encrypted or not, it handles decryption and memory allocation accordingly. Finally, it updates the session key and ticket information in the handler, cleans up allocated resources, and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int process_one_ticket(struct ceph_auth_client *ac,\r\n\t\t\t      struct ceph_crypto_key *secret,\r\n\t\t\t      void **p, void *end)\r\n{\r\n\tstruct ceph_x_info *xi = ac->private;\r\n\tint type;\r\n\tu8 tkt_struct_v, blob_struct_v;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tvoid *dbuf = NULL;\r\n\tvoid *dp, *dend;\r\n\tint dlen;\r\n\tchar is_enc;\r\n\tstruct timespec validity;\r\n\tstruct ceph_crypto_key old_key;\r\n\tvoid *ticket_buf = NULL;\r\n\tvoid *tp, *tpend;\r\n\tstruct ceph_timespec new_validity;\r\n\tstruct ceph_crypto_key new_session_key;\r\n\tstruct ceph_buffer *new_ticket_blob;\r\n\tunsigned long new_expires, new_renew_after;\r\n\tu64 new_secret_id;\r\n\tint ret;\r\n\r\n\tceph_decode_need(p, end, sizeof(u32) + 1, bad);\r\n\r\n\ttype = ceph_decode_32(p);\r\n\tdout(\" ticket type %d %s\\n\", type, ceph_entity_type_name(type));\r\n\r\n\ttkt_struct_v = ceph_decode_8(p);\r\n\tif (tkt_struct_v != 1)\r\n\t\tgoto bad;\r\n\r\n\tth = get_ticket_handler(ac, type);\r\n\tif (IS_ERR(th)) {\r\n\t\tret = PTR_ERR(th);\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t/* blob for me */\r\n\tdlen = ceph_x_decrypt(secret, p, end, &dbuf, 0);\r\n\tif (dlen <= 0) {\r\n\t\tret = dlen;\r\n\t\tgoto out;\r\n\t}\r\n\tdout(\" decrypted %d bytes\\n\", dlen);\r\n\tdp = dbuf;\r\n\tdend = dp + dlen;\r\n\r\n\ttkt_struct_v = ceph_decode_8(&dp);\r\n\tif (tkt_struct_v != 1)\r\n\t\tgoto bad;\r\n\r\n\tmemcpy(&old_key, &th->session_key, sizeof(old_key));\r\n\tret = ceph_crypto_key_decode(&new_session_key, &dp, dend);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\r\n\tceph_decode_copy(&dp, &new_validity, sizeof(new_validity));\r\n\tceph_decode_timespec(&validity, &new_validity);\r\n\tnew_expires = get_seconds() + validity.tv_sec;\r\n\tnew_renew_after = new_expires - (validity.tv_sec / 4);\r\n\tdout(\" expires=%lu renew_after=%lu\\n\", new_expires,\r\n\t     new_renew_after);\r\n\r\n\t/* ticket blob for service */\r\n\tceph_decode_8_safe(p, end, is_enc, bad);\r\n\tif (is_enc) {\r\n\t\t/* encrypted */\r\n\t\tdout(\" encrypted ticket\\n\");\r\n\t\tdlen = ceph_x_decrypt(&old_key, p, end, &ticket_buf, 0);\r\n\t\tif (dlen < 0) {\r\n\t\t\tret = dlen;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t\ttp = ticket_buf;\r\n\t\tdlen = ceph_decode_32(&tp);\r\n\t} else {\r\n\t\t/* unencrypted */\r\n\t\tceph_decode_32_safe(p, end, dlen, bad);\r\n\t\tticket_buf = kmalloc(dlen, GFP_NOFS);\r\n\t\tif (!ticket_buf) {\r\n\t\t\tret = -ENOMEM;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t\ttp = ticket_buf;\r\n\t\tceph_decode_need(p, end, dlen, bad);\r\n\t\tceph_decode_copy(p, ticket_buf, dlen);\r\n\t}\r\n\ttpend = tp + dlen;\r\n\tdout(\" ticket blob is %d bytes\\n\", dlen);\r\n\tceph_decode_need(&tp, tpend, 1 + sizeof(u64), bad);\r\n\tblob_struct_v = ceph_decode_8(&tp);\r\n\tnew_secret_id = ceph_decode_64(&tp);\r\n\tret = ceph_decode_buffer(&new_ticket_blob, &tp, tpend);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\r\n\t/* all is well, update our ticket */\r\n\tceph_crypto_key_destroy(&th->session_key);\r\n\tif (th->ticket_blob)\r\n\t\tceph_buffer_put(th->ticket_blob);\r\n\tth->session_key = new_session_key;\r\n\tth->ticket_blob = new_ticket_blob;\r\n\tth->validity = new_validity;\r\n\tth->secret_id = new_secret_id;\r\n\tth->expires = new_expires;\r\n\tth->renew_after = new_renew_after;\r\n\tdout(\" got ticket service %d (%s) secret_id %lld len %d\\n\",\r\n\t     type, ceph_entity_type_name(type), th->secret_id,\r\n\t     (int)th->ticket_blob->vec.iov_len);\r\n\txi->have_keys |= th->service;\r\n\r\nout:\r\n\tkfree(ticket_buf);\r\n\tkfree(dbuf);\r\n\treturn ret;\r\n\r\nbad:\r\n\tret = -EINVAL;\r\n\tgoto out;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle memory allocation and buffer management for the ticket blob. The candidate implementation explicitly allocates memory for `ticket_buf` when the ticket is unencrypted and uses `kmalloc` with error checking, while the reference implementation assumes `ticket_buf` is already allocated and does not perform explicit allocation. This could lead to undefined behavior in the reference implementation if `ticket_buf` is not properly initialized, potentially causing a crash or memory corruption. This is a memory safety concern and is reachable via malformed or unencrypted input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in all observable behaviors, including error handling, memory allocation, and data processing. The only difference is the presence of a few debug print statements and variable assignments in the candidate implementation that are not present in the reference implementation, but these do not affect the function's behavior or output for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

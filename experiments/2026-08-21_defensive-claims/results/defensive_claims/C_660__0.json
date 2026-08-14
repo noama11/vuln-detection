@@ -1,0 +1,178 @@
+{
+  "case_id": "C_660__0",
+  "sample_id": "D/C/660",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-11232",
+  "cve_summary": "The etm_setup_aux function in drivers/hwtracing/coresight/coresight-etm-perf.c in the Linux kernel before 4.10.2 allows attackers to cause a denial of service (panic) because a parameter is incorrectly used as a local variable.",
+  "changed_file": "drivers/hwtracing/coresight/coresight-etm-perf.c",
+  "docstring": "\"\"\"\nSummary: \nSets up auxiliary event data for tracing on a specified CPU.\n\nParameters: \nevent_cpu (int): The CPU on which the event is being set up. \npages (void **): Pointer to an array of page pointers for buffer allocation. \nnr_pages (int): The number of pages to allocate for the buffer. \noverwrite (bool): Flag indicating whether to overwrite existing data.\n\nReturns: \nvoid *: Pointer to the allocated event data structure, or NULL on failure.\n\nLogic: \nThe function allocates event data for the specified CPU and retrieves the first enabled sink from the coresight bus. It initializes a work structure for freeing the event data and sets up a path for each CPU in the trace session. If the sink does not support buffer allocation or if any step fails, it cleans up and returns NULL. If successful, it returns a pointer to the event data structure containing the sink configuration and paths.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <stdbool.h>\n\n// Forward declarations for types used in the logic\nstruct coresight_path;\ntypedef struct coresight_path coresight_path_t;\n\n// Assume this function is defined elsewhere to retrieve the first enabled sink\ncoresight_path_t* get_first_enabled_sink();\n\n// Assume this function is defined elsewhere to initialize a path for a CPU\nbool init_cpu_path(int cpu, coresight_path_t* sink);\n\n// Assume this function is defined elsewhere to free event data\nvoid free_event_data(void* event_data);\n\n// Assume this function is defined elsewhere to check if a sink supports buffer allocation\nbool sink_supports_buffer_allocation(coresight_path_t* sink);\n\n// Assume this function is defined elsewhere to allocate a buffer\nvoid* allocate_buffer(void** pages, int nr_pages);\n\n// Assume this function is defined elsewhere to setup the work structure for freeing event data\nvoid setup_free_work(void* event_data);\n\n// Assume this function is defined elsewhere to create the event data structure\nvoid* create_event_data(int event_cpu, coresight_path_t* sink, coresight_path_t** paths);\n\nvoid* setup_aux_event_data(int event_cpu, void** pages, int nr_pages, bool overwrite) {\n    // Validate input parameters\n    if (event_cpu < 0 || pages == NULL || nr_pages <= 0) {\n        return NULL;\n    }\n\n    // Retrieve the first enabled sink from the coresight bus\n    coresight_path_t* sink = get_first_enabled_sink();\n    if (sink == NULL) {\n        return NULL;\n    }\n\n    // Check if the sink supports buffer allocation\n    if (!sink_supports_buffer_allocation(sink)) {\n        free_event_data(sink);\n        return NULL;\n    }\n\n    // Allocate buffer\n    void* buffer = allocate_buffer(pages, nr_pages);\n    if (buffer == NULL) {\n        free_event_data(sink);\n        return NULL;\n    }\n\n    // Initialize paths for each CPU in the trace session\n    coresight_path_t** paths = (coresight_path_t**)malloc(nr_pages * sizeof(coresight_path_t*));\n    if (paths == NULL) {\n        free(buffer);\n        free_event_data(sink);\n        return NULL;\n    }\n\n    for (int i = 0; i < nr_pages; i++) {\n        paths[i] = (coresight_path_t*)malloc(sizeof(coresight_path_t));\n        if (paths[i] == NULL) {\n            // Free previously allocated paths\n            for (int j = 0; j < i; j++) {\n                free(paths[j]);\n            }\n            free(paths);\n            free(buffer);\n            free_event_data(sink);\n            return NULL;\n        }\n\n        if (!init_cpu_path(i, sink)) {\n            // Free previously allocated paths\n            for (int j = 0; j <= i; j++) {\n                free(paths[j]);\n            }\n            free(paths);\n            free(buffer);\n            free_event_data(sink);\n            return NULL;\n        }\n    }\n\n    // Create event data structure\n    void* event_data = create_event_data(event_cpu, sink, paths);\n    if (event_data == NULL) {\n        // Free allocated resources\n        for (int i = 0; i < nr_pages; i++) {\n            free(paths[i]);\n        }\n        free(paths);\n        free(buffer);\n        free_event_data(sink);\n        return NULL;\n    }\n\n    // Setup work structure for freeing event data\n    setup_free_work(event_data);\n\n    return event_data;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input parameters",
+      "protects_against": "invalid or null input parameters"
+    },
+    {
+      "step": "check if sink supports buffer allocation",
+      "protects_against": "using a sink that does not support buffer allocation"
+    },
+    {
+      "step": "check if buffer allocation is successful",
+      "protects_against": "memory allocation failure for buffer"
+    },
+    {
+      "step": "check if paths array allocation is successful",
+      "protects_against": "memory allocation failure for paths array"
+    },
+    {
+      "step": "check if individual path allocation is successful",
+      "protects_against": "memory allocation failure for individual paths"
+    },
+    {
+      "step": "check if CPU path initialization is successful",
+      "protects_against": "failure to initialize CPU path"
+    },
+    {
+      "step": "check if event data creation is successful",
+      "protects_against": "failure to create event data structure"
+    },
+    {
+      "step": "free allocated resources on failure",
+      "protects_against": "memory leaks on failure"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input parameters — protects against: invalid or null input parameters",
+        "reasoning": "The implementation does not explicitly validate the input parameters such as `pages`, `nr_pages`, or `event_cpu`. It assumes they are valid and proceeds with allocation and setup.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if sink supports buffer allocation — protects against: using a sink that does not support buffer allocation",
+        "reasoning": "The implementation checks if the sink supports buffer allocation by verifying if `sink_ops(sink)->alloc_buffer` is not null before calling it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if buffer allocation is successful — protects against: memory allocation failure for buffer",
+        "reasoning": "The implementation checks if `sink_ops(sink)->alloc_buffer(...)` returns a null pointer and jumps to the error handler if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if paths array allocation is successful — protects against: memory allocation failure for paths array",
+        "reasoning": "The implementation does not explicitly allocate the `paths` array; it appears to be a pre-allocated structure. Therefore, there is no need to check for allocation failure.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if individual path allocation is successful — protects against: memory allocation failure for individual paths",
+        "reasoning": "The implementation checks if `coresight_build_path(...)` returns an error pointer using `IS_ERR(...)` and jumps to the error handler if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if CPU path initialization is successful — protects against: failure to initialize CPU path",
+        "reasoning": "The implementation does not explicitly initialize the CPU path; it builds the path using `coresight_build_path(...)`, which is checked for errors using `IS_ERR(...)`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if event data creation is successful — protects against: failure to create event data structure",
+        "reasoning": "The implementation checks if `alloc_event_data(...)` returns a null pointer and returns early if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated resources on failure — protects against: memory leaks on failure",
+        "reasoning": "The implementation calls `etm_free_aux(event_data)` in the error handler to free allocated resources when any step fails.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input parameters — protects against: invalid or null input parameters",
+        "reasoning": "The implementation does not explicitly validate the input parameters such as `pages`, `nr_pages`, or `event_cpu`. It assumes they are valid and proceeds with allocation and setup.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if sink supports buffer allocation — protects against: using a sink that does not support buffer allocation",
+        "reasoning": "The implementation checks if the sink supports buffer allocation by verifying the presence of the `alloc_buffer` function pointer in the sink's operations. If it is not present, it jumps to the error handler.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if buffer allocation is successful — protects against: memory allocation failure for buffer",
+        "reasoning": "The implementation calls `sink_ops(sink)->alloc_buffer(...)` and checks if the result is NULL. If it is, it jumps to the error handler.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if paths array allocation is successful — protects against: memory allocation failure for paths array",
+        "reasoning": "The implementation does not explicitly allocate the `paths` array. It assumes the `event_data->path` is already allocated and valid.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if individual path allocation is successful — protects against: memory allocation failure for individual paths",
+        "reasoning": "The implementation calls `coresight_build_path(...)` for each CPU and checks if the result is an error using `IS_ERR(...)`. If it is, it jumps to the error handler.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if CPU path initialization is successful — protects against: failure to initialize CPU path",
+        "reasoning": "The implementation does not explicitly initialize the CPU path. It builds the path using `coresight_build_path(...)` and checks for errors.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check if event data creation is successful — protects against: failure to create event data structure",
+        "reasoning": "The implementation calls `alloc_event_data(event_cpu)` and checks if the result is NULL. If it is, it returns NULL immediately.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated resources on failure — protects against: memory leaks on failure",
+        "reasoning": "The implementation jumps to the `err` label on any failure and calls `etm_free_aux(event_data)` to free the allocated resources.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

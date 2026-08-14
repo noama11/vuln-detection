@@ -1,0 +1,31 @@
+{
+  "case_id": "C_312__0",
+  "implementation": "int powermate_probe(struct usb_interface *intf, const struct usb_device_id *id) {\n    struct usb_device *udev = interface_to_usbdev(intf);\n    struct powermate_dev *dev;\n    int error = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    dev->udev = usb_get_dev(udev);\n    dev->intf = intf;\n\n    dev->input = input_allocate_device();\n    if (!dev->input)\n        goto err_free_dev;\n\n    dev->urb = usb_alloc_urb(0, GFP_KERNEL);\n    if (!dev->urb)\n        goto err_free_input;\n\n    usb_fill_int_urb(dev->urb, udev, usb_rcvintpipe(udev, 0x81),\n                     dev->data, sizeof(dev->data),\n                     powermate_irq, dev, 100);\n\n    dev->urb->transfer_flags |= URB_CUT_THROUGH;\n\n    error = input_register_device(dev->input);\n    if (error)\n        goto err_free_urb;\n\n    switch (le16_to_cpu(udev->descriptor.idProduct)) {\n        case 0x0001: /* PowerMate Classic */\n            dev->input->name = \"PowerMate Classic\";\n            break;\n        case 0x0002: /* PowerMate LED */\n            dev->input->name = \"PowerMate LED\";\n            dev->led_state = 0x01;\n            break;\n        default:\n            dev->input->name = \"PowerMate\";\n            break;\n    }\n\n    dev->input->id.bustype = BUS_USB;\n    dev->input->id.vendor = le16_to_cpu(udev->descriptor.idVendor);\n    dev->input->id.product = le16_to_cpu(udev->descriptor.idProduct);\n    dev->input->id.version = 0x0001;\n\n    usb_set_intfdata(intf, dev);\n\n    return 0;\n\nerr_free_urb:\n    usb_free_urb(dev->urb);\nerr_free_input:\n    input_free_device(dev->input);\nerr_free_dev:\n    kfree(dev);\n    return error;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null after kzalloc",
+      "protects_against": "memory allocation failure for the device structure"
+    },
+    {
+      "step": "check for null after input_allocate_device",
+      "protects_against": "memory allocation failure for the input device"
+    },
+    {
+      "step": "check for null after usb_alloc_urb",
+      "protects_against": "memory allocation failure for the URB"
+    },
+    {
+      "step": "clean up allocated resources on error paths",
+      "protects_against": "resource leaks in case of allocation or setup failures"
+    },
+    {
+      "step": "use kzalloc to zero-initialize memory",
+      "protects_against": "uninitialized memory usage"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

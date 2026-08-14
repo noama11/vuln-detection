@@ -1,0 +1,53 @@
+{
+  "case_id": "C_246__0",
+  "sample_id": "D/C/246",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function handles the dumping of netlink messages from a socket, managing memory allocation and ensuring proper synchronization.\n\nParameters:  \nsk (struct sock *): The socket from which to dump netlink messages.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks a mutex to ensure thread safety and checks if the callback is running. It then verifies if the socket's receive buffer is full. Depending on the conditions, it allocates a socket buffer (skb) of appropriate size for the dump operation. If allocation fails, it cleans up and returns an error. The function then calls the dump callback to fill the skb with data. If the dump is successful, it checks for filters and sends the skb or frees it accordingly. Finally, it handles the completion of the dump, unlocking the mutex and cleaning up resources before returning.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int netlink_dump(struct sock *sk) {\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&sk->sk_lock);\n    if (sk->sk_callback_running) {\n        mutex_unlock(&sk->sk_lock);\n        return -EBUSY;\n    }\n\n    if (sk->sk_rcvbuf_used >= sk->sk_rcvbuf) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOBUFS;\n    }\n\n    skb = alloc_skb(sk->sk_rcvbuf / 2, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOMEM;\n    }\n\n    err = sk->sk_prot->dump(sk, skb);\n    if (err < 0) {\n        kfree_skb(skb);\n        mutex_unlock(&sk->sk_lock);\n        return err;\n    }\n\n    if (sk->sk_filter) {\n        skb = sk_filter(sk, skb);\n        if (!skb) {\n            mutex_unlock(&sk->sk_lock);\n            return 0;\n        }\n    }\n\n    skb_queue_tail(&sk->sk_receive_queue, skb);\n    mutex_unlock(&sk->sk_lock);\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of socket buffer (skb) allocation and the dump callback. The candidate implementation uses a simpler approach, allocating a fixed-size skb and calling the dump callback directly, while the reference implementation includes more complex logic for determining the allocation size and includes additional checks for consistency and completion. The reference implementation also includes logic for handling filters and sending the skb, which the candidate implementation handles differently. These differences could affect behavior on edge cases, particularly with large allocations or malformed inputs, and may touch memory safety concerns.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of socket buffer allocation and callback execution. The candidate implementation uses a simpler approach, allocating a fixed-size buffer and calling the dump callback directly, while the reference implementation includes more complex logic for determining the allocation size and includes additional checks for consistency and cleanup. The reference implementation also includes logic for handling `NLMSG_DONE` and `NLM_F_MULTI` flags, which the candidate implementation lacks. These differences could affect the behavior of the dump operation, particularly in edge cases involving malformed or large inputs. However, the differences do not appear to involve security-critical checks or memory safety issues.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_708__1",
+  "sample_id": "D/C/708",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18202",
+  "cve_summary": "The __oom_reap_task_mm function in mm/oom_kill.c in the Linux kernel before 4.14.4 mishandles gather operations, which allows attackers to cause a denial of service (TLB entry leak or use-after-free) or possibly have unspecified other impact by triggering a copy_to_user call within a certain time window.",
+  "changed_file": "mm/oom_kill.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the reaping of a task's memory management structure in an out-of-memory (OOM) situation.\n\nParameters: \ntsk (struct task_struct *): Pointer to the task structure of the process to be reaped.\nmm (struct mm_struct *): Pointer to the memory management structure of the task.\n\nReturns: \nbool: Returns true if the reaping was successful, false otherwise.\n\nLogic: \nThe function first acquires a lock to prevent race conditions with the task's exit path. It attempts to acquire a read lock on the memory map semaphore. If successful, it checks for memory notifiers and the OOM skip flag. If neither condition is met, it marks the memory as unstable and iterates through the virtual memory areas (VMAs) to unmap anonymous or non-shared pages. Finally, it logs the reaping results and releases the locks before returning the success status.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm) {\n    bool success = false;\n\n    if (!tsk || !mm) {\n        return false;\n    }\n\n    down_read(&mm->mmap_lock);\n\n    if (atomic_read(&mm->mm_users) <= 0) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    if (mm->oom_skip) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    mm->oom_unstable = true;\n\n    struct vm_area_struct *vma;\n    for (vma = mm->mmap; vma; vma = vma->vm_next) {\n        if (vma->vm_flags & (VM_ANON | VM_SHARED)) {\n            do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);\n        }\n    }\n\n    success = true;\n\n    up_read(&mm->mmap_lock);\n\n    return success;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing tsk or mm"
+    },
+    {
+      "step": "verify mm_users count",
+      "protects_against": "attempting to reap memory from an already exited or invalid memory structure"
+    },
+    {
+      "step": "check for oom_skip flag",
+      "protects_against": "unnecessary or unsafe reaping of memory when it's marked to be skipped"
+    },
+    {
+      "step": "iterate through vmas safely",
+      "protects_against": "invalid or corrupted vma traversal that could lead to memory corruption or crashes"
+    },
+    {
+      "step": "release lock on error paths",
+      "protects_against": "deadlock from failing to release the mmap_lock in error conditions"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing tsk or mm",
+        "reasoning": "The implementation does not explicitly check for null pointers for `tsk` or `mm`. Dereferencing these pointers without a null check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "verify mm_users count — protects against: attempting to reap memory from an already exited or invalid memory structure",
+        "reasoning": "The implementation does not check the `mm_users` count. This could allow reaping memory from an already exited or invalid memory structure.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for oom_skip flag — protects against: unnecessary or unsafe reaping of memory when it's marked to be skipped",
+        "reasoning": "The implementation does check for the `MMF_OOM_SKIP` flag and skips reaping if it is set. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "iterate through vmas safely — protects against: invalid or corrupted vma traversal that could lead to memory corruption or crashes",
+        "reasoning": "The implementation iterates through the VMA list using `vma->vm_next`, which is a standard approach. However, it does not include additional safety checks for invalid or corrupted VMA traversal.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "release lock on error paths — protects against: deadlock from failing to release the mmap_lock in error conditions",
+        "reasoning": "The implementation uses a labeled `goto unlock_oom` to ensure the `oom_lock` is released in all paths, including error paths. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 17,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing tsk or mm",
+        "reasoning": "The implementation does not explicitly check for null pointers for `tsk` or `mm`. Dereferencing these pointers without a null check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "verify mm_users count — protects against: attempting to reap memory from an already exited or invalid memory structure",
+        "reasoning": "The implementation does not check the `mm_users` count. This could allow reaping memory from an already exited or invalid memory structure.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for oom_skip flag — protects against: unnecessary or unsafe reaping of memory when it's marked to be skipped",
+        "reasoning": "The implementation checks for the `MMF_OOM_SKIP` flag and skips reaping if it is set. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "iterate through vmas safely — protects against: invalid or corrupted vma traversal that could lead to memory corruption or crashes",
+        "reasoning": "The implementation iterates through the VMA list using `vma->vm_next`, which is a standard approach. However, it does not include additional safety checks for invalid or corrupted VMA traversal.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release lock on error paths — protects against: deadlock from failing to release the mmap_lock in error conditions",
+        "reasoning": "The implementation uses a labeled `goto` (`unlock_oom`) to ensure the `oom_lock` is released on all paths, including error paths. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

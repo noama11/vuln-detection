@@ -1,0 +1,36 @@
+{
+  "case_id": "C_897__0",
+  "sample_id": "D/C/897",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "uclouvain/openjpeg",
+  "cve_id": "CVE-2019-12973",
+  "cve_summary": "In OpenJPEG 2.3.1, there is excessive iteration in the opj_t1_encode_cblks function of openjp2/t1.c. Remote attackers could leverage this vulnerability to cause a denial of service via a crafted bmp file. This issue is similar to CVE-2018-6616.",
+  "commit_message": "convertbmp: detect invalid file dimensions early\n\nwidth/length dimensions read from bmp headers are not necessarily\nvalid. For instance they may have been maliciously set to very large\nvalues with the intention to cause DoS (large memory allocation, stack\noverflow). In these cases we want to detect the invalid size as early\nas possible.\n\nThis commit introduces a counter which verifies that the number of\nwritten bytes corresponds to the advertized width/length.\n\nSee commit 8ee335227bbc for details.\n\nSigned-off-by: Young Xiao <YangX92@hotmail.com>",
+  "changed_file": "src/bin/jp2/convertbmp.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads RLE4 encoded bitmap data from a file and decodes it into a specified  \n * buffer.  \n *  \n * Parameters:  \n * IN (FILE*): Pointer to the input file stream containing the bitmap data.  \n * pData (OPJ_UINT8*): Pointer to the buffer where the decoded pixel data will be stored.  \n * stride (OPJ_UINT32): The number of bytes in a row of the output buffer.  \n * width (OPJ_UINT32): The width of the bitmap in pixels.  \n * height (OPJ_UINT32): The height of the bitmap in pixels.  \n *  \n * Returns:  \n * OPJ_BOOL: Returns OPJ_TRUE if the data was read and decoded successfully,  \n * otherwise returns OPJ_FALSE.  \n *  \n * Logic:  \n * The function processes the bitmap data in two modes: encoded mode and absolute mode.  \n * It reads pixel values based on the RLE4 encoding scheme, updating the pixel buffer  \n * accordingly. It handles end-of-line and end-of-packet markers, as well as pixel  \n * movement commands. A warning is issued if the actual number of written pixels does  \n * not match the expected size.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    622,
+    688
+  ],
+  "vulnerable_line_range": [
+    622,
+    682
+  ],
+  "vulnerable_snippet": "static OPJ_BOOL bmp_read_rle4_data(FILE* IN, OPJ_UINT8* pData,\r\n                                   OPJ_UINT32 stride, OPJ_UINT32 width, OPJ_UINT32 height)\r\n{\r\n    OPJ_UINT32 x, y;\r\n    OPJ_UINT8 *pix;\r\n    const OPJ_UINT8 *beyond;\r\n\r\n    beyond = pData + stride * height;\r\n    pix = pData;\r\n    x = y = 0U;\r\n    while (y < height) {\r\n        int c = getc(IN);\r\n        if (c == EOF) {\r\n            break;\r\n        }\r\n\r\n        if (c) { /* encoded mode */\r\n            int j;\r\n            OPJ_UINT8 c1 = (OPJ_UINT8)getc(IN);\r\n\r\n            for (j = 0; (j < c) && (x < width) &&\r\n                    ((OPJ_SIZE_T)pix < (OPJ_SIZE_T)beyond); j++, x++, pix++) {\r\n                *pix = (OPJ_UINT8)((j & 1) ? (c1 & 0x0fU) : ((c1 >> 4) & 0x0fU));\r\n            }\r\n        } else { /* absolute mode */\r\n            c = getc(IN);\r\n            if (c == EOF) {\r\n                break;\r\n            }\r\n\r\n            if (c == 0x00) { /* EOL */\r\n                x = 0;\r\n                y++;\r\n                pix = pData + y * stride;\r\n            } else if (c == 0x01) { /* EOP */\r\n                break;\r\n            } else if (c == 0x02) { /* MOVE by dxdy */\r\n                c = getc(IN);\r\n                x += (OPJ_UINT32)c;\r\n                c = getc(IN);\r\n                y += (OPJ_UINT32)c;\r\n                pix = pData + y * stride + x;\r\n            } else { /* 03 .. 255 : absolute mode */\r\n                int j;\r\n                OPJ_UINT8 c1 = 0U;\r\n\r\n                for (j = 0; (j < c) && (x < width) &&\r\n                        ((OPJ_SIZE_T)pix < (OPJ_SIZE_T)beyond); j++, x++, pix++) {\r\n                    if ((j & 1) == 0) {\r\n                        c1 = (OPJ_UINT8)getc(IN);\r\n                    }\r\n                    *pix = (OPJ_UINT8)((j & 1) ? (c1 & 0x0fU) : ((c1 >> 4) & 0x0fU));\r\n                }\r\n                if (((c & 3) == 1) || ((c & 3) == 2)) { /* skip padding byte */\r\n                    getc(IN);\r\n                }\r\n            }\r\n        }\r\n    }  /* while(y < height) */\r\n    return OPJ_TRUE;\r\n}",
+  "fixed_line_range": [
+    622,
+    688
+  ],
+  "fixed_snippet": "static OPJ_BOOL bmp_read_rle4_data(FILE* IN, OPJ_UINT8* pData,\r\n                                   OPJ_UINT32 stride, OPJ_UINT32 width, OPJ_UINT32 height)\r\n{\r\n    OPJ_UINT32 x, y, written;\r\n    OPJ_UINT8 *pix;\r\n    const OPJ_UINT8 *beyond;\r\n\r\n    beyond = pData + stride * height;\r\n    pix = pData;\r\n    x = y = written = 0U;\r\n    while (y < height) {\r\n        int c = getc(IN);\r\n        if (c == EOF) {\r\n            break;\r\n        }\r\n\r\n        if (c) { /* encoded mode */\r\n            int j;\r\n            OPJ_UINT8 c1 = (OPJ_UINT8)getc(IN);\r\n\r\n            for (j = 0; (j < c) && (x < width) &&\r\n                    ((OPJ_SIZE_T)pix < (OPJ_SIZE_T)beyond); j++, x++, pix++) {\r\n                *pix = (OPJ_UINT8)((j & 1) ? (c1 & 0x0fU) : ((c1 >> 4) & 0x0fU));\r\n                written++;\r\n            }\r\n        } else { /* absolute mode */\r\n            c = getc(IN);\r\n            if (c == EOF) {\r\n                break;\r\n            }\r\n\r\n            if (c == 0x00) { /* EOL */\r\n                x = 0;\r\n                y++;\r\n                pix = pData + y * stride;\r\n            } else if (c == 0x01) { /* EOP */\r\n                break;\r\n            } else if (c == 0x02) { /* MOVE by dxdy */\r\n                c = getc(IN);\r\n                x += (OPJ_UINT32)c;\r\n                c = getc(IN);\r\n                y += (OPJ_UINT32)c;\r\n                pix = pData + y * stride + x;\r\n            } else { /* 03 .. 255 : absolute mode */\r\n                int j;\r\n                OPJ_UINT8 c1 = 0U;\r\n\r\n                for (j = 0; (j < c) && (x < width) &&\r\n                        ((OPJ_SIZE_T)pix < (OPJ_SIZE_T)beyond); j++, x++, pix++) {\r\n                    if ((j & 1) == 0) {\r\n                        c1 = (OPJ_UINT8)getc(IN);\r\n                    }\r\n                    *pix = (OPJ_UINT8)((j & 1) ? (c1 & 0x0fU) : ((c1 >> 4) & 0x0fU));\r\n                    written++;\r\n                }\r\n                if (((c & 3) == 1) || ((c & 3) == 2)) { /* skip padding byte */\r\n                    getc(IN);\r\n                }\r\n            }\r\n        }\r\n    }  /* while(y < height) */\r\n    if (written != width * height) {\r\n        fprintf(stderr, \"warning, image's actual size does not match advertized one\\n\");\r\n        return OPJ_FALSE;\r\n    }\r\n    return OPJ_TRUE;\r\n}",
+  "func_name": "bmp_read_rle4_data",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

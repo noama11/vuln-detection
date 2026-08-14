@@ -1,0 +1,130 @@
+{
+  "case_id": "C_872__0",
+  "sample_id": "D/C/872",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-7514",
+  "cve_summary": "The ReadPSDChannelPixels function in coders/psd.c in ImageMagick allows remote attackers to cause a denial of service (out-of-bounds read) via a crafted PSD file.",
+  "changed_file": "coders/psd.c",
+  "docstring": "```plaintext\nSummary: \nWrites image channels to a PSD file, handling different compression methods and color spaces.\n\nParameters: \npsd_info (const PSDInfo *): Information about the PSD file format.\nimage_info (const ImageInfo *): Metadata about the image being processed.\nimage (Image *): The current image to write.\nnext_image (Image *): The next image to process.\nseparate (MagickBooleanType): Flag indicating whether to separate channels.\nexception (ExceptionInfo *): Structure for error handling.\n\nReturns: \nMagickBooleanType: Indicates success (MagickTrue) or failure (MagickFalse).\n\nLogic: \nThe function initializes variables for channel processing and memory allocation for pixel data. It checks the compression type and color space of the next image, applying Packbits compression for RLECompression. It writes pixel data for grayscale, indexed, and RGB images, handling alpha channels where applicable. Progress is reported throughout the writing process, and memory is managed to prevent leaks.\n```",
+  "heuristic_leakage_flag": true,
+  "generated_code": "MagickBooleanType WritePSDImage(const PSDInfo *psd_info, const ImageInfo *image_info, Image *image, Image *next_image, MagickBooleanType separate, ExceptionInfo *exception) {\n  register ssize_t x;\n  ssize_t y;\n  MagickBooleanType status;\n  register PixelIntensities *q;\n  register unsigned char *p;\n  unsigned char *pixels = (unsigned char *) AcquireQuantumMemory(image->columns * 4UL, sizeof(*pixels));\n\n  if (pixels == (unsigned char *) NULL) {\n    ThrowBinaryException(ResourceLimitError, \"UnableToAcquireMemory\", image_info->filename);\n    return MagickFalse;\n  }\n\n  status = MagickTrue;\n  for (y = 0; y < (ssize_t) image->rows; y++) {\n    q = (PixelIntensities *) image->pixels + y * image->columns;\n    p = pixels;\n    for (x = 0; x < (ssize_t) image->columns; x++) {\n      *p++ = (unsigned char) ClampToQuantum(q->red);\n      *p++ = (unsigned char) ClampToQuantum(q->green);\n      *p++ = (unsigned char) ClampToQuantum(q->blue);\n      if (image->alpha_trait != UndefinedAlphaTrait) {\n        *p++ = (unsigned char) ClampToQuantum(q->opacity);\n      }\n      q++;\n    }\n\n    if (image->compression == RLECompression) {\n      if (PackbitsCompressImage(image, pixels, image->columns * 4UL, y) != MagickTrue) {\n        status = MagickFalse;\n        break;\n      }\n    }\n\n    if (WriteBlob(image, image->rows, pixels) != MagickTrue) {\n      status = MagickFalse;\n      break;\n    }\n  }\n\n  pixels = (unsigned char *) RelinquishMagickMemory(pixels);\n  return status;\n}",
+  "defensive_steps": [
+    {
+      "step": "check memory allocation result",
+      "protects_against": "memory allocation failure when acquiring memory for pixel data"
+    },
+    {
+      "step": "bound loop indices to image dimensions",
+      "protects_against": "out-of-bounds memory access when processing pixel data"
+    },
+    {
+      "step": "check compression type before applying compression",
+      "protects_against": "incorrect compression method being applied to pixel data"
+    },
+    {
+      "step": "check alpha channel presence before accessing it",
+      "protects_against": "dereferencing null or invalid alpha channel pointer"
+    },
+    {
+      "step": "release allocated memory on all return paths",
+      "protects_against": "memory leaks from un-released pixel data buffer"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure when acquiring memory for pixel data",
+        "reasoning": "The implementation checks the result of `AcquireQuantumMemory` and returns an error if `compact_pixels` is NULL, which indicates a failed allocation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound loop indices to image dimensions — protects against: out-of-bounds memory access when processing pixel data",
+        "reasoning": "The implementation does not explicitly show loop indices being bounded to image dimensions. The pixel data is processed via calls to `WritePackbitsLength` and `WriteOneChannel`, but the implementation does not show how these functions handle bounds.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check compression type before applying compression — protects against: incorrect compression method being applied to pixel data",
+        "reasoning": "The implementation checks `next_image->compression == RLECompression` before applying Packbits compression, ensuring the compression method is only used when appropriate.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check alpha channel presence before accessing it — protects against: dereferencing null or invalid alpha channel pointer",
+        "reasoning": "The implementation checks `next_image->alpha_trait != UndefinedPixelTrait` before attempting to write alpha channel data, ensuring the alpha channel is present before accessing it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release allocated memory on all return paths — protects against: memory leaks from un-released pixel data buffer",
+        "reasoning": "The implementation calls `RelinquishMagickMemory(compact_pixels)` if `next_image->compression == RLECompression`, which is the only path where memory is allocated. Since the function always returns `MagickTrue`, there are no other return paths to consider.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure when acquiring memory for pixel data",
+        "reasoning": "The implementation checks if `compact_pixels` is NULL after calling `AcquireQuantumMemory`, and throws an exception if it is NULL, which effectively handles the memory allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound loop indices to image dimensions — protects against: out-of-bounds memory access when processing pixel data",
+        "reasoning": "The implementation does not explicitly show loop indices being bounded to image dimensions. The pixel data is processed via calls to `WritePackbitsLength` and `WriteOneChannel`, but the implementation does not show any explicit bounds checking on loop indices.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check compression type before applying compression — protects against: incorrect compression method being applied to pixel data",
+        "reasoning": "The implementation checks if `next_image->compression == RLECompression` before applying Packbits compression, which ensures the correct compression method is used.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check alpha channel presence before accessing it — protects against: dereferencing null or invalid alpha channel pointer",
+        "reasoning": "The implementation checks `next_image->alpha_trait != UndefinedPixelTrait` before attempting to write the alpha channel data, which prevents dereferencing an invalid pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release allocated memory on all return paths — protects against: memory leaks from un-released pixel data buffer",
+        "reasoning": "The implementation releases `compact_pixels` via `RelinquishMagickMemory` only if `next_image->compression == RLECompression`. However, the function always returns `MagickTrue`, and there is no other return path that releases the memory if the condition is not met. Therefore, the memory is not released on all return paths.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

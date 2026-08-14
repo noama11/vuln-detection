@@ -1,0 +1,178 @@
+{
+  "case_id": "C_727__1",
+  "sample_id": "D/C/727",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "OP-TEE/optee_os",
+  "cve_id": "CVE-2019-1010296",
+  "cve_summary": "Linaro/OP-TEE OP-TEE 3.3.0 and earlier is affected by: Buffer Overflow. The impact is: Code execution in context of TEE core (kernel). The component is: optee_os. The fixed version is: 3.4.0 and later.",
+  "changed_file": "core/tee/tee_svc_cryp.c",
+  "docstring": "\"\"\"\nSummary: \nPopulates a cryptographic object with user-defined attributes.\n\nParameters: \nobj (unsigned long): The identifier of the cryptographic object to populate. \nusr_attrs (struct utee_attribute *): Pointer to an array of user attributes to set. \nattr_count (unsigned long): The number of attributes in the usr_attrs array.\n\nReturns: \nTEE_Result: The result of the operation, indicating success or the type of error encountered.\n\nLogic: \nThe function retrieves the current session and checks if the specified object is transient and uninitialized. It allocates memory for the attributes and copies them from user space. It then validates the attributes against the object's type properties and populates the object if all checks pass. Finally, it updates the object's state to initialized if successful, and cleans up allocated resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming TEE_Result is a known type and TEE_SUCCESS, TEE_ERROR_* are defined.\n// Also assuming that the session and object management functions are available.\n\n// Forward declarations for internal functions\nvoid* get_current_session();\nint is_transient_uninitialized(unsigned long obj);\nvoid* allocate_attributes(unsigned long attr_count);\nint validate_attributes(void* session, unsigned long obj, void* attributes, unsigned long attr_count);\nvoid update_object_state(unsigned long obj);\nvoid cleanup_attributes(void* attributes);\n\nTEE_Result populate_cryptographic_object(unsigned long obj, struct utee_attribute *usr_attrs, unsigned long attr_count) {\n    void* session = get_current_session();\n    if (!session) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    if (!is_transient_uninitialized(obj)) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    if (!usr_attrs || attr_count == 0) {\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    void* attributes = allocate_attributes(attr_count);\n    if (!attributes) {\n        return TEE_ERROR_OUT_OF_MEMORY;\n    }\n\n    // Copy attributes from user space with bounds checking\n    size_t total_size = attr_count * sizeof(struct utee_attribute);\n    if (total_size / sizeof(struct utee_attribute) != attr_count) {\n        cleanup_attributes(attributes);\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    memcpy(attributes, usr_attrs, total_size);\n\n    if (!validate_attributes(session, obj, attributes, attr_count)) {\n        cleanup_attributes(attributes);\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    update_object_state(obj);\n\n    cleanup_attributes(attributes);\n\n    return TEE_SUCCESS;\n}",
+  "defensive_steps": [
+    {
+      "step": "check session pointer before using it",
+      "protects_against": "null session pointer"
+    },
+    {
+      "step": "check if object is transient and uninitialized",
+      "protects_against": "attempting to populate a non-transient or already initialized object"
+    },
+    {
+      "step": "validate user attributes pointer and count",
+      "protects_against": "null pointer or zero attribute count"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "validate total size to prevent overflow",
+      "protects_against": "integer overflow when calculating total size"
+    },
+    {
+      "step": "copy attributes with bounds checking",
+      "protects_against": "buffer overflow when copying attributes"
+    },
+    {
+      "step": "validate attributes after copying",
+      "protects_against": "invalid or malformed attributes"
+    },
+    {
+      "step": "clean up allocated resources before returning",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check session pointer before using it — protects against: null session pointer",
+        "reasoning": "The implementation calls `tee_ta_get_current_session(&sess)` and checks the result. If the session pointer is invalid or null, the function returns an error before using it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if object is transient and uninitialized — protects against: attempting to populate a non-transient or already initialized object",
+        "reasoning": "The implementation checks that the object is not persistent and not already initialized using bitwise operations on `o->info.handleFlags`. If either condition is violated, it returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user attributes pointer and count — protects against: null pointer or zero attribute count",
+        "reasoning": "The implementation does not explicitly check whether `usr_attrs` is null or `attr_count` is zero. It assumes the pointer is valid and the count is non-zero when calling `copy_in_attrs`.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks the result of `malloc` and returns `TEE_ERROR_OUT_OF_MEMORY` if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate total size to prevent overflow — protects against: integer overflow when calculating total size",
+        "reasoning": "The implementation multiplies `sizeof(TEE_Attribute)` by `attr_count` to allocate memory. It does not check for integer overflow in this calculation.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "copy attributes with bounds checking — protects against: buffer overflow when copying attributes",
+        "reasoning": "The implementation calls `copy_in_attrs`, which is expected to perform bounds checking. However, the implementation does not explicitly verify that the function does so, and the code for `copy_in_attrs` is not visible.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate attributes after copying — protects against: invalid or malformed attributes",
+        "reasoning": "The implementation calls `tee_svc_cryp_check_attr`, which is expected to validate the attributes. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources before returning — protects against: memory leaks",
+        "reasoning": "The implementation uses a labeled `out` block to ensure `free(attrs)` is called before returning, regardless of success or failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check session pointer before using it — protects against: null session pointer",
+        "reasoning": "The implementation calls `tee_ta_get_current_session(&sess)` and returns an error if it fails, which implies the session pointer is valid before use.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if object is transient and uninitialized — protects against: attempting to populate a non-transient or already initialized object",
+        "reasoning": "The implementation checks that the object is not persistent and not already initialized by inspecting the `handleFlags` field of the object.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user attributes pointer and count — protects against: null pointer or zero attribute count",
+        "reasoning": "The implementation does not explicitly check for a null pointer or zero count for `usr_attrs`. However, the `copy_in_attrs` function may handle this, but it is not visible in the code provided.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks the result of `malloc` and returns `TEE_ERROR_OUT_OF_MEMORY` if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate total size to prevent overflow — protects against: integer overflow when calculating total size",
+        "reasoning": "The implementation uses `MUL_OVERFLOW` to check for overflow when calculating the total size of the attribute array.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy attributes with bounds checking — protects against: buffer overflow when copying attributes",
+        "reasoning": "The implementation calls `copy_in_attrs`, which presumably performs the copy with bounds checking, but the implementation of `copy_in_attrs` is not visible.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate attributes after copying — protects against: invalid or malformed attributes",
+        "reasoning": "The implementation calls `tee_svc_cryp_check_attr`, which presumably validates the attributes after copying, but the implementation of `tee_svc_cryp_check_attr` is not visible.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources before returning — protects against: memory leaks",
+        "reasoning": "The implementation uses a labeled `goto out` to ensure `free(attrs)` is called before returning, regardless of success or failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

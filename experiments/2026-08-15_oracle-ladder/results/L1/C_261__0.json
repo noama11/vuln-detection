@@ -1,0 +1,49 @@
+{
+  "case_id": "C_261__0",
+  "sample_id": "D/C/261",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7916",
+  "cve_summary": "Race condition in the environ_read function in fs/proc/base.c in the Linux kernel before 4.5.4 allows local users to obtain sensitive information from kernel memory by reading a /proc/*/environ file during a process-setup time interval in which environment-variable copying is incomplete.",
+  "changed_file": "fs/proc/base.c",
+  "docstring": "/**\n * Summary: Reads environment variables from a process's memory into a user buffer.\n * \n * Parameters:\n * file (struct file *): Pointer to the file structure representing the process.\n * buf (char __user *): Pointer to the user buffer where the environment variables will be copied.\n * count (size_t): The maximum number of bytes to read from the environment.\n * ppos (loff_t *): Pointer to the current position in the environment variables.\n * \n * Returns: ssize_t - The number of bytes read on success, or a negative error code on failure.\n * \n * Logic: The function checks if the process has an environment to read. It allocates a temporary page for reading, increments the process's user count, and acquires a read lock on the memory map. It then reads the environment variables in chunks, copying them to the user buffer until the specified count is reached or there are no more variables to read. Finally, it updates the position pointer and releases resources before returning the number of bytes read or an error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static ssize_t environ_read(struct v3 *v3, char __user *buf,\n            size_t v1, loff_t *v7)\n{\n    char *v6;\n    unsigned long v10 = *v7;\n    int v8 = 0;\n    struct mm_struct *v5 = v3->private_data;\n    unsigned long v2, env_end;\n    if (!v5 || !v5->env_end)\n        return 0;\n    v6 = (char *)__get_free_page(GFP_TEMPORARY);\n    if (!v6)\n        return -ENOMEM;\n    v8 = 0;\n    if (!atomic_inc_not_zero(&v5->mm_users))\n        goto v4;\n    down_read(&v5->mmap_sem);\n    v2 = v5->v2;\n    env_end = v5->env_end;\n    up_read(&v5->mmap_sem);\n    while (v1 > 0) {\n        size_t v11, max_len;\n        int v9;\n        if (v10 >= (env_end - v2))\n            break;\n        v11 = env_end - (v2 + v10);\n        max_len = min_t(size_t, PAGE_SIZE, v1);\n        v11 = min(max_len, v11);\n        v9 = access_remote_vm(v5, (v2 + v10),\n            v6, v11, 0);\n        if (v9 <= 0) {\n            v8 = v9;\n            break;\n        }\n        if (copy_to_user(buf, v6, v9)) {\n            v8 = -EFAULT;\n            break;\n        }\n        v8 += v9;\n        v10 += v9;\n        buf += v9;\n        v1 -= v9;\n    }\n    *v7 = v10;\n    mmput(v5);\nv4:\n    free_page((unsigned long) v6);\n    return v8;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 11
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both read environment variables from a process's memory into a user buffer, using a similar loop structure, memory allocation, and error handling. The only differences are in variable names (e.g., `v3` vs. `file`, `v1` vs. `count`, `v7` vs. `ppos`, etc.), which do not affect the observable behavior. Both implementations handle edge cases like null pointers and memory allocation failures in the same way.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both read environment variables from a process's memory into a user buffer, using a similar logic flow, including allocation of a temporary page, incrementing user count, acquiring a read lock, and reading in chunks. The only differences are in variable names and minor code structure, which do not affect observable behavior or security.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

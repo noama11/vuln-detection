@@ -1,0 +1,48 @@
+{
+  "case_id": "C_141__7",
+  "sample_id": "D/C/141",
+  "func_idx": 7,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: \nVerifies the authorizer reply in the Ceph authentication process.\n\nParameters: \nac (struct ceph_auth_client *): Pointer to the authentication client structure.\na (struct ceph_authorizer *): Pointer to the authorizer structure.\nlen (size_t): Length of the reply buffer.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function retrieves the ticket handler for the specified service and checks for errors. It then attempts to decrypt the reply using the session key. If decryption fails or the decrypted size does not match the expected size, it returns an error. The function also verifies that the nonce from the authorizer matches the expected value. Finally, it logs the verification result and returns the appropriate status code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int ceph_x_verify_authorizer_reply(struct ceph_auth_client *ac,\r\n\t\t\t\t\t  struct ceph_authorizer *a, size_t len)\r\n{\r\n\tstruct ceph_x_authorizer *au = (void *)a;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tint ret = 0;\r\n\tstruct ceph_x_authorize_reply reply;\r\n\tvoid *preply = &reply;\r\n\tvoid *p = au->reply_buf;\r\n\tvoid *end = p + sizeof(au->reply_buf);\r\n\r\n\tth = get_ticket_handler(ac, au->service);\r\n\tif (IS_ERR(th))\r\n\t\treturn PTR_ERR(th);\r\n\tret = ceph_x_decrypt(&th->session_key, &p, end, &preply, sizeof(reply));\r\n\tif (ret < 0)\r\n\t\treturn ret;\r\n\tif (ret != sizeof(reply))\r\n\t\treturn -EPERM;\r\n\r\n\tif (au->nonce + 1 != le64_to_cpu(reply.nonce_plus_one))\r\n\t\tret = -EPERM;\r\n\telse\r\n\t\tret = 0;\r\n\tdout(\"verify_authorizer_reply nonce %llx got %llx ret %d\\n\",\r\n\t     au->nonce, le64_to_cpu(reply.nonce_plus_one), ret);\r\n\treturn ret;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a `dout` logging statement and returns `ret` after the nonce check, while the reference implementation is missing the logging and the final return statement. This leads to undefined behavior in the reference implementation, as it does not return a value in all code paths. This is a behavioral difference that could affect the function's correctness and observability, and may lead to crashes or incorrect return values. The missing return is reachable via normal inputs and could affect the function's reliability.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both retrieve the ticket handler, decrypt the reply, check the decryption size, and verify the nonce. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

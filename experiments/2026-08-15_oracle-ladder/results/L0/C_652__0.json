@@ -1,0 +1,48 @@
+{
+  "case_id": "C_652__0",
+  "sample_id": "D/C/652",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "mruby/mruby",
+  "cve_id": "CVE-2018-12247",
+  "cve_summary": "An issue was discovered in mruby 1.4.1. There is a NULL pointer dereference in mrb_class, related to certain .clone usage, because mrb_obj_clone in kernel.c copies flags other than the MRB_FLAG_IS_FROZEN flag (e.g., the embedded flag).",
+  "changed_file": "src/kernel.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Clones a given MRuby object, creating a new instance with the same properties.  \n *  \n * Parameters:  \n * mrb (mrb_state*): The MRuby state context.  \n * self (mrb_value): The object to be cloned.  \n *  \n * Returns:  \n * mrb_value: A new cloned object that is a copy of the original.  \n *  \n * Logic:  \n * The function first checks if the object is immediate or a singleton class, raising  \n * a type error if so. It allocates a new object of the same type and class as the  \n * original, clones its singleton class, and initializes the copy with the original's  \n * properties. It also preserves the frozen state of the original object.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "MRB_API mrb_value\r\nmrb_obj_clone(mrb_state *mrb, mrb_value self)\r\n{\r\n  struct RObject *p;\r\n  mrb_value clone;\r\n\r\n  if (mrb_immediate_p(self)) {\r\n    mrb_raisef(mrb, E_TYPE_ERROR, \"can't clone %S\", self);\r\n  }\r\n  if (mrb_type(self) == MRB_TT_SCLASS) {\r\n    mrb_raise(mrb, E_TYPE_ERROR, \"can't clone singleton class\");\r\n  }\r\n  p = (struct RObject*)mrb_obj_alloc(mrb, mrb_type(self), mrb_obj_class(mrb, self));\r\n  p->c = mrb_singleton_class_clone(mrb, self);\r\n  mrb_field_write_barrier(mrb, (struct RBasic*)p, (struct RBasic*)p->c);\r\n  clone = mrb_obj_value(p);\r\n  init_copy(mrb, clone, self);\r\n  p->flags |= mrb_obj_ptr(self)->flags & MRB_FLAG_IS_FROZEN;\r\n\r\n  return clone;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the flags of the cloned object. The candidate implementation uses a bitwise OR to preserve only the frozen state flag from the original object, while the reference implementation copies all flags directly. This could lead to differences in behavior if other flags (e.g., for object identity or other internal states) are present. However, this difference is unlikely to be security-relevant unless other flags have critical implications.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate and reference implementations are identical in code and logic. Both perform the same checks, allocations, and operations to clone an MRuby object, including handling of immediate values, singleton classes, and preserving the frozen state. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

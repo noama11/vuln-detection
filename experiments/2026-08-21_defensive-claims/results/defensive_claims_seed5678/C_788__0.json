@@ -1,0 +1,178 @@
+{
+  "case_id": "C_788__0",
+  "sample_id": "D/C/788",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libarchive/libarchive",
+  "cve_id": "CVE-2019-11463",
+  "cve_summary": "A memory leak in archive_read_format_zip_cleanup in archive_read_support_format_zip.c in libarchive 3.3.4-dev allows remote attackers to cause a denial of service via a crafted ZIP file because of a HAVE_LZMA_H typo. NOTE: this only affects users who downloaded the development code from GitHub. Users of the product's official releases are unaffected.",
+  "changed_file": "libarchive/archive_read_support_format_zip.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Cleans up resources associated with a ZIP archive read operation.  \n *  \n * Parameters:  \n * a (struct archive_read *): Pointer to the archive read structure containing  \n *                             format-specific data.  \n *  \n * Returns:  \n * int: Returns ARCHIVE_OK upon successful cleanup.  \n *  \n * Logic:  \n * The function releases various resources allocated during the ZIP archive  \n * reading process, including decompressing streams, buffers, and entries.  \n * It checks for the validity of different compression streams (zlib, LZMA,  \n * BZ2) and frees associated resources. It also iterates through the linked  \n * list of ZIP entries to free each entry and its resources. Finally, it  \n * frees the main ZIP structure and sets the format data pointer to NULL.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int cleanup_zip_archive(struct archive_read *a) {\n  struct zip *zip = (struct zip *)(a->format->data);\n  int ret = ARCHIVE_OK;\n\n  if (zip == NULL)\n    return ARCHIVE_OK;\n\n  // Free zlib decompression stream if it exists\n  if (zip->zlib_stream != NULL) {\n    if (zip->zlib_stream->state != NULL)\n      inflateEnd(zip->zlib_stream);\n    free(zip->zlib_stream);\n    zip->zlib_stream = NULL;\n  }\n\n  // Free BZ2 decompression stream if it exists\n  if (zip->bzip2_stream != NULL) {\n    if (zip->bzip2_stream->bzalloc != NULL)\n      BZ2_bzDecompressEnd(zip->bzip2_stream);\n    free(zip->bzip2_stream);\n    zip->bzip2_stream = NULL;\n  }\n\n  // Free LZMA decompression stream if it exists\n  if (zip->lzma_stream != NULL) {\n    if (zip->lzma_stream->state != NULL)\n      lzma_code_end(zip->lzma_stream);\n    free(zip->lzma_stream);\n    zip->lzma_stream = NULL;\n  }\n\n  // Free buffers\n  if (zip->buffer != NULL) {\n    free(zip->buffer);\n    zip->buffer = NULL;\n  }\n\n  if (zip->entry_buffer != NULL) {\n    free(zip->entry_buffer);\n    zip->entry_buffer = NULL;\n  }\n\n  // Free all ZIP entries\n  struct zip_entry *entry = zip->entries;\n  while (entry != NULL) {\n    struct zip_entry *next = entry->next;\n\n    if (entry->name != NULL) {\n      free(entry->name);\n      entry->name = NULL;\n    }\n\n    if (entry->extra != NULL) {\n      free(entry->extra);\n      entry->extra = NULL;\n    }\n\n    free(entry);\n    entry = next;\n  }\n\n  // Free the main ZIP structure\n  free(zip);\n  a->format->data = NULL;\n\n  return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer before dereferencing zip",
+      "protects_against": "null pointer dereference when zip is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing zip->zlib_stream",
+      "protects_against": "null pointer dereference when zip->zlib_stream is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing zip->bzip2_stream",
+      "protects_against": "null pointer dereference when zip->bzip2_stream is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing zip->lzma_stream",
+      "protects_against": "null pointer dereference when zip->lzma_stream is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing zip->buffer",
+      "protects_against": "null pointer dereference when zip->buffer is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing zip->entry_buffer",
+      "protects_against": "null pointer dereference when zip->entry_buffer is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing entry->name",
+      "protects_against": "null pointer dereference when entry->name is NULL"
+    },
+    {
+      "step": "check for null pointer before dereferencing entry->extra",
+      "protects_against": "null pointer dereference when entry->extra is NULL"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 36,
+    "n_omits": 7,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing zip — protects against: null pointer dereference when zip is NULL",
+        "reasoning": "The implementation dereferences zip without checking if it is NULL. For example, zip->stream_valid is accessed without a null check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->zlib_stream — protects against: null pointer dereference when zip->zlib_stream is NULL",
+        "reasoning": "The implementation calls inflateEnd(&zip->stream), but there is no check to ensure zip->stream is valid or non-NULL.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->bzip2_stream — protects against: null pointer dereference when zip->bzip2_stream is NULL",
+        "reasoning": "The implementation calls BZ2_bzDecompressEnd(&zip->bzstream), but there is no check to ensure zip->bzstream is valid or non-NULL.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->lzma_stream — protects against: null pointer dereference when zip->lzma_stream is NULL",
+        "reasoning": "The implementation calls lzma_end(&zip->zipx_lzma_stream), but there is no check to ensure zip->zipx_lzma_stream is valid or non-NULL.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->buffer — protects against: null pointer dereference when zip->buffer is NULL",
+        "reasoning": "The implementation calls free(zip->uncompressed_buffer), but there is no check to ensure zip->uncompressed_buffer is valid or non-NULL.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->entry_buffer — protects against: null pointer dereference when zip->entry_buffer is NULL",
+        "reasoning": "The implementation iterates through zip->zip_entries and frees them, but there is no check to ensure zip->zip_entries is valid or non-NULL before accessing it.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for null pointer before dereferencing entry->name — protects against: null pointer dereference when entry->name is NULL",
+        "reasoning": "The implementation calls archive_string_free(&zip_entry->rsrcname), but there is no check to ensure zip_entry->rsrcname is valid or non-NULL.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null pointer before dereferencing entry->extra — protects against: null pointer dereference when entry->extra is NULL",
+        "reasoning": "The implementation does not access entry->extra, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 7,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing zip — protects against: null pointer dereference when zip is NULL",
+        "reasoning": "The implementation dereferences zip without checking if it is NULL. For example, zip->stream_valid is accessed without a null check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->zlib_stream — protects against: null pointer dereference when zip->zlib_stream is NULL",
+        "reasoning": "The implementation does not directly dereference zip->zlib_stream. It checks zip->stream_valid and calls inflateEnd(&zip->stream), but there is no explicit null check for zip->zlib_stream.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->bzip2_stream — protects against: null pointer dereference when zip->bzip2_stream is NULL",
+        "reasoning": "The implementation does not directly dereference zip->bzip2_stream. It checks zip->bzstream_valid and calls BZ2_bzDecompressEnd(&zip->bzstream), but there is no explicit null check for zip->bzip2_stream.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->lzma_stream — protects against: null pointer dereference when zip->lzma_stream is NULL",
+        "reasoning": "The implementation does not directly dereference zip->lzma_stream. It checks zip->zipx_lzma_valid and calls lzma_end(&zip->zipx_lzma_stream), but there is no explicit null check for zip->lzma_stream.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->buffer — protects against: null pointer dereference when zip->buffer is NULL",
+        "reasoning": "The implementation does not dereference zip->buffer. It frees zip->uncompressed_buffer, but there is no explicit null check for zip->buffer.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing zip->entry_buffer — protects against: null pointer dereference when zip->entry_buffer is NULL",
+        "reasoning": "The implementation does not dereference zip->entry_buffer. It iterates through zip->zip_entries and frees each entry, but there is no explicit null check for zip->entry_buffer.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing entry->name — protects against: null pointer dereference when entry->name is NULL",
+        "reasoning": "The implementation does not dereference entry->name. It calls archive_string_free(&zip_entry->rsrcname), but there is no explicit null check for entry->name.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing entry->extra — protects against: null pointer dereference when entry->extra is NULL",
+        "reasoning": "The implementation does not dereference entry->extra. It frees zip_entry and iterates through the linked list, but there is no explicit null check for entry->extra.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

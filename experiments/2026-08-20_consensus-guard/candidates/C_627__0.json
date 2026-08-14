@@ -1,0 +1,34 @@
+{
+  "case_id": "C_627__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int git_pkt_parse(git_pkt **out, const char *line, size_t len) {\n    git_pkt_ng *pkt;\n    char *ref, *msg;\n    size_t ref_len, msg_len;\n    const char *end;\n\n    pkt = (git_pkt_ng *)malloc(sizeof(git_pkt_ng));\n    if (!pkt)\n        return -1;\n\n    if (len < 4 || memcmp(line, \"ref \", 4) != 0) {\n        free(pkt);\n        return -1;\n    }\n\n    line += 4; /* Skip \"ref \" prefix */\n    len -= 4;\n\n    end = memchr(line, '\\0', len);\n    if (!end) {\n        free(pkt);\n        return -1;\n    }\n\n    ref_len = (size_t)(end - line);\n    ref = (char *)malloc(ref_len + 1);\n    if (!ref) {\n        free(pkt);\n        return -1;\n    }\n    memcpy(ref, line, ref_len);\n    ref[ref_len] = '\\0';\n\n    line += ref_len + 1;\n    len -= ref_len + 1;\n\n    msg = (char *)malloc(len + 1);\n    if (!msg) {\n        free(ref);\n        free(pkt);\n        return -1;\n    }\n    memcpy(msg, line, len);\n    msg[len] = '\\0';\n\n    pkt->type = GIT_PKT_REF;\n    pkt->ref = ref;\n    pkt->msg = msg;\n\n    *out = (git_pkt *)pkt;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int git_pkt_parse_network_packet(git_pkt **out, const char *line, size_t len) {\n    git_pkt_ng *pkt;\n    char *ref, *msg;\n    size_t ref_len, msg_len;\n    int ref_sep, msg_sep;\n\n    if (len < 5)\n        return -1;\n\n    pkt = (git_pkt_ng *)malloc(sizeof(git_pkt_ng));\n    if (!pkt)\n        return -1;\n\n    ref_sep = 0;\n    for (size_t i = 0; i < len; i++) {\n        if (line[i] == ':') {\n            ref_sep = i;\n            break;\n        }\n    }\n\n    if (ref_sep == 0 || ref_sep == len - 1)\n        goto error;\n\n    ref_len = ref_sep;\n    ref = (char *)malloc(ref_len + 1);\n    if (!ref)\n        goto error;\n\n    memcpy(ref, line, ref_len);\n    ref[ref_len] = '\\0';\n\n    pkt->ref = ref;\n\n    msg_sep = 0;\n    for (size_t i = ref_sep + 1; i < len; i++) {\n        if (line[i] == '\\0') {\n            msg_sep = i;\n            break;\n        }\n    }\n\n    if (msg_sep == 0 || msg_sep == len - 1)\n        goto error;\n\n    msg_len = len - msg_sep - 1;\n    msg = (char *)malloc(msg_len + 1);\n    if (!msg)\n        goto error;\n\n    memcpy(msg, line + msg_sep + 1, msg_len);\n    msg[msg_len] = '\\0';\n\n    pkt->msg = msg;\n\n    *out = (git_pkt *)pkt;\n    return 0;\n\nerror:\n    if (pkt) {\n        if (pkt->ref)\n            free(pkt->ref);\n        free(pkt);\n    }\n    return -1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int parse_git_pkt(git_pkt **out, const char *line, size_t len) {\n    git_pkt_ng *pkt;\n    char *ref, *msg;\n    size_t ref_len, msg_len;\n\n    if (!line || len == 0) {\n        return -1;\n    }\n\n    pkt = calloc(1, sizeof(git_pkt_ng));\n    if (!pkt) {\n        return -1;\n    }\n\n    // Assume the format is known and we can find a delimiter or split the line\n    // Here, we will simulate parsing into ref and message\n    char *newline_pos = strchr((char *)line, '\\n');\n    if (!newline_pos) {\n        free(pkt);\n        return -1;\n    }\n\n    ref_len = (size_t)(newline_pos - line);\n    ref = strndup(line, ref_len);\n    if (!ref) {\n        free(pkt);\n        return -1;\n    }\n\n    msg_len = len - ref_len - 1;\n    if (msg_len > 0) {\n        msg = strndup(newline_pos + 1, msg_len);\n        if (!msg) {\n            free(ref);\n            free(pkt);\n            return -1;\n        }\n    } else {\n        msg = NULL;\n    }\n\n    pkt->ref = ref;\n    pkt->msg = msg;\n    pkt->type = GIT_PKT_REF;\n\n    *out = (git_pkt *)pkt;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int git_pkt_parse(git_pkt **out, const char *line, size_t len) {\n    git_pkt_ng *pkt;\n    const char *ref_start, *msg_start;\n    size_t ref_len, msg_len;\n\n    if (!out || !line || len == 0) {\n        return -1;\n    }\n\n    pkt = malloc(sizeof(git_pkt_ng));\n    if (!pkt) {\n        return -1;\n    }\n\n    pkt->ref = NULL;\n    pkt->msg = NULL;\n\n    /* Look for the end of the reference part */\n    ref_start = line;\n    const char *ref_end = memchr(line, '\\0', len);\n    if (!ref_end) {\n        free(pkt);\n        return -1;\n    }\n\n    ref_len = ref_end - ref_start;\n\n    pkt->ref = strndup(ref_start, ref_len);\n    if (!pkt->ref) {\n        free(pkt);\n        return -1;\n    }\n\n    /* Skip the null byte and look for message */\n    msg_start = ref_end + 1;\n    msg_len = len - (msg_start - line);\n\n    if (msg_len > 0) {\n        pkt->msg = strndup(msg_start, msg_len);\n        if (!pkt->msg) {\n            free(pkt->ref);\n            free(pkt);\n            return -1;\n        }\n    } else {\n        pkt->msg = NULL;\n    }\n\n    *out = (git_pkt *)pkt;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming the following structure based on the description\ntypedef struct git_pkt {\n    char *ref;\n    char *msg;\n} git_pkt;\n\nint parse_pkt_git_pkt(git_pkt **out, const char *line, size_t len) {\n    git_pkt *pkt = NULL;\n\n    // Allocate memory for the packet structure\n    pkt = (git_pkt *)malloc(sizeof(git_pkt));\n    if (!pkt)\n        return -1;\n\n    // Clear structure\n    pkt->ref = NULL;\n    pkt->msg = NULL;\n\n    // Check for minimum required data length\n    if (len < 5) {\n        free(pkt);\n        return -1;\n    }\n\n    // Assume the format is: <ref> NUL <msg> NUL\n    const char *ref_start = line;\n    const char *ref_end = memchr(line, '\\0', len);\n    if (!ref_end) {\n        free(pkt);\n        return -1;\n    }\n\n    // Parse reference\n    pkt->ref = strndup(ref_start, ref_end - ref_start);\n    if (!pkt->ref) {\n        free(pkt);\n        return -1;\n    }\n\n    // Move past reference and NUL\n    const char *msg_start = ref_end + 1;\n    if (msg_start >= line + len) {\n        free(pkt->ref);\n        free(pkt);\n        return -1;\n    }\n\n    const char *msg_end = memchr(msg_start, '\\0', len - (msg_start - line));\n    if (!msg_end) {\n        free(pkt->ref);\n        free(pkt);\n        return -1;\n    }\n\n    // Parse message\n    pkt->msg = strndup(msg_start, msg_end - msg_start);\n    if (!pkt->msg) {\n        free(pkt->ref);\n        free(pkt);\n        return -1;\n    }\n\n    *out = pkt;\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

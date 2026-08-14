@@ -1,0 +1,35 @@
+{
+  "case_id": "C_120__0",
+  "implementation": "ssize_t read_from_socket(struct file *file, char __user *buf, size_t count, loff_t *ppos)\n{\n    ssize_t bytes_read = 0;\n    struct socket *sock = file->private_data;\n    struct sk_buff *skb;\n\n    if (!sock) {\n        return -EINVAL;\n    }\n\n    if (file->f_flags & O_NONBLOCK) {\n        if (skb_queue_empty(&sock->sk->sk_receive_queue)) {\n            return -EAGAIN;\n        }\n    }\n\n    if (!access_ok(buf, count)) {\n        return -EFAULT;\n    }\n\n    skb = skb_dequeue(&sock->sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    if (skb->len > count) {\n        kfree_skb(skb);\n        return -EINVAL;\n    }\n\n    if (copy_to_user(buf, skb->data, skb->len)) {\n        kfree_skb(skb);\n        return -EFAULT;\n    }\n\n    bytes_read = skb->len;\n    kfree_skb(skb);\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if socket is valid",
+      "protects_against": "null or invalid socket pointer"
+    },
+    {
+      "step": "check for non-blocking socket with no queued packets",
+      "protects_against": "blocking on a non-blocking socket with no data available"
+    },
+    {
+      "step": "validate user buffer and size",
+      "protects_against": "invalid or inaccessible user buffer"
+    },
+    {
+      "step": "check if packet length exceeds requested count",
+      "protects_against": "reading more data than requested"
+    },
+    {
+      "step": "copy data to user buffer with error checking",
+      "protects_against": "copying data to invalid user buffer"
+    },
+    {
+      "step": "free packet memory after use",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

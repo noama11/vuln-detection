@@ -1,0 +1,35 @@
+{
+  "case_id": "C_859__1",
+  "implementation": "#include <libavformat/avformat.h>\n#include <string.h>\n\nint open_url(AVFormatContext *s, AVIOContext **pb, const char *url, AVDictionary *opts, AVDictionary *opts2, int *is_http) {\n    int ret = 0;\n    AVDictionary *temp_opts = NULL;\n    AVIOContext *temp_pb = NULL;\n\n    // Initialize is_http to 0 (non-HTTP)\n    if (is_http) {\n        *is_http = 0;\n    }\n\n    // Check if URL is HTTP or file protocol\n    if (strncmp(url, \"http://\", 7) == 0 || strncmp(url, \"https://\", 8) == 0) {\n        if (is_http) {\n            *is_http = 1;\n        }\n    } else if (strncmp(url, \"file:\", 5) != 0) {\n        // Unsupported protocol\n        return AVERROR(EINVAL);\n    }\n\n    // Merge options\n    if (opts) {\n        AVDictionary *merged_opts = NULL;\n        av_dict_copy(&merged_opts, opts, 0);\n        if (opts2) {\n            av_dict_merge2(&merged_opts, opts2, 0, AV_DICT_DONT_OVERWRITE);\n        }\n        temp_opts = merged_opts;\n    } else {\n        temp_opts = opts2 ? opts2 : NULL;\n    }\n\n    // Open the URL\n    ret = avio_open2(pb, url, AVIO_FLAG_READ, NULL, temp_opts);\n    if (ret < 0) {\n        av_dict_free(temp_opts);\n        return ret;\n    }\n\n    // If HTTP, update cookies in the format context\n    if (is_http && *is_http) {\n        AVDictionary *cookies = NULL;\n        av_dict_get(temp_opts, \"cookies\", NULL, 0);\n        av_dict_copy(&cookies, temp_opts, 0);\n        av_dict_free(s->priv_data);\n        s->priv_data = cookies;\n    }\n\n    av_dict_free(temp_opts);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate URL protocol",
+      "protects_against": "malformed or unsupported URL protocols"
+    },
+    {
+      "step": "initialize is_http flag",
+      "protects_against": "uninitialized memory access when is_http is provided"
+    },
+    {
+      "step": "safe dictionary merging",
+      "protects_against": "dictionary merge errors or memory leaks"
+    },
+    {
+      "step": "check avio_open2 return value",
+      "protects_against": "failed I/O context initialization"
+    },
+    {
+      "step": "clean up resources on failure",
+      "protects_against": "memory leaks in error paths"
+    },
+    {
+      "step": "safe cookie handling",
+      "protects_against": "memory leaks or invalid pointer usage when updating cookies"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

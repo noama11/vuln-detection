@@ -1,0 +1,146 @@
+{
+  "case_id": "C_468__0",
+  "sample_id": "D/C/468",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for setting memory policy based on a given mode and node mask.\n\nParameters: \n- mode (int): The memory policy mode to be set.\n- nmask (compat_ulong_t __user *): A pointer to the user-space bitmap representing the nodes.\n- maxnode (compat_ulong_t): The maximum number of nodes that can be specified.\n\nReturns: \n- int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first initializes a bitmap and calculates the number of bits and allocation size based on the provided maximum node. If a valid node mask is provided, it retrieves the bitmap from user space and allocates memory for it. It then copies the bitmap back to user space. Finally, it calls the underlying system function to set the memory policy, passing the mode, allocated memory, and the number of bits.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int compat_sys_mbind(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode) {\n    int ret = -EFAULT;\n    compat_ulong_t bits = maxnode;\n    unsigned long *bitmap = NULL;\n    size_t size = 0;\n\n    if (bits == 0) {\n        return -EINVAL;\n    }\n\n    if (nmask != NULL) {\n        size = (bits + 7) / 8;\n        bitmap = kmalloc(size, GFP_KERNEL);\n        if (!bitmap) {\n            return -ENOMEM;\n        }\n\n        if (copy_from_user(bitmap, nmask, size)) {\n            kfree(bitmap);\n            return -EFAULT;\n        }\n    }\n\n    ret = sys_mbind(mode, nmask, maxnode, bitmap, size, 0);\n\n    if (nmask != NULL) {\n        if (copy_to_user(nmask, bitmap, size)) {\n            ret = -EFAULT;\n        }\n        kfree(bitmap);\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate bits is non-zero",
+      "protects_against": "invalid or zero maxnode value"
+    },
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "null pointer dereference when nmask is NULL"
+    },
+    {
+      "step": "allocate memory for bitmap with kmalloc",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check for successful copy_from_user",
+      "protects_against": "invalid user-space pointer or memory access violation"
+    },
+    {
+      "step": "check for successful copy_to_user",
+      "protects_against": "invalid user-space pointer or memory access violation"
+    },
+    {
+      "step": "free allocated memory on all return paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 12,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate bits is non-zero — protects against: invalid or zero maxnode value",
+        "reasoning": "The implementation uses `maxnode-1` to calculate `nr_bits`, which would result in a negative or zero value if `maxnode` is zero or one. However, there is no explicit check to ensure `maxnode` is greater than zero before using it.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when nmask is NULL",
+        "reasoning": "The implementation checks if `nmask` is non-null before calling `compat_get_bitmap`, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for bitmap with kmalloc — protects against: memory allocation failure",
+        "reasoning": "The implementation does not use `kmalloc` to allocate memory for the bitmap. Instead, it uses `compat_alloc_user_space`, which is a different mechanism for allocating memory in user space.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for successful copy_from_user — protects against: invalid user-space pointer or memory access violation",
+        "reasoning": "The implementation does not use `copy_from_user`. Instead, it uses `compat_get_bitmap`, which is a helper function for retrieving a bitmap from user space. There is no explicit check for the success of this operation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for successful copy_to_user — protects against: invalid user-space pointer or memory access violation",
+        "reasoning": "The implementation uses `copy_to_user` and combines the result with `err`, which is later checked. This ensures that any failure in `copy_to_user` is caught and results in an error return.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all return paths — protects against: memory leaks",
+        "reasoning": "The implementation does not allocate memory using `kmalloc` or any other standard memory allocation function that requires explicit freeing. Therefore, there is no memory to free, and the step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "validate bits is non-zero — protects against: invalid or zero maxnode value",
+        "reasoning": "The implementation does not explicitly check if maxnode is zero or invalid. It uses maxnode-1 directly in the calculation of nr_bits, which could result in a negative value if maxnode is zero. This would lead to an incorrect allocation size and potentially undefined behavior.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when nmask is NULL",
+        "reasoning": "The implementation checks if nmask is NULL before attempting to dereference it. This prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for bitmap with kmalloc — protects against: memory allocation failure",
+        "reasoning": "The implementation does not use kmalloc to allocate memory for the bitmap. Instead, it uses a fixed-size DECLARE_BITMAP and compat_alloc_user_space, which allocates memory in user space. This is a different approach, but it does not involve kmalloc.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for successful copy_from_user — protects against: invalid user-space pointer or memory access violation",
+        "reasoning": "The implementation does not use copy_from_user. It uses compat_get_bitmap, which is a helper function for retrieving a bitmap from user space. The implementation checks the return value of compat_get_bitmap, which serves a similar purpose.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful copy_to_user — protects against: invalid user-space pointer or memory access violation",
+        "reasoning": "The implementation checks the return value of copy_to_user, which ensures that the copy operation was successful and prevents invalid user-space pointer or memory access violations.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all return paths — protects against: memory leaks",
+        "reasoning": "The implementation does not allocate memory using kmalloc or similar functions that require explicit freeing. It uses DECLARE_BITMAP and compat_alloc_user_space, which do not require explicit freeing. Therefore, there is no need to free memory on return paths.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

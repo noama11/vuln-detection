@@ -1,0 +1,41 @@
+ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {
+    struct dev_info *dev;
+    struct element_info *elem;
+    ssize_t bytes_written = 0;
+    int ret;
+
+    if (!filp || !buf || !count || !fpos)
+        return -EINVAL;
+
+    dev = get_active_device();
+    if (!dev)
+        return -ENODEV;
+
+    elem = kzalloc(sizeof(*elem), GFP_KERNEL);
+    if (!elem) {
+        put_device(dev);
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(elem->data, buf, count)) {
+        kfree(elem);
+        put_device(dev);
+        return -EFAULT;
+    }
+
+    elem->length = count;
+    update_sequence_number(elem);
+
+    ret = queue_element(dev, elem);
+    if (ret < 0) {
+        kfree(elem);
+        put_device(dev);
+        return ret;
+    }
+
+    bytes_written = count;
+    *fpos += count;
+
+    put_device(dev);
+    return bytes_written;
+}

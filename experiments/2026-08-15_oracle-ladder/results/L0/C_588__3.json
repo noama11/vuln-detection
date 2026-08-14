@@ -1,0 +1,48 @@
+{
+  "case_id": "C_588__3",
+  "sample_id": "D/C/588",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2014-9907",
+  "cve_summary": "coders/dds.c in ImageMagick allows remote attackers to cause a denial of service via a crafted DDS file.",
+  "changed_file": "coders/dds.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads DXT3 compressed image data and decodes it into an Image structure.  \n *  \n * Parameters:  \n * image (Image*): Pointer to the Image structure where the decoded pixels will be stored.  \n * dds_info (DDSInfo*): Pointer to the DDSInfo structure containing image dimensions and metadata.  \n * exception (ExceptionInfo*): Pointer to an ExceptionInfo structure for error handling.  \n *  \n * Returns:  \n * MagickBooleanType: Returns MagickTrue on success, or MagickFalse on failure.  \n *  \n * Logic:  \n * The function processes the image in 4x4 pixel blocks, reading alpha values and color data from the compressed format.  \n * It calculates the colors using the provided color codes and sets the pixel values in the image.  \n * If any operation fails, it returns an error. Finally, it skips mipmaps and returns the result of that operation.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "  for (y = 0; y < (ssize_t) dds_info->height; y += 4)\r\n  {\r\n    for (x = 0; x < (ssize_t) dds_info->width; x += 4)\r\n    {\r\n      /* Get 4x4 patch of pixels to write on */\r\n      q = QueueAuthenticPixels(image, x, y, MagickMin(4, dds_info->width - x),\r\n        MagickMin(4, dds_info->height - y),exception);\r\n\r\n      if (q == (PixelPacket *) NULL)\r\n        return MagickFalse;\r\n\r\n      /* Read 8 bytes of data from the image */\r\n      c0 = ReadBlobLSBShort(image);\r\n      c1 = ReadBlobLSBShort(image);\r\n      bits = ReadBlobLSBLong(image);\r\n\r\n      CalculateColors(c0, c1, &colors, MagickFalse);\r\n\r\n      /* Write the pixels */\r\n      for (j = 0; j < 4; j++)\r\n      {\r\n        for (i = 0; i < 4; i++)\r\n        {\r\n          if ((x + i) < (ssize_t) dds_info->width && (y + j) < (ssize_t) dds_info->height)\r\n            {\r\n              code = (unsigned char) ((bits >> ((j*4+i)*2)) & 0x3);\r\n              SetPixelRed(q,ScaleCharToQuantum(colors.r[code]));\r\n              SetPixelGreen(q,ScaleCharToQuantum(colors.g[code]));\r\n              SetPixelBlue(q,ScaleCharToQuantum(colors.b[code]));\r\n              SetPixelOpacity(q,ScaleCharToQuantum(colors.a[code]));\r\n              if (colors.a[code] && image->matte == MagickFalse)\r\n                /* Correct matte */\r\n                image->matte = MagickTrue;\r\n              q++;\r\n            }\r\n        }\r\n      }\r\n\r\n      if (SyncAuthenticPixels(image,exception) == MagickFalse)\r\n        return MagickFalse;\r\n    }\r\n  }",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is missing the call to `SkipDXTMipmaps` and the final `return MagickTrue;` present in the reference implementation. This omission could lead to incorrect handling of mipmap data and an incomplete return status, which may affect the correctness of the decoding process. However, this is not a security-relevant issue as it does not involve memory safety, input validation, or information exposure.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation are identical in terms of logic, control flow, and behavior. Both implementations process the DXT3 compressed image data in 4x4 pixel blocks, read the necessary data, calculate colors, and write the pixels to the image. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

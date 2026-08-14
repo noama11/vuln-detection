@@ -1,0 +1,43 @@
+{
+  "case_id": "C_439__1",
+  "implementation": "int create_graphics_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {\n    struct drm_mode_create_dumb *args = data;\n    struct drm_gem_object *obj;\n    struct drm_plane *plane;\n    int ret = 0;\n\n    if (!dev || !args || !file_priv) {\n        return -EINVAL;\n    }\n\n    if (args->width <= 0 || args->height <= 0 || args->bpp <= 0) {\n        return -EINVAL;\n    }\n\n    obj = drm_gem_object_create(dev, args->width * args->height * (args->bpp / 8));\n    if (IS_ERR(obj)) {\n        return PTR_ERR(obj);\n    }\n\n    plane = kzalloc(sizeof(*plane), GFP_KERNEL);\n    if (!plane) {\n        ret = -ENOMEM;\n        goto free_gem;\n    }\n\n    plane->fb = drm_framebuffer_create(dev, args->width, args->height, args->bpp, obj);\n    if (IS_ERR(plane->fb)) {\n        ret = PTR_ERR(plane->fb);\n        goto free_plane;\n    }\n\n    ret = drm_mode_object_add(dev, &plane->base, DRM_MODE_OBJECT_PLANE);\n    if (ret) {\n        goto free_framebuffer;\n    }\n\n    args->handle = drm_gem_handle_create(file_priv, obj);\n    if (!args->handle) {\n        ret = -EINVAL;\n        goto remove_plane;\n    }\n\n    return 0;\n\nremove_plane:\n    drm_mode_object_remove(dev, &plane->base);\nfree_framebuffer:\n    drm_framebuffer_cleanup(plane->fb);\nfree_plane:\n    kfree(plane);\nfree_gem:\n    drm_gem_object_put(obj);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate width, height, and bpp values",
+      "protects_against": "invalid or negative dimensions or bits per pixel"
+    },
+    {
+      "step": "check return value of drm_gem_object_create",
+      "protects_against": "memory allocation failure for GEM object"
+    },
+    {
+      "step": "check return value of kzalloc",
+      "protects_against": "memory allocation failure for plane structure"
+    },
+    {
+      "step": "check return value of drm_framebuffer_create",
+      "protects_against": "failure to create framebuffer"
+    },
+    {
+      "step": "check return value of drm_mode_object_add",
+      "protects_against": "failure to add mode object"
+    },
+    {
+      "step": "check return value of drm_gem_handle_create",
+      "protects_against": "failure to create GEM handle"
+    },
+    {
+      "step": "clean up resources on error paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_steps": 8,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

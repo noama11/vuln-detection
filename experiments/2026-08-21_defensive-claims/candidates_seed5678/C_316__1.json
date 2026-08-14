@@ -1,0 +1,27 @@
+{
+  "case_id": "C_316__1",
+  "implementation": "#include <linux/errno.h>\n#include <linux/slab.h>\n#include <linux/hmac.h>\n#include <linux/crypto.h>\n\nenum integrity_status {\n    INTEGRITY_PASS = 0,\n    INTEGRITY_FAIL = 1,\n    INTEGRITY_NO_ATTRIBUTE = 2\n}; \n\nenum integrity_status verify_hmac_xattr(struct dentry *dentry, const char *xattr_name, char *xattr_value, size_t xattr_value_len, struct integrity_iint_cache *iint) {\n    enum integrity_status status = INTEGRITY_PASS;\n\n    /* Check cached integrity status first */\n    if (iint->status != INTEGRITY_PASS) {\n        return iint->status;\n    }\n\n    if (!xattr_name || !xattr_value || xattr_value_len == 0) {\n        return INTEGRITY_NO_ATTRIBUTE;\n    }\n\n    /* Allocate memory for HMAC calculation */\n    void *digest = kmalloc(xattr_value_len, GFP_KERNEL);\n    if (!digest) {\n        return INTEGRITY_FAIL;\n    }\n\n    /* Calculate HMAC or hash based on the type of extended attribute */\n    struct crypto_shash *tfm = crypto_alloc_shash(\"hmac(sha256)\", 0, 0);\n    if (IS_ERR(tfm)) {\n        kfree(digest);\n        return INTEGRITY_FAIL;\n    }\n\n    struct shash_desc *desc = kmalloc(sizeof(*desc) + crypto_shash_descsize(tfm), GFP_KERNEL);\n    if (!desc) {\n        crypto_free_shash(tfm);\n        kfree(digest);\n        return INTEGRITY_FAIL;\n    }\n\n    desc->tfm = tfm;\n\n    int err = crypto_shash_init(desc);\n    if (err) {\n        kfree(desc);\n        crypto_free_shash(tfm);\n        kfree(digest);\n        return INTEGRITY_FAIL;\n    }\n\n    err = crypto_shash_update(desc, xattr_value, xattr_value_len);\n    if (err) {\n        kfree(desc);\n        crypto_free_shash(tfm);\n        kfree(digest);\n        return INTEGRITY_FAIL;\n    }\n\n    err = crypto_shash_final(desc, digest);\n    if (err) {\n        kfree(desc);\n        crypto_free_shash(tfm);\n        kfree(digest);\n        return INTEGRITY_FAIL;\n    }\n\n    /* Compare calculated digest with stored digest in extended attribute */\n    if (memcmp(digest, xattr_value, xattr_value_len) != 0) {\n        status = INTEGRITY_FAIL;\n    }\n\n    kfree(desc);\n    crypto_free_shash(tfm);\n    kfree(digest);\n\n    iint->status = status;\n\n    return status;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers and zero length",
+      "protects_against": "null pointer dereference or invalid memory access"
+    },
+    {
+      "step": "allocate memory for digest and check for allocation failure",
+      "protects_against": "out-of-memory condition"
+    },
+    {
+      "step": "allocate and initialize crypto resources and check for failure",
+      "protects_against": "invalid crypto operations or resource leaks"
+    },
+    {
+      "step": "free allocated resources on all code paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_277__0",
+  "sample_id": "D/C/277",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-6187",
+  "cve_summary": "The apparmor_setprocattr function in security/apparmor/lsm.c in the Linux kernel before 4.6.5 does not validate the buffer size, which allows local users to gain privileges by triggering an AppArmor setprocattr hook.",
+  "changed_file": "security/apparmor/lsm.c",
+  "docstring": "\"\"\"\nSummary: \nSets process attributes for a given task in the AppArmor security framework.\n\nParameters: \ntask (struct task_struct *): The task whose attributes are being set.\nname (char *): The name of the attribute to set.\nvalue (void *): The value to assign to the attribute.\nsize (size_t): The size of the value being set.\n\nReturns: \nint: Returns the size of the value on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the size is zero or if the current task is not the one being modified, returning appropriate error codes. It ensures the value is null-terminated and processes the command specified in the value. Depending on the attribute name and command, it calls specific functions to change the process's security profile or permissions. If successful, it returns the size of the value; otherwise, it logs an audit message and returns an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int apparmor_setprocattr(struct task_struct *v10, char *v6,\n                void *v11, size_t v9)\n{\n    struct common_audit_data v8;\n    struct apparmor_audit_data v1 = {0,};\n    char *v3, *largs = NULL, *args = v11;\n    size_t v2;\n    int v4;\n    if (v9 == 0)\n        return -EINVAL;\n    if (current != v10)\n        return -EACCES;\n    if (args[v9 - 1] != '\\0') {\n        largs = args = kmalloc(v9 + 1, GFP_KERNEL);\n        if (!args)\n            return -ENOMEM;\n        memcpy(args, v11, v9);\n        args[v9] = '\\0';\n    }\n    v4 = -EINVAL;\n    args = strim(args);\n    v3 = strsep(&args, \" \");\n    if (!args)\n        goto v7;\n    args = skip_spaces(args);\n    if (!*args)\n        goto v7;\n    v2 = v9 - (args - (char *) v11);\n    if (strcmp(v6, \"current\") == 0) {\n        if (strcmp(v3, \"changehat\") == 0) {\n            v4 = aa_setprocattr_changehat(args, v2,\n                             !AA_DO_TEST);\n        } else if (strcmp(v3, \"permhat\") == 0) {\n            v4 = aa_setprocattr_changehat(args, v2,\n                             AA_DO_TEST);\n        } else if (strcmp(v3, \"changeprofile\") == 0) {\n            v4 = aa_setprocattr_changeprofile(args, !AA_ONEXEC,\n                                 !AA_DO_TEST);\n        } else if (strcmp(v3, \"permprofile\") == 0) {\n            v4 = aa_setprocattr_changeprofile(args, !AA_ONEXEC,\n                                 AA_DO_TEST);\n        } else\n            goto v5;\n    } else if (strcmp(v6, \"exec\") == 0) {\n        if (strcmp(v3, \"exec\") == 0)\n            v4 = aa_setprocattr_changeprofile(args, AA_ONEXEC,\n                                 !AA_DO_TEST);\n        else\n            goto v5;\n    } else\n        goto v5;\n    if (!v4)\n        v4 = v9;\nv7:\n    kfree(largs);\n    return v4;\nv5:\n    v8.type = LSM_AUDIT_DATA_NONE;\n    v8.v1 = &v1;\n    v1.profile = aa_current_profile();\n    v1.op = OP_SETPROCATTR;\n    v1.info = v6;\n    v1.v4 = v4 = -EINVAL;\n    aa_audit_msg(AUDIT_APPARMOR_DENIED, &v8, NULL);\n    goto v7;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 11
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the null-termination of the input buffer. The reference implementation checks if the size is equal to PAGE_SIZE and returns -EINVAL if the buffer is not null-terminated. The candidate implementation dynamically allocates a new buffer and null-terminates it if needed. This difference could affect how malformed inputs are handled, but it does not introduce a security vulnerability since both implementations ensure null-termination in a secure manner. The candidate implementation also includes additional error handling for memory allocation failures.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both perform the same checks (size, task identity, null termination), process the command and arguments in the same way, and call the same underlying functions for setting process attributes. The only differences are in variable names and code formatting, which do not affect observable behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

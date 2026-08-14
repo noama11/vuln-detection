@@ -1,0 +1,98 @@
+{
+  "case_id": "C_118__0",
+  "sample_id": "D/C/118",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6538",
+  "cve_summary": "The copy_to_user_auth function in net/xfrm/xfrm_user.c in the Linux kernel before 3.6 uses an incorrect C library function for copying a string, which allows local users to obtain sensitive information from kernel heap memory by leveraging the CAP_NET_ADMIN capability.",
+  "changed_file": "net/xfrm/xfrm_user.c",
+  "docstring": "Summary: Copies authentication algorithm data from a user-defined structure to a netlink socket buffer.\n\nParameters: \nauth (struct xfrm_algo_auth*): Pointer to the authentication algorithm structure containing algorithm name and key.\nskb (struct sk_buff*): Pointer to the socket buffer where the data will be copied.\n\nReturns: int: Returns 0 on success or -EMSGSIZE if the netlink attribute cannot be reserved.\n\nLogic: The function reserves space in the socket buffer for a netlink attribute of type XFRMA_ALG_AUTH. If successful, it copies the algorithm name and key from the provided authentication structure to the reserved space in the socket buffer, setting the key length accordingly. If the reservation fails, it returns an error code indicating the message size issue.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int copy_auth_to_skb(struct xfrm_algo_auth *auth, struct sk_buff *skb) {\n    struct nlattr *nla;\n    size_t name_len = strlen(auth->alg_name) + 1;\n    size_t key_len = auth->alg_key_len / 8;\n    size_t total_len = sizeof(*nla) + name_len + key_len;\n\n    nla = (struct nlattr *)__skb_put(skb, total_len);\n    if (!nla) {\n        return -EMSGSIZE;\n    }\n\n    nla->nla_type = XFRMA_ALG_AUTH;\n    nla->nla_len = total_len;\n\n    char *data = (char *)nla + sizeof(*nla);\n\n    if (name_len > 0) {\n        strncpy(data, auth->alg_name, name_len);\n        data += name_len;\n    }\n\n    if (key_len > 0) {\n        memcpy(data, auth->alg_key, key_len);\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after __skb_put",
+      "protects_against": "insufficient space in socket buffer"
+    },
+    {
+      "step": "limit name copy to length of name plus null terminator",
+      "protects_against": "buffer overflow when copying algorithm name"
+    },
+    {
+      "step": "use memcpy for key data",
+      "protects_against": "buffer overflow when copying key data"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer after __skb_put — protects against: insufficient space in socket buffer",
+        "reasoning": "The implementation uses `nla_reserve`, which returns NULL if there is insufficient space. The code checks for NULL and returns -EMSGSIZE in that case, which is equivalent to checking for a null pointer after reserving space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "limit name copy to length of name plus null terminator — protects against: buffer overflow when copying algorithm name",
+        "reasoning": "The implementation uses `strcpy` to copy the algorithm name, which does not limit the length of the copy. This could lead to a buffer overflow if the source string is longer than the destination buffer.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "use memcpy for key data — protects against: buffer overflow when copying key data",
+        "reasoning": "The implementation uses `memcpy` for the key data, which is appropriate for copying a fixed-size buffer. The size is calculated as `(auth->alg_key_len + 7) / 8`, which ensures the correct number of bytes are copied.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer after __skb_put — protects against: insufficient space in socket buffer",
+        "reasoning": "The implementation uses `nla_reserve`, which returns NULL if the reservation fails. The code checks for NULL and returns -EMSGSIZE in that case, which is equivalent to checking for a null pointer after a buffer allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "limit name copy to length of name plus null terminator — protects against: buffer overflow when copying algorithm name",
+        "reasoning": "The implementation uses `strncpy`, which limits the number of characters copied to the size of the destination buffer (`sizeof(algo->alg_name)`), ensuring that the copy does not overflow the buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use memcpy for key data — protects against: buffer overflow when copying key data",
+        "reasoning": "The implementation uses `memcpy` to copy the key data, which is appropriate for binary data. The size of the copy is calculated as `(auth->alg_key_len + 7) / 8`, which ensures that the copy is bounded by the key length and does not overflow the allocated space.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

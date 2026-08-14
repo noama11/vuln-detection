@@ -1,0 +1,53 @@
+{
+  "case_id": "C_358__0",
+  "sample_id": "D/C/358",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-17052",
+  "cve_summary": "The mm_init function in kernel/fork.c in the Linux kernel before 4.12.10 does not clear the ->exe_file member of a new process's mm_struct, allowing a local attacker to achieve a use-after-free or possibly have unspecified other impact by running a specially crafted program.",
+  "changed_file": "kernel/fork.c",
+  "docstring": "Summary: Initializes a memory management structure for a given task.\n\nParameters:\n- mm (struct mm_struct *): Pointer to the memory management structure to initialize.\n- p (struct task_struct *): Pointer to the task structure associated with the memory management.\n- user_ns (struct user_namespace *): Pointer to the user namespace for the memory management.\n\nReturns: struct mm_struct *: Pointer to the initialized memory management structure, or NULL on failure.\n\nLogic: The function sets up various fields of the `mm_struct`, including initializing memory mappings, reference counts, and locks. It also configures flags based on the current process's memory management state or defaults if none exists. The function allocates page tables and initializes a new context for the task. If any initialization step fails, it cleans up allocated resources and returns NULL.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct mm_struct *init_mm(struct mm_struct *mm, struct task_struct *p, struct user_namespace *user_ns) {\n    int err;\n\n    /* Initialize memory mappings */\n    mm->mmap = NULL;\n    mm->mmap_cache = NULL;\n    mm->get_unmapped_area = NULL;\n    mm->unmap_area = NULL;\n\n    /* Initialize reference counts */\n    atomic_set(&mm->count, 1);\n    mm->task_size = TASK_SIZE;\n    mm->highest_vm_end = TASK_SIZE;\n\n    /* Initialize locks */\n    spin_lock_init(&mm->page_table_lock);\n    mutex_init(&mm->mmap_lock);\n\n    /* Configure flags based on current process's memory management state */\n    if (current->mm) {\n        mm->flags = current->mm->flags;\n    } else {\n        mm->flags = 0;\n    }\n\n    /* Allocate page tables */\n    mm->pgd = get_pgd();\n    if (!mm->pgd) {\n        return NULL;\n    }\n\n    /* Initialize new context for the task */\n    err = init_new_context(p, mm);\n    if (err) {\n        free_pgd(mm->pgd);\n        return NULL;\n    }\n\n    return mm;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the fields they initialize within the `mm_struct`. The candidate implementation initializes fewer fields (e.g., `mmap`, `mmap_cache`, `count`, `task_size`, `page_table_lock`, `mmap_lock`, and `flags`), while the reference implementation initializes a broader set of fields (e.g., `mm_rb`, `mm_users`, `mmap_sem`, `mmlist`, `core_state`, `nr_ptes`, `map_count`, `locked_vm`, `pinned_vm`, `rss_stat`, `user_ns`, etc.). These differences could lead to inconsistent memory management behavior, particularly in edge cases or under complex memory operations. The missing initialization in the candidate implementation could result in undefined behavior or crashes, especially if other parts of the system rely on these fields being properly set. This is a security-relevant issue as it could lead to memory safety problems.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the fields they initialize within the `mm_struct`. The candidate implementation initializes fewer fields (e.g., no `mm_rb`, `mmlist`, `core_state`, etc.) and uses different mechanisms for reference counting (e.g., `atomic_set(&mm->count, 1)` vs. `atomic_set(&mm->mm_users, 1)` and `atomic_set(&mm->mm_count, 1)`). Additionally, the candidate implementation lacks error handling for some initialization steps and does not set the `user_ns` field. These differences could lead to incorrect behavior or crashes in certain scenarios, particularly when the missing fields are accessed later. The missing error handling and incomplete initialization are security-relevant as they could lead to memory safety issues.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

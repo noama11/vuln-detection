@@ -1,0 +1,114 @@
+{
+  "case_id": "C_169__0",
+  "sample_id": "D/C/169",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the offset of a netlink attribute from a socket buffer.\n\nParameters: \nctx (u64): Context pointer to the socket buffer.\nA (u64): Offset in the socket buffer where the search for the netlink attribute begins.\nX (u64): The type of netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the netlink attribute within the socket buffer, or 0 if not found or if conditions are not met.\n\nLogic: The function first checks whether the socket buffer is suitable for the search. It then verifies that the provided offset A is valid. If all checks pass, it searches for the netlink attribute of type X starting from the calculated position. If found, it returns the offset of the attribute relative to the start of the socket buffer; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "u64 get_netlink_attr_offset(u64 ctx, u64 A, u64 X, u64 r4, u64 r5) {\n    u64 buffer_size = 0;\n    u64 attr_start = 0;\n    u64 attr_end = 0;\n    u64 attr_type = 0;\n\n    // Assume a helper function to get the size of the socket buffer\n    buffer_size = get_skb_buffer_size(ctx);\n\n    // Check if the socket buffer is valid\n    if (buffer_size == 0) {\n        return 0;\n    }\n\n    // Ensure the provided offset A is within the bounds of the socket buffer\n    if (A >= buffer_size) {\n        return 0;\n    }\n\n    // Assume a helper function to get the start of the netlink attributes\n    attr_start = get_netlink_attr_start(ctx, A);\n\n    // Ensure the start of the netlink attributes is valid\n    if (attr_start == 0) {\n        return 0;\n    }\n\n    // Iterate through the netlink attributes to find the one with the specified type X\n    while (attr_start < buffer_size) {\n        // Assume a helper function to get the end of the current netlink attribute\n        attr_end = get_netlink_attr_end(ctx, attr_start);\n\n        // Ensure the end of the current netlink attribute is valid\n        if (attr_end == 0 || attr_end > buffer_size) {\n            return 0;\n        }\n\n        // Assume a helper function to get the type of the current netlink attribute\n        attr_type = get_netlink_attr_type(ctx, attr_start);\n\n        // Check if the current netlink attribute has the specified type X\n        if (attr_type == X) {\n            return attr_start;\n        }\n\n        // Move to the next netlink attribute\n        attr_start = attr_end;\n    }\n\n    // Netlink attribute not found\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check socket buffer size is non-zero",
+      "protects_against": "invalid or null socket buffer"
+    },
+    {
+      "step": "bound provided offset A to socket buffer size",
+      "protects_against": "out-of-bounds access"
+    },
+    {
+      "step": "check start of netlink attributes is valid",
+      "protects_against": "invalid netlink attribute start"
+    },
+    {
+      "step": "bound netlink attribute end to socket buffer size",
+      "protects_against": "out-of-bounds access"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check socket buffer size is non-zero — protects against: invalid or null socket buffer",
+        "reasoning": "The implementation casts the context pointer to a socket buffer and does not explicitly check if the pointer is null or if the buffer size is zero. However, the subsequent check `A > skb->len - sizeof(struct nlattr)` would fail if `skb->len` is zero, leading to a return of 0. This indirectly guards against invalid or null socket buffers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound provided offset A to socket buffer size — protects against: out-of-bounds access",
+        "reasoning": "The implementation checks if `A > skb->len - sizeof(struct nlattr)`, which ensures that the offset A is within the bounds of the socket buffer. This prevents out-of-bounds access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check start of netlink attributes is valid — protects against: invalid netlink attribute start",
+        "reasoning": "The implementation does not explicitly validate the start of the netlink attributes. It assumes that the data at `skb->data[A]` is a valid `struct nlattr`. If the data is malformed or not a valid netlink attribute, this could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound netlink attribute end to socket buffer size — protects against: out-of-bounds access",
+        "reasoning": "The implementation uses `nla_find`, which presumably handles the bounds of the netlink attribute search. However, the implementation does not explicitly ensure that the end of the found attribute is within the socket buffer size. If `nla_find` does not perform this check, it could lead to out-of-bounds access.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check socket buffer size is non-zero — protects against: invalid or null socket buffer",
+        "reasoning": "The implementation checks if the socket buffer is non-linear and returns 0 in that case. It also checks if the buffer length is less than the size of a netlink attribute, which implies a buffer size check. However, it does not explicitly check if the buffer is null or has zero length. The buffer is cast from a context pointer, but there is no explicit null check.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound provided offset A to socket buffer size — protects against: out-of-bounds access",
+        "reasoning": "The implementation includes a check: if (A > skb->len - sizeof(struct nlattr)) return 0;. This bounds the offset A to the socket buffer size, ensuring it does not exceed the available space for a netlink attribute.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check start of netlink attributes is valid — protects against: invalid netlink attribute start",
+        "reasoning": "The implementation does not perform a specific check for the validity of the start of the netlink attributes. It assumes that the offset A is valid and uses it directly to locate the start of the attributes.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound netlink attribute end to socket buffer size — protects against: out-of-bounds access",
+        "reasoning": "The implementation uses the nla_find function to search for the netlink attribute. It passes the length of the remaining buffer (skb->len - A) to this function, which implies that the search is bounded by the socket buffer size. However, the implementation does not explicitly verify that the end of the found attribute is within the buffer bounds.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

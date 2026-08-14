@@ -1,0 +1,146 @@
+{
+  "case_id": "C_41__0",
+  "sample_id": "D/C/41",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1080",
+  "cve_summary": "The do_replace function in net/bridge/netfilter/ebtables.c in the Linux kernel before 2.6.39 does not ensure that a certain name field ends with a '0' character, which allows local users to obtain potentially sensitive information from kernel stack memory by leveraging the CAP_NET_ADMIN capability to replace a table, and then reading a modprobe command line.",
+  "changed_file": "net/bridge/netfilter/ebtables.c",
+  "docstring": "Summary:  \nReplaces an existing network table with new entries provided by the user.\n\nParameters:  \nnet (struct net *): Pointer to the network namespace.  \nuser (const void __user *): Pointer to user-space data containing new table information.  \nlen (unsigned int): Length of the user-space data.\n\nReturns:  \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic:  \nThe function first copies data from user space into a temporary structure and checks for errors in the length and entry size. It performs overflow checks on the number of entries and counters. Memory is allocated for the new table information, and if successful, it copies the entries from user space. Finally, it calls a finishing function to complete the replacement process, handling any errors by freeing allocated memory before returning the appropriate error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int replace_net_table(struct net *net, const void __user *user, unsigned int len) {\n    void *tmp_data = NULL;\n    int num_entries;\n    int ret = -ENOMEM;\n\n    if (!net || !user || !len) {\n        return -EINVAL;\n    }\n\n    tmp_data = kmalloc(len, GFP_KERNEL);\n    if (!tmp_data) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(tmp_data, user, len)) {\n        kfree(tmp_data);\n        return -EFAULT;\n    }\n\n    num_entries = len / sizeof(struct table_entry);\n    if (len != num_entries * sizeof(struct table_entry)) {\n        kfree(tmp_data);\n        return -EINVAL;\n    }\n\n    if (num_entries <= 0) {\n        kfree(tmp_data);\n        return -EINVAL;\n    }\n\n    ret = allocate_table_memory(net, tmp_data, num_entries);\n    if (ret < 0) {\n        kfree(tmp_data);\n        return ret;\n    }\n\n    ret = copy_table_entries(net, tmp_data, num_entries);\n    if (ret < 0) {\n        free_table_memory(net);\n        kfree(tmp_data);\n        return ret;\n    }\n\n    ret = finalize_table_replacement(net);\n    if (ret < 0) {\n        free_table_memory(net);\n        kfree(tmp_data);\n        return ret;\n    }\n\n    kfree(tmp_data);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers and length",
+      "protects_against": "null pointers or invalid length values"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failures"
+    },
+    {
+      "step": "verify copy_from_user success",
+      "protects_against": "invalid user-space addresses"
+    },
+    {
+      "step": "validate length is a multiple of entry size",
+      "protects_against": "malformed input with incorrect length"
+    },
+    {
+      "step": "check for valid number of entries",
+      "protects_against": "invalid or negative entry counts"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers and length — protects against: null pointers or invalid length values",
+        "reasoning": "The implementation does not explicitly validate the `user` pointer for null or invalid values. However, the first `copy_from_user` call will fail if the pointer is invalid, returning `-EFAULT`. The length is validated in the context of the `tmp` structure and `entries_size`, but not explicitly for null or invalid values.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failures",
+        "reasoning": "The implementation checks the return value of `vmalloc` for both `newinfo` and `newinfo->entries`, and returns `-ENOMEM` if either allocation fails. This satisfies the step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify copy_from_user success — protects against: invalid user-space addresses",
+        "reasoning": "The implementation checks the return value of `copy_from_user` for both the `tmp` structure and the `entries` data, returning `-EFAULT` if either copy fails. This satisfies the step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate length is a multiple of entry size — protects against: malformed input with incorrect length",
+        "reasoning": "The implementation checks that `len` equals `sizeof(tmp) + tmp.entries_size`, but does not verify that `tmp.entries_size` is a multiple of the entry size. This step is not performed.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for valid number of entries — protects against: invalid or negative entry counts",
+        "reasoning": "The implementation checks that `tmp.entries_size` is not zero, but does not explicitly verify that `tmp.nentries` is a valid positive number or that it corresponds to the size of the entries. This step is not performed.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation includes labeled cleanup paths (`free_entries`, `free_newinfo`) that free the allocated memory if an error occurs after allocation. This satisfies the step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers and length — protects against: null pointers or invalid length values",
+        "reasoning": "The function uses `copy_from_user` to read data from user space, which implicitly validates the pointer. However, it does not explicitly check if `user` is NULL or if `len` is invalid. The length is only validated in the context of matching the expected size of the structure and entries.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failures",
+        "reasoning": "The implementation checks the return value of `vmalloc` for both `newinfo` and `newinfo->entries`, and returns `-ENOMEM` if either allocation fails. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify copy_from_user success — protects against: invalid user-space addresses",
+        "reasoning": "The implementation checks the return value of `copy_from_user` for both the initial `tmp` structure and the `newinfo->entries` buffer. If either fails, it returns `-EFAULT`, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate length is a multiple of entry size — protects against: malformed input with incorrect length",
+        "reasoning": "The implementation checks that `len` equals `sizeof(tmp) + tmp.entries_size`, but does not verify that `tmp.entries_size` is a multiple of the entry size. This step is not performed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for valid number of entries — protects against: invalid or negative entry counts",
+        "reasoning": "The implementation checks that `tmp.entries_size` is not zero, but does not explicitly verify that `tmp.nentries` is a valid positive number. This step is not performed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation includes labeled cleanup paths (`free_entries` and `free_newinfo`) that free the allocated memory if an error occurs during the process. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

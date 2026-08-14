@@ -1,0 +1,54 @@
+{
+  "case_id": "C_783__0",
+  "sample_id": "D/C/783",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-11810",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.7. A NULL pointer dereference can occur when megasas_create_frame_pool() fails in megasas_alloc_cmds() in drivers/scsi/megaraid/megaraid_sas_base.c. This causes a Denial of Service, related to a use-after-free.",
+  "changed_file": "drivers/scsi/megaraid/megaraid_sas_base.c",
+  "docstring": "/**\n * Summary: Allocates command structures for a given megasas_instance.\n * \n * Parameters:\n * instance (struct megasas_instance*): Pointer to the megasas_instance for which commands are allocated.\n * \n * Returns:\n * int: Returns 0 on success, or -ENOMEM if memory allocation fails.\n * \n * Logic: The function first allocates an array of pointers to megasas_cmd structures based on the maximum\n * number of commands specified in the instance. If the allocation fails, it logs an error and\n * returns -ENOMEM. It then initializes each command structure, setting its index and associating it\n * with the instance. Each command is added to the command pool list. Finally, it attempts to create\n * a frame pool for the commands, cleaning up if that fails.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int megasas_alloc_cmds(struct megasas_instance *instance) {\n    int i;\n    struct megasas_cmd **cmd_list;\n\n    cmd_list = kzalloc(instance->max_num_cmd * sizeof(struct megasas_cmd *), GFP_KERNEL);\n    if (!cmd_list) {\n        dev_err(&instance->pdev->dev, \"Failed to allocate command list\\n\");\n        return -ENOMEM;\n    }\n\n    for (i = 0; i < instance->max_num_cmd; i++) {\n        struct megasas_cmd *cmd = &instance->cmd_list[i];\n        cmd->index = i;\n        cmd->instance = instance;\n        list_add_tail(&cmd->list, &instance->cmd_pool);\n    }\n\n    if (megasas_create_frame_pool(instance)) {\n        dev_err(&instance->pdev->dev, \"Failed to create frame pool\\n\");\n        kfree(cmd_list);\n        return -ENOMEM;\n    }\n\n    return 0;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 7,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "individual_allocation_cleanup_on_failure",
+      "zero_initialization_of_memory"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 includes a bounds check and cleanup on failure for individual command allocations, ensuring no memory leaks if a command allocation fails. It also calls a cleanup function on frame pool failure. Implementation 2 lacks these individual allocation checks and cleanup, and instead assumes the command structures are pre-allocated (e.g., using `&instance->cmd_list[i]`). This exposes it to potential memory leaks and undefined behavior if `instance->cmd_list` is not pre-allocated. Implementation 1 also includes a `memset` to zero out memory before use, which 2 omits.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 7,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "individual allocation cleanup on failure",
+      "explicit memory initialization"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 includes a bounds check and cleanup for individual command allocations, ensuring that if any allocation fails, all previously allocated commands are freed before returning. It also initializes memory with memset. Implementation 2 lacks these steps, and instead assumes that the command structures are already allocated (cmd_list[i] is used without allocation). This leaves implementation 2 exposed to memory leaks and invalid memory access.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

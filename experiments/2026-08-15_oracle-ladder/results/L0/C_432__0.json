@@ -1,0 +1,48 @@
+{
+  "case_id": "C_432__0",
+  "sample_id": "D/C/432",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-10810",
+  "cve_summary": "Memory leak in the virtio_gpu_object_create function in drivers/gpu/drm/virtio/virtgpu_object.c in the Linux kernel through 4.11.8 allows attackers to cause a denial of service (memory consumption) by triggering object-initialization failures.",
+  "changed_file": "drivers/gpu/drm/virtio/virtgpu_object.c",
+  "docstring": "/**\n * Summary: Creates a virtual GPU object for the specified device.\n * \n * Parameters:\n * vgdev (struct virtio_gpu_device *): Pointer to the virtual GPU device.\n * size (unsigned long): Size of the GPU object to create.\n * kernel (bool): Indicates if the object is for kernel use.\n * pinned (bool): Indicates if the object should be pinned in memory.\n * bo_ptr (struct virtio_gpu_object **): Pointer to store the created GPU object.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function determines the type of buffer object based on the kernel flag, calculates the\n * required memory size, allocates memory for the GPU object, initializes it, and sets up its\n * placement. If a step fails, it returns an appropriate error code. On success, it assigns the\n * created object to the provided pointer.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int virtio_gpu_object_create(struct virtio_gpu_device *vgdev,\r\n\t\t\t     unsigned long size, bool kernel, bool pinned,\r\n\t\t\t     struct virtio_gpu_object **bo_ptr)\r\n{\r\n\tstruct virtio_gpu_object *bo;\r\n\tenum ttm_bo_type type;\r\n\tsize_t acc_size;\r\n\tint ret;\r\n\r\n\tif (kernel)\r\n\t\ttype = ttm_bo_type_kernel;\r\n\telse\r\n\t\ttype = ttm_bo_type_device;\r\n\t*bo_ptr = NULL;\r\n\r\n\tacc_size = ttm_bo_dma_acc_size(&vgdev->mman.bdev, size,\r\n\t\t\t\t       sizeof(struct virtio_gpu_object));\r\n\r\n\tbo = kzalloc(sizeof(struct virtio_gpu_object), GFP_KERNEL);\r\n\tif (bo == NULL)\r\n\t\treturn -ENOMEM;\r\n\tsize = roundup(size, PAGE_SIZE);\r\n\tret = drm_gem_object_init(vgdev->ddev, &bo->gem_base, size);\r\n\tif (ret != 0) {\r\n\t\tkfree(bo);\r\n\t\treturn ret;\r\n\t}\r\n\tbo->dumb = false;\r\n\tvirtio_gpu_init_ttm_placement(bo, pinned);\r\n\r\n\tret = ttm_bo_init(&vgdev->mman.bdev, &bo->tbo, size, type,\r\n\t\t\t  &bo->placement, 0, !kernel, NULL, acc_size,\r\n\t\t\t  NULL, NULL, &virtio_gpu_ttm_bo_destroy);\r\n\t/* ttm_bo_init failure will call the destroy */\r\n\tif (ret != 0)\r\n\t\treturn ret;\r\n\r\n\t*bo_ptr = bo;\r\n\treturn 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in the handling of the error case after calling `drm_gem_object_init`. In the candidate implementation, if `drm_gem_object_init` fails, the code frees the allocated `bo` structure and returns the error code. In the reference implementation, it does not explicitly free `bo` in this case, potentially leading to a memory leak. This is a behavioral difference that could affect resource management and is reachable via adversarial input that causes allocation failure. However, it does not directly impact memory safety or expose sensitive information.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both allocate memory for the GPU object, initialize it, and call the same functions with the same parameters. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

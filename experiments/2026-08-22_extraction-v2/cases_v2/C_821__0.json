@@ -1,0 +1,36 @@
+{
+  "case_id": "C_821__0",
+  "sample_id": "D/C/821",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2010-5332",
+  "cve_summary": "In the Linux kernel before 2.6.37, an out of bounds array access happened in drivers/net/mlx4/port.c. When searching for a free entry in either mlx4_register_vlan() or mlx4_register_mac(), and there is no free entry, the loop terminates without updating the local variable free thus causing out of array bounds access.",
+  "commit_message": "mlx4_en: Fix out of bounds array access\n\nWhen searching for a free entry in either mlx4_register_vlan() or\nmlx4_register_mac(), and there is no free entry, the loop terminates without\nupdating the local variable free thus causing out of array bounds access. Fix\nthis by adding a proper check outside the loop.\n\nSigned-off-by: Eli Cohen <eli@mellanox.co.il>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "drivers/net/mlx4/port.c",
+  "docstring": "/**\n * Summary: Registers a MAC address to a specified port in the mlx4 device.\n * \n * Parameters:\n * dev (struct mlx4_dev *): Pointer to the mlx4 device structure.\n * port (u8): The port number to which the MAC address is being registered.\n * mac (u64): The MAC address to register.\n * index (int *): Pointer to an integer where the index of the registered MAC will be stored.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function first locks the MAC table mutex and checks for an available entry or if the MAC is already registered. If the MAC is already registered, it increments the reference count and returns the index. If a free entry is found, it registers the new MAC address, updates the MAC table, and unlocks the mutex before returning. If there are no available entries or if an error occurs during registration, it handles the error appropriately and unlocks the mutex.\n */",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    93,
+    145
+  ],
+  "vulnerable_line_range": [
+    93,
+    139
+  ],
+  "vulnerable_snippet": "int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\r\n{\r\n\tstruct mlx4_mac_table *table = &mlx4_priv(dev)->port[port].mac_table;\r\n\tint i, err = 0;\r\n\tint free = -1;\r\n\r\n\tmlx4_dbg(dev, \"Registering MAC: 0x%llx\\n\", (unsigned long long) mac);\r\n\tmutex_lock(&table->mutex);\r\n\tfor (i = 0; i < MLX4_MAX_MAC_NUM - 1; i++) {\r\n\t\tif (free < 0 && !table->refs[i]) {\r\n\t\t\tfree = i;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (mac == (MLX4_MAC_MASK & be64_to_cpu(table->entries[i]))) {\r\n\t\t\t/* MAC already registered, increase refernce count */\r\n\t\t\t*index = i;\r\n\t\t\t++table->refs[i];\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t}\r\n\tmlx4_dbg(dev, \"Free MAC index is %d\\n\", free);\r\n\r\n\tif (table->total == table->max) {\r\n\t\t/* No free mac entries */\r\n\t\terr = -ENOSPC;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t/* Register new MAC */\r\n\ttable->refs[free] = 1;\r\n\ttable->entries[free] = cpu_to_be64(mac | MLX4_MAC_VALID);\r\n\r\n\terr = mlx4_set_port_mac_table(dev, port, table->entries);\r\n\tif (unlikely(err)) {\r\n\t\tmlx4_err(dev, \"Failed adding MAC: 0x%llx\\n\", (unsigned long long) mac);\r\n\t\ttable->refs[free] = 0;\r\n\t\ttable->entries[free] = 0;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t*index = free;\r\n\t++table->total;\r\nout:\r\n\tmutex_unlock(&table->mutex);\r\n\treturn err;\r\n}",
+  "fixed_line_range": [
+    93,
+    145
+  ],
+  "fixed_snippet": "int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\r\n{\r\n\tstruct mlx4_mac_table *table = &mlx4_priv(dev)->port[port].mac_table;\r\n\tint i, err = 0;\r\n\tint free = -1;\r\n\r\n\tmlx4_dbg(dev, \"Registering MAC: 0x%llx\\n\", (unsigned long long) mac);\r\n\tmutex_lock(&table->mutex);\r\n\tfor (i = 0; i < MLX4_MAX_MAC_NUM - 1; i++) {\r\n\t\tif (free < 0 && !table->refs[i]) {\r\n\t\t\tfree = i;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (mac == (MLX4_MAC_MASK & be64_to_cpu(table->entries[i]))) {\r\n\t\t\t/* MAC already registered, increase refernce count */\r\n\t\t\t*index = i;\r\n\t\t\t++table->refs[i];\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t}\r\n\r\n\tif (free < 0) {\r\n\t\terr = -ENOMEM;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tmlx4_dbg(dev, \"Free MAC index is %d\\n\", free);\r\n\r\n\tif (table->total == table->max) {\r\n\t\t/* No free mac entries */\r\n\t\terr = -ENOSPC;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t/* Register new MAC */\r\n\ttable->refs[free] = 1;\r\n\ttable->entries[free] = cpu_to_be64(mac | MLX4_MAC_VALID);\r\n\r\n\terr = mlx4_set_port_mac_table(dev, port, table->entries);\r\n\tif (unlikely(err)) {\r\n\t\tmlx4_err(dev, \"Failed adding MAC: 0x%llx\\n\", (unsigned long long) mac);\r\n\t\ttable->refs[free] = 0;\r\n\t\ttable->entries[free] = 0;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\t*index = free;\r\n\t++table->total;\r\nout:\r\n\tmutex_unlock(&table->mutex);\r\n\treturn err;\r\n}",
+  "func_name": "mlx4_register_mac",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

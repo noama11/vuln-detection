@@ -1,0 +1,36 @@
+{
+  "case_id": "C_1198__0",
+  "sample_id": "D/C/1198",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2014-1710",
+  "cve_summary": "The AsyncPixelTransfersCompletedQuery::End function in gpu/command_buffer/service/query_manager.cc in Google Chrome, as used in Google Chrome OS before 33.0.1750.152, does not check whether a certain position is within the bounds of a shared-memory segment, which allows remote attackers to cause a denial of service (GPU command-buffer memory corruption) or possibly have unspecified other impact via unknown vectors.",
+  "commit_message": "Add bounds validation to AsyncPixelTransfersCompletedQuery::End\n\nBUG=351852\nR=jbauman@chromium.org, jorgelo@chromium.org\n\nReview URL: https://codereview.chromium.org/198253002\n\ngit-svn-id: svn://svn.chromium.org/chrome/trunk/src@256723 0039d316-1c4b-4281-b951-d872f2087c98",
+  "changed_file": "gpu/command_buffer/service/query_manager.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Finalizes the asynchronous pixel transfer operation by setting up memory  \n * parameters and notifying the completion manager.  \n *  \n * Parameters:  \n * submit_count (base::subtle::Atomic32): The count of submitted pixel transfers.  \n *  \n * Returns:  \n * bool: Returns true if the operation was successfully added to the pending  \n * transfer queue, false otherwise.  \n *  \n * Logic:  \n * The function retrieves a shared memory buffer and checks its validity. It  \n * then sets up memory parameters for the pixel transfer and creates an  \n * observer for completion notifications. Finally, it requests the  \n * AsyncPixelTransferManager to notify when all previous transfers are done  \n * and adds the operation to the pending transfer queue.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    86,
+    111
+  ],
+  "vulnerable_line_range": [
+    86,
+    108
+  ],
+  "vulnerable_snippet": "bool AsyncPixelTransfersCompletedQuery::End(\r\n    base::subtle::Atomic32 submit_count) {\r\n  AsyncMemoryParams mem_params;\r\n  // Get the real shared memory since it might need to be duped to prevent\r\n  // use-after-free of the memory.\r\n  Buffer buffer = manager()->decoder()->GetSharedMemoryBuffer(shm_id());\r\n  if (!buffer.shared_memory)\r\n    return false;\r\n  mem_params.shared_memory = buffer.shared_memory;\r\n  mem_params.shm_size = buffer.size;\r\n  mem_params.shm_data_offset = shm_offset();\r\n  mem_params.shm_data_size = sizeof(QuerySync);\r\n\r\n  observer_ = new AsyncPixelTransferCompletionObserverImpl(submit_count);\r\n\r\n  // Ask AsyncPixelTransferDelegate to run completion callback after all\r\n  // previous async transfers are done. No guarantee that callback is run\r\n  // on the current thread.\r\n  manager()->decoder()->GetAsyncPixelTransferManager()\r\n      ->AsyncNotifyCompletion(mem_params, observer_);\r\n\r\n  return AddToPendingTransferQueue(submit_count);\r\n}",
+  "fixed_line_range": [
+    86,
+    111
+  ],
+  "fixed_snippet": "bool AsyncPixelTransfersCompletedQuery::End(\r\n    base::subtle::Atomic32 submit_count) {\r\n  AsyncMemoryParams mem_params;\r\n  // Get the real shared memory since it might need to be duped to prevent\r\n  // use-after-free of the memory.\r\n  Buffer buffer = manager()->decoder()->GetSharedMemoryBuffer(shm_id());\r\n  if (!buffer.shared_memory)\r\n    return false;\r\n  mem_params.shared_memory = buffer.shared_memory;\r\n  mem_params.shm_size = buffer.size;\r\n  mem_params.shm_data_offset = shm_offset();\r\n  mem_params.shm_data_size = sizeof(QuerySync);\r\n  uint32 end = mem_params.shm_data_offset + mem_params.shm_data_size;\r\n  if (end > mem_params.shm_size || end < mem_params.shm_data_offset)\r\n    return false;\r\n\r\n  observer_ = new AsyncPixelTransferCompletionObserverImpl(submit_count);\r\n\r\n  // Ask AsyncPixelTransferDelegate to run completion callback after all\r\n  // previous async transfers are done. No guarantee that callback is run\r\n  // on the current thread.\r\n  manager()->decoder()->GetAsyncPixelTransferManager()\r\n      ->AsyncNotifyCompletion(mem_params, observer_);\r\n\r\n  return AddToPendingTransferQueue(submit_count);\r\n}",
+  "func_name": "End",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

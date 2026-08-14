@@ -1,0 +1,58 @@
+krb5_int32 find_referral_tgs(kdc_realm_t *kdc_active_realm, krb5_kdc_req *request, krb5_principal *krbtgt_princ) {
+    krb5_int32 ret = KRB5KDC_ERR_NONE;
+    krb5_data *hostname = NULL;
+    krb5_realm *target_realm = NULL;
+    krb5_principal tgs_princ = NULL;
+
+    if (!request || !krbtgt_princ) {
+        return KRB5KDC_ERR_BADOPTION;
+    }
+
+    /* Check if the request is a referral request */
+    if (!(request->padata && request->padata->length > 0)) {
+        return KRB5KDC_ERR_BAD_PVNO;
+    }
+
+    /* Extract hostname from server principal */
+    ret = krb5_unparse_name(kdc_active_realm->context, request->client, &hostname);
+    if (ret) {
+        return ret;
+    }
+
+    /* Verify it is a FQDN */
+    if (!krb5_is_fqdn(hostname->data)) {
+        krb5_free_data(kdc_active_realm->context, hostname);
+        return KRB5KDC_ERR_BAD_CLIENT;
+    }
+
+    /* Find the realm associated with the hostname */
+    ret = krb5_kdc_realm_find(kdc_active_realm->context, hostname->data, &target_realm);
+    if (ret) {
+        krb5_free_data(kdc_active_realm->context, hostname);
+        return ret;
+    }
+
+    /* Ensure the realm is valid and not empty */
+    if (!target_realm || !target_realm->realm || !target_realm->kdc) {
+        krb5_free_realm(kdc_active_realm->context, target_realm);
+        krb5_free_data(kdc_active_realm->context, hostname);
+        return KRB5KDC_ERR_REALM_CANT_ENCRYPT;
+    }
+
+    /* Construct the TGT principal */
+    ret = krb5_build_principal(kdc_active_realm->context, &tgs_princ, target_realm->realm->length,
+                               target_realm->realm->data, target_realm->kdc->length, target_realm->kdc->data, 0);
+    if (ret) {
+        krb5_free_realm(kdc_active_realm->context, target_realm);
+        krb5_free_data(kdc_active_realm->context, hostname);
+        return ret;
+    }
+
+    *krbtgt_princ = tgs_princ;
+
+    /* Clean up */
+    krb5_free_realm(kdc_active_realm->context, target_realm);
+    krb5_free_data(kdc_active_realm->context, hostname);
+
+    return ret;
+}

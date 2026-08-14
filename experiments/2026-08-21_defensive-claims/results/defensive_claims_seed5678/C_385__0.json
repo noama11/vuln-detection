@@ -1,0 +1,130 @@
+{
+  "case_id": "C_385__0",
+  "sample_id": "D/C/385",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-14106",
+  "cve_summary": "The tcp_disconnect function in net/ipv4/tcp.c in the Linux kernel before 4.12 allows local users to cause a denial of service (__tcp_select_window divide-by-zero error and system crash) by triggering a disconnect within a certain tcp_recvmsg code path.",
+  "changed_file": "net/ipv4/tcp.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the disconnection of a TCP socket, transitioning its state and cleaning up resources.\n\nParameters: \nsk (struct sock *): Pointer to the socket structure representing the TCP connection.\nflags (int): Flags that may influence the disconnection behavior.\n\nReturns: \nint: Returns an error code indicating the result of the disconnection process (0 on success).\n\nLogic: The function first checks the current state of the socket and sets it to TCP_CLOSE if it is not already closed. It handles various states according to RFC793, including stopping listening if in TCP_LISTEN state, and sending a reset if necessary. It purges the transmit and receive queues, resets various TCP parameters, and cleans up any fastopen-related fields before reporting any errors and returning the error code.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int tcp_disconnect(struct sock *sk, int flags) {\n    int err = 0;\n\n    if (sk == NULL) {\n        return -EINVAL;\n    }\n\n    if (sk->sk_state != TCP_CLOSE) {\n        sk->sk_state = TCP_CLOSE;\n\n        switch (sk->sk_state) {\n            case TCP_LISTEN: {\n                sk->sk_state = TCP_CLOSE;\n                break;\n            }\n            case TCP_SYN_SENT: {\n                break;\n            }\n            case TCP_ESTABLISHED: {\n                if (flags & TCP_SEND_RESET) {\n                    // Send a reset packet\n                    // Implementation of sending a reset packet would go here\n                }\n                break;\n            }\n            default: {\n                break;\n            }\n        }\n\n        // Purge transmit and receive queues\n        skb_queue_purge(&sk->sk_write_queue);\n        skb_queue_purge(&sk->sk_receive_queue);\n\n        // Reset TCP parameters\n        sk->sk_rcvbuf = 0;\n        sk->sk_sndbuf = 0;\n        sk->sk_reuse = 0;\n        sk->sk_lingertime = 0;\n\n        // Clean up fastopen-related fields\n        sk->sk_fastopen_queue = NULL;\n    }\n\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if sk is NULL before dereferencing",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound state transitions to valid TCP_CLOSE state",
+      "protects_against": "invalid or unexpected socket state"
+    },
+    {
+      "step": "purge transmit and receive queues",
+      "protects_against": "memory leaks from unprocessed packets"
+    },
+    {
+      "step": "reset TCP parameters to default values",
+      "protects_against": "residual state causing unexpected behavior"
+    },
+    {
+      "step": "clean up fastopen-related fields",
+      "protects_against": "memory leaks or dangling pointers"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if sk is NULL before dereference — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sk` directly without checking if it is NULL. For example, `inet = inet_sk(sk);` and `old_state = sk->sk_state;` assume `sk` is not NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound state transitions to valid TCP_CLOSE state — protects against: invalid or unexpected socket state",
+        "reasoning": "The implementation checks if the current state is not `TCP_CLOSE` and transitions it to `TCP_CLOSE`. This ensures the socket is in a valid state for disconnection.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "purge transmit and receive queues — protects against: memory leaks from unprocessed packets",
+        "reasoning": "The implementation calls `__skb_queue_purge(&sk->sk_receive_queue);` and `tcp_write_queue_purge(sk);` to purge the receive and transmit queues, respectively.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "reset TCP parameters to default values — protects against: residual state causing unexpected behavior",
+        "reasoning": "The implementation resets various TCP parameters such as `tp->srtt_us`, `tp->write_seq`, `icsk->icsk_backoff`, `tp->snd_cwnd`, and others to default values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up fastopen-related fields — protects against: memory leaks or dangling pointers",
+        "reasoning": "The implementation calls `tcp_free_fastopen_req(tp);` and `tcp_saved_syn_free(tp);` to clean up fastopen-related fields.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if sk is NULL before dereferencing — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check if `sk` is NULL before dereferencing it. The first operation is `struct inet_sock *inet = inet_sk(sk);`, which dereferences `sk` without a prior NULL check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound state transitions to valid TCP_CLOSE state — protects against: invalid or unexpected socket state",
+        "reasoning": "The implementation checks if the socket is not already in `TCP_CLOSE` and transitions it to `TCP_CLOSE` using `tcp_set_state(sk, TCP_CLOSE)`. This ensures the state is valid and bounded.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "purge transmit and receive queues — protects against: memory leaks from unprocessed packets",
+        "reasoning": "The implementation calls `__skb_queue_purge(&sk->sk_receive_queue);` and `tcp_write_queue_purge(sk);` to purge the receive and transmit queues, respectively.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "reset TCP parameters to default values — protects against: residual state causing unexpected behavior",
+        "reasoning": "The implementation resets various TCP parameters such as `tp->srtt_us`, `tp->write_seq`, `icsk->icsk_backoff`, `tp->snd_cwnd`, and others to default or initial values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up fastopen-related fields — protects against: memory leaks or dangling pointers",
+        "reasoning": "The implementation calls `tcp_free_fastopen_req(tp);` and `tcp_saved_syn_free(tp);` to clean up fastopen-related fields.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

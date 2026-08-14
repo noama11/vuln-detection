@@ -1,0 +1,82 @@
+{
+  "case_id": "C_118__0",
+  "sample_id": "D/C/118",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6538",
+  "cve_summary": "The copy_to_user_auth function in net/xfrm/xfrm_user.c in the Linux kernel before 3.6 uses an incorrect C library function for copying a string, which allows local users to obtain sensitive information from kernel heap memory by leveraging the CAP_NET_ADMIN capability.",
+  "changed_file": "net/xfrm/xfrm_user.c",
+  "docstring": "Summary: Copies authentication algorithm data from a user-defined structure to a netlink socket buffer.\n\nParameters: \nauth (struct xfrm_algo_auth*): Pointer to the authentication algorithm structure containing algorithm name and key.\nskb (struct sk_buff*): Pointer to the socket buffer where the data will be copied.\n\nReturns: int: Returns 0 on success or -EMSGSIZE if the netlink attribute cannot be reserved.\n\nLogic: The function reserves space in the socket buffer for a netlink attribute of type XFRMA_ALG_AUTH. If successful, it copies the algorithm name and key from the provided authentication structure to the reserved space in the socket buffer, setting the key length accordingly. If the reservation fails, it returns an error code indicating the message size issue.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int copy_auth_to_skb(struct xfrm_algo_auth *auth, struct sk_buff *skb) {\n    struct nlattr *nla;\n    size_t name_len = strlen(auth->alg_name) + 1;\n    size_t key_len = auth->alg_key_len / 8;\n    size_t total_len = nla_total_size(name_len) + nla_total_size(key_len);\n\n    if (skb_tailroom(skb) < total_len) {\n        return -EMSGSIZE;\n    }\n\n    nla = __nla_reserve(skb, XFRMA_ALG_AUTH, total_len);\n    if (!nla) {\n        return -EMSGSIZE;\n    }\n\n    nla_put(skb, XFRMA_ALG_AUTH_NAME, name_len, auth->alg_name);\n    nla_put(skb, XFRMA_ALG_AUTH_KEY, key_len, auth->alg_key);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check skb tailroom before copying",
+      "protects_against": "buffer overflow due to insufficient space in socket buffer"
+    },
+    {
+      "step": "validate nla_reserve return value",
+      "protects_against": "attempting to use an invalid netlink attribute pointer"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check skb tailroom before copying — protects against: buffer overflow due to insufficient space in socket buffer",
+        "reasoning": "The implementation uses `nla_reserve`, which implicitly checks the tailroom of the skb. If there is insufficient space, `nla_reserve` returns NULL, which is checked in the implementation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate nla_reserve return value — protects against: attempting to use an invalid netlink attribute pointer",
+        "reasoning": "The implementation checks the return value of `nla_reserve`. If it returns NULL, the function returns -EMSGSIZE, indicating the failure to reserve space.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check skb tailroom before copying — protects against: buffer overflow due to insufficient space in socket buffer",
+        "reasoning": "The implementation does not explicitly check the tailroom of the skb before copying. Instead, it relies on the `nla_reserve` function to reserve space, which implicitly checks for sufficient tailroom and returns NULL if it fails. This is sufficient to prevent buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate nla_reserve return value — protects against: attempting to use an invalid netlink attribute pointer",
+        "reasoning": "The implementation checks the return value of `nla_reserve` and returns -EMSGSIZE if it is NULL, which indicates that the reservation failed. This is a valid validation step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

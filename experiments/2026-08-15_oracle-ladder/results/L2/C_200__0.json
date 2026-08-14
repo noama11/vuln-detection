@@ -1,0 +1,49 @@
+{
+  "case_id": "C_200__0",
+  "sample_id": "D/C/200",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-2909",
+  "cve_summary": "The do_devinfo_ioctl function in drivers/staging/comedi/comedi_fops.c in the Linux kernel before 3.1 allows local users to obtain sensitive information from kernel memory via a copy of a short string.",
+  "changed_file": "drivers/staging/comedi/comedi_fops.c",
+  "docstring": "Summary: This function handles an ioctl request to retrieve device information for a Comedi device.\n\nParameters: \ndev (struct comedi_device *): Pointer to the Comedi device structure.\narg (struct comedi_devinfo __user *): Pointer to the user-space structure where device information will be copied.\nfile (struct file *): Pointer to the file structure associated with the device.\n\nReturns: int: Returns 0 on success, or -EFAULT if there is an error in copying data to user space.\n\nLogic: The function initializes a `comedi_devinfo` structure, populates it with the device's version code, number of subdevices, driver name, and board name. It also determines the indices of the read and write subdevices. Finally, it attempts to copy the populated structure to user space, returning an error code if the copy fails.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static size_t WritePSDChannel(const PSDInfo *psd_info,\r\n  const ImageInfo *image_info,Image *image,Image *next_image,\r\n  const QuantumType quantum_type, unsigned char *compact_pixels,\r\n  MagickOffsetType size_offset,const MagickBooleanType separate)\r\n{\r\n  int\r\n    y;\r\n\r\n  MagickBooleanType\r\n    monochrome;\r\n\r\n  QuantumInfo\r\n    *quantum_info;\r\n\r\n  register const PixelPacket\r\n    *p;\r\n\r\n  register ssize_t\r\n    i;\r\n\r\n  size_t\r\n    count,\r\n    length;\r\n\r\n  unsigned char\r\n    *pixels;\r\n\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n\r\n#define CHUNK 16384\r\n\r\n  int\r\n    flush,\r\n    level;\r\n\r\n  unsigned char\r\n    *compressed_pixels;\r\n\r\n  z_stream\r\n    stream;\r\n\r\n  compressed_pixels=(unsigned char *) NULL;\r\n  flush=Z_NO_FLUSH;\r\n#endif\r\n  count=0;\r\n  if (separate != MagickFalse)\r\n    {\r\n      size_offset=TellBlob(image)+2;\r\n      count+=WriteCompressionStart(psd_info,image,next_image,1);\r\n    }\r\n  if (next_image->depth > 8)\r\n    next_image->depth=16;\r\n  monochrome=IsMonochromeImage(image,&image->exception) && (image->depth == 1)\r\n    ? MagickTrue : MagickFalse;\r\n  quantum_info=AcquireQuantumInfo(image_info,next_image);\r\n  if (quantum_info == (QuantumInfo *) NULL)\r\n    return(0);\r\n  pixels=GetQuantumPixels(quantum_info);\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n  if (next_image->compression == ZipCompression)\r\n    {\r\n      compressed_pixels=(unsigned char *) AcquireQuantumMemory(CHUNK,\r\n        sizeof(*compressed_pixels));\r\n      if (compressed_pixels == (unsigned char *) NULL)\r\n        {\r\n          quantum_info=DestroyQuantumInfo(quantum_info);\r\n          return(0);\r\n        }\r\n      ResetMagickMemory(&stream,0,sizeof(stream));\r\n      stream.data_type=Z_BINARY;\r\n      level=Z_DEFAULT_COMPRESSION;\r\n      if ((image_info->quality > 0 && image_info->quality < 10))\r\n        level=(int) image_info->quality;\r\n      if (deflateInit(&stream,level) != Z_OK)\r\n        {\r\n          quantum_info=DestroyQuantumInfo(quantum_info);\r\n          return(0);\r\n        }\r\n    }\r\n#endif\r\n  for (y=0; y < (ssize_t) next_image->rows; y++)\r\n  {\r\n    p=GetVirtualPixels(next_image,0,y,next_image->columns,1,&image->exception);\r\n    if (p == (const PixelPacket *) NULL)\r\n      break;\r\n    length=ExportQuantumPixels(next_image,(CacheView *) NULL,quantum_info,\r\n      quantum_type,pixels,&image->exception);\r\n    if (monochrome != MagickFalse)\r\n      for (i=0; i < (ssize_t) length; i++)\r\n        pixels[i]=(~pixels[i]);\r\n    if (next_image->compression == RLECompression)\r\n      {\r\n        length=PSDPackbitsEncodeImage(image,length,pixels,compact_pixels);\r\n        count+=WriteBlob(image,length,compact_pixels);\r\n        size_offset+=WritePSDOffset(psd_info,image,length,size_offset);\r\n      }\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n    else if (next_image->compression == ZipCompression)\r\n      {\r\n        stream.avail_in=(uInt) length;\r\n        stream.next_in=(Bytef *) pixels;\r\n        if (y == (ssize_t) next_image->rows-1)\r\n          flush=Z_FINISH;\r\n        do {\r\n            stream.avail_out=(uInt) CHUNK;\r\n            stream.next_out=(Bytef *) compressed_pixels;\r\n            if (deflate(&stream,flush) == Z_STREAM_ERROR)\r\n              break;\r\n            length=(size_t) CHUNK-stream.avail_out;\r\n            if (length > 0)\r\n              count+=WriteBlob(image,length,compressed_pixels);\r\n        } while (stream.avail_out == 0);\r\n      }\r\n#endif\r\n    else\r\n      count+=WriteBlob(image,length,pixels);\r\n  }\r\n#ifdef MAGICKCORE_ZLIB_DELEGATE\r\n  if (next_image->compression == ZipCompression)\r\n    {\r\n      (void) deflateEnd(&stream);\r\n      compressed_pixels=(unsigned char *) RelinquishMagickMemory(\r\n        compressed_pixels);\r\n    }\r\n#endif\r\n  quantum_info=DestroyQuantumInfo(quantum_info);\r\n  return(count);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_866__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and the specification. It appears to be a function for writing image data to a file in a specific format, not for handling an ioctl request to retrieve device information for a Comedi device. The reference implementation correctly follows the specification by initializing and populating a comedi_devinfo structure and copying it to user space. The candidate implementation is incoherent and off-topic relative to the specification.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to handle image processing tasks, not device information retrieval for a Comedi device. It is incoherent with the specification and does not implement the described logic. The reference implementation correctly implements the specified function for handling an ioctl request to retrieve device information.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,30 @@
+bool check_password(PgSocket *client, const char *passwd) {
+    if (client->stored_password == NULL || passwd == NULL ||
+        *client->stored_password == '\0' || *passwd == '\0') {
+        return false;
+    }
+
+    if (strcmp(client->auth_type, "plain") == 0) {
+        return strcmp(client->stored_password, passwd) == 0;
+    } else if (strcmp(client->auth_type, "crypt") == 0) {
+        char *encrypted = crypt(passwd, client->stored_password);
+        return encrypted != NULL && strcmp(client->stored_password, encrypted) == 0;
+    } else if (strcmp(client->auth_type, "md5") == 0) {
+        if (strlen(passwd) == 0 || strlen(client->stored_password) != 32) {
+            return false;
+        }
+
+        char salt[9];
+        snprintf(salt, sizeof(salt), "%s%s", "md5", client->username);
+        char *md5_hash = MD5String(passwd, salt, strlen(salt));
+        if (md5_hash == NULL) {
+            return false;
+        }
+
+        bool match = strcmp(client->stored_password, md5_hash) == 0;
+        free(md5_hash);
+        return match;
+    }
+
+    return false;
+}

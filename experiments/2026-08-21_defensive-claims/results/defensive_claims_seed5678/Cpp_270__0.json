@@ -1,0 +1,98 @@
+{
+  "case_id": "Cpp_270__0",
+  "sample_id": "D/C++/270",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "inspircd/inspircd",
+  "cve_id": "CVE-2016-7142",
+  "cve_summary": "The m_sasl module in InspIRCd before 2.0.23, when used with a service that supports SASL_EXTERNAL authentication, allows remote attackers to spoof certificate fingerprints and consequently log in as another user via a crafted SASL message.",
+  "changed_file": "src/modules/m_sasl.cpp",
+  "docstring": "\"\"\"\nSummary: \nThis class defines a command for authenticating users in a system using SASL (Simple Authentication and Security Layer).\n\nParameters: \nCreator (Module*): The module that creates this command.\next (SimpleExtItem<SaslAuthenticator>&): A reference to the SASL authenticator extension item.\nCap (GenericCap&): A reference to the generic capabilities.\n\nReturns: \nNone\n\nLogic: \nThe constructor initializes the command with specific parameters and sets properties related to its execution. The Handle method processes authentication requests, allowing only unregistered clients to authenticate. It checks the validity of the parameters, manages the SASL authenticator for the user, and handles the state of the authentication process, returning CMD_FAILURE if the authentication fails or if the user is already registered.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string>\n#include <stdexcept>\n\n// Assuming necessary types and classes are defined elsewhere\n// e.g., Module, SimpleExtItem, GenericCap, CMD_FAILURE, CMD_SUCCESS, Client, SaslAuthenticator\n\nclass SaslAuthCommand {\npublic:\n    SaslAuthCommand(Module* creator, SimpleExtItem<SaslAuthenticator>& ext, GenericCap& cap) \n        : creator(creator), ext(ext), cap(cap) {\n        // Initialize command properties\n    }\n\n    int Handle(Client* client, const std::string& params) {\n        // Only allow unregistered clients to authenticate\n        if (client->IsRegistered()) {\n            return CMD_FAILURE;\n        }\n\n        // Check if parameters are valid\n        if (params.empty()) {\n            return CMD_FAILURE;\n        }\n\n        // Get SASL authenticator from extension\n        SaslAuthenticator* authenticator = ext.GetItem();\n        if (!authenticator) {\n            return CMD_FAILURE;\n        }\n\n        // Perform authentication\n        int result = authenticator->Authenticate(client, params);\n        if (result != CMD_SUCCESS) {\n            return CMD_FAILURE;\n        }\n\n        // If authentication is successful, set the client's authenticator\n        client->SetAuthenticator(authenticator);\n\n        return CMD_SUCCESS;\n    }\n\nprivate:\n    Module* creator;\n    SimpleExtItem<SaslAuthenticator>& ext;\n    GenericCap& cap;\n};",
+  "defensive_steps": [
+    {
+      "step": "check if client is registered before allowing authentication",
+      "protects_against": "attempting to authenticate an already registered client"
+    },
+    {
+      "step": "check if parameters are empty before processing",
+      "protects_against": "processing empty or invalid authentication parameters"
+    },
+    {
+      "step": "verify that the SASL authenticator exists before using it",
+      "protects_against": "using a null pointer for the SASL authenticator"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if client is registered before allowing authentication — protects against: attempting to authenticate an already registered client",
+        "reasoning": "The implementation checks if the user is unregistered (`user->registered != REG_ALL`) before proceeding with authentication. If the user is already registered, the code does not allow authentication.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if parameters are empty before processing — protects against: processing empty or invalid authentication parameters",
+        "reasoning": "The implementation accesses `parameters[0]` without checking if the parameters vector is empty. If `parameters` is empty, this would cause an out-of-bounds access.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "verify that the SASL authenticator exists before using it — protects against: using a null pointer for the SASL authenticator",
+        "reasoning": "The implementation checks if `sasl` is null before using it. If `sasl` is null, it creates a new `SaslAuthenticator`. If `sasl` is not null, it calls `SendClientMessage` on it.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if client is registered before allowing authentication — protects against: attempting to authenticate an already registered client",
+        "reasoning": "The implementation checks if the user is unregistered (`user->registered != REG_ALL`) before proceeding with authentication. If the user is already registered, the function returns CMD_FAILURE.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if parameters are empty before processing — protects against: processing empty or invalid authentication parameters",
+        "reasoning": "The implementation does not explicitly check if the parameters are empty. It assumes that the parameters are non-empty by directly accessing `parameters[0]` without verifying if the vector is empty.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify that the SASL authenticator exists before using it — protects against: using a null pointer for the SASL authenticator",
+        "reasoning": "The implementation checks if `sasl` is null before using it. If it is null, it creates a new `SaslAuthenticator`. If it is not null, it proceeds with calling `SendClientMessage` on it.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

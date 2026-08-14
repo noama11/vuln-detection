@@ -1,0 +1,33 @@
+#include <rdma/rdma_cma.h>
+#include <netinet/in.h>
+#include <errno.h>
+
+int is_rdma_ip_valid(__be32 addr) {
+    struct rdma_id *id;
+    struct sockaddr_in addr_in;
+    int ret;
+
+    id = rdma_create_id(NULL, NULL, NULL, RDMA_PS_TCP);
+    if (!id)
+        return -ENOMEM;
+
+    memset(&addr_in, 0, sizeof(addr_in));
+    addr_in.sin_family = AF_INET;
+    addr_in.sin_addr = addr;
+    addr_in.sin_port = htons(0); /* Any available port */
+
+    ret = rdma_bind_addr(id, (struct sockaddr *)&addr_in);
+    if (ret) {
+        rdma_destroy_id(id);
+        return ret;
+    }
+
+    /* Check if the device is InfiniBand */
+    if (!rdma_is_ib_device(id->device)) {
+        rdma_destroy_id(id);
+        return -EINVAL;
+    }
+
+    rdma_destroy_id(id);
+    return 0;
+}

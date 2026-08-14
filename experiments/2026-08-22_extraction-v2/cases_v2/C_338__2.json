@@ -1,0 +1,36 @@
+{
+  "case_id": "C_338__2",
+  "sample_id": "D/C/338",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4176",
+  "cve_summary": "fs/namespace.c in the Linux kernel before 4.0.2 does not properly support mount connectivity, which allows local users to read arbitrary files by leveraging user-namespace root access for deletion of a file or directory.",
+  "commit_message": "mnt: Update detach_mounts to leave mounts connected\n\nNow that it is possible to lazily unmount an entire mount tree and\nleave the individual mounts connected to each other add a new flag\nUMOUNT_CONNECTED to umount_tree to force this behavior and use\nthis flag in detach_mounts.\n\nThis closes a bug where the deletion of a file or directory could\ntrigger an unmount and reveal data under a mount point.\n\nCc: stable@vger.kernel.org\nSigned-off-by: \"Eric W. Biederman\" <ebiederm@xmission.com>",
+  "changed_file": "fs/namespace.c",
+  "docstring": "/**\n * Summary: \n * Detaches all mounts associated with a given directory entry by unmounting them.\n * \n * Parameters: \n * dentry (struct dentry *): The directory entry whose mounts are to be detached.\n * \n * Returns: \n * None\n * \n * Logic: \n * The function locks the namespace and looks up the mountpoint associated with the provided dentry. If the mountpoint is valid, it locks the mount hash and iterates through the list of mounts. For each mount, if it is marked for unmounting, it safely unmounts its child mounts and adds them to a list of unmounted mounts. If not marked for unmounting, it unmounts the mount tree. Finally, it unlocks the mount hash, releases the mountpoint, and unlocks the namespace.\n */",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1516,
+    1542
+  ],
+  "vulnerable_line_range": [
+    1512,
+    1538
+  ],
+  "vulnerable_snippet": "void __detach_mounts(struct dentry *dentry)\r\n{\r\n\tstruct mountpoint *mp;\r\n\tstruct mount *mnt;\r\n\r\n\tnamespace_lock();\r\n\tmp = lookup_mountpoint(dentry);\r\n\tif (IS_ERR_OR_NULL(mp))\r\n\t\tgoto out_unlock;\r\n\r\n\tlock_mount_hash();\r\n\twhile (!hlist_empty(&mp->m_list)) {\r\n\t\tmnt = hlist_entry(mp->m_list.first, struct mount, mnt_mp_list);\r\n\t\tif (mnt->mnt.mnt_flags & MNT_UMOUNT) {\r\n\t\t\tstruct mount *p, *tmp;\r\n\t\t\tlist_for_each_entry_safe(p, tmp, &mnt->mnt_mounts,  mnt_child) {\r\n\t\t\t\thlist_add_head(&p->mnt_umount.s_list, &unmounted);\r\n\t\t\t\tumount_mnt(p);\r\n\t\t\t}\r\n\t\t}\r\n\t\telse umount_tree(mnt, 0);\r\n\t}\r\n\tunlock_mount_hash();\r\n\tput_mountpoint(mp);\r\nout_unlock:\r\n\tnamespace_unlock();\r\n}",
+  "fixed_line_range": [
+    1516,
+    1542
+  ],
+  "fixed_snippet": "void __detach_mounts(struct dentry *dentry)\r\n{\r\n\tstruct mountpoint *mp;\r\n\tstruct mount *mnt;\r\n\r\n\tnamespace_lock();\r\n\tmp = lookup_mountpoint(dentry);\r\n\tif (IS_ERR_OR_NULL(mp))\r\n\t\tgoto out_unlock;\r\n\r\n\tlock_mount_hash();\r\n\twhile (!hlist_empty(&mp->m_list)) {\r\n\t\tmnt = hlist_entry(mp->m_list.first, struct mount, mnt_mp_list);\r\n\t\tif (mnt->mnt.mnt_flags & MNT_UMOUNT) {\r\n\t\t\tstruct mount *p, *tmp;\r\n\t\t\tlist_for_each_entry_safe(p, tmp, &mnt->mnt_mounts,  mnt_child) {\r\n\t\t\t\thlist_add_head(&p->mnt_umount.s_list, &unmounted);\r\n\t\t\t\tumount_mnt(p);\r\n\t\t\t}\r\n\t\t}\r\n\t\telse umount_tree(mnt, UMOUNT_CONNECTED);\r\n\t}\r\n\tunlock_mount_hash();\r\n\tput_mountpoint(mp);\r\nout_unlock:\r\n\tnamespace_unlock();\r\n}",
+  "func_name": "__detach_mounts",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

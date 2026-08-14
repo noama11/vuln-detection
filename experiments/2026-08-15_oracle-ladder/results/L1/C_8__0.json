@@ -1,0 +1,49 @@
+{
+  "case_id": "C_8__0",
+  "sample_id": "D/C/8",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2744",
+  "cve_summary": "net/ipv6/netfilter/nf_conntrack_reasm.c in the Linux kernel before 2.6.34, when the nf_conntrack_ipv6 module is enabled, allows remote attackers to cause a denial of service (NULL pointer dereference and system crash) via certain types of fragmented IPv6 packets.",
+  "changed_file": "net/ipv6/netfilter/nf_conntrack_reasm.c",
+  "docstring": "\"\"\"\nSummary: \nReassembles fragmented IPv6 packets from a queue of fragments.\n\nParameters: \nfq (struct nf_ct_frag6_queue *): Pointer to the fragment queue containing the fragments to be reassembled.\ndev (struct net_device *): Pointer to the network device associated with the packet.\n\nReturns: \nstruct sk_buff *: Pointer to the reassembled packet, or NULL if reassembly fails.\n\nLogic: \nThe function first validates the fragment queue and calculates the payload length. It checks for memory allocation issues and handles cases where the first fragment is itself fragmented. The function adjusts headers and combines fragments into a single packet, updating checksums and sizes accordingly. If any errors occur, such as oversized payloads or memory allocation failures, appropriate debug messages are logged, and NULL is returned. The reassembled packet is returned upon successful completion.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static struct sk_buff *\nnf_ct_frag6_reasm(struct nf_ct_frag6_queue *v4, struct net_device *v2)\n{\n    struct sk_buff *v3, *op, *v6 = v4->q.fragments;\n    int    v12;\n    fq_kill(v4);\n    WARN_ON(v6 == NULL);\n    WARN_ON(NFCT_FRAG6_CB(v6)->offset != 0);\n    v12 = ((v6->data - skb_network_header(v6)) -\n               sizeof(struct ipv6hdr) + v4->q.len -\n               sizeof(struct v5));\n    if (v12 > IPV6_MAXPLEN) {\n        pr_debug(\"payload len is too large.\\n\");\n        goto v11;\n    }\n    if (skb_cloned(v6) && pskb_expand_head(v6, 0, 0, GFP_ATOMIC)) {\n        pr_debug(\"skb is cloned but can't expand v6\");\n        goto v10;\n    }\n    if (skb_has_frags(v6)) {\n        struct sk_buff *v1;\n        int v7, plen = 0;\n        if ((v1 = alloc_skb(0, GFP_ATOMIC)) == NULL) {\n            pr_debug(\"Can't alloc skb\\n\");\n            goto v10;\n        }\n        v1->next = v6->next;\n        v6->next = v1;\n        skb_shinfo(v1)->frag_list = skb_shinfo(v6)->frag_list;\n        skb_frag_list_init(v6);\n        for (v7=0; v7<skb_shinfo(v6)->nr_frags; v7++)\n            plen += skb_shinfo(v6)->frags[v7].size;\n        v1->len = v1->data_len = v6->data_len - plen;\n        v6->data_len -= v1->len;\n        v6->len -= v1->len;\n        v1->csum = 0;\n        v1->ip_summed = v6->ip_summed;\n        NFCT_FRAG6_CB(v1)->v8 = NULL;\n        atomic_add(v1->truesize, &nf_init_frags.mem);\n    }\n    skb_network_header(v6)[v4->nhoffset] = skb_transport_header(v6)[0];\n    memmove(v6->v6 + sizeof(struct v5), v6->v6,\n        (v6->data - v6->v6) - sizeof(struct v5));\n    v6->mac_header += sizeof(struct v5);\n    v6->network_header += sizeof(struct v5);\n    skb_shinfo(v6)->frag_list = v6->next;\n    skb_reset_transport_header(v6);\n    skb_push(v6, v6->data - skb_network_header(v6));\n    atomic_sub(v6->truesize, &nf_init_frags.mem);\n    for (v3=v6->next; v3; v3 = v3->next) {\n        v6->data_len += v3->len;\n        v6->len += v3->len;\n        if (v6->ip_summed != v3->ip_summed)\n            v6->ip_summed = CHECKSUM_NONE;\n        else if (v6->ip_summed == CHECKSUM_COMPLETE)\n            v6->csum = csum_add(v6->csum, v3->csum);\n        v6->truesize += v3->truesize;\n        atomic_sub(v3->truesize, &nf_init_frags.mem);\n    }\n    v6->next = NULL;\n    v6->v2 = v2;\n    v6->tstamp = v4->q.stamp;\n    ipv6_hdr(v6)->v12 = htons(v12);\n    if (v6->ip_summed == CHECKSUM_COMPLETE)\n        v6->csum = csum_partial(skb_network_header(v6),\n                      skb_network_header_len(v6),\n                      v6->csum);\n    v4->q.fragments = NULL;\n    v3 = skb_shinfo(v6)->frag_list;\n    if (v3 && NFCT_FRAG6_CB(v3)->v8 == NULL)\n        v3 = v3->next;\n    op = NFCT_FRAG6_CB(v6)->v8;\n    for (; v3; v3 = v3->next) {\n        struct sk_buff *v8 = NFCT_FRAG6_CB(v3)->v8;\n        op->next = v8;\n        op = v8;\n        NFCT_FRAG6_CB(v3)->v8 = NULL;\n    }\n    return v6;\nv11:\n    if (net_ratelimit())\n        printk(KERN_DEBUG \"nf_ct_frag6_reasm: payload len = %d\\n\", v12);\n    goto v9;\nv10:\n    if (net_ratelimit())\n        printk(KERN_DEBUG \"nf_ct_frag6_reasm: no memory for reassembly\\n\");\nv9:\n    return NULL;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 12
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally similar, but there are subtle differences in variable names and some code structure. However, these differences do not affect the observable behavior of the function. Both implementations handle fragment reassembly, memory allocation, checksums, and error conditions in the same way. There is no evidence of a security-relevant difference or a functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of reassembling IPv6 fragments and handling memory allocation, checksums, and header adjustments. The only differences are in variable names and minor code structure, which do not affect the observable behavior of the function. Both implementations handle the same error conditions and produce the same output for the same input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "case_id": "C_467__1",
+  "sample_id": "D/C/467",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "erikd/libsndfile",
+  "cve_id": "CVE-2017-7742",
+  "cve_summary": "In libsndfile before 1.0.28, an error in the *flac_buffer_copy()* function (flac.c) can be exploited to cause a segmentation violation (with read memory access) via a specially crafted FLAC file during a resample attempt, a similar issue to CVE-2017-7585.",
+  "changed_file": "src/flac.c",
+  "docstring": "Summary: This function is a callback for writing data from a FLAC stream decoder.\n\nParameters: \n- decoder (const FLAC__StreamDecoder*): A pointer to the FLAC stream decoder instance (unused).\n- frame (const FLAC__Frame*): A pointer to the current frame of the FLAC stream.\n- buffer (const int32_t* const[]): An array of pointers to the audio samples.\n- client_data (void*): A pointer to user-defined data, typically used for state management.\n\nReturns: FLAC__StreamDecoderWriteStatus: Indicates the status of the write operation, specifically returning FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE to indicate that the decoder should continue processing.\n\nLogic: The function retrieves private data from the client_data pointer, updates the frame and buffer position, assigns the buffer to the private data structure, and calls a function to copy the buffer contents before returning a status indicating that writing can continue.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n\nFLAC__StreamDecoderWriteStatus flac_write_callback(\n    const FLAC__StreamDecoder *decoder,\n    const FLAC__Frame *frame,\n    const int32_t *const buffer[],\n    void *client_data\n) {\n    struct private_data *data = (struct private_data*)client_data;\n    \n    if (!data) {\n        return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;\n    }\n\n    data->frame = frame;\n    data->buffer = buffer;\n\n    if (data->buffer && data->frame) {\n        size_t sample_count = frame->header.blocksize;\n        size_t channel_count = frame->header.channels;\n        size_t total_samples = sample_count * channel_count;\n\n        if (total_samples > SIZE_MAX / sizeof(int32_t)) {\n            return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;\n        }\n\n        size_t buffer_size = total_samples * sizeof(int32_t);\n        int32_t *copy_buffer = (int32_t*)malloc(buffer_size);\n\n        if (!copy_buffer) {\n            return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;\n        }\n\n        memcpy(copy_buffer, *data->buffer, buffer_size);\n        data->copied_buffer = copy_buffer;\n    }\n\n    return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check client_data is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate sample count multiplication",
+      "protects_against": "integer overflow in buffer size calculation"
+    },
+    {
+      "step": "check memory allocation result",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "use memcpy with calculated buffer size",
+      "protects_against": "buffer overflow during copy"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 4,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check client_data is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not use the client_data parameter directly, and there is no indication that it is accessed or dereferenced. Therefore, there is no need to check it for null.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate sample count multiplication — protects against: integer overflow in buffer size calculation",
+        "reasoning": "The implementation does not perform any buffer size calculation involving sample counts or multiplication. Therefore, there is no need to validate such a calculation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any dynamic memory allocation. Therefore, there is no need to check the result of an allocation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use memcpy with calculated buffer size — protects against: buffer overflow during copy",
+        "reasoning": "The implementation does not perform a memcpy operation. Instead, it assigns the buffer pointer directly to a field in the private data structure. Therefore, there is no need to use memcpy with a calculated buffer size.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 3,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check client_data is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation casts `client_data` directly to a pointer type without checking if it is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate sample count multiplication — protects against: integer overflow in buffer size calculation",
+        "reasoning": "The implementation does not perform any buffer size calculation involving multiplication of sample counts. There is no evidence of such a calculation being performed.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any dynamic memory allocation. There is no allocation to check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use memcpy with calculated buffer size — protects against: buffer overflow during copy",
+        "reasoning": "The implementation calls a function `flac_buffer_copy(psf)`, but does not show the implementation of this function. There is no direct use of `memcpy` with a calculated buffer size in the visible code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

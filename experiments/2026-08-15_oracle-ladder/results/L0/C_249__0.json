@@ -1,0 +1,48 @@
+{
+  "case_id": "C_249__0",
+  "sample_id": "D/C/249",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9756",
+  "cve_summary": "arch/x86/kvm/emulate.c in the Linux kernel before 4.8.12 does not properly initialize Code Segment (CS) in certain error cases, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "arch/x86/kvm/emulate.c",
+  "docstring": "Summary: This function handles a far jump operation in an x86 emulation context.\n\nParameters:\nctxt (struct x86_emulate_ctxt *): Pointer to the emulation context containing state information.\n\nReturns: int: The status of the operation, indicating whether it continues, is unhandleable, or encounters an error.\n\nLogic: The function obtains a segment selector, loads the corresponding segment descriptor, and assigns the instruction pointer for the far jump. It returns status codes based on the results of these operations. Error handling for specific cases is noted as not implemented.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int em_jmp_far(struct x86_emulate_ctxt *ctxt)\r\n{\r\n\tint rc;\r\n\tunsigned short sel;\r\n\tstruct desc_struct new_desc;\r\n\tu8 cpl = ctxt->ops->cpl(ctxt);\r\n\r\n\tmemcpy(&sel, ctxt->src.valptr + ctxt->op_bytes, 2);\r\n\r\n\trc = __load_segment_descriptor(ctxt, sel, VCPU_SREG_CS, cpl,\r\n\t\t\t\t       X86_TRANSFER_CALL_JMP,\r\n\t\t\t\t       &new_desc);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\r\n\trc = assign_eip_far(ctxt, ctxt->src.val, &new_desc);\r\n\t/* Error handling is not implemented. */\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn X86EMUL_UNHANDLEABLE;\r\n\r\n\treturn rc;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation lacks the code to save the old segment selector and descriptor (old_sel and old_desc), which the reference implementation includes. This could affect the emulation state in cases where the old CS segment information is needed for correct emulation behavior, particularly in 64-bit mode. However, the specification does not explicitly require preserving this information, and the function's logic primarily focuses on loading the new descriptor and assigning EIP. This difference is not security-relevant but could affect correctness in some edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in behavior. Both implementations copy the segment selector, load the segment descriptor, and assign the instruction pointer for the far jump. The error handling for the assign_eip_far function is also the same in both implementations, returning X86EMUL_UNHANDLEABLE if the result is not X86EMUL_CONTINUE. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

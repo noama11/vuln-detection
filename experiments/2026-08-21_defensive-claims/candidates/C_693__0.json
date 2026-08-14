@@ -1,0 +1,43 @@
+{
+  "case_id": "C_693__0",
+  "implementation": "int rds_atomic_op_setup(struct rds_sock *rs, struct rds_message *rm, struct cmsghdr *cmsg)\n{\n    struct rds_atomic_args *args;\n    struct rds_atomic_notifier *notifier;\n    int ret = -EINVAL;\n\n    if (cmsg->cmsg_len < CMSG_LEN(sizeof(*args)))\n        return -EINVAL;\n\n    if (rm->atomic_op.active)\n        return -EALREADY;\n\n    args = CMSG_DATA(cmsg);\n\n    if (args->op_type >= RDS_ATOMIC_OP_MAX)\n        return -EINVAL;\n\n    switch (args->op_type) {\n        case RDS_ATOMIC_OP_READ:\n        case RDS_ATOMIC_OP_WRITE:\n            if (args->sg_count < 1 || args->sg_count > RDS_ATOMIC_MAX_SG)\n                return -EINVAL;\n            break;\n        default:\n            return -EINVAL;\n    }\n\n    rm->atomic_op.sg = kmalloc_array(args->sg_count, sizeof(*rm->atomic_op.sg), GFP_KERNEL);\n    if (!rm->atomic_op.sg)\n        return -ENOMEM;\n\n    rm->atomic_op.sg_count = args->sg_count;\n\n    if (args->local_addr & (sizeof(u32) - 1)) {\n        kfree(rm->atomic_op.sg);\n        return -EINVAL;\n    }\n\n    rm->atomic_op.local_addr = args->local_addr;\n\n    if (args->notify) {\n        notifier = kzalloc(sizeof(*notifier), GFP_KERNEL);\n        if (!notifier) {\n            kfree(rm->atomic_op.sg);\n            return -ENOMEM;\n        }\n        rm->atomic_op.notifier = notifier;\n    }\n\n    rm->atomic_op.remote_addr = args->remote_addr;\n    rm->atomic_op.key = args->key;\n    rm->atomic_op.op_type = args->op_type;\n    rm->atomic_op.active = 1;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check control message length against minimum required size",
+      "protects_against": "malformed or undersized control messages"
+    },
+    {
+      "step": "verify that no atomic operation is already active",
+      "protects_against": "overwriting an existing atomic operation"
+    },
+    {
+      "step": "validate atomic operation type against known values",
+      "protects_against": "invalid or out-of-bounds operation types"
+    },
+    {
+      "step": "bound scatter-gather count to valid range",
+      "protects_against": "excessive or invalid scatter-gather elements"
+    },
+    {
+      "step": "allocate memory for scatter-gather list and verify success",
+      "protects_against": "out-of-memory conditions"
+    },
+    {
+      "step": "verify local address alignment",
+      "protects_against": "misaligned memory accesses"
+    },
+    {
+      "step": "allocate and verify memory for notification structure",
+      "protects_against": "out-of-memory conditions when notifications are requested"
+    },
+    {
+      "step": "clean up allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 8,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

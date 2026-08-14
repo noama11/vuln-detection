@@ -1,0 +1,130 @@
+{
+  "case_id": "C_78__0",
+  "sample_id": "D/C/78",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3222",
+  "cve_summary": "The vcc_recvmsg function in net/atm/common.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nReceives a message from a socket and copies it into a provided message header.\n\nParameters:  \niocb (struct kiocb *): The I/O control block associated with the operation.  \nsock (struct socket *): The socket from which to receive the message.  \nmsg (struct msghdr *): The message header where the received data will be stored.  \nsize (size_t): The maximum number of bytes to copy into the message header.  \nflags (int): Flags that modify the behavior of the receive operation (e.g., non-blocking).\n\nReturns:  \nint: The number of bytes copied into the message header, or an error code on failure.\n\nLogic:  \nThe function first checks the socket's connection state and validates the flags. It retrieves the associated virtual circuit and checks its status. If the socket is ready, it attempts to receive a datagram. If successful, it copies the data into the message header, handling truncation if necessary. If the MSG_PEEK flag is not set, it updates the socket's memory allocation and returns the datagram. Finally, it frees the received datagram and returns the number of bytes copied.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_message_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    if (!sk || !msg) {\n        return -EINVAL;\n    }\n\n    if (size == 0) {\n        return 0;\n    }\n\n    skb = skb_recv_datagram(sk, flags, &err);\n    if (!skb) {\n        return err;\n    }\n\n    copied = skb->len;\n\n    if (copied > size) {\n        copied = size;\n    }\n\n    if (memcpy_to_msg(msg, skb->data, copied) != copied) {\n        err = -EFAULT;\n    }\n\n    if (!(flags & MSG_PEEK)) {\n        __skb_pull(skb, copied);\n        if (skb->len == 0) {\n            sock_rfree(skb);\n        }\n    }\n\n    kfree_skb(skb);\n\n    return (err) ? err : copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "check socket and message header pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size is non-zero",
+      "protects_against": "attempting to copy zero bytes"
+    },
+    {
+      "step": "bound copy length to requested size",
+      "protects_against": "buffer overflow in the message header"
+    },
+    {
+      "step": "check memcpy_to_msg result",
+      "protects_against": "partial or failed memory copy to user space"
+    },
+    {
+      "step": "free socket buffer on all paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check socket and message header pointers",
+        "reasoning": "The implementation does not explicitly check if `sock` or `msg` are null before dereferencing them. Dereferencing a null pointer would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate size is non-zero",
+        "reasoning": "The implementation does not explicitly check if `size` is zero. However, the function `skb_copy_datagram_iovec` will return an error if the size is zero and there is no data to copy, which indirectly handles this case.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to requested size",
+        "reasoning": "The implementation checks if `copied` (the length of the received datagram) is greater than `size`. If so, it sets `copied = size` and marks `MSG_TRUNC`, which bounds the copy length to the requested size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memcpy_to_msg result",
+        "reasoning": "The implementation uses `skb_copy_datagram_iovec` to copy data into the message header and checks its return value. If it returns an error, the function returns that error, which is equivalent to checking the result of a memory copy.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free socket buffer on all paths",
+        "reasoning": "The implementation calls `skb_free_datagram` before returning, ensuring the socket buffer is freed on all return paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check socket and message header pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock->sk` and `sock->state` without checking if `sock` is null. It also dereferences `msg->msg_namelen` and `msg->msg_iov` without checking if `msg` is null. These are reachable paths where a null pointer dereference could occur.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate size is non-zero — protects against: attempting to copy zero bytes",
+        "reasoning": "The implementation does not explicitly check if `size` is zero. However, the function `skb_copy_datagram_iovec` will return an error if `size` is zero and the `skb` has data, which would prevent a copy. This is not a direct validation, but the function is guarded by the presence of a valid `skb` and the `copied` variable being non-zero.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to requested size — protects against: buffer overflow in the message header",
+        "reasoning": "The implementation checks if `copied` (the length of the received data) is greater than `size`. If so, it sets `copied = size` and marks `MSG_TRUNC`. This ensures the copy does not exceed the requested size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memcpy_to_msg result — protects against: partial or failed memory copy to user space",
+        "reasoning": "The implementation calls `skb_copy_datagram_iovec` and stores the result in `error`. If it returns non-zero, the function returns `error`, which indicates a failed or partial copy.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free socket buffer on all paths — protects against: memory leak",
+        "reasoning": "The implementation calls `skb_free_datagram` before returning, regardless of success or failure. This ensures the socket buffer is freed on all return paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

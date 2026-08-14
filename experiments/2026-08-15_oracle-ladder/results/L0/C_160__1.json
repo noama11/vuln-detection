@@ -1,0 +1,48 @@
+{
+  "case_id": "C_160__1",
+  "sample_id": "D/C/160",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3647",
+  "cve_summary": "arch/x86/kvm/emulate.c in the KVM subsystem in the Linux kernel through 3.17.2 does not properly perform RIP changes, which allows guest OS users to cause a denial of service (guest OS crash) via a crafted application.",
+  "changed_file": "arch/x86/kvm/emulate.c",
+  "docstring": "\"\"\"\nSummary: \nLoads the state of a task from a 16-bit Task State Segment (TSS) into the emulator context.\n\nParameters: \nctxt (struct x86_emulate_ctxt *): Pointer to the emulator context where the state will be loaded.\ntss (struct tss_segment_16 *): Pointer to the TSS structure containing the state information.\n\nReturns: \nint: Returns X86EMUL_CONTINUE on success or an error code if a fault occurs during segment descriptor loading.\n\nLogic: \nThe function initializes the emulator context's instruction pointer and flags from the TSS, writes the general-purpose registers with values from the TSS, and sets the segment selectors. It then attempts to load the segment descriptors corresponding to the TSS fields, handling any faults that may occur during this process. If all operations succeed, it returns a continuation status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int load_state_from_tss16(struct x86_emulate_ctxt *ctxt,\r\n\t\t\t\t struct tss_segment_16 *tss)\r\n{\r\n\tint ret;\r\n\tu8 cpl;\r\n\r\n\tctxt->_eip = tss->ip;\r\n\tctxt->eflags = tss->flag | 2;\r\n\t*reg_write(ctxt, VCPU_REGS_RAX) = tss->ax;\r\n\t*reg_write(ctxt, VCPU_REGS_RCX) = tss->cx;\r\n\t*reg_write(ctxt, VCPU_REGS_RDX) = tss->dx;\r\n\t*reg_write(ctxt, VCPU_REGS_RBX) = tss->bx;\r\n\t*reg_write(ctxt, VCPU_REGS_RSP) = tss->sp;\r\n\t*reg_write(ctxt, VCPU_REGS_RBP) = tss->bp;\r\n\t*reg_write(ctxt, VCPU_REGS_RSI) = tss->si;\r\n\t*reg_write(ctxt, VCPU_REGS_RDI) = tss->di;\r\n\r\n\t/*\r\n\t * SDM says that segment selectors are loaded before segment\r\n\t * descriptors\r\n\t */\r\n\tset_segment_selector(ctxt, tss->ldt, VCPU_SREG_LDTR);\r\n\tset_segment_selector(ctxt, tss->es, VCPU_SREG_ES);\r\n\tset_segment_selector(ctxt, tss->cs, VCPU_SREG_CS);\r\n\tset_segment_selector(ctxt, tss->ss, VCPU_SREG_SS);\r\n\tset_segment_selector(ctxt, tss->ds, VCPU_SREG_DS);\r\n\r\n\tcpl = tss->cs & 3;\r\n\r\n\t/*\r\n\t * Now load segment descriptors. If fault happens at this stage\r\n\t * it is handled in a context of new task\r\n\t */\r\n\tret = __load_segment_descriptor(ctxt, tss->ldt, VCPU_SREG_LDTR, cpl,\r\n\t\t\t\t\ttrue, NULL);\r\n\tif (ret != X86EMUL_CONTINUE)\r\n\t\treturn ret;\r\n\tret = __load_segment_descriptor(ctxt, tss->es, VCPU_SREG_ES, cpl,\r\n\t\t\t\t\ttrue, NULL);\r\n\tif (ret != X86EMUL_CONTINUE)\r\n\t\treturn ret;\r\n\tret = __load_segment_descriptor(ctxt, tss->cs, VCPU_SREG_CS, cpl,\r\n\t\t\t\t\ttrue, NULL);\r\n\tif (ret != X86EMUL_CONTINUE)\r\n\t\treturn ret;\r\n\tret = __load_segment_descriptor(ctxt, tss->ss, VCPU_SREG_SS, cpl,\r\n\t\t\t\t\ttrue, NULL);\r\n\tif (ret != X86EMUL_CONTINUE)\r\n\t\treturn ret;\r\n\tret = __load_segment_descriptor(ctxt, tss->ds, VCPU_SREG_DS, cpl,\r\n\t\t\t\t\ttrue, NULL);\r\n\tif (ret != X86EMUL_CONTINUE)\r\n\t\treturn ret;\r\n\r\n\treturn X86EMUL_CONTINUE;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is a complete function `load_state_from_tss16`, which loads the state from a 16-bit TSS into the emulator context, including general-purpose registers, segment selectors, and descriptors. The reference implementation is a partial snippet from a different function `task_switch_16`, which includes only a subset of the logic for reading and writing TSS data, and does not fully implement the logic described in the specification. Since the reference implementation is incomplete and does not match the full specification, it is not possible to determine behavioral equivalence. This is a degenerate case.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both load the state from the 16-bit TSS into the emulator context, initialize registers, set segment selectors, and load segment descriptors in the same order and with the same parameters. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

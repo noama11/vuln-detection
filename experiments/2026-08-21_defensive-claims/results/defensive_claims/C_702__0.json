@@ -1,0 +1,98 @@
+{
+  "case_id": "C_702__0",
+  "sample_id": "D/C/702",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18257",
+  "cve_summary": "The __get_data_block function in fs/f2fs/data.c in the Linux kernel before 4.11 allows local users to cause a denial of service (integer overflow and loop) via crafted use of the open and fallocate system calls with an FS_IOC_FIEMAP ioctl.",
+  "changed_file": "fs/f2fs/data.c",
+  "docstring": "/**\n * Summary: Retrieves a data block for a given inode and updates the buffer head.\n * \n * Parameters:\n * inode (struct inode*): Pointer to the inode structure representing the file.\n * iblock (sector_t): The logical block index to retrieve.\n * bh (struct buffer_head*): Pointer to the buffer head to be updated.\n * create (int): Flag indicating whether to create a new block if it doesn't exist.\n * flag (int): Additional flags for block mapping.\n * next_pgofs (pgoff_t*): Pointer to store the next page offset.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function initializes a mapping structure, calls a block mapping function, and updates the buffer head with the retrieved block information if successful.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_data_block_for_inode(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create, int flag, pgoff_t *next_pgofs) {\n    int ret = 0;\n    struct address_space *mapping = NULL;\n    struct page *page = NULL;\n\n    if (!inode || !bh || !next_pgofs) {\n        return -EINVAL;\n    }\n\n    mapping = inode->i_mapping;\n    if (!mapping) {\n        return -EINVAL;\n    }\n\n    page = read_mapping_page(mapping, iblock, NULL);\n    if (IS_ERR(page)) {\n        ret = PTR_ERR(page);\n        goto out;\n    }\n\n    if (!page) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    bh->b_page = page;\n    bh->b_blocknr = iblock;\n    bh->b_size = PAGE_SIZE;\n\n    if (create) {\n        ret = block_write_begin(bh, 0, bh->b_size, &page);\n        if (ret < 0) {\n            goto out;\n        }\n    }\n\n    *next_pgofs = iblock + 1;\n\nout:\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for error pointer from read_mapping_page",
+      "protects_against": "invalid page pointer"
+    },
+    {
+      "step": "check for null page pointer",
+      "protects_against": "null pointer dereference"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 3,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function is likely called in a context where these pointers are already validated, and the code assumes they are non-null.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for error pointer from read_mapping_page — protects against: invalid page pointer",
+        "reasoning": "The implementation does not use a function named `read_mapping_page`, nor does it handle a page pointer returned from such a function. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null page pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not use or reference a page pointer at all. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 3,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function is likely called in a context where these pointers are already validated, and the code assumes they are non-null.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for error pointer from read_mapping_page — protects against: invalid page pointer",
+        "reasoning": "The implementation does not use a function named read_mapping_page or perform any page retrieval that would return an error pointer. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null page pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not use a page pointer or perform any operations that would require a page pointer. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

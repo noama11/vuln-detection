@@ -1,0 +1,130 @@
+{
+  "case_id": "C_820__1",
+  "sample_id": "D/C/820",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-9289",
+  "cve_summary": "In the Linux kernel before 4.1.4, a buffer overflow occurs when checking userspace params in drivers/media/dvb-frontends/cx24116.c. The maximum size for a DiSEqC command is 6, according to the userspace API. However, the code allows larger values such as 23.",
+  "changed_file": "drivers/media/dvb-frontends/cx24116.c",
+  "docstring": "Summary:  \nSends a DiSEqC message to a satellite device through the specified frontend.\n\nParameters:  \nfe (struct dvb_frontend *): Pointer to the DVB frontend structure.  \nd (struct dvb_diseqc_master_cmd *): Pointer to the DiSEqC master command structure containing the message to be sent.\n\nReturns:  \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function validates the length of the DiSEqC message and may log the message if debugging is enabled. It then prepares the message for transmission, including setting the command length and toneburst type. The function waits for the LNB to be ready, introduces a delay for voltage stabilization, and executes the command to send the message. Finally, it waits for the message to be sent, considering the message length and toneburst type, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int send_diseqc_message(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d) {\n    int ret = 0;\n    int i = 0;\n\n    if (!fe || !d) {\n        return -EINVAL;\n    }\n\n    if (d->msg[0] < 0x01 || d->msg[0] > 0x04) {\n        return -EINVAL;\n    }\n\n    if (d->msg_len < 1 || d->msg_len > DVB_MAX_DISEQC_MSG_LEN) {\n        return -EINVAL;\n    }\n\n    for (i = 0; i < d->msg_len; i++) {\n        if (d->msg[i] < 0x00 || d->msg[i] > 0xff) {\n            return -EINVAL;\n        }\n    }\n\n    d->msg_len = i;\n\n    if (d->msg[0] == 0x01 || d->msg[0] == 0x03) {\n        d->tx_tone = 1;\n    } else {\n        d->tx_tone = 0;\n    }\n\n    ret = fe->ops.send_diseqc_msg(fe, d);\n    if (ret < 0) {\n        return ret;\n    }\n\n    for (i = 0; i < 100; i++) {\n        if (fe->ops.is_diseqc_msg_sent(fe)) {\n            break;\n        }\n        usleep(10000);\n    }\n\n    if (i == 100) {\n        return -ETIMEDOUT;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check fe and d pointers for NULL",
+      "protects_against": "NULL pointer dereference"
+    },
+    {
+      "step": "validate message type (msg[0])",
+      "protects_against": "invalid DiSEqC message type"
+    },
+    {
+      "step": "validate message length",
+      "protects_against": "buffer overflow or invalid message length"
+    },
+    {
+      "step": "validate each byte of the message",
+      "protects_against": "invalid message content"
+    },
+    {
+      "step": "limit the number of iterations in the wait loop",
+      "protects_against": "infinite loop"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check fe and d pointers for NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation assumes fe is valid by dereferencing it to get state, and d is used without a NULL check. If fe or d is NULL, this would cause a NULL pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate message type (msg[0]) — protects against: invalid DiSEqC message type",
+        "reasoning": "The implementation does not perform any validation on the message type (d->msg[0]).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate message length — protects against: buffer overflow or invalid message length",
+        "reasoning": "The implementation checks if d->msg_len exceeds a fixed limit (CX24116_ARGLEN - CX24116_DISEQC_MSGOFS) and returns -EINVAL if it does. This prevents buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate each byte of the message — protects against: invalid message content",
+        "reasoning": "The implementation does not perform any validation on the individual bytes of the message.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "limit the number of iterations in the wait loop — protects against: infinite loop",
+        "reasoning": "The implementation uses msleep() for delays, which is not a loop and does not risk infinite iteration.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check fe and d pointers for NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation does not explicitly check if fe or d are NULL before dereferencing them. Dereferencing fe and d without a NULL check could lead to a NULL pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate message type (msg[0]) — protects against: invalid DiSEqC message type",
+        "reasoning": "The implementation does not perform any validation on the message type (msg[0]).",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate message length — protects against: buffer overflow or invalid message length",
+        "reasoning": "The implementation checks if d->msg_len exceeds the size of d->msg and returns -EINVAL if it does. This prevents a buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate each byte of the message — protects against: invalid message content",
+        "reasoning": "The implementation does not perform any validation on the individual bytes of the message.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "limit the number of iterations in the wait loop — protects against: infinite loop",
+        "reasoning": "The implementation does not include a wait loop with a potential for infinite iteration. The function uses msleep() for delays, which is not a loop.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

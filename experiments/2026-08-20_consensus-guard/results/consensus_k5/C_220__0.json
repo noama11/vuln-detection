@@ -1,0 +1,62 @@
+{
+  "case_id": "C_220__0",
+  "sample_id": "D/C/220",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-3214",
+  "cve_summary": "The pit_ioport_read in i8254.c in the Linux kernel before 2.6.33 and QEMU before 2.3.1 does not distinguish between read lengths and write lengths, which might allow guest OS users to execute arbitrary code on the host OS by triggering use of an invalid index.",
+  "changed_file": "arch/x86/kvm/i8254.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads data from the Programmable Interval Timer (PIT) I/O port.  \n *  \n * Parameters:  \n * this (struct kvm_io_device *): Pointer to the KVM I/O device.  \n * addr (gpa_t): The address to read from.  \n * len (int): The length of data to read.  \n * data (void *): Pointer to the buffer where the read data will be stored.  \n *  \n * Returns:  \n * int: Returns 0 on success, or -EOPNOTSUPP if the address is out of range.  \n *  \n * Logic:\n * The function checks if the address is within the valid range for the PIT. It processes the read\n * request according to the PIT address and current channel state when applicable. The resulting\n * data is copied to the provided buffer, and any acquired mutex is unlocked before returning.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "bounds check on 'len' before memcpy",
+        "performed_by_count": 4,
+        "why_it_matters": "If 'len' is larger than the size of the destination buffer, the memcpy could overwrite adjacent memory, leading to undefined behavior or security issues."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a mutex lock and unlock, which is a consensus step. However, it does not perform a bounds check on the 'len' parameter before using it in the memcpy call. This could lead to writing more data than the destination buffer can hold, potentially causing a buffer overflow.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "length validation",
+        "performed_by_count": 4,
+        "why_it_matters": "If an invalid length is provided, the `memcpy` could write beyond the bounds of the destination buffer, leading to a memory-safety issue."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a bounds check via `pit_in_range(addr)` and uses a mutex to protect access to shared state. However, it does not perform a check to ensure that the length of the data to be copied (`len`) is valid (e.g., 1, 2, or 4 bytes), which is a defensive step performed by a majority of the independent implementations. This omission could lead to a buffer overflow if an invalid length is provided.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

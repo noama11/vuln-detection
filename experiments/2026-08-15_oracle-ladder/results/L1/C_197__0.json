@@ -1,0 +1,49 @@
+{
+  "case_id": "C_197__0",
+  "sample_id": "D/C/197",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6647",
+  "cve_summary": "The futex_wait_requeue_pi function in kernel/futex.c in the Linux kernel before 3.5.1 does not ensure that calls have two different futex addresses, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact via a crafted FUTEX_WAIT_REQUEUE_PI command.",
+  "changed_file": "kernel/futex.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the waiting and requeuing of a futex with priority inheritance.\n\nParameters:\nuaddr (u32 __user *): Address of the futex to wait on.\nflags (unsigned int): Flags that modify the behavior of the wait.\nval (u32): Expected value of the futex.\nabs_time (ktime_t *): Absolute timeout for the wait.\nbitset (u32): Bitset used for futex operations.\nuaddr2 (u32 __user *): Address of the futex to requeue to.\n\nReturns:\nint: Returns 0 on success, or a negative error code indicating failure.\n\nLogic:\nThe function first validates the input parameters and initializes a timer if a timeout is specified. It sets up a futex wait structure and attempts to wait on the specified futex. If successful, it manages the requeuing process, handling potential wakeups and priority inheritance. The function ensures proper cleanup of resources and returns appropriate error codes based on the outcome of the operations.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int v3,\n                 u32 v15, ktime_t *v1, u32 v2,\n                 u32 __user *uaddr2)\n{\n    struct hrtimer_sleeper v14, *to = NULL;\n    struct rt_mutex_waiter v13;\n    struct rt_mutex *v9 = NULL;\n    struct futex_hash_bucket *v4;\n    union futex_key v5 = FUTEX_KEY_INIT;\n    struct futex_q v10 = futex_q_init;\n    int v11, v12;\n    if (uaddr == uaddr2)\n        return -EINVAL;\n    if (!v2)\n        return -EINVAL;\n    if (v1) {\n        to = &v14;\n        hrtimer_init_on_stack(&to->timer, (v3 & FLAGS_CLOCKRT) ?\n                      CLOCK_REALTIME : CLOCK_MONOTONIC,\n                      HRTIMER_MODE_ABS);\n        hrtimer_init_sleeper(to, current);\n        hrtimer_set_expires_range_ns(&to->timer, *v1,\n                         current->timer_slack_ns);\n    }\n    debug_rt_mutex_init_waiter(&v13);\n    v13.task = NULL;\n    v12 = get_futex_key(uaddr2, v3 & FLAGS_SHARED, &v5, VERIFY_WRITE);\n    if (unlikely(v12 != 0))\n        goto v6;\n    v10.v2 = v2;\n    v10.v13 = &v13;\n    v10.requeue_pi_key = &v5;\n    v12 = futex_wait_setup(uaddr, v15, v3, &v10, &v4);\n    if (v12)\n        goto v7;\n    futex_wait_queue_me(v4, &v10, to);\n    spin_lock(&v4->lock);\n    v12 = handle_early_requeue_pi_wakeup(v4, &v10, &v5, to);\n    spin_unlock(&v4->lock);\n    if (v12)\n        goto v8;\n    if (!v10.v13) {\n        if (v10.pi_state && (v10.pi_state->owner != current)) {\n            spin_lock(v10.lock_ptr);\n            v12 = fixup_pi_state_owner(uaddr2, &v10, current);\n            spin_unlock(v10.lock_ptr);\n        }\n    } else {\n        WARN_ON(!v10.pi_state);\n        v9 = &v10.pi_state->v9;\n        v12 = rt_mutex_finish_proxy_lock(v9, to, &v13, 1);\n        debug_rt_mutex_free_waiter(&v13);\n        spin_lock(v10.lock_ptr);\n        v11 = fixup_owner(uaddr2, &v10, !v12);\n        if (v11)\n            v12 = (v11 < 0) ? v11 : 0;\n        unqueue_me_pi(&v10);\n    }\n    if (v12 == -EFAULT) {\n        if (v9 && rt_mutex_owner(v9) == current)\n            rt_mutex_unlock(v9);\n    } else if (v12 == -EINTR) {\n        v12 = -EWOULDBLOCK;\n    }\nv8:\n    put_futex_key(&v10.key);\nv7:\n    put_futex_key(&v5);\nv6:\n    if (to) {\n        hrtimer_cancel(&to->timer);\n        destroy_hrtimer_on_stack(&to->timer);\n    }\n    return v12;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 15
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle futex waiting and requeuing with priority inheritance, validate inputs, initialize timers, and manage locks and waiters in a similar fashion. The only differences are in variable names and code structure, which do not affect the observable behavior or correctness of the function for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle the futex wait and requeue logic, including validation of input parameters, setup of the futex wait structure, handling of timeouts, and proper cleanup. The only differences are in variable names and code structure, which do not affect the observable behavior or correctness of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

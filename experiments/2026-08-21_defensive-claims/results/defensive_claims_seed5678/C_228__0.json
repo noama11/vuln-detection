@@ -1,0 +1,114 @@
+{
+  "case_id": "C_228__0",
+  "sample_id": "D/C/228",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-9730",
+  "cve_summary": "The udf_pc_to_char function in fs/udf/symlink.c in the Linux kernel before 3.18.2 relies on component lengths that are unused, which allows local users to cause a denial of service (system crash) via a crafted UDF filesystem image.",
+  "changed_file": "fs/udf/symlink.c",
+  "docstring": "Summary: Converts a path component structure into a character string representation.\n\nParameters: \n- sb (struct super_block *): Pointer to the super block structure.\n- from (unsigned char *): Pointer to the input path component data.\n- fromlen (int): Length of the input path component data.\n- to (unsigned char *): Pointer to the output character string buffer.\n- tolen (int): Length of the output buffer.\n\nReturns: \n- int: Returns 0 on success, or a negative error code on failure (e.g., -ENAMETOOLONG, -EIO).\n\nLogic: The function iterates through the input path components, converting each component based on its type. It handles symlinks, directory indicators, and file names, ensuring the output string is properly formatted and null-terminated. It checks for buffer overflows and adjusts the output buffer size accordingly, returning appropriate error codes when necessary.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int path_to_string(struct super_block *sb, unsigned char *from, int fromlen, unsigned char *to, int tolen) {\n    int i = 0;\n    int j = 0;\n    int error = 0;\n\n    if (!sb || !from || fromlen < 0 || !to || tolen < 0) {\n        return -EINVAL;\n    }\n\n    if (tolen == 0) {\n        return -ENAMETOOLONG;\n    }\n\n    for (i = 0; i < fromlen; i++) {\n        unsigned char type = from[i];\n        int component_len = from[i + 1];\n\n        if (i + component_len > fromlen) {\n            return -EIO;\n        }\n\n        if (j + component_len >= tolen) {\n            return -ENAMETOOLONG;\n        }\n\n        switch (type) {\n            case SYMLINK_TYPE:\n                for (int k = 0; k < component_len; k++) {\n                    to[j++] = from[i + 2 + k];\n                }\n                break;\n            case DIR_TYPE:\n                to[j++] = '/';\n                for (int k = 0; k < component_len; k++) {\n                    to[j++] = from[i + 2 + k];\n                }\n                break;\n            case FILE_TYPE:\n                for (int k = 0; k < component_len; k++) {\n                    to[j++] = from[i + 2 + k];\n                }\n                break;\n            default:\n                return -EIO;\n        }\n\n        i += component_len + 1;\n    }\n\n    if (j >= tolen) {\n        return -ENAMETOOLONG;\n    }\n\n    to[j] = '\\0';\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers and invalid input lengths",
+      "protects_against": "null pointer dereference and invalid memory access"
+    },
+    {
+      "step": "check for buffer overflow when copying path components",
+      "protects_against": "writing beyond the bounds of the output buffer"
+    },
+    {
+      "step": "validate component length to prevent out-of-bounds access",
+      "protects_against": "reading beyond the bounds of the input buffer"
+    },
+    {
+      "step": "ensure null-termination of the output string",
+      "protects_against": "malformed output string without a null terminator"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers and invalid input lengths",
+        "reasoning": "The implementation does not explicitly check for null pointers or invalid input lengths (e.g., negative or zero values for fromlen or tolen). These checks are omitted.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for buffer overflow when copying path components",
+        "reasoning": "The implementation checks the remaining tolen before copying data into the output buffer (e.g., tolen-- and checking if tolen == 0 or tolen < N). This prevents buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate component length to prevent out-of-bounds access",
+        "reasoning": "The implementation does not explicitly validate the component length or ensure that it does not exceed the input buffer size. It assumes the input is valid and does not perform bounds checks on the input buffer.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "ensure null-termination of the output string",
+        "reasoning": "The implementation ensures null-termination by setting the last byte of the output buffer to '\\0' after processing all components.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers and invalid input lengths",
+        "reasoning": "The implementation does not explicitly check for null pointers or invalid input lengths (e.g., negative or zero values for fromlen or tolen). It assumes the inputs are valid and proceeds with operations like pointer dereference and buffer manipulation.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for buffer overflow when copying path components",
+        "reasoning": "The implementation checks the remaining tolen before copying data (e.g., tolen-- before adding '/', checking tolen < 3 before adding '../', etc.). If the buffer is too small, it returns -ENAMETOOLONG. This prevents writing beyond the bounds of the output buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate component length to prevent out-of-bounds access",
+        "reasoning": "The implementation does not explicitly validate the length of the path component data before accessing it. For example, it casts from + elen to a struct pathComponent pointer and accesses its fields without checking if elen + sizeof(struct pathComponent) exceeds fromlen. This could lead to reading beyond the bounds of the input buffer.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "ensure null-termination of the output string",
+        "reasoning": "The implementation ensures null-termination by setting either p[-1] or p[0] to '\n' depending on the position of p in the buffer. This guarantees the output string is properly null-terminated.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

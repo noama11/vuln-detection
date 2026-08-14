@@ -1,0 +1,35 @@
+{
+  "case_id": "C_30__0",
+  "implementation": "int handle_invalid_entry(struct fuse_conn *fc, unsigned int size, struct fuse_copy_state *cs) {\n    char *name = NULL;\n    struct output_data {\n        char *name;\n        size_t name_len;\n        unsigned int hash;\n    } *out = NULL;\n\n    if (!fc || !cs) {\n        return -EINVAL;\n    }\n\n    if (size > SIZE_MAX / sizeof(char)) {\n        return -EINVAL;\n    }\n\n    name = malloc(size);\n    if (!name) {\n        return -ENOMEM;\n    }\n\n    if (fuse_copy_in(cs, name, size, 0) < 0) {\n        free(name);\n        return -EFAULT;\n    }\n\n    out = malloc(sizeof(*out));\n    if (!out) {\n        free(name);\n        return -ENOMEM;\n    }\n\n    out->name = name;\n    out->name_len = strnlen(name, size);\n\n    if (out->name_len == size) {\n        free(name);\n        free(out);\n        return -ENAMETOOLONG;\n    }\n\n    out->hash = compute_hash(name, out->name_len);\n\n    int result = reverse_invalid_entry(fc, out);\n\n    free(out->name);\n    free(out);\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check that fc and cs are not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound size against potential overflow in memory allocation",
+      "protects_against": "integer overflow in memory allocation"
+    },
+    {
+      "step": "check the return value of malloc",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check the return value of fuse_copy_in",
+      "protects_against": "invalid memory access"
+    },
+    {
+      "step": "check that the name length does not equal the size",
+      "protects_against": "missing null terminator in the name"
+    },
+    {
+      "step": "free all allocated memory on all return paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

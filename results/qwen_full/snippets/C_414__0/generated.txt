@@ -1,0 +1,115 @@
+MagickBooleanType WriteMAPImage(const ImageInfo *image_info, Image *image) {
+  ExceptionInfo *exception;
+  FILE *file;
+  size_t length;
+  MagickBooleanType status;
+  register const PixelPacket *p;
+  register ssize_t x;
+  ssize_t y;
+  size_t number_colors;
+  size_t number_pixels;
+  Quantum *colormap;
+  unsigned char *indexes;
+  size_t colormap_size;
+  size_t pixel_data_size;
+
+  if ((image->columns == 0) || (image->rows == 0))
+    return MagickFalse;
+
+  exception = &image->exception;
+
+  if (image_info->filename == (char *) NULL)
+    return MagickFalse;
+
+  file = fopen(image_info->filename, "wb");
+  if (file == (FILE *) NULL) {
+    (void) ThrowMagickException(exception, GetMagickModule(), FileOpenError,
+      "Unable to open file", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  if (image->colorspace != sRGBColorspace)
+    (void) TransformImageColorspace(image, sRGBColorspace, exception);
+
+  number_colors = GetImageColors(image, exception);
+  if (number_colors > 256)
+    number_colors = 256;
+
+  colormap_size = number_colors * 3;
+  colormap = (Quantum *) AcquireQuantumMemory(number_colors, 3 * sizeof(*colormap));
+  if (colormap == (Quantum *) NULL) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), ResourceLimitError,
+      "Unable to allocate colormap memory", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  p = GetImagePixels(image, 0, 0, image->columns, image->rows);
+  if (p == (const PixelPacket *) NULL) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), ResourceLimitError,
+      "Unable to read image pixels", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  for (y = 0; y < (ssize_t) image->rows; y++) {
+    for (x = 0; x < (ssize_t) image->columns; x++) {
+      colormap[3 * y + 0] = ScaleQuantumToChar(p->red);
+      colormap[3 * y + 1] = ScaleQuantumToChar(p->green);
+      colormap[3 * y + 2] = ScaleQuantumToChar(p->blue);
+      p++;
+    }
+  }
+
+  length = fwrite(colormap, 1, colormap_size, file);
+  if (length != colormap_size) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), FileWriteError,
+      "Unable to write colormap", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  number_pixels = image->columns * image->rows;
+  pixel_data_size = number_pixels;
+  indexes = (unsigned char *) AcquireQuantumMemory(number_pixels, sizeof(*indexes));
+  if (indexes == (unsigned char *) NULL) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), ResourceLimitError,
+      "Unable to allocate pixel index memory", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  p = GetImagePixels(image, 0, 0, image->columns, image->rows);
+  if (p == (const PixelPacket *) NULL) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), ResourceLimitError,
+      "Unable to read image pixels", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  for (y = 0; y < (ssize_t) image->rows; y++) {
+    for (x = 0; x < (ssize_t) image->columns; x++) {
+      indexes[y] = (unsigned char) y;
+      p++;
+    }
+  }
+
+  length = fwrite(indexes, 1, pixel_data_size, file);
+  if (length != pixel_data_size) {
+    (void) fclose(file);
+    (void) ThrowMagickException(exception, GetMagickModule(), FileWriteError,
+      "Unable to write pixel indexes", "%s", image_info->filename);
+    return MagickFalse;
+  }
+
+  (void) fclose(file);
+  status = MagickTrue;
+
+  if (colormap != (Quantum *) NULL)
+    colormap = RelinquishMagickMemory(colormap);
+
+  if (indexes != (unsigned char *) NULL)
+    indexes = RelinquishMagickMemory(indexes);
+
+  return status;
+}

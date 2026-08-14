@@ -1,0 +1,49 @@
+{
+  "case_id": "C_807__0",
+  "sample_id": "D/C/807",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-20856",
+  "cve_summary": "An issue was discovered in the Linux kernel before 4.18.7. In block/blk-core.c, there is an __blk_drain_queue() use-after-free because a certain error case is mishandled.",
+  "changed_file": "block/blk-core.c",
+  "docstring": "Summary: This code fragment defines two functions related to managing request queues in a block device subsystem.\n\nParameters: \nN/A\n\nReturns: \n- blk_init_allocated_queue: int - returns -ENOMEM to indicate memory allocation failure.\n- blk_get_queue: bool - returns true if the request queue is active, otherwise false.\n\nLogic: The first part of the fragment handles the cleanup of a flush request queue. If an exit function is defined for the request queue, it is called with the queue and its flush request. After that, the flush queue is freed before returning an error code indicating memory allocation failure. The second part defines the `blk_get_queue` function, which checks if the request queue is not in a dying state. If the queue is active, it increments the reference count of the queue and returns true; otherwise, it returns false. Both functions are exported for use in other parts of the kernel.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int hugetlb_mcopy_atomic_pte(struct mm_struct *dst_mm,\r\n\t\t\t    pte_t *dst_pte,\r\n\t\t\t    struct vm_area_struct *dst_vma,\r\n\t\t\t    unsigned long dst_addr,\r\n\t\t\t    unsigned long src_addr,\r\n\t\t\t    struct page **pagep)\r\n{\r\n\tint vm_shared = dst_vma->vm_flags & VM_SHARED;\r\n\tstruct hstate *h = hstate_vma(dst_vma);\r\n\tpte_t _dst_pte;\r\n\tspinlock_t *ptl;\r\n\tint ret;\r\n\tstruct page *page;\r\n\r\n\tif (!*pagep) {\r\n\t\tret = -ENOMEM;\r\n\t\tpage = alloc_huge_page(dst_vma, dst_addr, 0);\r\n\t\tif (IS_ERR(page))\r\n\t\t\tgoto out;\r\n\r\n\t\tret = copy_huge_page_from_user(page,\r\n\t\t\t\t\t\t(const void __user *) src_addr,\r\n\t\t\t\t\t\tpages_per_huge_page(h), false);\r\n\r\n\t\t/* fallback to copy_from_user outside mmap_sem */\r\n\t\tif (unlikely(ret)) {\r\n\t\t\tret = -EFAULT;\r\n\t\t\t*pagep = page;\r\n\t\t\t/* don't free the page */\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t} else {\r\n\t\tpage = *pagep;\r\n\t\t*pagep = NULL;\r\n\t}\r\n\r\n\t/*\r\n\t * The memory barrier inside __SetPageUptodate makes sure that\r\n\t * preceding stores to the page contents become visible before\r\n\t * the set_pte_at() write.\r\n\t */\r\n\t__SetPageUptodate(page);\r\n\tset_page_huge_active(page);\r\n\r\n\t/*\r\n\t * If shared, add to page cache\r\n\t */\r\n\tif (vm_shared) {\r\n\t\tstruct address_space *mapping = dst_vma->vm_file->f_mapping;\r\n\t\tpgoff_t idx = vma_hugecache_offset(h, dst_vma, dst_addr);\r\n\r\n\t\tret = huge_add_to_page_cache(page, mapping, idx);\r\n\t\tif (ret)\r\n\t\t\tgoto out_release_nounlock;\r\n\t}\r\n\r\n\tptl = huge_pte_lockptr(h, dst_mm, dst_pte);\r\n\tspin_lock(ptl);\r\n\r\n\tret = -EEXIST;\r\n\tif (!huge_pte_none(huge_ptep_get(dst_pte)))\r\n\t\tgoto out_release_unlock;\r\n\r\n\tif (vm_shared) {\r\n\t\tpage_dup_rmap(page, true);\r\n\t} else {\r\n\t\tClearPagePrivate(page);\r\n\t\thugepage_add_new_anon_rmap(page, dst_vma, dst_addr);\r\n\t}\r\n\r\n\t_dst_pte = make_huge_pte(dst_vma, page, dst_vma->vm_flags & VM_WRITE);\r\n\tif (dst_vma->vm_flags & VM_WRITE)\r\n\t\t_dst_pte = huge_pte_mkdirty(_dst_pte);\r\n\t_dst_pte = pte_mkyoung(_dst_pte);\r\n\r\n\tset_huge_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);\r\n\r\n\t(void)huge_ptep_set_access_flags(dst_vma, dst_addr, dst_pte, _dst_pte,\r\n\t\t\t\t\tdst_vma->vm_flags & VM_WRITE);\r\n\thugetlb_count_add(pages_per_huge_page(h), dst_mm);\r\n\r\n\t/* No need to invalidate - it was non-present before */\r\n\tupdate_mmu_cache(dst_vma, dst_addr, dst_pte);\r\n\r\n\tspin_unlock(ptl);\r\n\tif (vm_shared)\r\n\t\tunlock_page(page);\r\n\tret = 0;\r\nout:\r\n\treturn ret;\r\nout_release_unlock:\r\n\tspin_unlock(ptl);\r\n\tif (vm_shared)\r\n\t\tunlock_page(page);\r\nout_release_nounlock:\r\n\tput_page(page);\r\n\tgoto out;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_718__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to handle memory management for huge pages, not request queues in a block device subsystem. The reference implementation includes two functions related to managing request queues as described in the specification. Since the candidate implementation is entirely unrelated to the specification, it is degenerate.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to handle memory management for huge pages, not request queues in a block device subsystem. The reference implementation aligns with the specification by managing request queues and their initialization. The candidate implementation is incoherent and off-topic relative to the specification.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

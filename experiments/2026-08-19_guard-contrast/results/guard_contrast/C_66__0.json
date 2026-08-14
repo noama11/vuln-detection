@@ -1,0 +1,55 @@
+{
+  "case_id": "C_66__0",
+  "sample_id": "D/C/66",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4163",
+  "cve_summary": "The ip6_append_data_mtu function in net/ipv6/ip6_output.c in the IPv6 implementation in the Linux kernel through 3.10.3 does not properly maintain information about whether the IPV6_MTU setsockopt option had been specified, which allows local users to cause a denial of service (BUG and system crash) via a crafted application that uses the UDP_CORK option in a setsockopt system call.",
+  "changed_file": "net/ipv6/ip6_output.c",
+  "docstring": "Summary: Duplicates an IPv6 routing header and appends data to the MTU based on certain conditions.\n\nParameters:\nsrc (struct ipv6_rt_hdr *): Pointer to the source IPv6 routing header to duplicate.\ngfp (gfp_t): Allocation flags for memory allocation.\nmtu (unsigned int *): Pointer to the MTU value to be modified.\nmaxfraglen (int *): Pointer to the maximum fragment length to be modified.\nfragheaderlen (unsigned int): Length of the fragment header.\nskb (struct sk_buff *): Pointer to the socket buffer containing the data.\nrt (struct rt6_info *): Pointer to the routing information structure.\npmtuprobe (bool): Flag indicating if Path MTU probing is enabled.\n\nReturns: struct ipv6_rt_hdr *: A pointer to the duplicated IPv6 routing header or NULL if the source is NULL.\n\nLogic: The function `ip6_rthdr_dup` duplicates the provided IPv6 routing header if it is not NULL, using the specified memory allocation flags.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct ipv6_rt_hdr *ip6_rthdr_dup(struct ipv6_rt_hdr *src, gfp_t gfp,\n                                  unsigned int *mtu, int *maxfraglen,\n                                  unsigned int fragheaderlen,\n                                  struct sk_buff *skb, struct rt6_info *rt,\n                                  bool pmtuprobe) {\n    if (!src) {\n        return NULL;\n    }\n\n    struct ipv6_rt_hdr *dup = kmemdup(src, src->hdrlen * 8, gfp);\n    if (!dup) {\n        return NULL;\n    }\n\n    if (pmtuprobe && skb && rt) {\n        *mtu = min(*mtu, rt->dst.metrics[RTAX_MTU - 1]);\n        *maxfraglen = *mtu - fragheaderlen;\n    }\n\n    return dup;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null check on source pointer",
+      "bounds check on hdrlen",
+      "conditional validation of MTU and maxfraglen"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a null check on the source pointer and returns NULL if it is null, but does not handle the MTU or fragment length logic. Implementation 2 performs a null check on the source pointer, performs a bounds check on the hdrlen field, and includes a conditional validation of MTU and maxfraglen based on pmtuprobe, skb, and rt. Implementation 1 lacks the conditional validation and bounds checks for hdrlen and MTU that are present in Implementation 2.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null check on kmemdup result",
+      "conditional validation and sanitization of mtu and maxfraglen"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a null check on the source pointer and returns NULL if it is null, which is a defensive step. Implementation 2 performs the same null check and also includes a check for the success of the kmemdup call, returning NULL if it fails. Additionally, it includes conditional logic that validates and modifies MTU and maxfraglen values based on routing information and probing flags. Implementation 1 lacks the error check on kmemdup and the conditional validation logic for MTU and maxfraglen.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

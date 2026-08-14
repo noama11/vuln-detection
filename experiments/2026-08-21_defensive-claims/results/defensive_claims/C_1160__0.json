@@ -1,0 +1,98 @@
+{
+  "case_id": "C_1160__0",
+  "sample_id": "D/C/1160",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-2854",
+  "cve_summary": "Google Chrome before 27.0.1453.110 on Windows provides an incorrect handle to a renderer process in unspecified circumstances, which allows remote attackers to cause a denial of service or possibly have other impact via unknown vectors.",
+  "changed_file": "ipc/ipc_platform_file.cc",
+  "docstring": "\"\"\"\nSummary: \nDuplicates a platform file handle for a specified process, optionally closing the source handle.\n\nParameters: \nhandle (base::PlatformFile): The file handle to duplicate.\nprocess (base::ProcessHandle): The target process handle to which the file handle will be duplicated.\nclose_source_handle (bool): Indicates whether to close the source handle after duplication.\n\nReturns: \nIPC::PlatformFileForTransit: The duplicated file handle for transit, or an invalid handle if duplication fails.\n\nLogic: \nThe function checks the operating system and uses appropriate methods to duplicate the file handle. On Windows, it uses `DuplicateHandle` with options to manage the source handle. On POSIX systems, it either reuses the source file descriptor or duplicates it, ensuring that the handle remains valid until it is sent to another process, thus preventing race conditions.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <windows.h>\n#include <base/process.h>\n#include <base/platform_file.h>\n#include <ipc/ipc_platform_file.h>\n\nIPC::PlatformFileForTransit DuplicatePlatformFileHandle(base::PlatformFile handle, base::ProcessHandle process, bool close_source_handle) {\n  IPC::PlatformFileForTransit result = base::kInvalidPlatformFileForTransit;\n\n  if (handle == base::kInvalidPlatformFile) {\n    return result;\n  }\n\n  HANDLE target_process = reinterpret_cast<HANDLE>(process);\n\n  HANDLE duplicated_handle = NULL;\n  if (!DuplicateHandle(GetCurrentProcess(), handle, target_process, &duplicated_handle, 0, FALSE, DUPLICATE_SAME_ACCESS)) {\n    return result;\n  }\n\n  result = reinterpret_cast<IPC::PlatformFileForTransit>(duplicated_handle);\n\n  if (close_source_handle) {\n    if (!CloseHandle(handle)) {\n      // Handle close failure, but continue with the result as it's already duplicated.\n    }\n  }\n\n  return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input handle",
+      "protects_against": "invalid or null input handle"
+    },
+    {
+      "step": "check for successful duplication",
+      "protects_against": "failure to duplicate the handle"
+    },
+    {
+      "step": "safe handle closure",
+      "protects_against": "failure to close the source handle after duplication"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input handle — protects against: invalid or null input handle",
+        "reasoning": "The implementation does not explicitly validate the input handle. It assumes the handle is valid and passes it directly to the OS-specific duplication function.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for successful duplication — protects against: failure to duplicate the handle",
+        "reasoning": "The implementation checks the return value of the OS-specific duplication function and sets the output handle to invalid if the duplication fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "safe handle closure — protects against: failure to close the source handle after duplication",
+        "reasoning": "The implementation uses the `close_source_handle` flag to determine whether to close the source handle. On Windows, it sets the `DUPLICATE_CLOSE_SOURCE` flag accordingly. On POSIX, it either reuses the handle (without closing) or duplicates it (and takes ownership).",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input handle — protects against: invalid or null input handle",
+        "reasoning": "The implementation checks if `handle` is `INVALID_HANDLE_VALUE` on Windows and proceeds to mark the output as invalid in that case. On POSIX, it does not explicitly validate the input handle, but the function assumes it is valid. Since the function does not validate the input handle on POSIX, this step is not fully performed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for successful duplication — protects against: failure to duplicate the handle",
+        "reasoning": "The implementation checks the return value of `DuplicateHandle` on Windows and marks the output as invalid if the call fails. On POSIX, it does not explicitly check if `dup` succeeds, assuming it will always work. This is a potential omission.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "safe handle closure — protects against: failure to close the source handle after duplication",
+        "reasoning": "On Windows, the implementation uses `DUPLICATE_CLOSE_SOURCE` when `close_source_handle` is true, which ensures the source handle is closed. On POSIX, if `close_source_handle` is true, the function reuses the source handle without duplicating it, so there is no need to close it separately. If `close_source_handle` is false, the function duplicates the handle and takes ownership of the new handle, ensuring the source remains open. The implementation correctly handles this step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

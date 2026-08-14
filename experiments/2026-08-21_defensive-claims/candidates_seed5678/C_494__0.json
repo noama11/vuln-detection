@@ -1,0 +1,47 @@
+{
+  "case_id": "C_494__0",
+  "implementation": "int vc4_prepare_execution(struct drm_device *dev, struct vc4_exec_info *exec)\n{\n    int ret = -EINVAL;\n    size_t cmd_list_size = 0;\n    size_t shader_records_size = 0;\n    void *cmd_list = NULL;\n    void *shader_records = NULL;\n    struct vc4_bo *bo = NULL;\n\n    if (!dev || !exec)\n        return -EINVAL;\n\n    cmd_list_size = exec->cmd_list_size;\n    shader_records_size = exec->shader_records_size;\n\n    if (cmd_list_size == 0 || shader_records_size == 0)\n        return -EINVAL;\n\n    if (cmd_list_size > (SIZE_MAX - 1) / 2 || shader_records_size > (SIZE_MAX - 1) / 2)\n        return -EINVAL;\n\n    cmd_list = kmalloc(cmd_list_size, GFP_KERNEL);\n    if (!cmd_list)\n        return -ENOMEM;\n\n    shader_records = kmalloc(shader_records_size, GFP_KERNEL);\n    if (!shader_records) {\n        kfree(cmd_list);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(cmd_list, (void __user *)exec->cmd_list, cmd_list_size)) {\n        ret = -EFAULT;\n        goto cleanup;\n    }\n\n    if (copy_from_user(shader_records, (void __user *)exec->shader_records, shader_records_size)) {\n        ret = -EFAULT;\n        goto cleanup;\n    }\n\n    bo = vc4_bo_create(dev, cmd_list_size + shader_records_size, 0);\n    if (IS_ERR(bo)) {\n        ret = PTR_ERR(bo);\n        bo = NULL;\n        goto cleanup;\n    }\n\n    ret = vc4_bo_map(bo);\n    if (ret)\n        goto cleanup;\n\n    memcpy(bo->vaddr, cmd_list, cmd_list_size);\n    memcpy((char *)bo->vaddr + cmd_list_size, shader_records, shader_records_size);\n\n    exec->cmd_list_bo = bo;\n    exec->cmd_list = bo->vaddr;\n    exec->shader_records = (char *)bo->vaddr + cmd_list_size;\n\n    ret = vc4_validate_cmd_list(exec->cmd_list, cmd_list_size);\n    if (ret)\n        goto cleanup;\n\n    ret = vc4_validate_shader_records(exec->shader_records, shader_records_size);\n    if (ret)\n        goto cleanup;\n\n    ret = vc4_wait_for_rendering_complete(dev);\n    if (ret)\n        goto cleanup;\n\n    ret = 0;\n\ncleanup:\n    kfree(cmd_list);\n    kfree(shader_records);\n    if (ret && bo) {\n        vc4_bo_unmap(bo);\n        vc4_bo_unref(bo);\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate command list and shader records size",
+      "protects_against": "zero size allocation"
+    },
+    {
+      "step": "check for integer overflow in size calculation",
+      "protects_against": "integer overflow in memory allocation"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check for copy from user failure",
+      "protects_against": "invalid user pointer or access violation"
+    },
+    {
+      "step": "check for buffer object creation failure",
+      "protects_against": "failed buffer object allocation"
+    },
+    {
+      "step": "check for buffer object mapping failure",
+      "protects_against": "failed buffer object mapping"
+    },
+    {
+      "step": "validate command list and shader records",
+      "protects_against": "invalid command list or shader records"
+    },
+    {
+      "step": "ensure resources are cleaned up on error",
+      "protects_against": "resource leak on error path"
+    }
+  ],
+  "n_steps": 9,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

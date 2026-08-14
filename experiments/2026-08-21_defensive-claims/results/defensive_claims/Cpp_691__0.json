@@ -1,0 +1,114 @@
+{
+  "case_id": "Cpp_691__0",
+  "sample_id": "D/C++/691",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "facebook/hhvm",
+  "cve_id": "CVE-2018-6340",
+  "cve_summary": "The Memcache::getextendedstats function can be used to trigger an out-of-bounds read. Exploiting this issue requires control over memcached server hostnames and/or ports. This affects all supported versions of HHVM (3.30 and 3.27.4 and below).",
+  "changed_file": "hphp/runtime/ext/memcache/ext_memcache.cpp",
+  "docstring": "Summary: Retrieves extended statistics from a Memcache server and returns them in an associative array.\n\nParameters: \n- type (const String&): The type of statistics to retrieve (default is null_string).\n- slabid (int): The slab ID for which to retrieve statistics (default is 0).\n- limit (int): The maximum number of statistics to return (default is 100).\n\nReturns: Array: An associative array containing the extended statistics for each Memcache server, or an empty array if the retrieval fails.\n\nLogic: The function first retrieves the Memcache data and checks for successful connection. It then iterates through each server, gathering statistics and constructing keys based on the server's hostname and port. If successful, it adds the server statistics to the return array. Finally, it frees the allocated statistics memory before returning the results.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <map>\n#include <string>\n#include <vector>\n#include <memory>\n\n// Assuming a Memcache client library is available with the following functions:\n// - memcache_get_stats: Returns a pointer to a memcache_stat structure or nullptr on failure.\n// - memcache_stat_get_next: Returns a pointer to the next memcache_stat structure or nullptr if none.\n// - memcache_stat_get_key: Returns the key of the current memcache_stat.\n// - memcache_stat_get_value: Returns the value of the current memcache_stat.\n// - memcache_stat_free: Frees the memory allocated for the memcache_stat structure.\n\nstd::map<std::string, std::string> get_memcache_extended_stats(const std::string& type = \"\", int slabid = 0, int limit = 100) {\n    std::map<std::string, std::string> stats;\n    memcache_stat* stats_data = memcache_get_stats(type.empty() ? nullptr : type.c_str(), slabid);\n\n    if (!stats_data) {\n        return stats;\n    }\n\n    int count = 0;\n    for (memcache_stat* current = stats_data; current && count < limit; current = memcache_stat_get_next(current)) {\n        const char* key = memcache_stat_get_key(current);\n        const char* value = memcache_stat_get_value(current);\n\n        if (!key || !value) {\n            continue;\n        }\n\n        stats[std::string(key)] = std::string(value);\n        ++count;\n    }\n\n    memcache_stat_free(stats_data);\n    return stats;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after retrieving statistics",
+      "protects_against": "null pointer dereference if memcache_get_stats fails"
+    },
+    {
+      "step": "check for null pointers when accessing key and value",
+      "protects_against": "null pointer dereference if key or value is missing from a stat entry"
+    },
+    {
+      "step": "limit the number of statistics processed",
+      "protects_against": "excessive memory consumption or long processing time from large number of statistics"
+    },
+    {
+      "step": "ensure memory is freed on all code paths",
+      "protects_against": "memory leak if the function exits without freeing allocated statistics memory"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer after retrieving statistics — protects against: null pointer dereference if memcache_get_stats fails",
+        "reasoning": "The implementation checks the return value of memcached_stat and returns an empty array if it fails, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointers when accessing key and value — protects against: null pointer dereference if key or value is missing from a stat entry",
+        "reasoning": "The implementation does not perform any explicit checks for null pointers when accessing keys or values from the stat entries. It assumes that the memcache_build_stats function returns valid data.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "limit the number of statistics processed — protects against: excessive memory consumption or long processing time from large number of statistics",
+        "reasoning": "The implementation does not use the 'limit' parameter passed to the function. It processes all statistics returned by memcached_stat, which could lead to excessive memory consumption or long processing time.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "ensure memory is freed on all code paths — protects against: memory leak if the function exits without freeing allocated statistics memory",
+        "reasoning": "The implementation frees the 'stats' memory at the end of the function, regardless of the code path taken. This ensures that the allocated memory is always freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer after retrieving statistics — protects against: null pointer dereference if memcache_get_stats fails",
+        "reasoning": "The implementation checks the return value of memcached_stat and returns an empty array if it fails, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointers when accessing key and value — protects against: null pointer dereference if key or value is missing from a stat entry",
+        "reasoning": "The implementation does not perform any explicit checks for null pointers when accessing key or value from the statistics. It assumes the data is valid.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "limit the number of statistics processed — protects against: excessive memory consumption or long processing time from large number of statistics",
+        "reasoning": "The implementation does not use the 'limit' parameter passed to the function. It processes all statistics returned by memcached_stat, which could lead to excessive memory consumption or long processing time.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "ensure memory is freed on all code paths — protects against: memory leak if the function exits without freeing allocated statistics memory",
+        "reasoning": "The implementation frees the 'stats' pointer at the end of the function, regardless of the code path taken. This ensures that the allocated memory is always freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

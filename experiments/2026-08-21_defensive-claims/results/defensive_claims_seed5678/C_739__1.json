@@ -1,0 +1,162 @@
+{
+  "case_id": "C_739__1",
+  "sample_id": "D/C/739",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-15921",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.6. There is a memory leak issue when idr_alloc() fails in genl_register_family() in net/netlink/genetlink.c.",
+  "changed_file": "net/netlink/genetlink.c",
+  "docstring": "/**\n * Summary: Registers a new generic netlink family.\n * \n * Parameters:\n * family (struct genl_family *): Pointer to the netlink family structure to be registered.\n * \n * Returns:\n * int: 0 on success, or a negative error code on failure.\n * \n * Logic: The function first validates the operations associated with the family. It then locks all generic netlink operations and checks if a family with the same name already exists. Special cases are handled for certain families that require reserved IDs. Memory for attributes is allocated if necessary. The family ID is allocated, and multicast group assignments are validated. After successful registration, events are sent to notify about the new family and its multicast groups. In case of errors, appropriate cleanup is performed before returning the error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int register_genl_family(struct genl_family *family) {\n    int err = 0;\n\n    if (!family) {\n        return -EINVAL;\n    }\n\n    if (family->version <= 0 || family->maxattr < 0) {\n        return -EINVAL;\n    }\n\n    if (family->ops && family->n_ops > 0) {\n        for (int i = 0; i < family->n_ops; i++) {\n            if (!family->ops[i].cmd || family->ops[i].cmd <= 0) {\n                return -EINVAL;\n            }\n            if (!family->ops[i].doit && !family->ops[i].dumpit) {\n                return -EINVAL;\n            }\n        }\n    }\n\n    if (family->id >= GENL_ID_MIN && family->id <= GENL_ID_MAX) {\n        return -EINVAL;\n    }\n\n    for (int i = 0; i < GENL_ID_MAX; i++) {\n        if (genl_families[i] && strcmp(genl_families[i]->name, family->name) == 0) {\n            return -EEXIST;\n        }\n    }\n\n    if (family->mcgrps && family->n_mcgrps > 0) {\n        for (int i = 0; i < family->n_mcgrps; i++) {\n            if (!family->mcgrps[i].name || strlen(family->mcgrps[i].name) == 0) {\n                return -EINVAL;\n            }\n            if (family->mcgrps[i].maxattr < 0) {\n                return -EINVAL;\n            }\n        }\n    }\n\n    if (family->id == 0) {\n        for (int i = GENL_ID_MIN; i <= GENL_ID_MAX; i++) {\n            if (!genl_families[i]) {\n                family->id = i;\n                break;\n            }\n        }\n        if (family->id == 0) {\n            return -ENOSPC;\n        }\n    }\n\n    genl_families[family->id] = family;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null family pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate family version and maxattr",
+      "protects_against": "invalid or negative values that could cause undefined behavior"
+    },
+    {
+      "step": "validate family operations",
+      "protects_against": "invalid operations that could cause undefined behavior or crashes"
+    },
+    {
+      "step": "check for duplicate family name",
+      "protects_against": "registering duplicate families with the same name"
+    },
+    {
+      "step": "validate multicast groups",
+      "protects_against": "invalid multicast group names or attributes"
+    },
+    {
+      "step": "check for reserved family ID",
+      "protects_against": "using reserved IDs that are not allowed for registration"
+    },
+    {
+      "step": "allocate family ID within valid range",
+      "protects_against": "running out of available IDs or using invalid IDs"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null family pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the family pointer is null before using it. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate family version and maxattr — protects against: invalid or negative values that could cause undefined behavior",
+        "reasoning": "The implementation does not explicitly validate the family version or maxattr values before using them in operations like memory allocation.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate family operations — protects against: invalid operations that could cause undefined behavior or crashes",
+        "reasoning": "The implementation calls genl_validate_ops(family), which is expected to validate the family operations.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for duplicate family name — protects against: registering duplicate families with the same name",
+        "reasoning": "The implementation calls genl_family_find_byname(family->name) to check if a family with the same name already exists.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate multicast groups — protects against: invalid multicast group names or attributes",
+        "reasoning": "The implementation calls genl_validate_assign_mc_groups(family), which is expected to validate the multicast groups.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for reserved family ID — protects against: using reserved IDs that are not allowed for registration",
+        "reasoning": "The implementation handles special cases for certain family names by assigning specific reserved IDs, but does not explicitly check if a non-special-case family is attempting to use a reserved ID.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "allocate family ID within valid range — protects against: running out of available IDs or using invalid IDs",
+        "reasoning": "The implementation uses idr_alloc with a defined range (start and end) to allocate the family ID within a valid range.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null family pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check for a null family pointer before dereferencing it (e.g., `family->name`, `family->maxattr`, `family->parallel_ops`, `family->attrbuf`). Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate family version and maxattr — protects against: invalid or negative values that could cause undefined behavior",
+        "reasoning": "The implementation does not explicitly validate the `family->version` or `family->maxattr` fields. It uses `family->maxattr` directly in a memory allocation (`kmalloc_array`) without checking if it is negative or invalid, which could lead to undefined behavior or memory allocation errors.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate family operations — protects against: invalid operations that could cause undefined behavior or crashes",
+        "reasoning": "The implementation calls `genl_validate_ops(family)` at the beginning of the function, which is expected to validate the family's operations. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for duplicate family name — protects against: registering duplicate families with the same name",
+        "reasoning": "The implementation calls `genl_family_find_byname(family->name)` to check if a family with the same name already exists. If it does, it returns `-EEXIST`. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate multicast groups — protects against: invalid multicast group names or attributes",
+        "reasoning": "The implementation calls `genl_validate_assign_mc_groups(family)` after assigning the family ID, which is expected to validate the multicast groups. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for reserved family ID — protects against: using reserved IDs that are not allowed for registration",
+        "reasoning": "The implementation includes special-case logic for certain family names (e.g., `genl_ctrl`, `pmcraid`, `VFS_DQUOT`) to assign specific reserved IDs. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate family ID within valid range — protects against: running out of available IDs or using invalid IDs",
+        "reasoning": "The implementation uses `idr_alloc` to assign a family ID within the range defined by `start` and `end`. For most cases, `start` is `GENL_START_ALLOC` and `end` is `GENL_MAX_ID`, ensuring the ID is within a valid range. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

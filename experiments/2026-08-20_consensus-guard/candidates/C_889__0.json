@@ -1,0 +1,34 @@
+{
+  "case_id": "C_889__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    ssize_t ret = 0;\n    struct hid_gadget_request *req;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        wait_event_interruptible(write_queue_wq, !write_pending);\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto unlock;\n        }\n    }\n\n    req = hid_gadget_request_alloc(count);\n    if (!req) {\n        ret = -ENOMEM;\n        goto unlock;\n    }\n\n    if (copy_from_user(req->data, buffer, count)) {\n        hid_gadget_request_free(req);\n        ret = -EFAULT;\n        goto unlock;\n    }\n\n    hid_gadget_queue_request(req);\n    write_pending = true;\n\n    wake_up(&write_queue_wq);\n    ret = count;\n\nunlock:\n    spin_unlock(&write_queue_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    struct hid_gadget *hid;\n    ssize_t ret = 0;\n    int status;\n\n    hid = file->private_data;\n    if (!hid)\n        return -ENODEV;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock_irq(&hid->write_queue_lock);\n\n    while (!hid->write_pending) {\n        status = wait_event_interruptible(hid->write_wq, hid->write_pending);\n        if (status < 0) {\n            ret = status;\n            goto out;\n        }\n    }\n\n    if (copy_from_user(hid->write_req->buf, buffer, count)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    hid->write_req->length = count;\n    usb_ep_queue(hid->ep_out, hid->write_req, GFP_ATOMIC);\n    hid->write_pending = false;\n\n    ret = count;\n    wake_up(&hid->write_wq);\n\nout:\n    spin_unlock_irq(&hid->write_queue_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    struct hid_gadget *gadget = file->private_data;\n    ssize_t ret = 0;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock_irq(&gadget->write_queue_lock);\n\n    while (atomic_read(&gadget->write_pending)) {\n        DECLARE_WAITQUEUE(wait, current);\n        add_wait_queue(&gadget->write_wait, &wait);\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        spin_unlock_irq(&gadget->write_queue_lock);\n        schedule();\n        remove_wait_queue(&gadget->write_wait, &wait);\n\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto out;\n        }\n\n        spin_lock_irq(&gadget->write_queue_lock);\n    }\n\n    atomic_set(&gadget->write_pending, 1);\n\n    if (copy_from_user(gadget->write_req->buf, buffer, count)) {\n        ret = -EFAULT;\n        goto unlock;\n    }\n\n    gadget->write_req->length = count;\n    usb_ep_queue(gadget->ep, gadget->write_req, GFP_ATOMIC);\n\n    atomic_set(&gadget->write_pending, 0);\n    wake_up(&gadget->write_queue_wait);\n\n    ret = count;\n\nunlock:\n    spin_unlock_irq(&gadget->write_queue_lock);\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    struct hid_gadget_dev *gdev = file->private_data;\n    ssize_t ret = 0;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock_irq(&gdev->qlock);\n\n    while (gdev->write_pending) {\n        ret = wait_event_interruptible(gdev->waitq, !gdev->write_pending);\n        if (ret < 0)\n            goto out;\n    }\n\n    ret = -ENOMEM;\n    gdev->write_pending = true;\n\n    ret = usbhid_submit_output(gdev, buffer, count);\n    if (ret < 0) {\n        gdev->write_pending = false;\n        ret = -EIO;\n        goto out;\n    }\n\n    ret = count;\n\n    wake_up(&gdev->waitq);\n\nout:\n    spin_unlock_irq(&gdev->qlock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    ssize_t ret;\n\n    if (!access_ok(buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        wait_event(write_queue_wait, !write_pending);\n    }\n\n    ret = copy_from_user(write_request->buf, buffer, count);\n    if (ret) {\n        ret = -EFAULT;\n        spin_unlock(&write_queue_lock);\n        return ret;\n    }\n\n    write_request->length = count;\n\n    if (!queue_write_request(write_request)) {\n        ret = -EIO;\n        write_pending = false;\n        wake_up(&write_queue_wait);\n    }\n\n    spin_unlock(&write_queue_lock);\n    return count;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

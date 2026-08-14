@@ -1,0 +1,60 @@
+{
+  "case_id": "C_583__0",
+  "sample_id": "D/C/583",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "keszybz/systemd",
+  "cve_id": "CVE-2015-7510",
+  "cve_summary": "Stack-based buffer overflow in the getpwnam and getgrnam functions of the NSS module nss-mymachines in systemd.",
+  "changed_file": "src/nss-mymachines/nss-mymachines.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves user account information based on the provided username in the format \"vu-<machine>-<uid>\".\n\nParameters: \nname (const char*): The username to look up.\npwd (struct passwd*): A pointer to a passwd structure to fill with user information.\nbuffer (char*): A buffer to store the username.\nbuflen (size_t): The length of the buffer.\nerrnop (int*): A pointer to an integer to store error codes.\n\nReturns: \nenum nss_status: Returns NSS_STATUS_SUCCESS on successful retrieval, NSS_STATUS_NOTFOUND if the user is not found, or NSS_STATUS_UNAVAIL if there is a failure in the process.\n\nLogic: \nThe function checks if the username starts with \"vu-\", extracts the machine name and UID, validates them, and then uses a system bus call to map the user. It populates the passwd structure with the retrieved information or returns appropriate status codes based on the outcome of the operations.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <errno.h>\n#include <sys/types.h>\n#include <pwd.h>\n\nenum nss_status {\n    NSS_STATUS_SUCCESS,\n    NSS_STATUS_NOTFOUND,\n    NSS_STATUS_UNAVAIL\n};\n\nenum nss_status get_user_account_info(const char* name, struct passwd* pwd, char* buffer, size_t buflen, int* errnop) {\n    if (!name || !pwd || !buffer || buflen == 0 || !errnop) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    if (strncmp(name, \"vu-\", 3) != 0) {\n        *errnop = 0;\n        return NSS_STATUS_NOTFOUND;\n    }\n\n    const char* machine_start = name + 3;\n    const char* uid_start = strchr(machine_start, '-');\n    if (!uid_start) {\n        *errnop = 0;\n        return NSS_STATUS_NOTFOUND;\n    }\n\n    size_t machine_len = (size_t)(uid_start - machine_start);\n    if (machine_len == 0) {\n        *errnop = 0;\n        return NSS_STATUS_NOTFOUND;\n    }\n\n    const char* uid_str = uid_start + 1;\n    char* endptr;\n    long uid = strtol(uid_str, &endptr, 10);\n    if (uid_str == endptr || *endptr != '\\0' || uid < 0 || uid > UID_MAX) {\n        *errnop = 0;\n        return NSS_STATUS_NOTFOUND;\n    }\n\n    // Simulate system bus call to map the user (placeholder logic)\n    // In a real implementation, this would interface with a system or database.\n    // For this example, we assume the user is always found.\n    pwd->pw_name = \"vu-user\";\n    pwd->pw_uid = (uid_t)uid;\n    pwd->pw_gid = (gid_t)uid;\n    pwd->pw_gecos = \"Virtual User\";\n    pwd->pw_dir = \"/home/vu-user\";\n    pwd->pw_shell = \"/bin/bash\";\n\n    *errnop = 0;\n    return NSS_STATUS_SUCCESS;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 6,
+    "reference_missing_steps": [
+      "input null checks",
+      "UID parsing with bounds check"
+    ],
+    "candidate_missing_steps": [
+      "machine name validation",
+      "buffer size check before copy"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs several defensive steps including validation of the machine name, buffer size checks before copying, and error handling for system bus calls. Implementation 2 performs input validation (null checks, buffer size check, and UID parsing with bounds), but lacks validation of the machine name and does not perform a buffer size check before copying the username into the buffer. The missing buffer size check in implementation 2 could lead to a buffer overflow if the username is longer than the buffer.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 2,
+    "candidate_exposure": 6,
+    "reference_missing_steps": [
+      "null_pointer_and_buffer_checks_at_entry"
+    ],
+    "candidate_missing_steps": [
+      "machine_name_validation",
+      "buffer_size_check_before_copy",
+      "bus_error_handling"
+    ],
+    "n_reference_missing": 1,
+    "n_candidate_missing": 3,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs several defensive steps not present in 2, including validating the machine name format, checking buffer size before copying, and handling error conditions via sd_bus. Implementation 2 performs additional defensive steps such as checking for null pointers and zero buffer lengths at the start of the function. However, 2 lacks bounds checks for string parsing and buffer copying, which could lead to memory-safety issues.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

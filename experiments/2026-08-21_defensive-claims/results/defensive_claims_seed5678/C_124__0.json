@@ -1,0 +1,98 @@
+{
+  "case_id": "C_124__0",
+  "sample_id": "D/C/124",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1180",
+  "cve_summary": "Multiple stack-based buffer overflows in the iriap_getvaluebyclass_indication function in net/irda/iriap.c in the Linux kernel before 2.6.39 allow remote attackers to cause a denial of service (memory corruption) or possibly have unspecified other impact by leveraging connectivity to an IrDA infrared network and sending a large integer value for a (1) name length or (2) attribute length.",
+  "changed_file": "net/irda/iriap.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the retrieval of attribute values by class indication in the IRDA protocol.\n\nParameters: \nself (struct iriap_cb *): Pointer to the IRDA control block.\nskb (struct sk_buff *): Pointer to the socket buffer containing the data.\n\nReturns: \nNone\n\nLogic: The function begins by validating the input parameters and extracting the class name and attribute name from the socket buffer. It processes the names for lookup against the available objects and attributes. If the specified object or attribute is not found, it sends a response indicating the error. If both are found, it retrieves the attribute value and sends a successful response with the value. Debugging information is logged throughout the process to assist in tracing execution and errors.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "void iriap_get_attr_by_class(struct iriap_cb *self, struct sk_buff *skb) {\n    const char *class_name = NULL;\n    const char *attr_name = NULL;\n    const char *attr_value = NULL;\n\n    if (!self || !skb) {\n        return;\n    }\n\n    class_name = (const char *)skb->data;\n    if (!class_name || !*class_name) {\n        return;\n    }\n\n    attr_name = class_name + strlen(class_name) + 1;\n    if (!attr_name || !*attr_name) {\n        return;\n    }\n\n    if (strlen(class_name) + 1 + strlen(attr_name) > skb->len) {\n        return;\n    }\n\n    attr_value = lookup_attribute_by_class(self, class_name, attr_name);\n    if (!attr_value) {\n        send_error_response(skb, \"Attribute not found\");\n        return;\n    }\n\n    send_success_response(skb, attr_value);\n}",
+  "defensive_steps": [
+    {
+      "step": "check self and skb for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check class_name and attr_name for null or empty",
+      "protects_against": "null or empty string dereference"
+    },
+    {
+      "step": "bound string lengths to skb buffer size",
+      "protects_against": "buffer overflow"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check self and skb for null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses IRDA_ASSERT macros to check that self and skb are not NULL before proceeding. These assertions ensure that the function does not dereference null pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check class_name and attr_name for null or empty — protects against: null or empty string dereference",
+        "reasoning": "The implementation extracts name_len and attr_len from the skb buffer and uses them to copy data into name and attr. However, it does not explicitly check if name_len or attr_len are zero, which could lead to empty strings being processed. There is no explicit check for null or empty strings.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "bound string lengths to skb buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation uses name_len and attr_len to copy data into fixed-size buffers (name and attr). However, it does not verify that the total length of the data being copied (n + name_len + attr_len) does not exceed the size of the skb buffer. This could lead to a buffer overflow if the data in skb is malformed or maliciously crafted.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check self and skb for null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses IRDA_ASSERT macros to check that self and skb are not null before proceeding. If either is null, the function returns early, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check class_name and attr_name for null or empty — protects against: null or empty string dereference",
+        "reasoning": "The implementation does not explicitly check for null or empty strings for class_name or attr_name. It assumes that the data in the skb is valid and directly copies it into the name and attr buffers. If the name_len or attr_len is zero or invalid, this could lead to an empty string dereference or buffer underflow.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound string lengths to skb buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation uses IRDA_ASSERT macros to ensure that name_len and attr_len are within the bounds of the name and attr buffers. However, it does not verify that the total data in skb is sufficient to hold the data being copied. If the skb is smaller than expected, this could lead to a buffer overflow.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

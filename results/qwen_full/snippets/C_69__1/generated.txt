@@ -1,0 +1,66 @@
+int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *m,
+                 size_t buf_len, int flags)
+{
+    int ret = 0;
+    struct sk_buff *skb;
+    size_t copied = 0;
+
+    if (!sock || !m || !buf_len)
+        return -EINVAL;
+
+    lock_sock(sock);
+
+    while ((skb = skb_peek(&sock->sk->sk_receive_queue)) == NULL) {
+        if (flags & MSG_DONTWAIT) {
+            ret = -EAGAIN;
+            goto out;
+        }
+
+        if (signal_pending(current)) {
+            ret = -EINTR;
+            goto out;
+        }
+
+        wait_for_receive(sock);
+    }
+
+    skb = skb_dequeue(&sock->sk->sk_receive_queue);
+    if (!skb) {
+        ret = -EFAULT;
+        goto out;
+    }
+
+    if (skb->len > buf_len) {
+        m->msg_flags |= MSG_TRUNC;
+        copied = buf_len;
+    } else {
+        copied = skb->len;
+    }
+
+    if (memcpy_toiovec(m->msg_iov, skb->data, copied)) {
+        ret = -EFAULT;
+        goto out_skb;
+    }
+
+    m->msg_namelen = sizeof(struct sockaddr_in);
+    m->msg_control = NULL;
+    m->msg_controllen = 0;
+
+    if (skb->pkt_type == PACKET_ERR) {
+        ret = -EIO;
+        goto out_skb;
+    }
+
+    if (copied == 0) {
+        ret = 0;
+        goto out_skb;
+    }
+
+    ret = copied;
+
+out_skb:
+    kfree_skb(skb);
+out:
+    release_sock(sock);
+    return ret;
+}

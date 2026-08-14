@@ -1,0 +1,146 @@
+{
+  "case_id": "C_96__0",
+  "sample_id": "D/C/96",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1819",
+  "cve_summary": "The _xfs_buf_find function in fs/xfs/xfs_buf.c in the Linux kernel before 3.7.6 does not validate block numbers, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by leveraging the ability to mount an XFS filesystem containing a metadata inode with an invalid extent map.",
+  "changed_file": "fs/xfs/xfs_buf.c",
+  "docstring": "/**\n * Summary: \n * Searches for a buffer in the buffer cache based on the provided block mapping and flags.\n * \n * Parameters:\n * btp (struct xfs_buftarg*): The buffer target containing filesystem information.\n * map (struct xfs_buf_map*): An array of block mappings to search for.\n * nmaps (int): The number of mappings in the array.\n * flags (xfs_buf_flags_t): Flags that modify the behavior of the buffer search.\n * new_bp (xfs_buf_t*): A pointer to a new buffer to insert if no match is found.\n * \n * Returns:\n * xfs_buf_t*: A pointer to the found or newly created buffer, or NULL if not found.\n * \n * Logic:\n * The function first calculates the total number of bytes to be searched and checks for alignment.\n * It then searches the buffer cache using the requested block mapping. If a matching buffer is\n * found, it checks if it is stale and attempts to lock it. If no match is found, it may insert a\n * new buffer into the tree. The function handles locking and reference counting appropriately to\n * ensure thread safety and proper resource management.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "xfs_buf_t* xfs_buf_search(struct xfs_buftarg *btp, struct xfs_buf_map *map, int nmaps, xfs_buf_flags_t flags, xfs_buf_t *new_bp) {\n    xfs_buf_t *bp = NULL;\n    int i;\n\n    if (!btp || !map || nmaps <= 0) {\n        return NULL;\n    }\n\n    for (i = 0; i < nmaps; i++) {\n        if (!map[i].bm_bn || map[i].bm_len <= 0) {\n            return NULL;\n        }\n    }\n\n    bp = xfs_buf_find(btp, map, nmaps, flags);\n    if (bp) {\n        if (bp->b_flags & XBF_STALE) {\n            xfs_buf_stale(bp);\n        }\n        if (xfs_buf_lock(bp)) {\n            return NULL;\n        }\n    } else {\n        if (new_bp) {\n            new_bp->b_maps = map;\n            new_bp->b_nmaps = nmaps;\n            new_bp->b_flags = flags;\n            if (xfs_buf_insert(btp, new_bp)) {\n                return NULL;\n            }\n            bp = new_bp;\n        }\n    }\n\n    return bp;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate nmaps is positive",
+      "protects_against": "invalid loop iteration count"
+    },
+    {
+      "step": "validate map entries",
+      "protects_against": "invalid buffer mapping data"
+    },
+    {
+      "step": "check for stale buffer",
+      "protects_against": "using invalid or outdated buffer data"
+    },
+    {
+      "step": "check buffer lock",
+      "protects_against": "concurrent modification of buffer"
+    },
+    {
+      "step": "initialize new buffer fields",
+      "protects_against": "uninitialized memory usage"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function is called with the assumption that the inputs are valid, and no null pointer dereference is reachable due to the use of the parameters in a context where they are expected to be non-null.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate nmaps is positive — protects against: invalid loop iteration count",
+        "reasoning": "The implementation uses `nmaps` in a loop (`for (i = 0; i < nmaps; i++)`). However, it does not explicitly validate that `nmaps` is positive. If `nmaps` is zero or negative, the loop will not execute or may cause undefined behavior.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate map entries — protects against: invalid buffer mapping data",
+        "reasoning": "The implementation uses `map[i].bm_bn` and `map[i].bm_len` in the loop, but does not validate the contents of the `map` entries. If the `map` contains invalid or corrupted data, this could lead to incorrect behavior or memory issues.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for stale buffer — protects against: using invalid or outdated buffer data",
+        "reasoning": "The implementation checks if a buffer is stale (`bp->b_flags & XBF_STALE`) and clears its external state if it is. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check buffer lock — protects against: concurrent modification of buffer",
+        "reasoning": "The implementation uses `xfs_buf_trylock` and `xfs_buf_lock` to attempt to lock the buffer. If the buffer is busy and the `XBF_TRYLOCK` flag is set, it returns early. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize new buffer fields — protects against: uninitialized memory usage",
+        "reasoning": "The implementation does not create a new buffer in this function. It only inserts a provided `new_bp` into the tree. Therefore, there is no need to initialize new buffer fields in this function.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 19,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function is likely called in a context where these parameters are already validated, and the use of `ASSERT` and direct dereference of `map` and `btp` implies that null pointers are not expected. If any of these were null, the code would crash or fail at runtime.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate nmaps is positive — protects against: invalid loop iteration count",
+        "reasoning": "The implementation uses `nmaps` in a loop (`for (i = 0; i < nmaps; i++)`). If `nmaps` is negative, this could lead to undefined behavior. However, the implementation does not explicitly check that `nmaps` is positive.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate map entries — protects against: invalid buffer mapping data",
+        "reasoning": "The implementation uses `map[i].bm_bn` and `map[i].bm_len` in the loop. If the `map` entries are invalid or corrupted, this could lead to incorrect behavior. However, the implementation does not explicitly validate the contents of the `map` entries.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for stale buffer — protects against: using invalid or outdated buffer data",
+        "reasoning": "The implementation checks if a buffer is stale (`bp->b_flags & XBF_STALE`) and clears its state if it is. This is a direct implementation of the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check buffer lock — protects against: concurrent modification of buffer",
+        "reasoning": "The implementation uses `xfs_buf_trylock` and `xfs_buf_lock` to ensure the buffer is locked before returning it. This prevents concurrent modification.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize new buffer fields — protects against: uninitialized memory usage",
+        "reasoning": "The implementation inserts `new_bp` into the tree and sets `new_bp->b_pag`, but does not explicitly initialize all fields of `new_bp`. If `new_bp` is expected to be fully initialized, this step is omitted.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

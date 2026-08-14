@@ -1,0 +1,49 @@
+{
+  "case_id": "C_99__0",
+  "sample_id": "D/C/99",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1774",
+  "cve_summary": "The chase_port function in drivers/usb/serial/io_ti.c in the Linux kernel before 3.7.4 allows local users to cause a denial of service (NULL pointer dereference and system crash) via an attempted /dev/ttyUSB read or write operation on a disconnected Edgeport USB serial converter.",
+  "changed_file": "drivers/usb/serial/io_ti.c",
+  "docstring": "\"\"\"\nSummary: \nThis function manages the process of waiting for data to drain from a specified edgeport serial port before closing it.\n\nParameters: \nport (struct edgeport_port *): Pointer to the edgeport port structure to be managed.\ntimeout (unsigned long): Maximum time to wait for data to drain, in jiffies.\nflush (int): Flag indicating whether to flush the write FIFO buffer.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function first retrieves the associated tty structure. It initializes a wait queue to manage the waiting process for data to drain from the write FIFO buffer. It enters a loop that checks for data availability, timeout conditions, and disconnection status. If the conditions are met, it exits the loop and optionally flushes the FIFO. It then waits for any remaining data to drain from the device, considering the baud rate for timing. The function ensures proper synchronization using spin locks and handles disconnection scenarios appropriately.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void chase_port(struct edgeport_port *v4, unsigned long v6,\n                                int v3)\n{\n    int v1;\n    struct tty_struct *v7 = tty_port_tty_get(&v4->v4->v4);\n    struct usb_serial *v5 = v4->v4->v5;\n    wait_queue_t v8;\n    unsigned long v2;\n    if (!v7)\n        return;\n    if (!v6)\n        v6 = (HZ * EDGE_CLOSING_WAIT)/100;\n    spin_lock_irqsave(&v4->ep_lock, v2);\n    init_waitqueue_entry(&v8, current);\n    add_wait_queue(&v7->write_wait, &v8);\n    for (;;) {\n        set_current_state(TASK_INTERRUPTIBLE);\n        if (kfifo_len(&v4->write_fifo) == 0\n        || v6 == 0 || signal_pending(current)\n        || v5->disconnected)\n            break;\n        spin_unlock_irqrestore(&v4->ep_lock, v2);\n        v6 = schedule_timeout(v6);\n        spin_lock_irqsave(&v4->ep_lock, v2);\n    }\n    set_current_state(TASK_RUNNING);\n    remove_wait_queue(&v7->write_wait, &v8);\n    if (v3)\n        kfifo_reset_out(&v4->write_fifo);\n    spin_unlock_irqrestore(&v4->ep_lock, v2);\n    tty_kref_put(v7);\n    v6 += jiffies;\n    while ((long)(jiffies - v6) < 0 && !signal_pending(current)\n                        && !v5->disconnected) {\n        if (!tx_active(v4))\n            break;\n        msleep(10);\n    }\n    if (v5->disconnected)\n        return;\n    v1 = v4->v1;\n    if (v1 == 0)\n        v1 = 50;\n    msleep(max(1, DIV_ROUND_UP(10000, v1)));\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle waiting for data to drain from the write FIFO buffer, manage timeouts, and flush the buffer if requested. The logic for handling disconnection, signal pending, and character time waiting is also the same. The only differences are in variable names and code formatting, which do not affect observable behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both functions implement the same logic for waiting for data to drain from the write FIFO buffer, handling timeouts, disconnection checks, and optional flushing. The only differences are in variable names and minor syntactic variations, which do not affect the observable behavior of the function for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

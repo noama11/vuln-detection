@@ -1,0 +1,48 @@
+{
+  "case_id": "C_147__0",
+  "sample_id": "D/C/147",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-5077",
+  "cve_summary": "The sctp_assoc_update function in net/sctp/associola.c in the Linux kernel through 3.15.8, when SCTP authentication is enabled, allows remote attackers to cause a denial of service (NULL pointer dereference and OOPS) by starting to establish an association between two endpoints immediately after an exchange of INIT and INIT ACK chunks to establish an earlier association between these endpoints in the opposite direction.",
+  "changed_file": "net/sctp/associola.c",
+  "docstring": "\"\"\"\nSummary: Updates the parameters of an existing SCTP association with new values from another association.\n\nParameters:\nasoc (struct sctp_association *): The existing association to be updated.\nnew (struct sctp_association *): The new association containing updated parameters.\n\nReturns: None\n\nLogic: The function first copies new parameters from the `new` association to the `asoc`. It then removes any peer addresses from `asoc` that are not present in `new`. If the association is established, it updates the next TSN and clears the SSN map, flushing the ULP reassembly queue and resetting the overall error count. If the association is not established, it adds new peer addresses and manages the SSN map and association ID. Finally, it updates peer parameters related to SCTP-AUTH, transferring shared keys and other authentication-related data from `new` to `asoc`.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void sctp_assoc_update(struct sctp_association *asoc,\r\n\t\t       struct sctp_association *new)\r\n{\r\n\tstruct sctp_transport *trans;\r\n\tstruct list_head *pos, *temp;\r\n\r\n\t/* Copy in new parameters of peer. */\r\n\tasoc->c = new->c;\r\n\tasoc->peer.rwnd = new->peer.rwnd;\r\n\tasoc->peer.sack_needed = new->peer.sack_needed;\r\n\tasoc->peer.auth_capable = new->peer.auth_capable;\r\n\tasoc->peer.i = new->peer.i;\r\n\tsctp_tsnmap_init(&asoc->peer.tsn_map, SCTP_TSN_MAP_INITIAL,\r\n\t\t\t asoc->peer.i.initial_tsn, GFP_ATOMIC);\r\n\r\n\t/* Remove any peer addresses not present in the new association. */\r\n\tlist_for_each_safe(pos, temp, &asoc->peer.transport_addr_list) {\r\n\t\ttrans = list_entry(pos, struct sctp_transport, transports);\r\n\t\tif (!sctp_assoc_lookup_paddr(new, &trans->ipaddr)) {\r\n\t\t\tsctp_assoc_rm_peer(asoc, trans);\r\n\t\t\tcontinue;\r\n\t\t}\r\n\r\n\t\tif (asoc->state >= SCTP_STATE_ESTABLISHED)\r\n\t\t\tsctp_transport_reset(trans);\r\n\t}\r\n\r\n\t/* If the case is A (association restart), use\r\n\t * initial_tsn as next_tsn. If the case is B, use\r\n\t * current next_tsn in case data sent to peer\r\n\t * has been discarded and needs retransmission.\r\n\t */\r\n\tif (asoc->state >= SCTP_STATE_ESTABLISHED) {\r\n\t\tasoc->next_tsn = new->next_tsn;\r\n\t\tasoc->ctsn_ack_point = new->ctsn_ack_point;\r\n\t\tasoc->adv_peer_ack_point = new->adv_peer_ack_point;\r\n\r\n\t\t/* Reinitialize SSN for both local streams\r\n\t\t * and peer's streams.\r\n\t\t */\r\n\t\tsctp_ssnmap_clear(asoc->ssnmap);\r\n\r\n\t\t/* Flush the ULP reassembly and ordered queue.\r\n\t\t * Any data there will now be stale and will\r\n\t\t * cause problems.\r\n\t\t */\r\n\t\tsctp_ulpq_flush(&asoc->ulpq);\r\n\r\n\t\t/* reset the overall association error count so\r\n\t\t * that the restarted association doesn't get torn\r\n\t\t * down on the next retransmission timer.\r\n\t\t */\r\n\t\tasoc->overall_error_count = 0;\r\n\r\n\t} else {\r\n\t\t/* Add any peer addresses from the new association. */\r\n\t\tlist_for_each_entry(trans, &new->peer.transport_addr_list,\r\n\t\t\t\ttransports) {\r\n\t\t\tif (!sctp_assoc_lookup_paddr(asoc, &trans->ipaddr))\r\n\t\t\t\tsctp_assoc_add_peer(asoc, &trans->ipaddr,\r\n\t\t\t\t\t\t    GFP_ATOMIC, trans->state);\r\n\t\t}\r\n\r\n\t\tasoc->ctsn_ack_point = asoc->next_tsn - 1;\r\n\t\tasoc->adv_peer_ack_point = asoc->ctsn_ack_point;\r\n\t\tif (!asoc->ssnmap) {\r\n\t\t\t/* Move the ssnmap. */\r\n\t\t\tasoc->ssnmap = new->ssnmap;\r\n\t\t\tnew->ssnmap = NULL;\r\n\t\t}\r\n\r\n\t\tif (!asoc->assoc_id) {\r\n\t\t\t/* get a new association id since we don't have one\r\n\t\t\t * yet.\r\n\t\t\t */\r\n\t\t\tsctp_assoc_set_id(asoc, GFP_ATOMIC);\r\n\t\t}\r\n\t}\r\n\r\n\t/* SCTP-AUTH: Save the peer parameters from the new associations\r\n\t * and also move the association shared keys over\r\n\t */\r\n\tkfree(asoc->peer.peer_random);\r\n\tasoc->peer.peer_random = new->peer.peer_random;\r\n\tnew->peer.peer_random = NULL;\r\n\r\n\tkfree(asoc->peer.peer_chunks);\r\n\tasoc->peer.peer_chunks = new->peer.peer_chunks;\r\n\tnew->peer.peer_chunks = NULL;\r\n\r\n\tkfree(asoc->peer.peer_hmacs);\r\n\tasoc->peer.peer_hmacs = new->peer.peer_hmacs;\r\n\tnew->peer.peer_hmacs = NULL;\r\n\r\n\tsctp_auth_key_put(asoc->asoc_shared_key);\r\n\tsctp_auth_asoc_init_active_key(asoc, GFP_ATOMIC);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in all observable behaviors. They both copy parameters from the `new` association to the `asoc`, remove peer addresses not present in `new`, handle established and non-established associations appropriately, and manage SCTP-AUTH parameters. There are no differences in logic or behavior that would affect the outcome for any input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in all observable behaviors. They both copy parameters from the new association to the existing one, remove peer addresses not present in the new association, handle established and non-established associations appropriately, and manage SCTP-AUTH parameters. There are no differences in logic or behavior that would affect the outcome for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

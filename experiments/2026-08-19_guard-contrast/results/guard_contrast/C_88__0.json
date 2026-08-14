@@ -1,0 +1,59 @@
+{
+  "case_id": "C_88__0",
+  "sample_id": "D/C/88",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-2015",
+  "cve_summary": "The ext4_orphan_del function in fs/ext4/namei.c in the Linux kernel before 3.7.3 does not properly handle orphan-list entries for non-journal filesystems, which allows physically proximate attackers to cause a denial of service (system hang) via a crafted filesystem on removable media, as demonstrated by the e2fsprogs tests/f_orphan_extents_inode/image.gz test.",
+  "changed_file": "fs/ext4/namei.c",
+  "docstring": "/**\n * Summary: \n * Removes an inode from the orphan list in an ext4 filesystem.\n * \n * Parameters:\n * handle (handle_t*): Transaction handle for journaling operations.\n * inode (struct inode*): The inode to be removed from the orphan list.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function first determines whether orphan-list processing is needed. It locks the orphan list\n * and checks if the inode is present. If the inode is found, it removes it from the list. If a\n * transaction handle is provided, it updates the orphan list on disk. The function handles\n * potential errors during the process and ensures proper cleanup before returning the result.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);\n    struct ext4_orphan *ohead = &sbi->s_orphan;\n    struct ext4_orphan *op;\n    int err = 0;\n\n    if (!ext4_has_feature_orphan(inode->i_sb))\n        return 0;\n\n    mutex_lock(&ohead->o_mutex);\n\n    list_for_each_entry(op, &ohead->o_list, o_list) {\n        if (op->o_ino == inode->i_ino) {\n            list_del(&op->o_list);\n            kfree(op);\n            break;\n        }\n    }\n\n    if (handle) {\n        err = ext4_handle_dirty_metadata(handle, NULL, ohead->o_inode);\n        if (err) {\n            mutex_unlock(&ohead->o_mutex);\n            return err;\n        }\n    }\n\n    mutex_unlock(&ohead->o_mutex);\n    return 0;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 7,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "null-pointer and error checks before using handle",
+      "bounds and state checks (e.g., list_empty)",
+      "proper buffer cleanup (brelse) and error propagation",
+      "inode write reservation and marking dirty",
+      "journaling access control (get_write_access)"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 5,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs several defensive steps not present in Implementation 2, including checking for a valid transaction handle before using it, reserving and marking inode writes as dirty, and handling errors with proper cleanup (e.g., unlocking and releasing buffers). It also includes bounds and state checks (e.g., checking if the list is empty). Implementation 2 lacks these steps and instead assumes the input is valid and the list entry exists, which could lead to use-after-free or null-pointer dereference if the entry is not found. Implementation 2 performs no error handling beyond a single check for a valid handle and does not clean up resources or validate the presence of the entry in the list.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 7,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "journal_write_access_check",
+      "inode_write_reservation",
+      "error_cleanup_with_brelse",
+      "explicit_inode_presence_check"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 4,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs several defensive steps not present in 2, including checking for a valid transaction handle before attempting to write to disk, reserving inode writes, acquiring journal write access, and handling errors with cleanup (e.g., brelse). It also validates the presence of the inode in the orphan list before attempting to remove it. Implementation 2 lacks these steps and instead uses a simplified list traversal and deletion without error handling or journaling safeguards. Implementation 2 performs a bounds-implicit check via list traversal, but this is not a defensive step in the same sense as the explicit checks in 1.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

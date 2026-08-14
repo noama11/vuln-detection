@@ -1,0 +1,59 @@
+{
+  "case_id": "C_104__1",
+  "sample_id": "D/C/104",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2013-1417",
+  "cve_summary": "do_tgs_req.c in the Key Distribution Center (KDC) in MIT Kerberos 5 (aka krb5) 1.11 before 1.11.4, when a single-component realm name is used, allows remote authenticated users to cause a denial of service (daemon crash) via a TGS-REQ request that triggers an attempted cross-realm referral for a host-based service principal.",
+  "changed_file": "src/kdc/do_tgs_req.c",
+  "docstring": "\"\"\"\nSummary: \nFinds the appropriate referral Ticket Granting Service (TGS) for a given KDC realm and request.\n\nParameters: \nkdc_active_realm (kdc_realm_t *): The currently active KDC realm.\nrequest (krb5_kdc_req *): The KDC request containing the server principal.\nkrbtgt_princ (krb5_principal *): Pointer to store the resulting TGT principal.\n\nReturns: \nkrb5_int32: Returns an error code indicating success or failure of the operation.\n\nLogic: \nThe function first checks if the request is a referral request. It then retrieves the hostname from the server principal and verifies it is a fully qualified domain name (FQDN). It attempts to find the realm associated with the hostname. If successful, it ensures that the realm is valid and not empty before constructing the TGT principal. The function cleans up allocated resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "krb5_int32 find_referral_tgs(kdc_realm_t *kdc_active_realm, krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = KRB5KDC_ERR_NONE;\n    krb5_data *hostname = NULL;\n    krb5_realm *target_realm = NULL;\n    krb5_principal tgs_princ = NULL;\n\n    if (!request || !krbtgt_princ) {\n        return KRB5KDC_ERR_BADOPTION;\n    }\n\n    /* Check if the request is a referral request */\n    if (!(request->padata && request->padata->length > 0)) {\n        return KRB5KDC_ERR_BAD_PVNO;\n    }\n\n    /* Extract hostname from server principal */\n    ret = krb5_unparse_name(kdc_active_realm->context, request->client, &hostname);\n    if (ret) {\n        return ret;\n    }\n\n    /* Verify it is a FQDN */\n    if (!krb5_is_fqdn(hostname->data)) {\n        krb5_free_data(kdc_active_realm->context, hostname);\n        return KRB5KDC_ERR_BAD_CLIENT;\n    }\n\n    /* Find the realm associated with the hostname */\n    ret = krb5_kdc_realm_find(kdc_active_realm->context, hostname->data, &target_realm);\n    if (ret) {\n        krb5_free_data(kdc_active_realm->context, hostname);\n        return ret;\n    }\n\n    /* Ensure the realm is valid and not empty */\n    if (!target_realm || !target_realm->realm || !target_realm->kdc) {\n        krb5_free_realm(kdc_active_realm->context, target_realm);\n        krb5_free_data(kdc_active_realm->context, hostname);\n        return KRB5KDC_ERR_REALM_CANT_ENCRYPT;\n    }\n\n    /* Construct the TGT principal */\n    ret = krb5_build_principal(kdc_active_realm->context, &tgs_princ, target_realm->realm->length,\n                               target_realm->realm->data, target_realm->kdc->length, target_realm->kdc->data, 0);\n    if (ret) {\n        krb5_free_realm(kdc_active_realm->context, target_realm);\n        krb5_free_data(kdc_active_realm->context, hostname);\n        return ret;\n    }\n\n    *krbtgt_princ = tgs_princ;\n\n    /* Clean up */\n    krb5_free_realm(kdc_active_realm->context, target_realm);\n    krb5_free_data(kdc_active_realm->context, hostname);\n\n    return ret;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null check on request and krbtgt_princ",
+      "check for padata presence",
+      "ensure target realm and KDC are non-empty"
+    ],
+    "candidate_missing_steps": [
+      "check for service realm equality",
+      "check for non-null hostname and FQDN"
+    ],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a check for a non-null hostname and a FQDN before proceeding, and ensures the retrieved realm is not empty or equal to the service realm. It also checks for memory allocation errors. Implementation 2 performs null checks on input parameters, validates the presence of padata in the request, and ensures the target realm and KDC are non-empty before using them. It also frees resources in error paths. The main difference is that implementation 2 includes input validation for the request and target realm, while implementation 1 lacks these but includes a check for the service realm equality.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 7,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null_pointer_check",
+      "error_check_after_function_call",
+      "resource_cleanup"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 is a code snippet that appears to be part of a larger function and does not contain the full logic of the function. It includes an error check and a cleanup jump, but no other defensive steps. Implementation 2 includes multiple defensive steps such as null checks, error checks after function calls, and resource cleanup. Implementation 1 omits all of these steps, leaving it exposed to potential memory leaks and invalid pointer usage. Implementation 2 does not omit any defensive steps that the other performs.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

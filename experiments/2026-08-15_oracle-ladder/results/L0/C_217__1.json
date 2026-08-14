@@ -1,0 +1,48 @@
+{
+  "case_id": "C_217__1",
+  "sample_id": "D/C/217",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4036",
+  "cve_summary": "Array index error in the tcm_vhost_make_tpg function in drivers/vhost/scsi.c in the Linux kernel before 4.0 might allow guest OS users to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted VHOST_SCSI_SET_ENDPOINT ioctl call.  NOTE: the affected function was renamed to vhost_scsi_make_tpg before the vulnerability was announced.",
+  "changed_file": "drivers/vhost/scsi.c",
+  "docstring": "/**\n * Summary: Creates a target portal group (TPG) for a SCSI virtual host.\n * \n * Parameters:\n * wwn (struct se_wwn *): The worldwide name associated with the TPG.\n * group (struct config_group *): The configuration group to which the TPG belongs.\n * name (const char *): The name of the TPG, expected to start with \"tpgt_\".\n * \n * Returns: \n * struct se_portal_group *: A pointer to the created TPG on success, or an error pointer on failure.\n * \n * Logic: The function validates the TPG name, allocates memory for the TPG structure, initializes it, and registers it with the core SCSI transport. If any step fails, appropriate error handling is performed, including memory cleanup and returning error codes. The new TPG is added to a global list of TPGs, ensuring thread safety with mutex locks.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static struct se_portal_group *\r\nvhost_scsi_make_tpg(struct se_wwn *wwn,\r\n\t\t   struct config_group *group,\r\n\t\t   const char *name)\r\n{\r\n\tstruct vhost_scsi_tport *tport = container_of(wwn,\r\n\t\t\tstruct vhost_scsi_tport, tport_wwn);\r\n\r\n\tstruct vhost_scsi_tpg *tpg;\r\n\tu16 tpgt;\r\n\tint ret;\r\n\r\n\tif (strstr(name, \"tpgt_\") != name)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\tif (kstrtou16(name + 5, 10, &tpgt) || tpgt >= VHOST_SCSI_MAX_TARGET)\r\n\t\treturn ERR_PTR(-EINVAL);\r\n\r\n\ttpg = kzalloc(sizeof(struct vhost_scsi_tpg), GFP_KERNEL);\r\n\tif (!tpg) {\r\n\t\tpr_err(\"Unable to allocate struct vhost_scsi_tpg\");\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\t}\r\n\tmutex_init(&tpg->tv_tpg_mutex);\r\n\tINIT_LIST_HEAD(&tpg->tv_tpg_list);\r\n\ttpg->tport = tport;\r\n\ttpg->tport_tpgt = tpgt;\r\n\r\n\tret = core_tpg_register(&vhost_scsi_fabric_configfs->tf_ops, wwn,\r\n\t\t\t\t&tpg->se_tpg, tpg, TRANSPORT_TPG_TYPE_NORMAL);\r\n\tif (ret < 0) {\r\n\t\tkfree(tpg);\r\n\t\treturn NULL;\r\n\t}\r\n\tmutex_lock(&vhost_scsi_mutex);\r\n\tlist_add_tail(&tpg->tv_tpg_list, &vhost_scsi_list);\r\n\tmutex_unlock(&vhost_scsi_mutex);\r\n\r\n\treturn &tpg->se_tpg;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they parse and validate the TPGT (target portal group tag) value. The candidate implementation uses `kstrtou16` and checks if the value is less than `VHOST_SCSI_MAX_TARGET`, while the reference implementation uses `kstrtoul` and checks if the value is less than or equal to `UINT_MAX`. This difference could lead to different behaviors for inputs where the TPGT exceeds 16 bits or exceeds `VHOST_SCSI_MAX_TARGET` but is within 32-bit limits. Since this is an input validation check and could be exploited via attacker-controlled input, it is security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both validate the TPG name, allocate memory, initialize the structure, register the TPG, and add it to a global list with thread safety. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

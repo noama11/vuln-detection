@@ -1,0 +1,31 @@
+{
+  "case_id": "Cpp_691__0",
+  "implementation": "#include <map>\n#include <string>\n#include <vector>\n\n// Assuming the existence of a Memcache client library with the following functions:\n// - memcached_stat(): retrieves statistics from a Memcache server\n// - memcached_stat_free(): frees the allocated statistics memory\n// - memcached_server_list(): returns a list of Memcache servers\n\nstd::map<std::string, std::map<std::string, std::string>> get_memcache_extended_stats(const std::string& type = \"\", int slabid = 0, int limit = 100) {\n    std::map<std::string, std::map<std::string, std::string>> result;\n    \n    // Retrieve statistics from the Memcache server\n    memcached_st* stats = memcached_stat();\n    if (!stats) {\n        return result; // Return empty map if retrieval fails\n    }\n\n    try {\n        // Get the list of servers\n        memcached_server_st* servers = memcached_server_list(stats);\n        size_t server_count = memcached_server_count(stats);\n\n        // Limit the number of servers to process\n        size_t servers_to_process = std::min(static_cast<size_t>(server_count), static_cast<size_t>(limit));\n\n        // Iterate through each server\n        for (size_t i = 0; i < servers_to_process; ++i) {\n            memcached_server_st* server = memcached_server_get(stats, i);\n            if (!server) {\n                continue; // Skip invalid server entries\n            }\n\n            // Construct a unique key for this server\n            std::string server_key = server->hostname + \":\" + std::to_string(server->port);\n\n            // Get statistics for this server\n            std::map<std::string, std::string> server_stats;\n            if (type.empty()) {\n                // Get all statistics\n                for (size_t j = 0; j < server->stat_count; ++j) {\n                    memcached_stat_st* stat = memcached_stat_get(stats, j);\n                    if (!stat) {\n                        continue;\n                    }\n                    server_stats[stat->key] = stat->value;\n                }\n            } else {\n                // Get statistics of a specific type\n                for (size_t j = 0; j < server->stat_count; ++j) {\n                    memcached_stat_st* stat = memcached_stat_get(stats, j);\n                    if (!stat) {\n                        continue;\n                    }\n                    if (stat->type == type) {\n                        server_stats[stat->key] = stat->value;\n                    }\n                }\n            }\n\n            // Filter by slab ID if provided\n            if (slabid > 0) {\n                std::map<std::string, std::string> filtered_stats;\n                for (const auto& [key, value] : server_stats) {\n                    if (key.find(\"slab_\" + std::to_string(slabid)) != std::string::npos) {\n                        filtered_stats[key] = value;\n                    }\n                }\n                server_stats = filtered_stats;\n            }\n\n            // Add the server statistics to the result\n            if (!server_stats.empty()) {\n                result[server_key] = server_stats;\n            }\n        }\n\n        // Free the allocated statistics memory\n        memcached_stat_free(stats);\n    } catch (...) {\n        // In case of any exception, ensure we free the allocated memory\n        memcached_stat_free(stats);\n        throw;\n    }\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of memcached_stat() before using it",
+      "protects_against": "null pointer dereference if memcached_stat() fails"
+    },
+    {
+      "step": "use try-catch block to ensure memory is freed on exceptions",
+      "protects_against": "resource leak if an exception occurs during processing"
+    },
+    {
+      "step": "validate server pointer before accessing its members",
+      "protects_against": "null pointer dereference when accessing server information"
+    },
+    {
+      "step": "use std::min to limit the number of servers processed",
+      "protects_against": "processing more servers than the limit parameter allows"
+    },
+    {
+      "step": "check for valid stat pointer before accessing its members",
+      "protects_against": "null pointer dereference when accessing statistics"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

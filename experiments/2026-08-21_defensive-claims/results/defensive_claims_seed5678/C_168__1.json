@@ -1,0 +1,98 @@
+{
+  "case_id": "C_168__1",
+  "sample_id": "D/C/168",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "paulusmack/ppp",
+  "cve_id": "CVE-2014-3158",
+  "cve_summary": "Integer overflow in the getword function in options.c in pppd in Paul's PPP Package (ppp) before 2.4.7 allows attackers to *access privileged options* via a long word in an options file, which triggers a heap-based buffer overflow that *[corrupts] security-relevant variables.*",
+  "changed_file": "pppd/options.c",
+  "docstring": "Summary: This code fragment processes characters from a file, handling escape sequences and quoted sections while building a word from the input.\n\nParameters: N/A\n\nReturns: N/A\n\nLogic: The code reads characters from a file until the end of the file (EOF) is reached. It manages escape sequences initiated by a backslash, interpreting specific characters (like 'n' for newline) and octal or hexadecimal sequences. If a character is not escaped, it checks for the start or end of quoted sections and handles whitespace or comment characters by breaking the loop. Valid characters are stored in a buffer called `word`. The loop continues to read characters until a break condition is met, ensuring proper handling of both escaped and ordinary characters.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n#define MAX_WORD_SIZE 1024\n\nvoid process_file(FILE *file) {\n    int ch;\n    char word[MAX_WORD_SIZE];\n    int word_index = 0;\n\n    while ((ch = fgetc(file)) != EOF) {\n        // Handle escape sequences\n        if (ch == '\\\\') {\n            ch = fgetc(file);\n            if (ch == EOF) {\n                break;\n            }\n            if (ch == 'n') {\n                ch = '\\n';\n            } else if (ch == 't') {\n                ch = '\\t';\n            } else if (ch >= '0' && ch <= '7') {\n                // Handle octal escape sequence\n                int octal_value = ch - '0';\n                int digits = 1;\n                ch = fgetc(file);\n                if (ch >= '0' && ch <= '7') {\n                    octal_value = (octal_value << 3) | (ch - '0');\n                    digits++;\n                    ch = fgetc(file);\n                    if (ch >= '0' && ch <= '7') {\n                        octal_value = (octal_value << 3) | (ch - '0');\n                        digits++;\n                    }\n                }\n                ch = octal_value;\n            } else if (ch == 'x') {\n                // Handle hexadecimal escape sequence\n                int hex_value = 0;\n                ch = fgetc(file);\n                if (ch != EOF) {\n                    do {\n                        if (ch >= '0' && ch <= '9') {\n                            hex_value = (hex_value << 4) | (ch - '0');\n                        } else if (ch >= 'a' && ch <= 'f') {\n                            hex_value = (hex_value << 4) | (ch - 'a' + 10);\n                        } else if (ch >= 'A' && ch <= 'F') {\n                            hex_value = (hex_value << 4) | (ch - 'A' + 10);\n                        } else {\n                            break;\n                        }\n                        ch = fgetc(file);\n                    } while (ch != EOF);\n                    ch = hex_value;\n                }\n            }\n        }\n\n        // Store character in word buffer\n        if (word_index < MAX_WORD_SIZE - 1) {\n            word[word_index++] = ch;\n        }\n    }\n\n    word[word_index] = '\\0'; // Null-terminate the word\n}",
+  "defensive_steps": [
+    {
+      "step": "bound copy length to destination capacity",
+      "protects_against": "buffer overflow when storing characters in the word buffer"
+    },
+    {
+      "step": "check for EOF after reading escape sequence characters",
+      "protects_against": "undefined behavior from using invalid characters after EOF"
+    },
+    {
+      "step": "validate octal and hexadecimal escape sequence characters",
+      "protects_against": "malformed escape sequences that could cause incorrect character interpretation"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow when storing characters in the word buffer",
+        "reasoning": "The implementation checks if `len < MAXWORDLEN-1` before writing to `word[len]`, ensuring that the buffer does not overflow. This is done both for escaped characters and for ordinary characters.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for EOF after reading escape sequence characters — protects against: undefined behavior from using invalid characters after EOF",
+        "reasoning": "The implementation reads characters after escape sequences (e.g., octal or hexadecimal sequences) without checking if EOF has been reached. For example, in the octal case, it reads up to three characters without verifying if `getc(f)` returns EOF. This could lead to undefined behavior if EOF is encountered during the sequence.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate octal and hexadecimal escape sequence characters — protects against: malformed escape sequences that could cause incorrect character interpretation",
+        "reasoning": "The implementation validates octal characters using `isoctal(c)` and hexadecimal characters using `isxdigit(c)`. It processes only valid digits for octal and hexadecimal escape sequences, ensuring that malformed sequences are not interpreted incorrectly.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow when storing characters in the word buffer",
+        "reasoning": "The implementation checks if `len < MAXWORDLEN` before storing a character in `word[len]`. This ensures that the character is only stored if there is space in the buffer, preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for EOF after reading escape sequence characters — protects against: undefined behavior from using invalid characters after EOF",
+        "reasoning": "The implementation reads characters using `getc(f)` during escape sequence processing, but it does not explicitly check for EOF after reading escape sequence characters. If `getc(f)` returns EOF during escape sequence processing, the code may attempt to process invalid characters.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate octal and hexadecimal escape sequence characters — protects against: malformed escape sequences that could cause incorrect character interpretation",
+        "reasoning": "The implementation validates octal characters using `isoctal(c)` and hexadecimal characters using `isxdigit(c)`. It processes only valid octal and hexadecimal characters, ensuring correct character interpretation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

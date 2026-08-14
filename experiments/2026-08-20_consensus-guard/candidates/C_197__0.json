@@ -1,0 +1,34 @@
+{
+  "case_id": "C_197__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/futex.h>\n#include <linux/uaccess.h>\n#include <linux/sched.h>\n#include <linux/ktime.h>\n\nint handle_futex_wait_requeue(u32 __user *uaddr, unsigned int flags, u32 val,\n                              ktime_t *abs_time, u32 bitset, u32 __user *uaddr2)\n{\n    struct hrtimer timer;\n    struct futex_waiter *waiter;\n    int ret = -EINVAL;\n\n    if (!uaddr || !uaddr2 || (flags & ~FUTEX_CMD_MASK))\n        return -EINVAL;\n\n    if (abs_time) {\n        hrtimer_init(&timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);\n        timer.function = NULL; /* Placeholder, actual function depends on implementation */\n        ret = hrtimer_start(&timer, *abs_time, HRTIMER_MODE_ABS);\n        if (ret < 0)\n            return ret;\n    }\n\n    waiter = kmalloc(sizeof(*waiter), GFP_KERNEL);\n    if (!waiter)\n        return -ENOMEM;\n\n    waiter->bitset = bitset;\n    waiter->flags = flags;\n\n    ret = futex_wait(uaddr, flags, val, abs_time, waiter);\n    if (ret < 0) {\n        kfree(waiter);\n        return ret;\n    }\n\n    ret = futex_requeue(uaddr, uaddr2, flags, val, bitset);\n    if (ret < 0) {\n        kfree(waiter);\n        return ret;\n    }\n\n    kfree(waiter);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int handle_futex_wait_requeue(u32 __user *uaddr, unsigned int flags, u32 val,\n                              ktime_t *abs_time, u32 bitset, u32 __user *uaddr2) {\n    int ret;\n    struct hrtimer timer;\n    struct futex_q q;\n    union wait_bitq wq;\n\n    if ((flags & FUTEX_PRIVATE_FLAG) == 0) {\n        return -EINVAL;\n    }\n\n    if (abs_time) {\n        hrtimer_init(&timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);\n        timer.function = futex_hrtimer_callback;\n        ret = hrtimer_start(&timer, *abs_time, HRTIMER_MODE_ABS);\n        if (ret) {\n            return ret;\n        }\n    }\n\n    futex_init_wait_queue(&wq, current);\n    futex_init_q(&q, uaddr, val, bitset, flags, &wq);\n\n    ret = futex_wait(&q);\n    if (ret == 0) {\n        ret = futex_requeue(uaddr2, bitset, &q);\n    }\n\n    if (abs_time) {\n        hrtimer_cancel(&timer);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/futex.h>\n#include <linux/sched.h>\n#include <linux/errno.h>\n\nint futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags, u32 val,\n                          ktime_t *abs_time, u32 bitset, u32 __user *uaddr2) {\n    int ret = 0;\n    struct hrtimer timer;\n    struct futex_q q;\n\n    if (flags & FUTEX_PRIVATE_FLAG) {\n        return -EINVAL;\n    }\n\n    if (abs_time) {\n        hrtimer_init(&timer, CLOCK_REALTIME, HRTIMER_MODE_ABS);\n        timer.function = NULL;\n        // Assume timer setup based on abs_time\n    }\n\n    futex_init_q(&q, uaddr, val, flags & ~FUTEX_PRIVATE_FLAG, bitset);\n\n    ret = futex_wait(&q, abs_time, NULL);\n    if (ret < 0) {\n        return ret;\n    }\n\n    // Handle requeue\n    ret = futex_requeue(&q, uaddr2, 1);\n    if (ret < 0) {\n        return ret;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int futex_wait_requeue(u32 __user *uaddr, unsigned int flags, u32 val,\n                       ktime_t *abs_time, u32 bitset, u32 __user *uaddr2) {\n    struct hrtimer s_timer;\n    struct hrtimer_sleeper timeout;\n    int ret;\n\n    if (abs_time) {\n        hrtimer_init_sleeper(&timeout, &s_timer, HRTIMER_MODE_ABS);\n        ret = hrtimer_start_sleeper(&timeout, *abs_time);\n        if (ret)\n            return ret;\n    }\n\n    ret = futex_wait(uaddr, flags, val, abs_time, bitset);\n    if (ret)\n        return ret;\n\n    ret = futex_requeue(uaddr, flags, uaddr2);\n    if (ret) {\n        if (abs_time)\n            hrtimer_cancel_sleeper(&timeout);\n        return ret;\n    }\n\n    if (abs_time)\n        hrtimer_cancel_sleeper(&timeout);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/futex.h>\n#include <linux/sched.h>\n#include <linux/ktime.h>\n\nint futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags, u32 val,\n                          ktime_t *abs_time, u32 bitset, u32 __user *uaddr2)\n{\n    int ret = 0;\n    struct hrtimer sht_timer;\n    struct futex_q q = { };\n    int timeout_set = 0;\n\n    if (flags & FUTEX_PRIVATE_FLAG) {\n        return -EINVAL;\n    }\n\n    if (abs_time) {\n        hrtimer_init(&sht_timer, CLOCK_REALTIME, HRTIMER_MODE_ABS);\n        sht_timer.function = futex_setup_timer;\n        hrtimer_set_expires(&sht_timer, ktime_get());\n        timeout_set = 1;\n    }\n\n    q.pi_state = NULL;\n    q.bitset = bitset;\n    q.requeue_pi_key = NULL;\n    q.key = FUTEX_KEY_INIT;\n\n    if (flags & FUTEX_REQUEUE_PI) {\n        ret = futex_lock_pi(uaddr, flags, val, abs_time, &q, NULL);\n    } else {\n        ret = futex_wait(uaddr, flags, val, abs_time, bitset, &q);\n    }\n\n    if (ret == 0) {\n        ret = futex_requeue(uaddr2, flags, val, bitset, &q);\n    }\n\n    if (timeout_set) {\n        hrtimer_cancel(&sht_timer);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_414__0",
+  "sample_id": "D/C/414",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-12663",
+  "cve_summary": "ImageMagick 7.0.6-2 has a memory leak vulnerability in WriteMAPImage in coders/map.c.",
+  "changed_file": "coders/map.c",
+  "docstring": "Summary:  \nUnregisters the \"MAP\" image format from the Magick library and writes an image to a file in MAP format, including colormap bytes and pixel indexes.\n\nParameters:  \nimage_info (const ImageInfo *): Contains information about the image to be written.  \nimage (Image *): The image object that is being processed.\n\nReturns:  \nMagickBooleanType: Indicates success (MagickTrue) or failure (MagickFalse) of the write operation.\n\nLogic: The function first validates the input parameters and opens the output file for writing. It transforms the image colorspace to sRGB and allocates memory for the colormap and pixel data. It then writes the colormap to the file, handling both 256-color and higher-color images. Finally, it writes the pixel indexes to the file. If any memory allocation fails, it throws an exception.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "MagickBooleanType WriteMAPImage(const ImageInfo *image_info, Image *image) {\n  MagickBooleanType status = MagickTrue;\n  FILE *file = (FILE *) NULL;\n  size_t colormap_size = 0;\n  unsigned char *colormap = (unsigned char *) NULL;\n  unsigned char *pixels = (unsigned char *) NULL;\n\n  if ((image_info == (ImageInfo *) NULL) || (image == (Image *) NULL))\n    return (MagickFalse);\n\n  if (image->storage_class != PseudoClass) {\n    (void) TransformImageColorspace(image, sRGBColorspace);\n    if (image->storage_class != PseudoClass)\n      return (MagickFalse);\n  }\n\n  if (image->colors > 256) {\n    colormap_size = image->colors * 3;\n    colormap = (unsigned char *) AcquireQuantumMemory(image->colors, 3 * sizeof(*colormap));\n    if (colormap == (unsigned char *) NULL)\n      return (MagickFalse);\n\n    for (size_t i = 0; i < image->colors; i++) {\n      colormap[i * 3 + 0] = ClampToQuantum(image->colormap[i].red);\n      colormap[i * 3 + 1] = ClampToQuantum(image->colormap[i].green);\n      colormap[i * 3 + 2] = ClampToQuantum(image->colormap[i].blue);\n    }\n\n    if (fwrite(colormap, 1, colormap_size, image->file) != colormap_size) {\n      status = MagickFalse;\n      goto cleanup;\n    }\n  }\n\n  pixels = (unsigned char *) AcquireQuantumMemory(image->columns * image->rows, sizeof(*pixels));\n  if (pixels == (unsigned char *) NULL) {\n    status = MagickFalse;\n    goto cleanup;\n  }\n\n  for (size_t y = 0; y < image->rows; y++) {\n    for (size_t x = 0; x < image->columns; x++) {\n      pixels[y * image->columns + x] = image->pixels[y * image->columns + x].index;\n    }\n  }\n\n  if (fwrite(pixels, 1, image->columns * image->rows, image->file) != image->columns * image->rows) {\n    status = MagickFalse;\n    goto cleanup;\n  }\n\n  cleanup:\n  if (colormap != (unsigned char *) NULL)\n    colormap = RelinquishQuantumMemory(colormap);\n  if (pixels != (unsigned char *) NULL)\n    pixels = RelinquishQuantumMemory(pixels);\n\n  return (status);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate storage class and colorspace",
+      "protects_against": "invalid image data format"
+    },
+    {
+      "step": "allocate memory with error checking",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check file write operations",
+      "protects_against": "file write failure"
+    },
+    {
+      "step": "release allocated memory",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `assert()` to verify that `image_info` and `image` are not null and have the correct signature. These checks prevent null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate storage class and colorspace — protects against: invalid image data format",
+        "reasoning": "The implementation calls `TransformImageColorspace(image, sRGBColorspace)` to ensure the image is in the correct colorspace. It also checks if the image is a palette image and sets the image type to PaletteType if not. These steps validate the image data format.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory with error checking — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `pixels` and `colormap` using `AcquireQuantumMemory()` and checks if the allocations succeed. If either allocation fails, it throws an exception with the message 'MemoryAllocationFailed'.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file write operations — protects against: file write failure",
+        "reasoning": "The implementation opens the file using `OpenBlob()` and checks the return value. However, it does not check the return value of `WriteBlob()` calls, which could fail. This omission could leave the function unaware of write failures.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "release allocated memory — protects against: memory leak",
+        "reasoning": "The implementation calls `RelinquishMagickMemory()` on both `pixels` and `colormap` after they are no longer needed, ensuring that the allocated memory is properly released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `assert()` to verify that `image_info` and `image` are not NULL and have valid signatures. These checks prevent null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate storage class and colorspace — protects against: invalid image data format",
+        "reasoning": "The implementation calls `TransformImageColorspace(image, sRGBColorspace)` to ensure the image is in the correct colorspace. It also checks if the image is a palette image and converts it to PaletteType if not. These steps validate the image data format.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory with error checking — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `pixels` and `colormap` using `AcquireQuantumMemory()` and checks if the allocations succeed. If either allocation fails, it releases any allocated memory and throws an exception.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file write operations — protects against: file write failure",
+        "reasoning": "The implementation opens the file using `OpenBlob()` and checks if it succeeds. However, it does not explicitly check the return value of `WriteBlob()` for errors during the writing of the colormap or pixel data. If a write fails, the function may continue processing, which could lead to incomplete or corrupted output.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "release allocated memory — protects against: memory leak",
+        "reasoning": "The implementation releases the memory allocated for `colormap` and `pixels` using `RelinquishMagickMemory()` after they are no longer needed. This prevents memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

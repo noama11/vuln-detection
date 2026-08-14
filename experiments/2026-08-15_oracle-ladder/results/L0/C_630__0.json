@@ -1,0 +1,48 @@
+{
+  "case_id": "C_630__0",
+  "sample_id": "D/C/630",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-14734",
+  "cve_summary": "drivers/infiniband/core/ucma.c in the Linux kernel through 4.17.11 allows ucma_leave_multicast to access a certain data structure after a cleanup step in ucma_process_join, which allows attackers to cause a denial of service (use-after-free).",
+  "changed_file": "drivers/infiniband/core/ucma.c",
+  "docstring": "\"\"\"\nSummary: Allocates and initializes a multicast structure for a given context.\n\nParameters:\nctx (struct ucma_context*): Pointer to the context in which the multicast is being allocated.\n\nReturns:\nstruct ucma_multicast*: Pointer to the allocated multicast structure on success, or NULL on failure.\n\nLogic: The function allocates memory for a `ucma_multicast` structure using `kzalloc`. It locks a mutex to safely allocate a unique ID from an IDR (ID Radix Tree) and assigns it to the multicast structure. If the ID allocation fails, it cleans up by freeing the allocated memory and returns NULL. If successful, it associates the multicast structure with the provided context and adds it to the context's multicast list before returning the pointer to the newly created structure.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static struct ucma_multicast* ucma_alloc_multicast(struct ucma_context *ctx)\r\n{\r\n\tstruct ucma_multicast *mc;\r\n\r\n\tmc = kzalloc(sizeof(*mc), GFP_KERNEL);\r\n\tif (!mc)\r\n\t\treturn NULL;\r\n\r\n\tmutex_lock(&mut);\r\n\tmc->id = idr_alloc(&multicast_idr, NULL, 0, 0, GFP_KERNEL);\r\n\tmutex_unlock(&mut);\r\n\tif (mc->id < 0)\r\n\t\tgoto error;\r\n\r\n\tmc->ctx = ctx;\r\n\tlist_add_tail(&mc->list, &ctx->mc_list);\r\n\treturn mc;\r\n\r\nerror:\r\n\tkfree(mc);\r\n\treturn NULL;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the `idr_alloc` call: the candidate implementation passes `NULL` as the second argument, while the reference implementation passes `mc`. This difference is significant because the second argument to `idr_alloc` is the pointer to associate with the allocated ID in the IDR. If the IDR is later used to retrieve the object via `idr_find`, the reference implementation will correctly return the `mc` pointer, while the candidate implementation will return `NULL`. This is a security-relevant issue if the IDR is used for tracking or managing the multicast structures, as it could lead to incorrect or missing references, potentially causing use-after-free or double-free vulnerabilities.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations are identical in code and logic. They allocate memory for the multicast structure, lock a mutex to assign a unique ID, handle failure by freeing memory, and associate the structure with the context. There is no observable behavioral difference.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "case_id": "C_303__0",
+  "sample_id": "D/C/303",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-3137",
+  "cve_summary": "drivers/usb/serial/cypress_m8.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a USB device without both an interrupt-in and an interrupt-out endpoint descriptor, related to the cypress_generic_port_probe and cypress_open functions.",
+  "changed_file": "drivers/usb/serial/cypress_m8.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Probes a Cypress USB serial port to initialize its private data structure  \n * and configure the necessary settings for communication.  \n *  \n * Parameters:  \n * port (struct usb_serial_port*): Pointer to the USB serial port to be probed.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function allocates memory for the private data structure, initializes locks and FIFO buffers,\n * and configures packet format based on the interrupt output size. It also handles special cases\n * for certain devices and sets the read/write intervals based on provided values or defaults.\n * Finally, it associates the private data with the port and sets a drain delay before returning the\n * success status.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *priv;\n    int ret = -ENOMEM;\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return ret;\n\n    spin_lock_init(&priv->lock);\n    priv->in_fifo = usb_fifo_alloc(port->serial->dev, 0, GFP_KERNEL);\n    priv->out_fifo = usb_fifo_alloc(port->serial->dev, 0, GFP_KERNEL);\n\n    if (!priv->in_fifo || !priv->out_fifo) {\n        usb_fifo_free(priv->in_fifo);\n        usb_fifo_free(priv->out_fifo);\n        kfree(priv);\n        return -ENOMEM;\n    }\n\n    if (port->serial->num_ports > 1)\n        priv->packet_format = PACKET_FORMAT_BULK;\n    else\n        priv->packet_format = PACKET_FORMAT_INTERRUPT;\n\n    priv->read_interval = port->read_urb->interval;\n    priv->write_interval = port->write_urb->interval;\n\n    /* Set drain delay for the device */\n    priv->drain_delay = 10;\n\n    usb_set_serial_port_data(port, priv);\n\n    return 0;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 1,
+    "reference_missing_steps": [
+      "null check on both in_fifo and out_fifo allocations"
+    ],
+    "candidate_missing_steps": [
+      "check for success of kfifo_alloc"
+    ],
+    "n_reference_missing": 1,
+    "n_candidate_missing": 1,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a bounds check on the allocation of FIFO buffers and ensures both are non-null before proceeding, freeing them if either allocation fails. It also uses kzalloc to zero-initialize memory. Implementation 2 uses kzalloc and performs a bounds check on the kfifo_alloc result, but does not include a check for the success of usb_reset_configuration. Implementation 1 lacks the usb_reset_configuration check, while Implementation 2 lacks the dual null check on FIFO buffers. Neither omission is directly reachable in the other's code structure.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 1,
+    "candidate_exposure": 1,
+    "reference_missing_steps": [
+      "null_check_for_fifo_buffers"
+    ],
+    "candidate_missing_steps": [
+      "null_check_for_required_endpoints"
+    ],
+    "n_reference_missing": 1,
+    "n_candidate_missing": 1,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check on the allocation of FIFO buffers and ensures both are non-null before proceeding, while implementation 2 does not perform a similar check for its write_fifo allocation. Implementation 2 performs a validation check for the presence of required endpoints, which implementation 1 does not. These differences result in low exposure for both implementations, as the omitted checks are either unreachable or unlikely to cause serious issues.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

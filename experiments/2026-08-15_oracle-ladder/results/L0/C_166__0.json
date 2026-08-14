@@ -1,0 +1,48 @@
+{
+  "case_id": "C_166__0",
+  "sample_id": "D/C/166",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3183",
+  "cve_summary": "Heap-based buffer overflow in the logi_dj_ll_raw_request function in drivers/hid/hid-logitech-dj.c in the Linux kernel before 3.16.2 allows physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that specifies a large report size for an LED report.",
+  "changed_file": "drivers/hid/hid-logitech-dj.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Sends a raw HID request to a DJ receiver device.  \n *  \n * Parameters:  \n * hid (struct hid_device *): Pointer to the HID device structure.  \n * reportnum (unsigned char): The report number to be sent.  \n * buf (__u8 *): Pointer to the buffer containing data to send.  \n * count (size_t): The number of bytes to send from the buffer.  \n * report_type (unsigned char): The type of report being sent.  \n * reqtype (int): The type of request to be made.  \n *  \n * Returns:  \n * int: The result of the HID request operation, or an error code.  \n *  \n * Logic:  \n * The function first checks if the buffer's first byte indicates a valid report type.  \n * It allocates memory for the output buffer, prepares the data to be sent, and  \n * performs the HID raw request. Finally, it frees the allocated memory and returns  \n * the result of the request.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int logi_dj_ll_raw_request(struct hid_device *hid,\r\n\t\t\t\t  unsigned char reportnum, __u8 *buf,\r\n\t\t\t\t  size_t count, unsigned char report_type,\r\n\t\t\t\t  int reqtype)\r\n{\r\n\tstruct dj_device *djdev = hid->driver_data;\r\n\tstruct dj_receiver_dev *djrcv_dev = djdev->dj_receiver_dev;\r\n\tu8 *out_buf;\r\n\tint ret;\r\n\r\n\tif (buf[0] != REPORT_TYPE_LEDS)\r\n\t\treturn -EINVAL;\r\n\r\n\tout_buf = kzalloc(DJREPORT_SHORT_LENGTH, GFP_ATOMIC);\r\n\tif (!out_buf)\r\n\t\treturn -ENOMEM;\r\n\r\n\tif (count > DJREPORT_SHORT_LENGTH - 2)\r\n\t\tcount = DJREPORT_SHORT_LENGTH - 2;\r\n\r\n\tout_buf[0] = REPORT_ID_DJ_SHORT;\r\n\tout_buf[1] = djdev->device_index;\r\n\tmemcpy(out_buf + 2, buf, count);\r\n\r\n\tret = hid_hw_raw_request(djrcv_dev->hdev, out_buf[0], out_buf,\r\n\t\tDJREPORT_SHORT_LENGTH, report_type, reqtype);\r\n\r\n\tkfree(out_buf);\r\n\treturn ret;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the `count` parameter. The candidate implementation caps `count` at `DJREPORT_SHORT_LENGTH - 2` if it is larger, while the reference implementation sets `count` to `DJREPORT_SHORT_LENGTH - 2` if it is smaller. This difference affects the amount of data copied from `buf` to `out_buf`, which could lead to different behavior in the HID request depending on the input size. This is a behavioral difference that could affect the correctness of the request for certain inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in their code and logic. Both perform the same checks, memory allocations, data copying, and HID request operations. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

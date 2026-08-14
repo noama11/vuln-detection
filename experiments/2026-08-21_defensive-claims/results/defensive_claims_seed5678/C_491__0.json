@@ -1,0 +1,114 @@
+{
+  "case_id": "C_491__0",
+  "sample_id": "D/C/491",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "bitlbee/bitlbee",
+  "cve_id": "CVE-2017-5668",
+  "cve_summary": "bitlbee-libpurple before 3.5.1 allows remote attackers to cause a denial of service (NULL pointer dereference and crash) and possibly execute arbitrary code via a file transfer request for a contact that is not in the contact list.  NOTE: this vulnerability exists because of an incomplete fix for CVE-2016-10189.",
+  "changed_file": "protocols/purple/ft.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Callback function for handling the initiation of a new file transfer.  \n *  \n * Parameters:  \n * data (gpointer): Pointer to the transfer data.  \n * fd (gint): File descriptor associated with the transfer.  \n * cond (b_input_condition): Condition indicating the state of the input.  \n *  \n * Returns:  \n * gboolean: Returns FALSE indicating that the transfer initiation was not successful.  \n *  \n * Logic:\n * The function retrieves the transfer object and the associated connection, finds the buddy to whom\n * the file is being sent, and starts the file transfer. It sets up various callbacks for the\n * transfer and associates the transfer data with the file transfer object.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "gboolean handle_new_file_transfer(gpointer data, gint fd, b_input_condition cond) {\n    TransferData *transfer_data = (TransferData *)data;\n    if (!transfer_data) {\n        return FALSE;\n    }\n\n    Connection *connection = transfer_data->connection;\n    if (!connection) {\n        return FALSE;\n    }\n\n    Buddy *buddy = find_buddy(connection, transfer_data->buddy_id);\n    if (!buddy) {\n        return FALSE;\n    }\n\n    FileTransfer *file_transfer = create_file_transfer(buddy, transfer_data->file_path);\n    if (!file_transfer) {\n        return FALSE;\n    }\n\n    file_transfer->data = transfer_data;\n\n    setup_callbacks(file_transfer, fd, cond);\n\n    return FALSE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if transfer_data is NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if connection is NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if buddy is NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if file_transfer is NULL",
+      "protects_against": "null pointer dereference"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 28,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if transfer_data is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences 'data' as 'PurpleXfer *xfer = data;' and uses 'xfer->account' and 'xfer->ui_data'. There is no check for NULL before dereferencing.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if connection is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation retrieves 'ic' via 'purple_ic_by_pa(xfer->account)' and uses it in 'imcb_file_send_start(ic, ...)'. There is no check for NULL before using 'ic'.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if buddy is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation retrieves 'buddy' via 'purple_find_buddy(...)' and uses it in 'purple_buddy_get_name(buddy)'. There is no check for NULL before dereferencing 'buddy'.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if file_transfer is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation assigns 'px->ft = imcb_file_send_start(...)' and then dereferences 'px->ft' to assign callback functions. There is no check for NULL before dereferencing 'px->ft'.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 21,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if transfer_data is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `data` as `PurpleXfer *xfer = data;` and uses `xfer->account`, `xfer->ui_data`, `xfer->who`, and `xfer->filename`. If `data` is NULL, this would cause a null pointer dereference. The implementation does not check if `data` is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if connection is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation calls `purple_ic_by_pa(xfer->account)` and assigns the result to `ic`. If this returns NULL, and the code proceeds to use `ic` in `imcb_file_send_start`, it could cause a null pointer dereference. The implementation does not check if `ic` is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if buddy is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation calls `purple_find_buddy(xfer->account, xfer->who)` and assigns the result to `buddy`. If this returns NULL, the code proceeds to use `buddy` in `purple_buddy_get_name(buddy)`. If `buddy` is NULL, this would cause a null pointer dereference. The implementation does not check if `buddy` is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if file_transfer is NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation assigns `px->ft = imcb_file_send_start(...)`. If this returns NULL, and the code proceeds to use `px->ft`, it could cause a null pointer dereference. The implementation does check if `px->ft` is NULL before using it (`if (!px->ft) { return FALSE; }`).",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

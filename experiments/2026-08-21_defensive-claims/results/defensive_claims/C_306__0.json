@@ -1,0 +1,130 @@
+{
+  "case_id": "C_306__0",
+  "sample_id": "D/C/306",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2016-3062",
+  "cve_summary": "The mov_read_dref function in libavformat/mov.c in Libav before 11.7 and FFmpeg before 0.11 allows remote attackers to cause a denial of service (memory corruption) or execute arbitrary code via the entries value in a dref box in an MP4 file.",
+  "changed_file": "libavformat/mov.c",
+  "docstring": "\"\"\"\nSummary: \nReads and processes the data reference (dref) atoms from a MOV file format.\n\nParameters: \nc (MOVContext *): The context for the MOV file being processed.\npb (AVIOContext *): The input/output context for reading the MOV data.\natom (MOVAtom): The atom being processed.\n\nReturns: \nint: Returns 0 on success, a negative error code on failure.\n\nLogic: \nThe function first checks if there are any streams in the MOV context. It reads the number of entries in the dref atom and allocates memory for them. It processes each dref entry, extracting information such as type, volume, filename, and paths. Special handling is provided for Macintosh alias records, including reading nested data. The function ensures proper memory management and handles potential errors, returning appropriate error codes when necessary.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_dref_atom(MOVContext *c, AVIOContext *pb, MOVAtom atom) {\n    int i;\n    int entries_count;\n    int ret;\n\n    if (!c || !pb || !c->nb_streams) {\n        return AVERROR(EINVAL);\n    }\n\n    entries_count = avio_rb32(pb);\n    if (entries_count < 0) {\n        return AVERROR_INVALIDDATA;\n    }\n\n    if (entries_count > 1024) {\n        return AVERROR_INVALIDDATA;\n    }\n\n    for (i = 0; i < entries_count; i++) {\n        uint32_t type = avio_rl32(pb);\n        int size = avio_rb32(pb);\n\n        if (size < 0) {\n            return AVERROR_INVALIDDATA;\n        }\n\n        if (size > atom.size - 8) {\n            return AVERROR_INVALIDDATA;\n        }\n\n        switch (type) { \n            case MKTAG('a','l','i','s'):\n                ret = handle_alias_record(pb, size);\n                if (ret < 0) {\n                    return ret;\n                }\n                break;\n            default:\n                avio_skip(pb, size - 8);\n                break;\n        }\n    }\n\n    return 0;\n}\n\nint handle_alias_record(AVIOContext *pb, int size) {\n    if (!pb || size < 0) {\n        return AVERROR(EINVAL);\n    }\n\n    avio_skip(pb, 4);\n    size -= 4;\n\n    while (size > 0) {\n        int record_size = avio_rb16(pb);\n        if (record_size < 0 || record_size > size) {\n            return AVERROR_INVALIDDATA;\n        }\n\n        avio_skip(pb, record_size - 2);\n        size -= record_size;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null or invalid context pointers",
+      "protects_against": "null or invalid MOVContext or AVIOContext pointers"
+    },
+    {
+      "step": "validate entries_count against a reasonable upper bound",
+      "protects_against": "malformed or excessively large entries_count values"
+    },
+    {
+      "step": "check for negative or invalid size values",
+      "protects_against": "malformed or invalid size values"
+    },
+    {
+      "step": "bound size to the atom size to prevent overreads",
+      "protects_against": "reading beyond the atom's size"
+    },
+    {
+      "step": "validate record_size in handle_alias_record",
+      "protects_against": "malformed or invalid record size values"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 18,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null or invalid context pointers — protects against: null or invalid MOVContext or AVIOContext pointers",
+        "reasoning": "The implementation uses `c->fc` and `pb` directly without checking for null pointers. If `c` or `pb` is null, dereferencing them would cause undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate entries_count against a reasonable upper bound — protects against: malformed or excessively large entries_count values",
+        "reasoning": "The implementation checks if `entries >= UINT_MAX / sizeof(*sc->drefs)` before allocating memory, which prevents integer overflow in the allocation. This is a defensive step against excessively large values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for negative or invalid size values — protects against: malformed or invalid size values",
+        "reasoning": "The implementation reads `size` as a 32-bit unsigned integer, which cannot be negative. However, it does not explicitly check for invalid size values such as zero or values that are too small (e.g., less than the minimum required for the data structure).",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "bound size to the atom size to prevent overreads — protects against: reading beyond the atom's size",
+        "reasoning": "The implementation uses `next = avio_tell(pb) + size - 4` to calculate the end of the current dref entry and then seeks to `next` after processing. However, it does not explicitly check that `size` is within the bounds of the atom's total size, which could allow reading beyond the atom's data.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate record_size in handle_alias_record — protects against: malformed or invalid record size values",
+        "reasoning": "The implementation reads `len` as an 8-bit unsigned integer and uses `FFMIN(len, 63)` to cap it, which prevents buffer overflows when reading into `dref->filename`. This is a defensive step against invalid size values.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null or invalid context pointers — protects against: null or invalid MOVContext or AVIOContext pointers",
+        "reasoning": "The implementation uses `c->fc` and `pb` directly without checking for null pointers. There is no explicit null check for `c` or `pb`.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate entries_count against a reasonable upper bound — protects against: malformed or excessively large entries_count values",
+        "reasoning": "The implementation checks if `entries >= UINT_MAX / sizeof(*sc->drefs)` before allocating memory, which prevents integer overflow in the allocation. This is a defensive step against excessively large values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for negative or invalid size values — protects against: malformed or invalid size values",
+        "reasoning": "The implementation reads `size` as a 32-bit unsigned integer, which cannot be negative. It also checks that `size < 12` and returns an error, which guards against invalid sizes.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound size to the atom size to prevent overreads — protects against: reading beyond the atom's size",
+        "reasoning": "The implementation calculates `next = avio_tell(pb) + size - 4` and uses it to limit the read range. It also checks that the current position is less than `next` in the loop. This bounds the read to the atom size and prevents overreads.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate record_size in handle_alias_record — protects against: malformed or invalid record size values",
+        "reasoning": "The implementation reads `len` as an 8-bit unsigned integer and uses `FFMIN(len, 63)` to cap it, ensuring it does not exceed the buffer size. This is a defensive step against invalid size values.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

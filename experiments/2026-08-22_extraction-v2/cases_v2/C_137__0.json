@@ -1,0 +1,36 @@
+{
+  "case_id": "C_137__0",
+  "sample_id": "D/C/137",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-7826",
+  "cve_summary": "kernel/trace/trace_syscalls.c in the Linux kernel through 3.17.2 does not properly handle private syscall numbers during use of the ftrace subsystem, which allows local users to gain privileges or cause a denial of service (invalid pointer dereference) via a crafted application.",
+  "commit_message": "tracing/syscalls: Ignore numbers outside NR_syscalls' range\n\nARM has some private syscalls (for example, set_tls(2)) which lie\noutside the range of NR_syscalls.  If any of these are called while\nsyscall tracing is being performed, out-of-bounds array access will\noccur in the ftrace and perf sys_{enter,exit} handlers.\n\n # trace-cmd record -e raw_syscalls:* true && trace-cmd report\n ...\n true-653   [000]   384.675777: sys_enter:            NR 192 (0, 1000, 3, 4000022, ffffffff, 0)\n true-653   [000]   384.675812: sys_exit:             NR 192 = 1995915264\n true-653   [000]   384.675971: sys_enter:            NR 983045 (76f74480, 76f74000, 76f74b28, 76f74480, 76f76f74, 1)\n true-653   [000]   384.675988: sys_exit:             NR 983045 = 0\n ...\n\n # trace-cmd record -e syscalls:* true\n [   17.289329] Unable to handle kernel paging request at virtual address aaaaaace\n [   17.289590] pgd = 9e71c000\n [   17.289696] [aaaaaace] *pgd=00000000\n [   17.289985] Internal error: Oops: 5 [#1] PREEMPT SMP ARM\n [   17.290169] Modules linked in:\n [   17.290391] CPU: 0 PID: 704 Comm: true Not tainted 3.18.0-rc2+ #21\n [   17.290585] task: 9f4dab00 ti: 9e710000 task.ti: 9e710000\n [   17.290747] PC is at ftrace_syscall_enter+0x48/0x1f8\n [   17.290866] LR is at syscall_trace_enter+0x124/0x184\n\nFix this by ignoring out-of-NR_syscalls-bounds syscall numbers.\n\nCommit cd0980fc8add \"tracing: Check invalid syscall nr while tracing syscalls\"\nadded the check for less than zero, but it should have also checked\nfor greater than NR_syscalls.\n\nLink: http://lkml.kernel.org/p/1414620418-29472-1-git-send-email-rabin@rab.in\n\nFixes: cd0980fc8add \"tracing: Check invalid syscall nr while tracing syscalls\"\nCc: stable@vger.kernel.org # 2.6.33+\nSigned-off-by: Rabin Vincent <rabin@rab.in>\nSigned-off-by: Steven Rostedt <rostedt@goodmis.org>",
+  "changed_file": "kernel/trace/trace_syscalls.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the entry of a system call for tracing purposes.\n\nParameters: \ndata (void*): Pointer to the trace array containing tracing information. \nregs (struct pt_regs*): Pointer to the register state at the time of the syscall. \nid (long): Identifier for the syscall being traced.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function retrieves the syscall number from the current process's register state and checks its validity. It then accesses the corresponding ftrace event file and verifies if tracing is enabled. If valid, it retrieves metadata for the syscall, prepares to log the entry into a ring buffer, and saves the current interrupt flags and preemption count. It reserves space in the trace buffer for the syscall entry event, populates the entry with the syscall number and its arguments, and finally commits the event to the trace buffer.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    302,
+    348
+  ],
+  "vulnerable_line_range": [
+    302,
+    348
+  ],
+  "vulnerable_snippet": "static void ftrace_syscall_enter(void *data, struct pt_regs *regs, long id)\r\n{\r\n\tstruct trace_array *tr = data;\r\n\tstruct ftrace_event_file *ftrace_file;\r\n\tstruct syscall_trace_enter *entry;\r\n\tstruct syscall_metadata *sys_data;\r\n\tstruct ring_buffer_event *event;\r\n\tstruct ring_buffer *buffer;\r\n\tunsigned long irq_flags;\r\n\tint pc;\r\n\tint syscall_nr;\r\n\tint size;\r\n\r\n\tsyscall_nr = trace_get_syscall_nr(current, regs);\r\n\tif (syscall_nr < 0)\r\n\t\treturn;\r\n\r\n\t/* Here we're inside tp handler's rcu_read_lock_sched (__DO_TRACE) */\r\n\tftrace_file = rcu_dereference_sched(tr->enter_syscall_files[syscall_nr]);\r\n\tif (!ftrace_file)\r\n\t\treturn;\r\n\r\n\tif (ftrace_trigger_soft_disabled(ftrace_file))\r\n\t\treturn;\r\n\r\n\tsys_data = syscall_nr_to_meta(syscall_nr);\r\n\tif (!sys_data)\r\n\t\treturn;\r\n\r\n\tsize = sizeof(*entry) + sizeof(unsigned long) * sys_data->nb_args;\r\n\r\n\tlocal_save_flags(irq_flags);\r\n\tpc = preempt_count();\r\n\r\n\tbuffer = tr->trace_buffer.buffer;\r\n\tevent = trace_buffer_lock_reserve(buffer,\r\n\t\t\tsys_data->enter_event->event.type, size, irq_flags, pc);\r\n\tif (!event)\r\n\t\treturn;\r\n\r\n\tentry = ring_buffer_event_data(event);\r\n\tentry->nr = syscall_nr;\r\n\tsyscall_get_arguments(current, regs, 0, sys_data->nb_args, entry->args);\r\n\r\n\tevent_trigger_unlock_commit(ftrace_file, buffer, event, entry,\r\n\t\t\t\t    irq_flags, pc);\r\n}",
+  "fixed_line_range": [
+    302,
+    348
+  ],
+  "fixed_snippet": "static void ftrace_syscall_enter(void *data, struct pt_regs *regs, long id)\r\n{\r\n\tstruct trace_array *tr = data;\r\n\tstruct ftrace_event_file *ftrace_file;\r\n\tstruct syscall_trace_enter *entry;\r\n\tstruct syscall_metadata *sys_data;\r\n\tstruct ring_buffer_event *event;\r\n\tstruct ring_buffer *buffer;\r\n\tunsigned long irq_flags;\r\n\tint pc;\r\n\tint syscall_nr;\r\n\tint size;\r\n\r\n\tsyscall_nr = trace_get_syscall_nr(current, regs);\r\n\tif (syscall_nr < 0 || syscall_nr >= NR_syscalls)\r\n\t\treturn;\r\n\r\n\t/* Here we're inside tp handler's rcu_read_lock_sched (__DO_TRACE) */\r\n\tftrace_file = rcu_dereference_sched(tr->enter_syscall_files[syscall_nr]);\r\n\tif (!ftrace_file)\r\n\t\treturn;\r\n\r\n\tif (ftrace_trigger_soft_disabled(ftrace_file))\r\n\t\treturn;\r\n\r\n\tsys_data = syscall_nr_to_meta(syscall_nr);\r\n\tif (!sys_data)\r\n\t\treturn;\r\n\r\n\tsize = sizeof(*entry) + sizeof(unsigned long) * sys_data->nb_args;\r\n\r\n\tlocal_save_flags(irq_flags);\r\n\tpc = preempt_count();\r\n\r\n\tbuffer = tr->trace_buffer.buffer;\r\n\tevent = trace_buffer_lock_reserve(buffer,\r\n\t\t\tsys_data->enter_event->event.type, size, irq_flags, pc);\r\n\tif (!event)\r\n\t\treturn;\r\n\r\n\tentry = ring_buffer_event_data(event);\r\n\tentry->nr = syscall_nr;\r\n\tsyscall_get_arguments(current, regs, 0, sys_data->nb_args, entry->args);\r\n\r\n\tevent_trigger_unlock_commit(ftrace_file, buffer, event, entry,\r\n\t\t\t\t    irq_flags, pc);\r\n}",
+  "func_name": "ftrace_syscall_enter",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

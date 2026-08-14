@@ -1,0 +1,36 @@
+{
+  "case_id": "C_468__0",
+  "sample_id": "D/C/468",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "commit_message": "mm/mempolicy.c: fix error handling in set_mempolicy and mbind.\n\nIn the case that compat_get_bitmap fails we do not want to copy the\nbitmap to the user as it will contain uninitialized stack data and leak\nsensitive data.\n\nSigned-off-by: Chris Salls <salls@cs.ucsb.edu>\nSigned-off-by: Linus Torvalds <torvalds@linux-foundation.org>",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for setting memory policy based on a given mode and node mask.\n\nParameters: \n- mode (int): The memory policy mode to be set.\n- nmask (compat_ulong_t __user *): A pointer to the user-space bitmap representing the nodes.\n- maxnode (compat_ulong_t): The maximum number of nodes that can be specified.\n\nReturns: \n- int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first initializes a bitmap and calculates the number of bits and allocation size based on the provided maximum node. If a valid node mask is provided, it retrieves the bitmap from user space and allocates memory for it. It then copies the bitmap back to user space. Finally, it calls the underlying system function to set the memory policy, passing the mode, allocated memory, and the number of bits.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1529,
+    1548
+  ],
+  "vulnerable_line_range": [
+    1529,
+    1550
+  ],
+  "vulnerable_snippet": "COMPAT_SYSCALL_DEFINE3(set_mempolicy, int, mode, compat_ulong_t __user *, nmask,\r\n\t\t       compat_ulong_t, maxnode)\r\n{\r\n\tlong err = 0;\r\n\tunsigned long __user *nm = NULL;\r\n\tunsigned long nr_bits, alloc_size;\r\n\tDECLARE_BITMAP(bm, MAX_NUMNODES);\r\n\r\n\tnr_bits = min_t(unsigned long, maxnode-1, MAX_NUMNODES);\r\n\talloc_size = ALIGN(nr_bits, BITS_PER_LONG) / 8;\r\n\r\n\tif (nmask) {\r\n\t\terr = compat_get_bitmap(bm, nmask, nr_bits);\r\n\t\tnm = compat_alloc_user_space(alloc_size);\r\n\t\terr |= copy_to_user(nm, bm, alloc_size);\r\n\t}\r\n\r\n\tif (err)\r\n\t\treturn -EFAULT;\r\n\r\n\treturn sys_set_mempolicy(mode, nm, nr_bits+1);\r\n}",
+  "fixed_line_range": [
+    1529,
+    1548
+  ],
+  "fixed_snippet": "COMPAT_SYSCALL_DEFINE3(set_mempolicy, int, mode, compat_ulong_t __user *, nmask,\r\n\t\t       compat_ulong_t, maxnode)\r\n{\r\n\tunsigned long __user *nm = NULL;\r\n\tunsigned long nr_bits, alloc_size;\r\n\tDECLARE_BITMAP(bm, MAX_NUMNODES);\r\n\r\n\tnr_bits = min_t(unsigned long, maxnode-1, MAX_NUMNODES);\r\n\talloc_size = ALIGN(nr_bits, BITS_PER_LONG) / 8;\r\n\r\n\tif (nmask) {\r\n\t\tif (compat_get_bitmap(bm, nmask, nr_bits))\r\n\t\t\treturn -EFAULT;\r\n\t\tnm = compat_alloc_user_space(alloc_size);\r\n\t\tif (copy_to_user(nm, bm, alloc_size))\r\n\t\t\treturn -EFAULT;\r\n\t}\r\n\r\n\treturn sys_set_mempolicy(mode, nm, nr_bits+1);\r\n}",
+  "func_name": "COMPAT_SYSCALL_DEFINE3",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

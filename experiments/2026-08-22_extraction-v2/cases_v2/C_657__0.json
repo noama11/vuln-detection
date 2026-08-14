@@ -1,0 +1,36 @@
+{
+  "case_id": "C_657__0",
+  "sample_id": "D/C/657",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "radareorg/radare2",
+  "cve_id": "CVE-2018-11380",
+  "cve_summary": "The parse_import_ptr() function in radare2 2.5.0 allows remote attackers to cause a denial of service (heap-based out-of-bounds read and application crash) via a crafted Mach-O file.",
+  "commit_message": "Fix #9970 - heap oobread in mach0 parser (#10026)",
+  "changed_file": "libr/bin/format/mach0/mach0.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Parses an import pointer from a given binary object and updates the relocation  \n * structure based on the symbol index provided.  \n *  \n * Parameters:  \n * bin (struct MACH0_(obj_t)*): Pointer to the binary object containing symbol table.  \n * reloc (struct reloc_t*): Pointer to the relocation structure to be updated.  \n * idx (int): Index of the symbol in the symbol table to parse.  \n *  \n * Returns:  \n * bool: Returns true if the import pointer was successfully parsed and updated,  \n * otherwise returns false.  \n *  \n * Logic:  \n * The function first checks if the index is valid. It determines the symbol type  \n * based on the descriptor and sets the relocation type according to the word size.  \n * It then iterates through the sections of the binary to find the corresponding  \n * indirect symbol and updates the relocation structure with the offset and address.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1638,
+    1682
+  ],
+  "vulnerable_line_range": [
+    1637,
+    1677
+  ],
+  "vulnerable_snippet": "static int parse_import_ptr(struct MACH0_(obj_t)* bin, struct reloc_t *reloc, int idx) {\r\n\tint i, j, sym, wordsize;\r\n\tut32 stype;\r\n\twordsize = MACH0_(get_bits)(bin) / 8;\r\n\tif (idx < 0 || idx >= bin->nsymtab) {\r\n\t\treturn 0;\r\n\t}\r\n\tif ((bin->symtab[idx].n_desc & REFERENCE_TYPE) == REFERENCE_FLAG_UNDEFINED_LAZY) {\r\n\t\tstype = S_LAZY_SYMBOL_POINTERS;\r\n\t} else {\r\n\t\tstype = S_NON_LAZY_SYMBOL_POINTERS;\r\n\t}\r\n\r\n\treloc->offset = 0;\r\n\treloc->addr = 0;\r\n\treloc->addend = 0;\r\n#define CASE(T) case (T / 8): reloc->type = R_BIN_RELOC_ ## T; break\r\n\tswitch (wordsize) {\r\n\t\tCASE(8);\r\n\t\tCASE(16);\r\n\t\tCASE(32);\r\n\t\tCASE(64);\r\n\t\tdefault: return false;\r\n\t}\r\n#undef CASE\r\n\r\n\tfor (i = 0; i < bin->nsects; i++) {\r\n\t\tif ((bin->sects[i].flags & SECTION_TYPE) == stype) {\r\n\t\t\tfor (j=0, sym=-1; bin->sects[i].reserved1+j < bin->nindirectsyms; j++)\r\n\t\t\t\tif (idx == bin->indirectsyms[bin->sects[i].reserved1 + j]) {\r\n\t\t\t\t\tsym = j;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n\r\n\t\t\treloc->offset = sym == -1 ? 0 : bin->sects[i].offset + sym * wordsize;\r\n\t\t\treloc->addr = sym == -1 ? 0 : bin->sects[i].addr + sym * wordsize;\r\n\t\t\treturn true;\r\n\t\t}\r\n\t}\r\n\treturn false;\r\n}",
+  "fixed_line_range": [
+    1638,
+    1682
+  ],
+  "fixed_snippet": "static int parse_import_ptr(struct MACH0_(obj_t)* bin, struct reloc_t *reloc, int idx) {\r\n\tint i, j, sym, wordsize;\r\n\tut32 stype;\r\n\twordsize = MACH0_(get_bits)(bin) / 8;\r\n\tif (idx < 0 || idx >= bin->nsymtab) {\r\n\t\treturn 0;\r\n\t}\r\n\tif ((bin->symtab[idx].n_desc & REFERENCE_TYPE) == REFERENCE_FLAG_UNDEFINED_LAZY) {\r\n\t\tstype = S_LAZY_SYMBOL_POINTERS;\r\n\t} else {\r\n\t\tstype = S_NON_LAZY_SYMBOL_POINTERS;\r\n\t}\r\n\r\n\treloc->offset = 0;\r\n\treloc->addr = 0;\r\n\treloc->addend = 0;\r\n#define CASE(T) case (T / 8): reloc->type = R_BIN_RELOC_ ## T; break\r\n\tswitch (wordsize) {\r\n\t\tCASE(8);\r\n\t\tCASE(16);\r\n\t\tCASE(32);\r\n\t\tCASE(64);\r\n\t\tdefault: return false;\r\n\t}\r\n#undef CASE\r\n\r\n\tfor (i = 0; i < bin->nsects; i++) {\r\n\t\tif ((bin->sects[i].flags & SECTION_TYPE) == stype) {\r\n\t\t\tfor (j = 0, sym = -1; bin->sects[i].reserved1 + j < bin->nindirectsyms; j++) {\r\n\t\t\t\tint indidx = bin->sects[i].reserved1 + j;\r\n\t\t\t\tif (indidx < 0 || indidx >= bin->nindirectsyms) {\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n\t\t\t\tif (idx == bin->indirectsyms[indidx]) {\r\n\t\t\t\t\tsym = j;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t\treloc->offset = sym == -1 ? 0 : bin->sects[i].offset + sym * wordsize;\r\n\t\t\treloc->addr = sym == -1 ? 0 : bin->sects[i].addr + sym * wordsize;\r\n\t\t\treturn true;\r\n\t\t}\r\n\t}\r\n\treturn false;\r\n}",
+  "func_name": "parse_import_ptr",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

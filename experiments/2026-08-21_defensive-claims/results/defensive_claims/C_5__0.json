@@ -1,0 +1,114 @@
+{
+  "case_id": "C_5__0",
+  "sample_id": "D/C/5",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-3430",
+  "cve_summary": "The rds_recvmsg function in net/rds/recv.c in the Linux kernel before 3.0.44 does not initialize a certain structure member, which allows local users to obtain potentially sensitive information from kernel stack memory via a (1) recvfrom or (2) recvmsg system call on an RDS socket.",
+  "changed_file": "net/rds/recv.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags and size.\n\nParameters: \niocb (struct kiocb *): The I/O control block associated with the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header that will be filled with the received data.\nsize (size_t): The maximum size of the message to receive.\nmsg_flags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes received or an error code (e.g., -EAGAIN for non-blocking mode).\n\nLogic: \nThe function checks for pending notifications and incoming messages, handling them based on the provided flags. It uses a loop to wait for messages, applying timeouts and handling race conditions. If a message is successfully received, it populates the message header and updates statistics. The function ensures proper cleanup of resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int msg_flags) {\n    int result = 0;\n    size_t bytes_received = 0;\n\n    if (!iocb || !sock || !msg) {\n        return -EINVAL;\n    }\n\n    if (size == 0) {\n        return 0;\n    }\n\n    if (size > SSIZE_MAX) {\n        size = SSIZE_MAX;\n    }\n\n    while (1) {\n        result = sock->ops->recvmsg(iocb, sock, msg, size, msg_flags);\n        if (result < 0) {\n            if (result == -EAGAIN && (msg_flags & MSG_DONTWAIT)) {\n                return 0;\n            }\n            return result;\n        }\n\n        bytes_received += result;\n        if (bytes_received >= size) {\n            break;\n        }\n\n        if (!(msg_flags & MSG_MORE)) {\n            break;\n        }\n\n        msg->msg_flags |= MSG_MORE;\n    }\n\n    return bytes_received;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size parameter",
+      "protects_against": "integer overflow and excessive memory allocation"
+    },
+    {
+      "step": "bound copy length to destination capacity",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "check for error codes from recvmsg",
+      "protects_against": "unhandled errors from socket operations"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 22,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters (iocb, sock, msg, etc.). Dereferencing these pointers (e.g., sock->sk, msg->msg_iov) could lead to null pointer dereference if any of them are null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate size parameter — protects against: integer overflow and excessive memory allocation",
+        "reasoning": "The implementation uses the 'size' parameter directly in the call to inc_copy_to_user, but there is no explicit validation of the size to ensure it is within acceptable bounds or to prevent integer overflow.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow",
+        "reasoning": "The implementation passes 'size' to inc_copy_to_user, but there is no explicit bounding of the copy length to the capacity of the destination buffer in msg->msg_iov. The responsibility for this is delegated to inc_copy_to_user, but it is not clear from the code whether that function performs the necessary bounds checking.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for error codes from recvmsg — protects against: unhandled errors from socket operations",
+        "reasoning": "The implementation checks the return value of inc_copy_to_user and breaks the loop if it is negative. However, it does not explicitly check for error codes from other socket operations or helper functions (e.g., rds_notify_queue_get, rds_notify_cong).",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock->sk`, `sk`, and `msg->msg_iov`, but does not explicitly check if `iocb`, `sock`, `msg`, or other pointers are null. However, the function is likely called in a context where these pointers are guaranteed to be valid, and the code may rely on higher-level validation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate size parameter — protects against: integer overflow and excessive memory allocation",
+        "reasoning": "The implementation passes `size` to `inc_copy_to_user`, which presumably handles the copying of data. However, there is no explicit validation of `size` in this function to guard against overflow or excessive memory allocation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to destination capacity — protects against: buffer overflow",
+        "reasoning": "The implementation passes `size` to `inc_copy_to_user`, but there is no explicit bounding of the copy length to the capacity of the destination buffer in `msg->msg_iov`. The responsibility for this is likely delegated to `inc_copy_to_user`, but it is not visible in this code.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for error codes from recvmsg — protects against: unhandled errors from socket operations",
+        "reasoning": "The implementation calls `inc_copy_to_user` and checks if `ret < 0`, which handles errors from that function. However, it does not explicitly check for error codes from the socket's `recvmsg` function, as it relies on `rds_next_incoming` and other internal logic to manage the receive process.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

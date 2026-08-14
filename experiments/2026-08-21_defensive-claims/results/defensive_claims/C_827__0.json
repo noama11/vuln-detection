@@ -1,0 +1,98 @@
+{
+  "case_id": "C_827__0",
+  "sample_id": "D/C/827",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "net/atm/pvc.c",
+  "docstring": "Summary: This function retrieves the name associated with a given socket and fills a sockaddr structure with the appropriate address information.\n\nParameters: \n- sock (struct socket *): Pointer to the socket from which to retrieve the name.\n- sockaddr (struct sockaddr *): Pointer to the sockaddr structure to be filled with address information.\n- sockaddr_len (int *): Pointer to an integer that will hold the length of the sockaddr structure.\n- peer (int): Indicates whether the address is for a peer connection.\n\nReturns: int: Returns 0 on success, or -ENOTCONN if the socket is not connected.\n\nLogic: The function checks if the associated ATM virtual circuit (vcc) is valid and connected. If not, it returns an error. If valid, it initializes the sockaddr structure with the ATM PVC address details, including the interface number, VPI, and VCI, and sets the length of the sockaddr.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_sock_name(struct socket *sock, struct sockaddr *addr, int *addr_len, int peer) {\n    struct atm_vcc *vcc = NULL;\n    struct sockaddr_atm *satm = NULL;\n\n    if (!sock || !addr || !addr_len) {\n        return -ENOTCONN;\n    }\n\n    vcc = (struct atm_vcc *)sock->sk->sk_data;\n    if (!vcc || vcc->state != ATM_VCC_ACTIVE) {\n        return -ENOTCONN;\n    }\n\n    if (peer && !vcc->remote) {\n        return -ENOTCONN;\n    }\n\n    satm = (struct sockaddr_atm *)addr;\n    satm->satm_family = AF_ATMPVC;\n    satm->satm_number = vcc->number;\n    satm->satm_address.itf = vcc->dev->number;\n    satm->satm_address.vpi = vcc->tp->vpi;\n    satm->satm_address.vci = vcc->tp->vci;\n\n    *addr_len = sizeof(struct sockaddr_atm);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate vcc pointer and state",
+      "protects_against": "invalid or unconnected socket"
+    },
+    {
+      "step": "validate remote vcc for peer connections",
+      "protects_against": "invalid peer connection"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'sock', 'sockaddr', or 'sockaddr_len' parameters. Dereferencing these pointers could lead to a null pointer dereference if any of them are null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate vcc pointer and state — protects against: invalid or unconnected socket",
+        "reasoning": "The implementation checks if 'vcc->dev' is non-null and if the 'ATM_VF_ADDR' flag is set, which implies the socket is connected and has a valid address. This validates the vcc pointer and its state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate remote vcc for peer connections — protects against: invalid peer connection",
+        "reasoning": "The implementation does not perform any checks specific to the 'peer' parameter. It does not validate the remote vcc or handle the peer connection case differently.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'sock', 'sockaddr', or 'sockaddr_len' parameters. Dereferencing these pointers could lead to a null pointer dereference if any of them are null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate vcc pointer and state — protects against: invalid or unconnected socket",
+        "reasoning": "The implementation checks if 'vcc->dev' is non-null and if the 'ATM_VF_ADDR' bit is set in 'vcc->flags'. This ensures that the vcc is valid and has an address set, which is a form of validation against invalid or unconnected sockets.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate remote vcc for peer connections — protects against: invalid peer connection",
+        "reasoning": "The implementation does not perform any checks specific to the 'peer' parameter. It does not validate the remote vcc or handle the 'peer' flag in any way, which could leave it vulnerable to invalid peer connections.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

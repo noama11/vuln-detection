@@ -1,0 +1,35 @@
+{
+  "case_id": "Cpp_804__0",
+  "implementation": "#include <cstdint>\n#include <string>\n#include <unordered_map>\n#include <thread>\n#include <functional>\n\n// Forward declarations\nstruct RoutingData;\nstruct Pipeline;\nstruct Acceptor;\nstruct EventBase;\nstruct Transport;\n\n// Global state for managing pipelines\nstd::unordered_map<uint64_t, Pipeline*> activePipelines;\n\n// Assume these functions exist\nvoid logMessage(const std::string& message);\nvoid pauseTransport(Transport* transport);\nuint64_t hashRoutingData(const RoutingData& data);\nvoid switchToThread(std::thread::id targetThreadId, std::function<void()> callback);\nvoid attachSocketToEventBase(EventBase* eventBase);\nPipeline* createPipeline(const RoutingData& data);\nvoid addServerConnection(Acceptor* acceptor, Pipeline* pipeline);\nvoid activateTransport(Transport* transport);\nvoid readBufferedBytes(Pipeline* pipeline);\n\nvoid handleRoutingData(uint64_t connId, RoutingData& routingData) {\n    // Retrieve the routing pipeline for the given connection ID\n    auto pipelineIt = activePipelines.find(connId);\n    if (pipelineIt == activePipelines.end()) {\n        logMessage(\"Pipeline not found for connection ID: \" + std::to_string(connId));\n        return;\n    }\n\n    Pipeline* pipeline = pipelineIt->second;\n    if (!pipeline) {\n        logMessage(\"Invalid pipeline for connection ID: \" + std::to_string(connId));\n        return;\n    }\n\n    // Pause the transport associated with the pipeline\n    Transport* transport = pipeline->getTransport();\n    if (!transport) {\n        logMessage(\"No transport found for pipeline\");\n        return;\n    }\n\n    pauseTransport(transport);\n\n    // Hash the routing data to select a new acceptor\n    uint64_t acceptorId = hashRoutingData(routingData);\n\n    // Assume we have a way to get the acceptor and its thread\n    Acceptor* acceptor = getAcceptorById(acceptorId);\n    if (!acceptor) {\n        logMessage(\"Acceptor not found for ID: \" + std::to_string(acceptorId));\n        return;\n    }\n\n    std::thread::id acceptorThreadId = acceptor->getThreadId();\n\n    // Switch to the new acceptor's thread\n    switchToThread(acceptorThreadId, [acceptor, routingData, pipeline]() {\n        // Attach the socket to the acceptor's event base\n        EventBase* eventBase = acceptor->getEventBase();\n        if (!eventBase) {\n            logMessage(\"No event base found for acceptor\");\n            return;\n        }\n\n        attachSocketToEventBase(eventBase);\n\n        // Create a new pipeline with the routing data\n        Pipeline* newPipeline = createPipeline(routingData);\n        if (!newPipeline) {\n            logMessage(\"Failed to create new pipeline\");\n            return;\n        }\n\n        // Add a new server connection to the acceptor\n        addServerConnection(acceptor, newPipeline);\n\n        // Activate the transport\n        Transport* newTransport = newPipeline->getTransport();\n        if (!newTransport) {\n            logMessage(\"No transport found for new pipeline\");\n            return;\n        }\n\n        activateTransport(newTransport);\n\n        // Read any buffered bytes into the pipeline\n        readBufferedBytes(newPipeline);\n    });\n}",
+  "defensive_steps": [
+    {
+      "step": "check if pipeline exists in map before use",
+      "protects_against": "using a null or invalid pipeline pointer"
+    },
+    {
+      "step": "check if transport exists before calling pauseTransport",
+      "protects_against": "dereferencing a null transport pointer"
+    },
+    {
+      "step": "check if acceptor exists before using it",
+      "protects_against": "using a null acceptor pointer"
+    },
+    {
+      "step": "check if event base exists before using it",
+      "protects_against": "dereferencing a null event base pointer"
+    },
+    {
+      "step": "check if new pipeline is valid before using it",
+      "protects_against": "using a null new pipeline pointer"
+    },
+    {
+      "step": "check if new transport exists before using it",
+      "protects_against": "dereferencing a null new transport pointer"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

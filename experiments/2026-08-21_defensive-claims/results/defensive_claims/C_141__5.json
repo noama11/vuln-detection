@@ -1,0 +1,162 @@
+{
+  "case_id": "C_141__5",
+  "sample_id": "D/C/141",
+  "func_idx": 5,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a single ticket for the Ceph authentication client, handling decryption and updating session keys.\n\nParameters: \nac (struct ceph_auth_client *): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key *): Pointer to the secret cryptographic key used for decryption.\np (void **): Pointer to the data buffer containing the ticket information.\nend (void *): Pointer to the end of the data buffer.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function decodes the ticket type and structure version, retrieves the appropriate ticket handler, and decrypts the ticket data. It updates the session key and ticket blob based on the validity and expiration information. If decoding fails, it handles the error appropriately before returning the error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    if (!ac || !secret || !p || !end) {\n        return -EINVAL;\n    }\n\n    if (*p >= end) {\n        return -EINVAL;\n    }\n\n    size_t remaining = (char *)end - (char *)*p;\n    if (remaining < sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    uint32_t ticket_type = *(uint32_t *)*p;\n    *p += sizeof(uint32_t);\n    remaining -= sizeof(uint32_t);\n\n    if (remaining < sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    uint32_t version = *(uint32_t *)*p;\n    *p += sizeof(uint32_t);\n    remaining -= sizeof(uint32_t);\n\n    if (ticket_type >= CEPH_AUTH_MAX_TICKET_TYPES || version >= CEPH_AUTH_MAX_TICKET_VERSIONS) {\n        return -EINVAL;\n    }\n\n    if (!ac->ticket_handlers[ticket_type] || !ac->ticket_handlers[ticket_type][version]) {\n        return -ENOTSUP;\n    }\n\n    int (*handler)(struct ceph_auth_client *, struct ceph_crypto_key *, void **, void *) = \n        ac->ticket_handlers[ticket_type][version];\n\n    int ret = handler(ac, secret, p, end);\n    if (ret < 0) {\n        return ret;\n    }\n\n    if (*p > end) {\n        return -EINVAL;\n    }\n\n    if (ac->session_key.data) {\n        ceph_crypto_key_free(ac->session_key);\n    }\n\n    ac->session_key = ceph_crypto_key_dup(secret);\n    if (!ac->session_key) {\n        return -ENOMEM;\n    }\n\n    if (ac->ticket_blob) {\n        free(ac->ticket_blob);\n    }\n\n    size_t blob_len = (char *)end - (char *)*p;\n    ac->ticket_blob = malloc(blob_len);\n    if (!ac->ticket_blob) {\n        return -ENOMEM;\n    }\n\n    memcpy(ac->ticket_blob, *p, blob_len);\n    ac->ticket_blob_len = blob_len;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check all input pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify buffer bounds before reading",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate ticket type and version against known limits",
+      "protects_against": "invalid or out-of-bounds ticket type/version"
+    },
+    {
+      "step": "check if the handler exists before calling it",
+      "protects_against": "calling a null function pointer"
+    },
+    {
+      "step": "verify buffer bounds after handler execution",
+      "protects_against": "handler modifying pointer beyond buffer"
+    },
+    {
+      "step": "check for memory allocation failures",
+      "protects_against": "memory allocation failure during session key or blob creation"
+    },
+    {
+      "step": "initialize new memory before use",
+      "protects_against": "use of uninitialized memory"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 23,
+    "n_omits": 5,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check all input pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the input pointers (ac, secret, p, end) are null before using them. Dereferencing these pointers without a null check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "verify buffer bounds before reading — protects against: buffer overflow",
+        "reasoning": "The implementation uses functions like ceph_decode_32, ceph_decode_8, and ceph_decode_need, which appear to perform buffer bounds checking before reading data. These functions likely ensure that the read operations do not exceed the buffer's bounds.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate ticket type and version against known limits — protects against: invalid or out-of-bounds ticket type/version",
+        "reasoning": "The implementation checks if the ticket structure version is 1. However, it does not explicitly validate the ticket type against known limits. The function get_ticket_handler is used, which may implicitly validate the type, but this is not directly visible in the code.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if the handler exists before calling it — protects against: calling a null function pointer",
+        "reasoning": "The implementation calls get_ticket_handler and checks if the returned handler is an error using IS_ERR. This ensures that the handler is valid before it is used.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify buffer bounds after handler execution — protects against: handler modifying pointer beyond buffer",
+        "reasoning": "The implementation does not explicitly verify buffer bounds after the handler execution. It continues to use the buffer without additional checks after the handler is called.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for memory allocation failures — protects against: memory allocation failure during session key or blob creation",
+        "reasoning": "The implementation does not explicitly check for memory allocation failures. It assumes that functions like ceph_crypto_key_decode and ceph_decode_buffer will succeed and does not handle potential allocation failures.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "initialize new memory before use — protects against: use of uninitialized memory",
+        "reasoning": "The implementation does not explicitly initialize new memory before use. It assumes that functions like ceph_crypto_key_decode and ceph_decode_buffer will initialize the memory correctly.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check all input pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the input pointers (ac, secret, p, end) are null. Dereferencing these pointers could lead to a null pointer dereference if they are null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "verify buffer bounds before reading — protects against: buffer overflow",
+        "reasoning": "The implementation uses functions like ceph_decode_need and ceph_decode_32, which appear to perform buffer bound checks. These functions ensure that the read operations do not exceed the buffer limits.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate ticket type and version against known limits — protects against: invalid or out-of-bounds ticket type/version",
+        "reasoning": "The implementation checks the ticket structure version (tkt_struct_v) against a known value (1). However, it does not explicitly validate the ticket type against known limits.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if the handler exists before calling it — protects against: calling a null function pointer",
+        "reasoning": "The implementation calls get_ticket_handler and checks if the returned handler is an error using IS_ERR(th). This ensures that the handler is valid before it is used.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify buffer bounds after handler execution — protects against: handler modifying pointer beyond buffer",
+        "reasoning": "The implementation does not perform any checks after the handler execution to verify that the pointer has not been modified beyond the buffer bounds.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for memory allocation failures — protects against: memory allocation failure during session key or blob creation",
+        "reasoning": "The implementation checks for memory allocation failures when using kmalloc for ticket_buf. If the allocation fails, it returns -ENOMEM.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize new memory before use — protects against: use of uninitialized memory",
+        "reasoning": "The implementation initializes new memory (e.g., ticket_buf) before use. For example, when allocating memory with kmalloc, it is set to NULL and then assigned a value.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

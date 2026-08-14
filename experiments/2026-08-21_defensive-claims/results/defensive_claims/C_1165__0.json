@@ -1,0 +1,130 @@
+{
+  "case_id": "C_1165__0",
+  "sample_id": "D/C/1165",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-0892",
+  "cve_summary": "Multiple unspecified vulnerabilities in the IPC layer in Google Chrome before 25.0.1364.97 on Windows and Linux, and before 25.0.1364.99 on Mac OS X, allow remote attackers to cause a denial of service or possibly have other impact via unknown vectors.",
+  "changed_file": "content/browser/download/save_package.cc",
+  "docstring": "Summary: This function handles the reception of savable resource links for the current page, managing the saving process of resources and frames.\n\nParameters:\n- resources_list (std::vector<GURL>&): A list of resource URLs to be saved.\n- referrers_list (std::vector<Referrer>&): A list of referrer information corresponding to each resource.\n- frames_list (std::vector<GURL>&): A list of frame URLs to be saved.\n\nReturns: None\n\nLogic: The function first checks if it is in the correct wait state. It calculates the total number of items to save and updates the download's total bytes if a download is in progress. It then iterates through the resources and frames, creating `SaveItem` objects for each valid URL and pushing them onto a waiting queue. If no items need to be saved, it treats the situation as a user cancellation. Finally, it updates the wait state and initiates the saving process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stddef.h>\n#include <stdlib.h>\n#include <string.h>\n\n// Define a structure to represent a referrer\ntypedef struct {\n    const char* url;\n    size_t url_length;\n} Referrer;\n\n// Define a structure to represent a URL\ntypedef struct {\n    const char* spec;\n    size_t spec_length;\n} GURL;\n\n// Define a structure to represent a save item\ntypedef struct {\n    GURL url;\n    Referrer referrer;\n} SaveItem;\n\n// Define a structure to represent the waiting queue\ntypedef struct {\n    SaveItem* items;\n    size_t size;\n    size_t capacity;\n} WaitingQueue;\n\n// Define a structure to represent the state\ntypedef struct {\n    int wait_state;\n    size_t total_items;\n    size_t total_bytes;\n    WaitingQueue queue;\n} State;\n\n// Function to check if the state is in the correct wait state\nint is_correct_wait_state(State* state) {\n    return state->wait_state == 1; // Example wait state value\n}\n\n// Function to update the wait state\nvoid update_wait_state(State* state, int new_state) {\n    state->wait_state = new_state;\n}\n\n// Function to initiate the saving process\nvoid initiate_saving_process(State* state) {\n    // Implementation of the saving process\n}\n\n// Function to handle the reception of savable resource links\nvoid handle_savable_resource_links(GURL* resources_list, size_t resources_count,\n                                   Referrer* referrers_list, size_t referrers_count,\n                                   GURL* frames_list, size_t frames_count, State* state) {\n    // Check if the state is in the correct wait state\n    if (!is_correct_wait_state(state)) {\n        return;\n    }\n\n    // Calculate the total number of items to save\n    size_t total_items = resources_count + frames_count;\n\n    // Update the download's total bytes if a download is in progress\n    if (state->total_bytes > 0) {\n        state->total_bytes += total_items * 1024; // Assuming 1KB per item\n    }\n\n    // Check if the queue has enough capacity\n    if (state->queue.capacity < total_items) {\n        // Resize the queue if needed\n        SaveItem* new_items = (SaveItem*)realloc(state->queue.items, total_items * sizeof(SaveItem));\n        if (new_items == NULL) {\n            // Handle memory allocation failure\n            return;\n        }\n        state->queue.items = new_items;\n        state->queue.capacity = total_items;\n    }\n\n    // Iterate through the resources and frames\n    size_t index = 0;\n    for (size_t i = 0; i < resources_count; ++i) {\n        // Check if the resource URL is valid\n        if (resources_list[i].spec != NULL && resources_list[i].spec_length > 0) {\n            // Create a SaveItem for the resource\n            SaveItem item = {\n                .url = resources_list[i],\n                .referrer = referrers_list[i]\n            };\n            state->queue.items[index++] = item;\n        }\n    }\n\n    for (size_t i = 0; i < frames_count; ++i) {\n        // Check if the frame URL is valid\n        if (frames_list[i].spec != NULL && frames_list[i].spec_length > 0) {\n            // Create a SaveItem for the frame\n            SaveItem item = {\n                .url = frames_list[i],\n                .referrer = referrers_list[resources_count + i]\n            };\n            state->queue.items[index++] = item;\n        }\n    }\n\n    // Check if no items need to be saved\n    if (index == 0) {\n        // Treat as a user cancellation\n        state->total_items = 0;\n        return;\n    }\n\n    // Update the total items in the state\n    state->total_items = index;\n\n    // Update the wait state\n    update_wait_state(state, 2); // Example new wait state value\n\n    // Initiate the saving process\n    initiate_saving_process(state);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if the state is in the correct wait state",
+      "protects_against": "processing resource links when the state is not in the correct wait state"
+    },
+    {
+      "step": "check if the queue has enough capacity",
+      "protects_against": "overflowing the queue when adding new items"
+    },
+    {
+      "step": "check if the resource URL is valid",
+      "protects_against": "processing invalid or null resource URLs"
+    },
+    {
+      "step": "check if the frame URL is valid",
+      "protects_against": "processing invalid or null frame URLs"
+    },
+    {
+      "step": "check if no items need to be saved",
+      "protects_against": "processing an empty list of items as a user cancellation"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if the state is in the correct wait state — protects against: processing resource links when the state is not in the correct wait state",
+        "reasoning": "The implementation checks if `wait_state_ != RESOURCES_LIST` and returns early if so, ensuring the function only proceeds when in the correct wait state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if the queue has enough capacity — protects against: overflowing the queue when adding new items",
+        "reasoning": "The implementation does not perform any check to ensure the queue has enough capacity before pushing items into it.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if the resource URL is valid — protects against: processing invalid or null resource URLs",
+        "reasoning": "The implementation uses `DCHECK(u.is_valid())` to assert that the resource URL is valid, but this is a debug check and does not prevent invalid URLs from being processed in a release build.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if the frame URL is valid — protects against: processing invalid or null frame URLs",
+        "reasoning": "The implementation uses `DCHECK(u.is_valid())` to assert that the frame URL is valid, but this is a debug check and does not prevent invalid URLs from being processed in a release build.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if no items need to be saved — protects against: processing an empty list of items as a user cancellation",
+        "reasoning": "The implementation checks if `all_save_items_count_` is non-zero before proceeding with saving. If it is zero, it treats the situation as a user cancellation by calling `Cancel(true)`, which aligns with the checklist item.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if the state is in the correct wait state — protects against: processing resource links when the state is not in the correct wait state",
+        "reasoning": "The implementation checks if `wait_state_ != RESOURCES_LIST` and returns early if this is true, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if the queue has enough capacity — protects against: overflowing the queue when adding new items",
+        "reasoning": "The implementation pushes items onto `waiting_item_queue_` without checking its capacity. There is no explicit check for queue capacity before adding items.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if the resource URL is valid — protects against: processing invalid or null resource URLs",
+        "reasoning": "The implementation uses `DCHECK(u.is_valid())` to assert that the URL is valid. However, `DCHECK` is typically a debug-only check and does not prevent invalid URLs from being processed in a release build.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if the frame URL is valid — protects against: processing invalid or null frame URLs",
+        "reasoning": "The implementation uses `DCHECK(u.is_valid())` for frame URLs as well, which is a debug-only check and does not prevent invalid URLs from being processed in a release build.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if no items need to be saved — protects against: processing an empty list of items as a user cancellation",
+        "reasoning": "The implementation checks if `all_save_items_count_` is non-zero and treats a zero count as a user cancellation by calling `Cancel(true)`, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

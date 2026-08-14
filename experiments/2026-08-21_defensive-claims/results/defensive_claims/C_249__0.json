@@ -1,0 +1,66 @@
+{
+  "case_id": "C_249__0",
+  "sample_id": "D/C/249",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9756",
+  "cve_summary": "arch/x86/kvm/emulate.c in the Linux kernel before 4.8.12 does not properly initialize Code Segment (CS) in certain error cases, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "arch/x86/kvm/emulate.c",
+  "docstring": "Summary: This function handles a far jump operation in an x86 emulation context.\n\nParameters:\nctxt (struct x86_emulate_ctxt *): Pointer to the emulation context containing state information.\n\nReturns: int: The status of the operation, indicating whether it continues, is unhandleable, or encounters an error.\n\nLogic: The function obtains a segment selector, loads the corresponding segment descriptor, and assigns the instruction pointer for the far jump. It returns status codes based on the results of these operations. Error handling for specific cases is noted as not implemented.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int handle_far_jump(struct x86_emulate_ctxt *ctxt) {\n    uint16_t selector = 0;\n    struct desc_struct desc = {0};\n    int status = 0;\n\n    if (!ctxt) {\n        return X86EMUL_UNHANDLEABLE;\n    }\n\n    status = get_segment_selector(ctxt, &selector);\n    if (status != X86EMUL_CONTINUE) {\n        return status;\n    }\n\n    status = load_segment_descriptor(ctxt, selector, &desc);\n    if (status != X86EMUL_CONTINUE) {\n        return status;\n    }\n\n    status = set_instruction_pointer(ctxt, desc.base);\n    if (status != X86EMUL_CONTINUE) {\n        return status;\n    }\n\n    return X86EMUL_CONTINUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check_ctxt_pointer",
+      "protects_against": "null pointer dereference"
+    }
+  ],
+  "n_claims": 1,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check_ctxt_pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences the 'ctxt' pointer immediately (e.g., 'ctxt->ops'), which implies that the function assumes 'ctxt' is non-null. There is no explicit check for a null pointer.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check_ctxt_pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences the 'ctxt' pointer multiple times (e.g., 'ctxt->ops->cpl(ctxt)', 'ctxt->src.valptr', 'ctxt->src.val'). If 'ctxt' is null, this would cause a null pointer dereference. The implementation does not check if 'ctxt' is null before using it.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

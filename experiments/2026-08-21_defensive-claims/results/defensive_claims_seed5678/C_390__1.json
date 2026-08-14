@@ -1,0 +1,82 @@
+{
+  "case_id": "C_390__1",
+  "sample_id": "D/C/390",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "acpica/acpica",
+  "cve_id": "CVE-2017-13694",
+  "cve_summary": "The acpi_ps_complete_final_op() function in drivers/acpi/acpica/psobject.c in the Linux kernel through 4.12.9 does not flush the node and node_ext caches and causes a kernel stack dump, which allows local users to obtain sensitive information from kernel memory and bypass the KASLR protection mechanism (in the kernel through 4.9) via a crafted ACPI table.",
+  "changed_file": "source/components/parser/psobject.c",
+  "docstring": "\"\"\"\nSummary: \nCompletes the final operation in an ACPI parse state and clears the scope stack.\n\nParameters: \nWalkState (ACPI_WALK_STATE*): Pointer to the current walk state during parsing. \nOp (ACPI_PARSE_OBJECT*): Pointer to the parse object representing the current operation. \nStatus (ACPI_STATUS): The status of the current operation.\n\nReturns: \nACPI_STATUS: The status of the completion process, indicating success or failure.\n\nLogic: The function processes the last operation in an AML package and clears the scope stack. It checks if there are any ascending callbacks to execute and handles operation completion while managing the scope stack. If errors occur during operation completion, it returns an appropriate status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ACPI_STATUS AcpiPsCompleteThisOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status) {\n    ACPI_STATUS Status2 = AE_OK;\n\n    if (!WalkState || !Op) {\n        return (AE_BAD_PARAMETER);\n    }\n\n    if (WalkState->ScopeDepth > 0) {\n        WalkState->ScopeDepth--;\n    }\n\n    if (WalkState->AscendingCallback) {\n        Status2 = WalkState->AscendingCallback(WalkState, Op, Status);\n        if (ACPI_FAILURE(Status2)) {\n            return (Status2);\n        }\n    }\n\n    return (Status);\n}",
+  "defensive_steps": [
+    {
+      "step": "check that WalkState and Op are not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound ScopeDepth decrement to ensure it does not underflow",
+      "protects_against": "underflow of ScopeDepth"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check that WalkState and Op are not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check that WalkState and Op are not null before dereferencing them. WalkState is dereferenced in the first line of the function (WalkState->AscendingCallback), and Op is dereferenced in the if (Op) condition. If either pointer is null, this could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound ScopeDepth decrement to ensure it does not underflow — protects against: underflow of ScopeDepth",
+        "reasoning": "The implementation calls AcpiPsPopScope, which presumably decrements ScopeDepth. However, there is no explicit check in the code to ensure that ScopeDepth does not underflow. If ScopeDepth is already at zero, decrementing it could lead to underflow.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check that WalkState and Op are not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check that WalkState and Op are not null before dereferencing them. WalkState is dereferenced in multiple places (e.g., `WalkState->AscendingCallback`, `WalkState->Op`, etc.), and Op is dereferenced in the `if (Op)` block. If either pointer is null, this could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound ScopeDepth decrement to ensure it does not underflow — protects against: underflow of ScopeDepth",
+        "reasoning": "The implementation calls `AcpiPsPopScope`, which presumably decrements the ScopeDepth. However, the implementation does not explicitly check or bound the decrement of ScopeDepth to prevent underflow. Whether this is done in `AcpiPsPopScope` is not visible here, and the current code does not include such a check directly.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "case_id": "C_41__0",
+  "sample_id": "D/C/41",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1080",
+  "cve_summary": "The do_replace function in net/bridge/netfilter/ebtables.c in the Linux kernel before 2.6.39 does not ensure that a certain name field ends with a '0' character, which allows local users to obtain potentially sensitive information from kernel stack memory by leveraging the CAP_NET_ADMIN capability to replace a table, and then reading a modprobe command line.",
+  "changed_file": "net/bridge/netfilter/ebtables.c",
+  "docstring": "Summary:  \nReplaces an existing network table with new entries provided by the user.\n\nParameters:  \nnet (struct net *): Pointer to the network namespace.  \nuser (const void __user *): Pointer to user-space data containing new table information.  \nlen (unsigned int): Length of the user-space data.\n\nReturns:  \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic:  \nThe function first copies data from user space into a temporary structure and checks for errors in the length and entry size. It performs overflow checks on the number of entries and counters. Memory is allocated for the new table information, and if successful, it copies the entries from user space. Finally, it calls a finishing function to complete the replacement process, handling any errors by freeing allocated memory before returning the appropriate error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int replace_net_table(struct net *net, const void __user *user, unsigned int len) {\n    void *tmp = NULL;\n    int ret = -ENOMEM;\n    size_t entry_size;\n    size_t num_entries;\n\n    if (!net || !user || !len) {\n        return -EINVAL;\n    }\n\n    if (len % sizeof(entry_size)) {\n        return -EINVAL;\n    }\n\n    tmp = kmalloc(len, GFP_KERNEL);\n    if (!tmp) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(tmp, user, len)) {\n        kfree(tmp);\n        return -EFAULT;\n    }\n\n    num_entries = len / sizeof(entry_size);\n    if (num_entries == 0) {\n        kfree(tmp);\n        return -EINVAL;\n    }\n\n    if (num_entries > (SIZE_MAX / sizeof(entry_size))) {\n        kfree(tmp);\n        return -EOVERFLOW;\n    }\n\n    ret = finish_replace_net_table(net, tmp, num_entries);\n    if (ret < 0) {\n        kfree(tmp);\n        return ret;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate length is a multiple of entry size",
+      "protects_against": "malformed input with invalid length"
+    },
+    {
+      "step": "check for copy_from_user failure",
+      "protects_against": "invalid user-space pointer"
+    },
+    {
+      "step": "check for zero or invalid number of entries",
+      "protects_against": "malformed input with invalid number of entries"
+    },
+    {
+      "step": "check for overflow in number of entries",
+      "protects_against": "integer overflow in memory allocation"
+    },
+    {
+      "step": "free allocated memory on error",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'user' parameter. However, the first operation is a call to 'copy_from_user', which will fail if 'user' is null or invalid, returning -EFAULT. This failure is checked and handled, which indirectly protects against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate length is a multiple of entry size — protects against: malformed input with invalid length",
+        "reasoning": "The implementation checks if 'len' equals 'sizeof(tmp) + tmp.entries_size'. This ensures the total length is consistent with the structure and the entries size, but it does not explicitly check if 'tmp.entries_size' is a multiple of the entry size. This could allow malformed input with invalid length.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for copy_from_user failure — protects against: invalid user-space pointer",
+        "reasoning": "The implementation checks the return value of 'copy_from_user' for the initial copy of 'tmp' and for the subsequent copy of 'newinfo->entries'. On failure, it returns -EFAULT, which protects against invalid user-space pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for zero or invalid number of entries — protects against: malformed input with invalid number of entries",
+        "reasoning": "The implementation checks if 'tmp.entries_size' is zero and returns -EINVAL in that case. However, it does not explicitly check for invalid numbers of entries (e.g., negative or excessively large values).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for overflow in number of entries — protects against: integer overflow in memory allocation",
+        "reasoning": "The implementation includes an overflow check for 'tmp.nentries' and 'tmp.num_counters' to ensure they do not cause memory allocation to overflow. This protects against integer overflow in memory allocation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation includes labeled error handling for freeing 'newinfo->entries' and 'newinfo' on error paths. This ensures that allocated memory is freed in case of failure, preventing memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'user' parameter. However, the function uses 'copy_from_user', which will return an error if 'user' is invalid or null, effectively preventing a null pointer dereference.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate length is a multiple of entry size — protects against: malformed input with invalid length",
+        "reasoning": "The implementation checks if 'len' equals 'sizeof(tmp) + tmp.entries_size', which ensures the total length is consistent with the structure and the entries size. This indirectly validates the length is a multiple of the entry size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for copy_from_user failure — protects against: invalid user-space pointer",
+        "reasoning": "The implementation checks the return value of 'copy_from_user' for the initial copy of 'tmp' and for the copy of 'newinfo->entries'. On failure, it returns '-EFAULT' or jumps to error handling, respectively.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for zero or invalid number of entries — protects against: malformed input with invalid number of entries",
+        "reasoning": "The implementation checks if 'tmp.entries_size' is zero and returns '-EINVAL' in that case. However, it does not explicitly check for invalid or negative numbers of entries, which could still be a problem if 'tmp.entries_size' is derived from other parameters.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for overflow in number of entries — protects against: integer overflow in memory allocation",
+        "reasoning": "The implementation includes an overflow check for 'tmp.nentries' and 'tmp.num_counters' against 'INT_MAX' to prevent memory allocation overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation includes labeled error handling for 'newinfo->entries' and 'newinfo', ensuring that allocated memory is freed in case of errors.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

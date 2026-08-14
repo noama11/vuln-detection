@@ -1,0 +1,36 @@
+{
+  "case_id": "C_495__0",
+  "sample_id": "D/C/495",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-5551",
+  "cve_summary": "The simple_set_acl function in fs/posix_acl.c in the Linux kernel before 4.9.6 preserves the setgid bit during a setxattr call involving a tmpfs filesystem, which allows local users to gain group privileges by leveraging the existence of a setgid program with restrictions on execute permissions.  NOTE: this vulnerability exists because of an incomplete fix for CVE-2016-7097.",
+  "commit_message": "tmpfs: clear S_ISGID when setting posix ACLs\n\nThis change was missed the tmpfs modification in In CVE-2016-7097\ncommit 073931017b49 (\"posix_acl: Clear SGID bit when setting\nfile permissions\")\nIt can test by xfstest generic/375, which failed to clear\nsetgid bit in the following test case on tmpfs:\n\n  touch $testfile\n  chown 100:100 $testfile\n  chmod 2755 $testfile\n  _runas -u 100 -g 101 -- setfacl -m u::rwx,g::rwx,o::rwx $testfile\n\nSigned-off-by: Gu Zheng <guzheng1@huawei.com>\nSigned-off-by: Al Viro <viro@zeniv.linux.org.uk>",
+  "changed_file": "fs/posix_acl.c",
+  "docstring": "\"\"\"\nSummary: Updates the Access Control List (ACL) for a given inode.\n\nParameters:\ninode (struct inode *): Pointer to the inode whose ACL is being set.\nacl (struct posix_acl *): Pointer to the ACL to be applied.\ntype (int): The type of ACL being set (e.g., access or default).\n\nReturns:\nint: Returns 0 on success, or an error code on failure.\n\nLogic: If the ACL type is for access, it updates the inode's mode based on the provided ACL. It then updates the inode's change time to the current time and sets the cached ACL for the inode. If any errors occur during the mode update, it returns the error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    920,
+    934
+  ],
+  "vulnerable_line_range": [
+    920,
+    935
+  ],
+  "vulnerable_snippet": "int simple_set_acl(struct inode *inode, struct posix_acl *acl, int type)\r\n{\r\n\tint error;\r\n\r\n\tif (type == ACL_TYPE_ACCESS) {\r\n\t\terror = posix_acl_equiv_mode(acl, &inode->i_mode);\r\n\t\tif (error < 0)\r\n\t\t\treturn 0;\r\n\t\tif (error == 0)\r\n\t\t\tacl = NULL;\r\n\t}\r\n\r\n\tinode->i_ctime = current_time(inode);\r\n\tset_cached_acl(inode, type, acl);\r\n\treturn 0;\r\n}",
+  "fixed_line_range": [
+    920,
+    934
+  ],
+  "fixed_snippet": "int simple_set_acl(struct inode *inode, struct posix_acl *acl, int type)\r\n{\r\n\tint error;\r\n\r\n\tif (type == ACL_TYPE_ACCESS) {\r\n\t\terror = posix_acl_update_mode(inode,\r\n\t\t\t\t&inode->i_mode, &acl);\r\n\t\tif (error)\r\n\t\t\treturn error;\r\n\t}\r\n\r\n\tinode->i_ctime = current_time(inode);\r\n\tset_cached_acl(inode, type, acl);\r\n\treturn 0;\r\n}",
+  "func_name": "simple_set_acl",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

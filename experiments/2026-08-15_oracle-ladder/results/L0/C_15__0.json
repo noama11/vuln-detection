@@ -1,0 +1,48 @@
+{
+  "case_id": "C_15__0",
+  "sample_id": "D/C/15",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-1146",
+  "cve_summary": "The mem_cgroup_usage_unregister_event function in mm/memcontrol.c in the Linux kernel before 3.2.10 does not properly handle multiple events that are attached to the same eventfd, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by registering memory threshold events.",
+  "changed_file": "mm/memcontrol.c",
+  "docstring": "\"\"\"\nSummary: \nUnregisters a memory cgroup usage event threshold from a specified cgroup.\n\nParameters: \ncgrp (struct cgroup*): Pointer to the cgroup from which the event threshold is being unregistered.\ncft (struct cftype*): Pointer to the cftype structure that defines the threshold type.\neventfd (struct eventfd_ctx*): Pointer to the eventfd context associated with the threshold.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function first retrieves the memory cgroup associated with the provided cgroup pointer. It locks the thresholds for safe access and determines the type of threshold to unregister. It calculates the new size of the threshold array after removing the specified eventfd. It copies the remaining thresholds to a new array, updates the current threshold index, and swaps the primary and spare threshold arrays. Finally, it ensures that no other processes are using the thresholds before unlocking the mutex.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void mem_cgroup_usage_unregister_event(struct cgroup *cgrp,\r\n\tstruct cftype *cft, struct eventfd_ctx *eventfd)\r\n{\r\n\tstruct mem_cgroup *memcg = mem_cgroup_from_cont(cgrp);\r\n\tstruct mem_cgroup_thresholds *thresholds;\r\n\tstruct mem_cgroup_threshold_ary *new;\r\n\tint type = MEMFILE_TYPE(cft->private);\r\n\tu64 usage;\r\n\tint i, j, size;\r\n\r\n\tmutex_lock(&memcg->thresholds_lock);\r\n\tif (type == _MEM)\r\n\t\tthresholds = &memcg->thresholds;\r\n\telse if (type == _MEMSWAP)\r\n\t\tthresholds = &memcg->memsw_thresholds;\r\n\telse\r\n\t\tBUG();\r\n\r\n\t/*\r\n\t * Something went wrong if we trying to unregister a threshold\r\n\t * if we don't have thresholds\r\n\t */\r\n\tBUG_ON(!thresholds);\r\n\r\n\tif (!thresholds->primary)\r\n\t\tgoto unlock;\r\n\r\n\tusage = mem_cgroup_usage(memcg, type == _MEMSWAP);\r\n\r\n\t/* Check if a threshold crossed before removing */\r\n\t__mem_cgroup_threshold(memcg, type == _MEMSWAP);\r\n\r\n\t/* Calculate new number of threshold */\r\n\tsize = 0;\r\n\tfor (i = 0; i < thresholds->primary->size; i++) {\r\n\t\tif (thresholds->primary->entries[i].eventfd != eventfd)\r\n\t\t\tsize++;\r\n\t}\r\n\r\n\tnew = thresholds->spare;\r\n\r\n\t/* Set thresholds array to NULL if we don't have thresholds */\r\n\tif (!size) {\r\n\t\tkfree(new);\r\n\t\tnew = NULL;\r\n\t\tgoto swap_buffers;\r\n\t}\r\n\r\n\tnew->size = size;\r\n\r\n\t/* Copy thresholds and find current threshold */\r\n\tnew->current_threshold = -1;\r\n\tfor (i = 0, j = 0; i < thresholds->primary->size; i++) {\r\n\t\tif (thresholds->primary->entries[i].eventfd == eventfd)\r\n\t\t\tcontinue;\r\n\r\n\t\tnew->entries[j] = thresholds->primary->entries[i];\r\n\t\tif (new->entries[j].threshold < usage) {\r\n\t\t\t/*\r\n\t\t\t * new->current_threshold will not be used\r\n\t\t\t * until rcu_assign_pointer(), so it's safe to increment\r\n\t\t\t * it here.\r\n\t\t\t */\r\n\t\t\t++new->current_threshold;\r\n\t\t}\r\n\t\tj++;\r\n\t}\r\n\r\nswap_buffers:\r\n\t/* Swap primary and spare array */\r\n\tthresholds->spare = thresholds->primary;\r\n\trcu_assign_pointer(thresholds->primary, new);\r\n\r\n\t/* To be sure that nobody uses thresholds */\r\n\tsynchronize_rcu();\r\nunlock:\r\n\tmutex_unlock(&memcg->thresholds_lock);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a check for whether thresholds->primary is non-null before proceeding, while the reference implementation does not include this check. This could lead to a potential NULL pointer dereference in the reference implementation if thresholds->primary is NULL. This is a security-relevant difference as it could lead to a crash or undefined behavior under certain conditions.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of logic, structure, and behavior. They both correctly handle the unregistration of a memory cgroup usage event threshold by calculating the new array size, copying the remaining thresholds, and safely swapping the primary and spare arrays. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

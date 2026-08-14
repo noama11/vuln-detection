@@ -1,0 +1,39 @@
+{
+  "case_id": "C_464__0",
+  "implementation": "int process_gif_image(struct iwgifrcontext* rctx) {\n    if (!rctx) {\n        return 0;\n    }\n\n    // Read image header\n    if (fread(&rctx->image_descriptor, sizeof(rctx->image_descriptor), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Validate image dimensions\n    if (rctx->image_descriptor.width <= 0 || rctx->image_descriptor.height <= 0) {\n        return 0;\n    }\n\n    // Initialize color tables if present\n    if (rctx->image_descriptor.has_local_color_table) {\n        size_t color_table_size = (1U << (1 + rctx->image_descriptor.color_table_depth)) * sizeof(uint32_t);\n        if (color_table_size > SIZE_MAX) {\n            return 0;\n        }\n\n        rctx->local_color_table = malloc(color_table_size);\n        if (!rctx->local_color_table) {\n            return 0;\n        }\n\n        if (fread(rctx->local_color_table, sizeof(uint32_t), (1U << (1 + rctx->image_descriptor.color_table_depth)), rctx->file) != (1U << (1 + rctx->image_descriptor.color_table_depth))) {\n            free(rctx->local_color_table);\n            rctx->local_color_table = NULL;\n            return 0;\n        }\n    }\n\n    // Handle transparency\n    if (rctx->image_descriptor.is_transparent) {\n        if (rctx->image_descriptor.transparent_index >= (1U << (1 + rctx->image_descriptor.color_table_depth))) {\n            return 0;\n        }\n\n        // Modify the color table to mark the transparent index\n        if (rctx->local_color_table) {\n            ((uint32_t*)rctx->local_color_table)[rctx->image_descriptor.transparent_index] |= 0x10000000; // Mark as transparent\n        }\n    }\n\n    // Read LZW code size\n    if (fread(&rctx->lzw_code_size, sizeof(rctx->lzw_code_size), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Validate LZW code size\n    if (rctx->lzw_code_size < 2 || rctx->lzw_code_size > 12) {\n        return 0;\n    }\n\n    // Initialize screen context\n    rctx->current_line = 0;\n    rctx->pixels_remaining = rctx->image_descriptor.width * rctx->image_descriptor.height;\n\n    // Read pixel data in subblocks\n    while (rctx->pixels_remaining > 0) {\n        uint8_t subblock_size;\n        if (fread(&subblock_size, sizeof(subblock_size), 1, rctx->file) != 1) {\n            return 0;\n        }\n\n        if (subblock_size == 0) {\n            break;\n        }\n\n        if (subblock_size > 255) {\n            return 0;\n        }\n\n        uint8_t subblock[256];\n        if (fread(subblock, sizeof(uint8_t), subblock_size, rctx->file) != subblock_size) {\n            return 0;\n        }\n\n        // Process subblock with LZW decoding\n        if (!lzw_decode(rctx, subblock, subblock_size)) {\n            return 0;\n        }\n    }\n\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null context pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate image dimensions are positive",
+      "protects_against": "invalid or negative image dimensions"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "validate color table size",
+      "protects_against": "integer overflow in memory allocation"
+    },
+    {
+      "step": "check for successful file read operations",
+      "protects_against": "partial or failed file reads"
+    },
+    {
+      "step": "validate LZW code size",
+      "protects_against": "invalid LZW code size outside GIF specification"
+    },
+    {
+      "step": "validate subblock size",
+      "protects_against": "invalid or oversized subblock size"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

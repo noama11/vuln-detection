@@ -1,0 +1,48 @@
+{
+  "case_id": "C_483__0",
+  "sample_id": "D/C/483",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-6353",
+  "cve_summary": "net/sctp/socket.c in the Linux kernel through 4.10.1 does not properly restrict association peel-off operations during certain wait states, which allows local users to cause a denial of service (invalid unlock and double free) via a multithreaded application.  NOTE: this vulnerability exists because of an incorrect fix for CVE-2017-5986.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function peels off a new socket from an existing SCTP association.  \n *  \n * Parameters:  \n * sk (struct sock *): The original socket associated with the SCTP connection.  \n * id (sctp_assoc_t): The association ID to peel off from the original socket.  \n * sockp (struct socket **): A pointer to store the newly created socket.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function first retrieves the SCTP association using the provided ID. It checks whether the\n * association and socket are eligible for peeling off. If valid, it creates a new socket, copies\n * properties from the original socket, and migrates the association to the new socket before\n * returning it through the sockp parameter.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int sctp_do_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\r\n{\r\n\tstruct sctp_association *asoc = sctp_id2assoc(sk, id);\r\n\tstruct sctp_sock *sp = sctp_sk(sk);\r\n\tstruct socket *sock;\r\n\tint err = 0;\r\n\r\n\tif (!asoc)\r\n\t\treturn -EINVAL;\r\n\r\n\t/* If there is a thread waiting on more sndbuf space for\r\n\t * sending on this asoc, it cannot be peeled.\r\n\t */\r\n\tif (waitqueue_active(&asoc->wait))\r\n\t\treturn -EBUSY;\r\n\r\n\t/* An association cannot be branched off from an already peeled-off\r\n\t * socket, nor is this supported for tcp style sockets.\r\n\t */\r\n\tif (!sctp_style(sk, UDP))\r\n\t\treturn -EINVAL;\r\n\r\n\t/* Create a new socket.  */\r\n\terr = sock_create(sk->sk_family, SOCK_SEQPACKET, IPPROTO_SCTP, &sock);\r\n\tif (err < 0)\r\n\t\treturn err;\r\n\r\n\tsctp_copy_sock(sock->sk, sk, asoc);\r\n\r\n\t/* Make peeled-off sockets more like 1-1 accepted sockets.\r\n\t * Set the daddr and initialize id to something more random\r\n\t */\r\n\tsp->pf->to_sk_daddr(&asoc->peer.primary_addr, sk);\r\n\r\n\t/* Populate the fields of the newsk from the oldsk and migrate the\r\n\t * asoc to the newsk.\r\n\t */\r\n\tsctp_sock_migrate(sk, sock->sk, asoc, SCTP_SOCKET_UDP_HIGH_BANDWIDTH);\r\n\r\n\t*sockp = sock;\r\n\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check for `waitqueue_active(&asoc->wait)` which the reference implementation does not have. This check prevents peeling off an association if there is a thread waiting on send buffer space, which could be a security-relevant condition to avoid race conditions or resource contention. This difference is reachable via attacker-influenced input and could affect memory safety or resource management.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same checks, create a new socket, copy properties, and migrate the association. There are no observable behavioral differences for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,54 @@
+MagickBooleanType LoadTileImage(Image *image, Image *tile_image, XCFDocInfo *inDocInfo, XCFLayerInfo *inLayerInfo, size_t data_length, ExceptionInfo *exception) {
+    register PixelInfo *q;
+    size_t number_pixels;
+    Quantum *pixels;
+
+    number_pixels = image->columns * image->rows;
+    pixels = (Quantum *) AcquireQuantumMemory(number_pixels, sizeof(Quantum));
+    if (pixels == (Quantum *) NULL)
+        ThrowBinaryException(ResourceLimitError, "MemoryAllocationFailed", image->filename);
+
+    if (ReadImagePixelData(image, pixels, data_length, exception) != MagickTrue) {
+        RelinquishMagickMemory(pixels);
+        return MagickFalse;
+    }
+
+    q = SetImagePixels(tile_image, 0, 0, tile_image->columns, tile_image->rows, exception);
+    if (q == (PixelInfo *) NULL)
+        return MagickFalse;
+
+    if (inDocInfo->image_type == GIMP_GRAY) {
+        register ssize_t i;
+
+        for (i = 0; i < (ssize_t) number_pixels; i++) {
+            q->red = pixels[i];
+            q->green = pixels[i];
+            q->blue = pixels[i];
+            q->opacity = inLayerInfo->alpha ? pixels[i] : OpaqueOpacity;
+            q++;
+        }
+    }
+    else if (inDocInfo->image_type == GIMP_RGB) {
+        register ssize_t i;
+
+        for (i = 0; i < (ssize_t) number_pixels; i++) {
+            q->red = pixels[i++];
+            q->green = pixels[i++];
+            q->blue = pixels[i];
+            q->opacity = inLayerInfo->alpha ? pixels[i] : OpaqueOpacity;
+            q++;
+        }
+    }
+    else {
+        RelinquishMagickMemory(pixels);
+        return MagickFalse;
+    }
+
+    if (SyncImagePixels(tile_image, exception) != MagickTrue) {
+        RelinquishMagickMemory(pixels);
+        return MagickFalse;
+    }
+
+    RelinquishMagickMemory(pixels);
+    return MagickTrue;
+}

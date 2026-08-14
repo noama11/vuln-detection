@@ -1,0 +1,114 @@
+{
+  "case_id": "C_831__0",
+  "sample_id": "D/C/831",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6544",
+  "cve_summary": "The Bluetooth protocol stack in the Linux kernel before 3.6 does not properly initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application that targets the (1) L2CAP or (2) HCI implementation.",
+  "changed_file": "net/bluetooth/hci_sock.c",
+  "docstring": "Summary: Retrieves the name of a Bluetooth socket and fills the provided address structure with the socket's information.\n\nParameters:\nsock (struct socket *): Pointer to the socket whose name is being retrieved.\naddr (struct sockaddr *): Pointer to the sockaddr structure to be filled with the socket's address.\naddr_len (int *): Pointer to an integer that will hold the length of the address.\npeer (int): Indicates whether the address is for the local or remote peer.\n\nReturns: int - Returns 0 on success, or -EBADFD if the Bluetooth device is not available.\n\nLogic: The function first checks if the Bluetooth device associated with the socket is valid. If valid, it locks the socket, populates the sockaddr_hci structure with the socket address information, then releases the socket lock and returns success. If the device is invalid, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_bt_socket_name(struct socket *sock, struct sockaddr *addr, int *addr_len, int peer) {\n    struct sockaddr_hci *hci_addr = (struct sockaddr_hci *)addr;\n    struct sock *sk = sock->sk;\n\n    if (!sk || !hci_addr || !addr_len) {\n        return -EBADFD;\n    }\n\n    if (peer) {\n        if (sk->sk_state != BT_CONNECTED) {\n            return -EBADFD;\n        }\n    }\n\n    lock_sock(sk);\n\n    hci_addr->hci_family = AF_BLUETOOTH;\n    hci_addr->hci_dev = sk->sk_dev;\n    hci_addr->hci_channel = sk->sk_channel;\n\n    release_sock(sk);\n\n    *addr_len = sizeof(struct sockaddr_hci);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing sock, addr, or addr_len"
+    },
+    {
+      "step": "check socket state before accessing peer information",
+      "protects_against": "attempting to access peer information when the socket is not connected"
+    },
+    {
+      "step": "use lock and release functions for socket access",
+      "protects_against": "race conditions when accessing socket data"
+    },
+    {
+      "step": "validate socket before using it",
+      "protects_against": "using an invalid or uninitialized socket"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sock, addr, or addr_len",
+        "reasoning": "The implementation does not explicitly check for null pointers for sock, addr, or addr_len before dereferencing them.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check socket state before accessing peer information — protects against: attempting to access peer information when the socket is not connected",
+        "reasoning": "The implementation does not check the socket state or whether the socket is connected before accessing the peer information.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "use lock and release functions for socket access — protects against: race conditions when accessing socket data",
+        "reasoning": "The implementation uses lock_sock(sk) and release_sock(sk), which are appropriate locking mechanisms for socket access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate socket before using it — protects against: using an invalid or uninitialized socket",
+        "reasoning": "The implementation checks if hdev is null and returns -EBADFD if it is, which indirectly validates the socket's Bluetooth device.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sock, addr, or addr_len",
+        "reasoning": "The implementation does not explicitly check for null pointers for sock, addr, or addr_len before dereferencing them.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check socket state before accessing peer information — protects against: attempting to access peer information when the socket is not connected",
+        "reasoning": "The implementation does not check the socket state or whether the socket is connected before accessing its information.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "use lock and release functions for socket access — protects against: race conditions when accessing socket data",
+        "reasoning": "The implementation uses lock_sock(sk) and release_sock(sk), which are appropriate locking mechanisms for socket access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate socket before using it — protects against: using an invalid or uninitialized socket",
+        "reasoning": "The implementation checks if hdev is null and returns -EBADFD if it is, which indirectly validates the socket's Bluetooth device.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

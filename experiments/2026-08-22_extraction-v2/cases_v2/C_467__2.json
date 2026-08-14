@@ -1,0 +1,36 @@
+{
+  "case_id": "C_467__2",
+  "sample_id": "D/C/467",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "erikd/libsndfile",
+  "cve_id": "CVE-2017-7742",
+  "cve_summary": "In libsndfile before 1.0.28, an error in the *flac_buffer_copy()* function (flac.c) can be exploited to cause a segmentation violation (with read memory access) via a specially crafted FLAC file during a resample attempt, a similar issue to CVE-2017-7585.",
+  "commit_message": "src/flac.c: Improve error handling\n\nEspecially when dealing with corrupt or malicious files.",
+  "changed_file": "src/flac.c",
+  "docstring": "Summary: This function processes audio data in a loop for a FLAC decoder, reading a specified length of data and handling the decoding state.\n\nParameters: \n- psf (SF_PRIVATE*): Pointer to the structure containing stream information.\n- len (unsigned): The length of data to read and decode.\n\nReturns: \n- unsigned: The number of bytes processed from the input stream.\n\nLogic: The function initializes the position and length for reading, checks the state of the FLAC decoder, and logs any errors if the state indicates an issue. It first copies any already decoded data from the buffer if available. Then, it enters a loop to decode additional data until the specified length is reached or an error state is encountered. If the decoder state indicates the end of the stream or an error, it logs the state and nullifies the frame pointer. Finally, it returns the number of bytes processed.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    910,
+    946
+  ],
+  "vulnerable_line_range": [
+    907,
+    930
+  ],
+  "vulnerable_snippet": "static unsigned\r\nflac_read_loop (SF_PRIVATE *psf, unsigned len)\r\n{\tFLAC_PRIVATE* pflac = (FLAC_PRIVATE*) psf->codec_data ;\r\n\r\n\tpflac->pos = 0 ;\r\n\tpflac->len = len ;\r\n\tpflac->remain = len ;\r\n\r\n\t/* First copy data that has already been decoded and buffered. */\r\n\tif (pflac->frame != NULL && pflac->bufferpos < pflac->frame->header.blocksize)\r\n\t\tflac_buffer_copy (psf) ;\r\n\r\n\t/* Decode some more. */\r\n\twhile (pflac->pos < pflac->len)\r\n\t{\tif (FLAC__stream_decoder_process_single (pflac->fsd) == 0)\r\n\t\t\tbreak ;\r\n\t\tif (FLAC__stream_decoder_get_state (pflac->fsd) >= FLAC__STREAM_DECODER_END_OF_STREAM)\r\n\t\t\tbreak ;\r\n\t\t} ;\r\n\r\n\tpflac->ptr = NULL ;\r\n\r\n\treturn pflac->pos ;\r\n}",
+  "fixed_line_range": [
+    910,
+    946
+  ],
+  "fixed_snippet": "static unsigned\r\nflac_read_loop (SF_PRIVATE *psf, unsigned len)\r\n{\tFLAC_PRIVATE* pflac = (FLAC_PRIVATE*) psf->codec_data ;\r\n\tFLAC__StreamDecoderState state ;\r\n\r\n\tpflac->pos = 0 ;\r\n\tpflac->len = len ;\r\n\tpflac->remain = len ;\r\n\r\n\tstate = FLAC__stream_decoder_get_state (pflac->fsd) ;\r\n\tif (state > FLAC__STREAM_DECODER_END_OF_STREAM)\r\n\t{\tpsf_log_printf (psf, \"FLAC__stream_decoder_get_state returned %s\\n\", FLAC__StreamDecoderStateString [state]) ;\r\n\t\t/* Current frame is busted, so NULL the pointer. */\r\n\t\tpflac->frame = NULL ;\r\n\t\t} ;\r\n\r\n\t/* First copy data that has already been decoded and buffered. */\r\n\tif (pflac->frame != NULL && pflac->bufferpos < pflac->frame->header.blocksize)\r\n\t\tflac_buffer_copy (psf) ;\r\n\r\n\t/* Decode some more. */\r\n\twhile (pflac->pos < pflac->len)\r\n\t{\tif (FLAC__stream_decoder_process_single (pflac->fsd) == 0)\r\n\t\t\tbreak ;\r\n\t\tstate = FLAC__stream_decoder_get_state (pflac->fsd) ;\r\n\t\tif (state >= FLAC__STREAM_DECODER_END_OF_STREAM)\r\n\t\t{\tpsf_log_printf (psf, \"FLAC__stream_decoder_get_state returned %s\\n\", FLAC__StreamDecoderStateString [state]) ;\r\n\t\t\t/* Current frame is busted, so NULL the pointer. */\r\n\t\t\tpflac->frame = NULL ;\r\n\t\t\tbreak ;\r\n\t\t\t} ;\r\n\t\t} ;\r\n\r\n\tpflac->ptr = NULL ;\r\n\r\n\treturn pflac->pos ;\r\n}",
+  "func_name": "flac_read_loop",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

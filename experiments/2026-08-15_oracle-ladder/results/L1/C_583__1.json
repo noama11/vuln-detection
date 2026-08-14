@@ -1,0 +1,49 @@
+{
+  "case_id": "C_583__1",
+  "sample_id": "D/C/583",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "keszybz/systemd",
+  "cve_id": "CVE-2015-7510",
+  "cve_summary": "Stack-based buffer overflow in the getpwnam and getgrnam functions of the NSS module nss-mymachines in systemd.",
+  "changed_file": "src/nss-mymachines/nss-mymachines.c",
+  "docstring": "Summary:  \nRetrieves group information for a given group name in the context of machine management.\n\nParameters:  \nname (const char*): The name of the group to look up.  \ngr (struct group*): A pointer to a group structure to populate with the retrieved information.  \nbuffer (char*): A buffer to store the group name and member list.  \nbuflen (size_t): The length of the buffer provided.  \nerrnop (int*): A pointer to an integer to store error numbers.\n\nReturns:  \nenum nss_status: The status of the group retrieval operation, which can indicate success, not found, or an unavailable service.\n\nLogic:  \nThe function first validates the input name and extracts the machine name and group ID. It then attempts to open a system bus connection and call a method to map the group. If successful, it populates the provided group structure and buffer. If any step fails, it handles errors appropriately and returns the corresponding status.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "enum nss_status _nss_mymachines_getgrnam_r(\n                const char *v9,\n                struct group *v6,\n                char *v1, size_t v2,\n                int *v3) {\n        _cleanup_bus_error_free_ sd_bus_error error = SD_BUS_ERROR_NULL;\n        _cleanup_bus_message_unref_ sd_bus_message* reply = NULL;\n        _cleanup_bus_flush_close_unref_ sd_bus *bus = NULL;\n        const char *v11, *e, *machine;\n        uint32_t v8;\n        uid_t v5;\n        size_t v7;\n        int v12;\n        assert(v9);\n        assert(v6);\n        v11 = startswith(v9, \"vg-\");\n        if (!v11)\n                goto v10;\n        e = strrchr(v11, '-');\n        if (!e || e == v11)\n                goto v10;\n        if (e - v11 > HOST_NAME_MAX - 1)\n                goto v10;\n        v12 = parse_gid(e + 1, &v5);\n        if (v12 < 0)\n                goto v10;\n        machine = strndupa(v11, e - v11);\n        if (!machine_name_is_valid(machine))\n                goto v10;\n        v12 = sd_bus_open_system(&bus);\n        if (v12 < 0)\n                goto v4;\n        v12 = sd_bus_call_method(bus,\n                               \"org.freedesktop.machine1\",\n                               \"/org/freedesktop/machine1\",\n                               \"org.freedesktop.machine1.Manager\",\n                               \"MapFromMachineGroup\",\n                               &error,\n                               &reply,\n                               \"su\",\n                               machine, (uint32_t) v5);\n        if (v12 < 0) {\n                if (sd_bus_error_has_name(&error, BUS_ERROR_NO_SUCH_GROUP_MAPPING))\n                        goto v10;\n                goto v4;\n        }\n        v12 = sd_bus_message_read(reply, \"u\", &v8);\n        if (v12 < 0)\n                goto v4;\n        v7 = sizeof(char*) + strlen(v9) + 1;\n        if (v2 < v7) {\n                *v3 = ENOMEM;\n                return NSS_STATUS_TRYAGAIN;\n        }\n        memzero(v1, sizeof(char*));\n        strcpy(v1 + sizeof(char*), v9);\n        v6->gr_name = v1 + sizeof(char*);\n        v6->gr_gid = v5;\n        v6->gr_passwd = (char*) \"*\";\n        v6->gr_mem = (char**) v1;\n        *v3 = 0;\n        return NSS_STATUS_SUCCESS;\nv10:\n        *v3 = 0;\n        return NSS_STATUS_NOTFOUND;\nv4:\n        *v3 = -v12;\n        return NSS_STATUS_UNAVAIL;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 12
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both validate the input name, extract the machine name and group ID, open a system bus connection, and call the same method to map the group. They handle errors in the same way and populate the group structure and buffer similarly. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both validate the input name, extract the machine name and group ID, open a system bus connection, call the same method, and handle errors in the same way. The only differences are in variable names and formatting, which do not affect the observable behavior or security properties of the code.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

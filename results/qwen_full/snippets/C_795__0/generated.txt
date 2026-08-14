@@ -1,0 +1,35 @@
+void send_floorplan_image(WebEmSession& session, const request& req, reply& rep) {
+    const char* idx = request_get_param(req, "idx");
+    if (!idx || strlen(idx) == 0) {
+        return;
+    }
+
+    unsigned char* image_data = NULL;
+    size_t image_size = 0;
+
+    if (!db_query_image_by_id(idx, &image_data, &image_size)) {
+        return;
+    }
+
+    if (image_data == NULL || image_size == 0) {
+        free(image_data);
+        return;
+    }
+
+    rep.content = image_data;
+    rep.content_length = image_size;
+
+    char content_type[64] = {0};
+    if (image_data[0] == 0x47) { // 'G' for GIF
+        snprintf(content_type, sizeof(content_type), "image/gif");
+    } else if (image_data[0] == 0x89 && image_size > 2 && image_data[1] == 0x50 && image_data[2] == 0x4E && image_data[3] == 0x47) { // PNG signature
+        snprintf(content_type, sizeof(content_type), "image/png");
+    } else if (image_data[0] == 0xFF && image_size > 2 && image_data[1] == 0xD8 && image_data[2] == 0xFF) { // JPEG signature
+        snprintf(content_type, sizeof(content_type), "image/jpeg");
+    } else {
+        snprintf(content_type, sizeof(content_type), "application/octet-stream");
+    }
+
+    reply_set_header(rep, "Content-Type", content_type);
+    reply_set_header(rep, "Content-Disposition", "attachment");
+}

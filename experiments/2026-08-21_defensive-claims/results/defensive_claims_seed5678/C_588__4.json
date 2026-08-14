@@ -1,0 +1,114 @@
+{
+  "case_id": "C_588__4",
+  "sample_id": "D/C/588",
+  "func_idx": 4,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2014-9907",
+  "cve_summary": "coders/dds.c in ImageMagick allows remote attackers to cause a denial of service via a crafted DDS file.",
+  "changed_file": "coders/dds.c",
+  "docstring": "\"\"\"\nSummary: \nReads DXT5 compressed image data and decodes it into an Image structure.\n\nParameters: \nimage (Image *): Pointer to the Image structure where the decoded pixels will be stored.\ndds_info (DDSInfo *): Pointer to the DDSInfo structure containing image dimensions and metadata.\nexception (ExceptionInfo *): Pointer to the ExceptionInfo structure for error handling.\n\nReturns: \nMagickBooleanType: Returns MagickTrue if the image is successfully read and decoded, otherwise returns MagickFalse.\n\nLogic: The function processes the DXT5 compressed image data in 4x4 pixel blocks. It retrieves alpha values and color data from the compressed format, calculates the corresponding pixel colors, and sets them in the Image structure. The function handles the synchronization of pixel data and manages exceptions during the reading process.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n\nMagickBooleanType ReadDXT5Image(Image *image, const DDSInfo *dds_info, ExceptionInfo *exception) {\n  if (!image || !dds_info || !exception) {\n    return MagickFalse;\n  }\n\n  if (image->columns <= 0 || image->rows <= 0) {\n    return MagickFalse;\n  }\n\n  size_t block_width = (image->columns + 3) / 4;\n  size_t block_height = (image->rows + 3) / 4;\n  size_t block_count = block_width * block_height;\n\n  if (block_count == 0) {\n    return MagickFalse;\n  }\n\n  // Allocate memory for pixel data if not already allocated\n  if (!image->pixels) {\n    image->pixels = (PixelPacket *) AcquirePixelPacket(image, exception);\n    if (!image->pixels) {\n      return MagickFalse;\n    }\n  }\n\n  // Process each 4x4 block\n  for (size_t y = 0; y < block_height; y++) {\n    for (size_t x = 0; x < block_width; x++) {\n      // Calculate the position of the current block\n      size_t block_index = y * block_width + x;\n      size_t block_data_offset = block_index * 16; // 16 bytes per DXT5 block\n\n      // Ensure the block data offset is within the valid range\n      if (block_data_offset >= dds_info->data_size) {\n        return MagickFalse;\n      }\n\n      // Retrieve alpha values and color data from the compressed format\n      // (Implementation of decoding logic would go here)\n\n      // Calculate the corresponding pixel colors and set them in the Image structure\n      // (Implementation of pixel setting logic would go here)\n    }\n  }\n\n  // Synchronize pixel data and manage exceptions during the reading process\n  // (Implementation of synchronization and exception handling would go here)\n\n  return MagickTrue;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate image dimensions",
+      "protects_against": "invalid or negative image dimensions"
+    },
+    {
+      "step": "check for zero block count",
+      "protects_against": "division by zero or invalid block count"
+    },
+    {
+      "step": "verify block data offset is within valid range",
+      "protects_against": "out-of-bounds memory access"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 17,
+    "n_omits": 3,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the `image`, `dds_info`, or `exception` parameters. Dereferencing these pointers without checks could lead to a null pointer dereference if any of them are null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate image dimensions — protects against: invalid or negative image dimensions",
+        "reasoning": "The implementation uses `dds_info->width` and `dds_info->height` in loops and for pixel allocation, but does not explicitly validate that these values are positive or within a reasonable range. If these values are zero or negative, the function could behave incorrectly or crash.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for zero block count — protects against: division by zero or invalid block count",
+        "reasoning": "The implementation processes the image in 4x4 pixel blocks, but does not explicitly check for a zero block count. If the image dimensions are such that no blocks are processed, the function may not handle this case correctly.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "verify block data offset is within valid range — protects against: out-of-bounds memory access",
+        "reasoning": "The implementation reads data using functions like `ReadBlobLSBLong`, `ReadBlobLSBShort`, and `ReadBlobLSBLong`, but does not explicitly verify that the data offset is within a valid range. If the data is malformed or incomplete, this could lead to out-of-bounds memory access.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (image, dds_info, exception). However, the function returns MagickFalse if q is NULL, which could be a result of a null pointer passed to QueueAuthenticPixels. This is not a complete null pointer check for all inputs.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate image dimensions — protects against: invalid or negative image dimensions",
+        "reasoning": "The implementation uses dds_info->width and dds_info->height in loops and in calls to QueueAuthenticPixels, but it does not explicitly validate that these values are positive or within expected bounds. This could lead to invalid memory access or infinite loops if the values are negative or excessively large.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for zero block count — protects against: division by zero or invalid block count",
+        "reasoning": "The implementation processes the image in 4x4 pixel blocks, but it does not explicitly check for a zero block count. However, the loop increments by 4 in both x and y directions, so if the image dimensions are zero, the loop would not execute. This makes the step not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "verify block data offset is within valid range — protects against: out-of-bounds memory access",
+        "reasoning": "The implementation does not explicitly verify the block data offset. However, the function uses QueueAuthenticPixels and checks if q is NULL, which could indicate an out-of-bounds condition. The implementation also includes bounds checks in the inner loop (x + i < width and y + j < height), which help prevent out-of-bounds memory access.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_208__0",
+  "sample_id": "D/C/208",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-5697",
+  "cve_summary": "The get_bitmap_file function in drivers/md/md.c in the Linux kernel before 4.1.6 does not initialize a certain bitmap data structure, which allows local users to obtain sensitive information from kernel memory via a GET_BITMAP_FILE ioctl call.",
+  "changed_file": "drivers/md/md.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves the bitmap file associated with a given mddev structure and copies  \n * it to user space.  \n *  \n * Parameters:  \n * mddev (struct mddev *): Pointer to the mddev structure containing bitmap info.  \n * arg (void __user *): Pointer to user space where the bitmap file information will be copied.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * Allocates memory for a bitmap file structure. If the bitmap is disabled, it sets  \n * the pathname to an empty string. If the bitmap is enabled, it retrieves the file  \n * path and copies it to the structure. Finally, it attempts to copy the structure  \n * to user space and cleans up allocated memory before returning the result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int get_bitmap_file(struct mddev *mddev, void __user * arg)\r\n{\r\n\tmdu_bitmap_file_t *file = NULL; /* too big for stack allocation */\r\n\tchar *ptr;\r\n\tint err;\r\n\r\n\tfile = kzalloc(sizeof(*file), GFP_NOIO);\r\n\tif (!file)\r\n\t\treturn -ENOMEM;\r\n\r\n\terr = 0;\r\n\tspin_lock(&mddev->lock);\r\n\t/* bitmap disabled, zero the first byte and copy out */\r\n\tif (!mddev->bitmap_info.file)\r\n\t\tfile->pathname[0] = '\\0';\r\n\telse if ((ptr = file_path(mddev->bitmap_info.file,\r\n\t\t\t       file->pathname, sizeof(file->pathname))),\r\n\t\t IS_ERR(ptr))\r\n\t\terr = PTR_ERR(ptr);\r\n\telse\r\n\t\tmemmove(file->pathname, ptr,\r\n\t\t\tsizeof(file->pathname)-(ptr-file->pathname));\r\n\tspin_unlock(&mddev->lock);\r\n\r\n\tif (err == 0 &&\r\n\t    copy_to_user(arg, file, sizeof(*file)))\r\n\t\terr = -EFAULT;\r\n\r\n\tkfree(file);\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being the use of `kzalloc` in the candidate implementation and `kmalloc` in the reference implementation. `kzalloc` is equivalent to `kmalloc` followed by a `memset` to zero the allocated memory. Since the candidate implementation initializes the allocated memory to zero, while the reference implementation does not explicitly zero it, there is a minor difference in the initial state of the allocated memory. However, this difference is not observable in the final behavior because the code immediately writes to the `pathname` field, overwriting any initial zero values. Therefore, the two implementations are behaviorally equivalent.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of logic, memory allocation, locking, error handling, and copying data to user space. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

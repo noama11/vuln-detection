@@ -1,0 +1,162 @@
+{
+  "case_id": "C_522__0",
+  "sample_id": "D/C/522",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "systemd/systemd",
+  "cve_id": "CVE-2016-10156",
+  "cve_summary": "A flaw in systemd v228 in /src/basic/fs-util.c caused world writable suid files to be created when using the systemd timers features, allowing local attackers to escalate their privileges to root. This is fixed in v229.",
+  "changed_file": "src/basic/fs-util.c",
+  "docstring": "Summary: This function creates or updates a file at the specified path with given attributes.\n\nParameters: \npath (const char*): The path of the file to create or update.  \nparents (bool): If true, create parent directories as needed.  \nstamp (usec_t): The timestamp to set on the file.  \nuid (uid_t): The user ID to set as the owner of the file.  \ngid (gid_t): The group ID to set as the owner of the file.  \nmode (mode_t): The file permissions to set; if invalid, defaults to 0644.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function first checks if the path is valid and optionally creates parent directories. It then attempts to open the file with specified permissions, updates its mode and ownership if provided, and sets the file's timestamp. If any operation fails, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <sys/stat.h>\n#include <sys/types.h>\n#include <unistd.h>\n#include <fcntl.h>\n#include <dirent.h>\n#include <errno.h>\n#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n\nint create_or_update_file(const char *path, bool parents, usec_t stamp, uid_t uid, gid_t gid, mode_t mode) {\n    if (!path) {\n        return -EINVAL;\n    }\n\n    if (parents) {\n        char *buf = NULL;\n        char *p = NULL;\n        size_t len = 0;\n\n        len = strlen(path);\n        buf = (char *)malloc(len + 1);\n        if (!buf) {\n            return -ENOMEM;\n        }\n\n        strcpy(buf, path);\n        p = buf;\n\n        while ((p = strchr(p, '/'))) {\n            if (p == buf) {\n                p++;\n                continue;\n            }\n\n            *p = '\\0';\n            if (mkdir(buf, 0755) == -1 && errno != EEXIST) {\n                free(buf);\n                return -errno;\n            }\n            *p = '/';\n            p++;\n        }\n\n        free(buf);\n    }\n\n    int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, (mode == 0 ? 0644 : mode));\n    if (fd == -1) {\n        return -errno;\n    }\n\n    if (uid != (uid_t)-1 || gid != (gid_t)-1) {\n        if (fchown(fd, uid != (uid_t)-1 ? uid : (uid_t)-1, gid != (gid_t)-1 ? gid : (gid_t)-1) == -1) {\n            close(fd);\n            return -errno;\n        }\n    }\n\n    if (mode != 0) {\n        if (fchmod(fd, mode) == -1) {\n            close(fd);\n            return -errno;\n        }\n    }\n\n    struct timespec ts[2];\n    ts[0].tv_sec = stamp / 1000000;\n    ts[0].tv_nsec = (stamp % 1000000) * 1000;\n    ts[1] = ts[0];\n\n    if (futimens(fd, ts) == -1) {\n        close(fd);\n        return -errno;\n    }\n\n    if (close(fd) == -1) {\n        return -errno;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if path is NULL",
+      "protects_against": "NULL pointer dereference"
+    },
+    {
+      "step": "check if memory allocation for directory creation is successful",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check if open call is successful",
+      "protects_against": "file open failure"
+    },
+    {
+      "step": "check if fchown call is successful",
+      "protects_against": "ownership change failure"
+    },
+    {
+      "step": "check if fchmod call is successful",
+      "protects_against": "permissions change failure"
+    },
+    {
+      "step": "check if futimens call is successful",
+      "protects_against": "timestamp setting failure"
+    },
+    {
+      "step": "check if close call is successful",
+      "protects_against": "file close failure"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check if path is NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation uses `assert(path);` which ensures the function will not proceed if path is NULL, thus preventing a NULL pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if memory allocation for directory creation is successful — protects against: out of memory condition",
+        "reasoning": "The implementation calls `mkdir_parents(path, 0755);` but does not check if this function succeeds or fails. If `mkdir_parents` allocates memory and fails, the implementation does not handle it.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if open call is successful — protects against: file open failure",
+        "reasoning": "The implementation checks if `fd < 0` after the `open` call and returns an error code if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if fchown call is successful — protects against: ownership change failure",
+        "reasoning": "The implementation checks if `r < 0` after the `fchown` call and returns an error code if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if fchmod call is successful — protects against: permissions change failure",
+        "reasoning": "The implementation checks if `r < 0` after the `fchmod` call and returns an error code if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if futimens call is successful — protects against: timestamp setting failure",
+        "reasoning": "The implementation checks if `r < 0` after the `futimens` call and returns an error code if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if close call is successful — protects against: file close failure",
+        "reasoning": "The implementation uses `_cleanup_close_ int fd;`, which automatically closes the file descriptor on scope exit. However, it does not check if the close operation itself fails.",
+        "verdict": "omits",
+        "severity": 2
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 5,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check if path is NULL — protects against: NULL pointer dereference",
+        "reasoning": "The implementation uses assert(path), which will terminate the program if path is NULL. This is not a runtime check but a compile-time assertion, so it does not handle the error gracefully at runtime.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if memory allocation for directory creation is successful — protects against: out of memory condition",
+        "reasoning": "The implementation calls mkdir_parents(path, 0755), but there is no check for whether this call succeeded. If mkdir_parents allocates memory and fails, the error is not handled.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "check if open call is successful — protects against: file open failure",
+        "reasoning": "The implementation checks if fd < 0 after the open call and returns -errno if it fails. This correctly handles the case where the open call fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if fchown call is successful — protects against: ownership change failure",
+        "reasoning": "The implementation calls fchown and checks if r < 0, returning -errno if it fails. This correctly handles the case where the fchown call fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if fchmod call is successful — protects against: permissions change failure",
+        "reasoning": "The implementation calls fchmod and checks if r < 0, returning -errno if it fails. This correctly handles the case where the fchmod call fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if futimens call is successful — protects against: timestamp setting failure",
+        "reasoning": "The implementation calls futimens and checks if r < 0, returning -errno if it fails. This correctly handles the case where the futimens call fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if close call is successful — protects against: file close failure",
+        "reasoning": "The implementation uses a _cleanup_close_ macro, which automatically closes the file descriptor and handles errors. However, there is no explicit check for the success of the close operation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

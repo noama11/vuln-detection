@@ -1,0 +1,39 @@
+struct posix_acl *convert_xfs_acl_to_posix(struct xfs_acl *aclp) {
+    int count = aclp->count;
+    struct posix_acl *posix_acl;
+    struct posix_acl_entry *entry;
+    int i;
+
+    if (count > POSIX_ACL_MAX_ENTRIES)
+        return ERR_PTR(-EINVAL);
+
+    posix_acl = kmalloc(sizeof(*posix_acl) + (count - 1) * sizeof(struct posix_acl_entry), GFP_KERNEL);
+    if (!posix_acl)
+        return ERR_PTR(-ENOMEM);
+
+    posix_acl->a_count = count;
+
+    for (i = 0, entry = &posix_acl->a_entries[0]; i < count; i++, entry++) {
+        switch (aclp->entries[i].tag) {
+            case XFS_ACL_USER_OBJ:
+                entry->e_tag = POSIX_ACL_USER_OBJ;
+                break;
+            case XFS_ACL_GROUP_OBJ:
+                entry->e_tag = POSIX_ACL_GROUP_OBJ;
+                break;
+            case XFS_ACL_OWNER:
+                entry->e_tag = POSIX_ACL_OWNER;
+                break;
+            case XFS_ACL_EVERYONE:
+                entry->e_tag = POSIX_ACL_EVERYONE;
+                break;
+            default:
+                kfree(posix_acl);
+                return ERR_PTR(-EINVAL);
+        }
+
+        entry->e_perm = aclp->entries[i].perm;
+    }
+
+    return posix_acl;
+}

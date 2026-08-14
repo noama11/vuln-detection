@@ -1,0 +1,34 @@
+{
+  "case_id": "C_137__3",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void handle_syscall_exit(void *ignore, struct pt_regs *regs, long ret)\n{\n    int syscall_num = regs->syscall_nr;\n\n    if (syscall_num < 0 || syscall_num >= __NR_syscall_max)\n        return;\n\n    struct syscall_metadata *meta = &syscall_metadata_table[syscall_num];\n    if (!meta || !meta->enable_perf)\n        return;\n\n    struct perf_event_header *header = perf_event_header_alloc();\n    if (!header)\n        return;\n\n    header->type = PERF_RECORD_SYSCALL_EXIT;\n    header->size = sizeof(*header) + sizeof(syscall_num) + sizeof(ret);\n\n    char *buf = perf_event_header__raw_data(header);\n    *(int *)buf = syscall_num;\n    *(long *)(buf + sizeof(syscall_num)) = ret;\n\n    perf_event_output(0, header, PERF_SAMPLE_RAW, 0, 0, buf, header->size);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void handle_syscall_exit(void *ignore, struct pt_regs *regs, long ret)\n{\n    int syscall_nr = regs->syscallno;\n\n    if (syscall_nr < 0 || syscall_nr >= __NR_syscall_max)\n        return;\n\n    if (!is_perf_event_enabled(syscall_exit_event))\n        return;\n\n    struct syscall_metadata *metadata = get_syscall_metadata(syscall_nr);\n    if (!metadata)\n        return;\n\n    if (!(metadata->flags & SYSCALL_EXIT_EVENT))\n        return;\n\n    struct trace_buffer *buffer = prepare_trace_buffer();\n    if (!buffer)\n        return;\n\n    trace_record(buffer, metadata->id, regs, ret);\n    submit_trace_buffer(buffer);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void syscall_exit_trace(void *ignore, struct pt_regs *regs, long ret) {\n    int syscall_num = regs->syscall;\n\n    if (syscall_num < 0 || syscall_num >= __NR_syscall_max)\n        return;\n\n    struct syscall_metadata *metadata = get_syscall_metadata(syscall_num);\n    if (!metadata || !metadata->exit_event)\n        return;\n\n    char buffer[128];\n    int len = 0;\n\n    len += snprintf(buffer + len, sizeof(buffer) - len, \"%d\", syscall_num);\n    len += snprintf(buffer + len, sizeof(buffer) - len, \" %ld\", ret);\n\n    trace_submit(buffer, len);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void handle_syscall_exit(void *ignore, struct pt_regs *regs, long ret) {\n    int syscall_num = regs->syscall;\n\n    if (syscall_num < 0 || syscall_num >= __NR_syscall_max)\n        return;\n\n    struct syscall_metadata *metadata = get_syscall_metadata(syscall_num);\n    if (!metadata || !metadata->enable_perf)\n        return;\n\n    if (!metadata->exit_event)\n        return;\n\n    char buffer[PERF_BUFFER_SIZE];\n    int event_id = metadata->exit_event;\n\n    buffer[0] = (char)syscall_num;\n    *(long *)(buffer + 1) = ret;\n\n    submit_perf_buffer(buffer, sizeof(char) + sizeof(long), event_id);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/tracepoint.h>\n#include <linux/errno.h>\n#include <linux/sched.h>\n\nvoid handle_syscall_exit(void *ignore, struct pt_regs *regs, long ret)\n{\n    int syscall_num = regs->ax;\n    struct syscall_metadata *metadata;\n\n    if (syscall_num < 0 || syscall_num >= __NR_syscall_max)\n        return;\n\n    metadata = get_syscall_metadata(syscall_num);\n    if (!metadata)\n        return;\n\n    if (!metadata->exit_event)\n        return;\n\n    struct trace_buffer *buf = prepare_trace_buffer();\n    if (!buf)\n        return;\n\n    buf->syscall_num = syscall_num;\n    buf->return_value = ret;\n    submit_trace_buffer(buf);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <pwd.h>
+
+enum nss_status {
+    NSS_STATUS_SUCCESS,
+    NSS_STATUS_NOTFOUND,
+    NSS_STATUS_UNAVAIL
+};
+
+enum nss_status get_user_account_info(const char* name, struct passwd* pwd, char* buffer, size_t buflen, int* errnop) {
+    if (!name || !pwd || !buffer || buflen == 0 || !errnop) {
+        *errnop = EINVAL;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    if (strncmp(name, "vu-", 3) != 0) {
+        *errnop = 0;
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    const char* machine_start = name + 3;
+    const char* uid_start = strchr(machine_start, '-');
+    if (!uid_start) {
+        *errnop = 0;
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    size_t machine_len = (size_t)(uid_start - machine_start);
+    if (machine_len == 0) {
+        *errnop = 0;
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    const char* uid_str = uid_start + 1;
+    char* endptr;
+    long uid = strtol(uid_str, &endptr, 10);
+    if (uid_str == endptr || *endptr != '\0' || uid < 0 || uid > UID_MAX) {
+        *errnop = 0;
+        return NSS_STATUS_NOTFOUND;
+    }
+
+    // Simulate system bus call to map the user (placeholder logic)
+    // In a real implementation, this would interface with a system or database.
+    // For this example, we assume the user is always found.
+    pwd->pw_name = "vu-user";
+    pwd->pw_uid = (uid_t)uid;
+    pwd->pw_gid = (gid_t)uid;
+    pwd->pw_gecos = "Virtual User";
+    pwd->pw_dir = "/home/vu-user";
+    pwd->pw_shell = "/bin/bash";
+
+    *errnop = 0;
+    return NSS_STATUS_SUCCESS;
+}

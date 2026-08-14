@@ -1,0 +1,49 @@
+{
+  "case_id": "C_238__0",
+  "sample_id": "D/C/238",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-8173",
+  "cve_summary": "The pmd_none_or_trans_huge_or_clear_bad function in include/asm-generic/pgtable.h in the Linux kernel before 3.13 on NUMA systems does not properly determine whether a Page Middle Directory (PMD) entry is a transparent huge-table entry, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact via a crafted MADV_WILLNEED madvise system call that leverages the absence of a page-table lock.",
+  "changed_file": "include/asm-generic/pgtable.h",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function checks if a given page middle directory (PMD) entry is either  \n * none, a transparent huge page, or marked as bad, while ensuring atomicity  \n * during the checks to prevent race conditions.  \n *  \n * Parameters:  \n * pmd (pmd_t*): Pointer to the PMD entry to be checked.  \n *  \n * Returns:  \n * int: Returns 1 if the PMD is none, a transparent huge page, or bad;  \n * otherwise returns 0.  \n *  \n * Logic:\n * The function reads the PMD atomically and uses a compiler barrier to ensure that the value does\n * not change during the checks. It checks the PMD state and returns 1 for entries that require no\n * further handling. If the PMD is marked as bad, it performs the applicable bad-entry handling and\n * returns 1. If none of these conditions are met, it returns 0.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "static inline int pmd_none_or_trans_huge_or_clear_bad(pmd_t *v1)\n{\n    pmd_t v2 = pmd_read_atomic(v1);\n#ifdef CONFIG_TRANSPARENT_HUGEPAGE\n    barrier();\n#endif\n    if (pmd_none(v2) || pmd_trans_huge(v2))\n        return 1;\n    if (unlikely(pmd_bad(v2))) {\n        pmd_clear_bad(v1);\n        return 1;\n    }\n    return 0;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 2
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation checks for pmd_none or pmd_trans_huge first and returns 1 if either is true. The reference implementation only returns 1 for pmd_none and then checks for pmd_bad. If the pmd is bad and not a transparent huge page, it clears the bad entry. This difference in logic could lead to different behaviors when a PMD is both bad and a transparent huge page. In the candidate implementation, the check for pmd_trans_huge would return 1 before checking for pmd_bad, whereas in the reference implementation, the pmd_bad check is only executed if the pmd is not a transparent huge page. This is a behavioral difference that could be exploited via attacker-influenced input, making it security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform the same logic: they read the PMD atomically, apply a compiler barrier under the same condition (CONFIG_TRANSPARENT_HUGEPAGE), and check for the same conditions (none, transparent huge page, or bad). The only difference is in variable names (v2 vs. pmdval), which do not affect behavior. All checks and side effects (e.g., pmd_clear_bad) are identical.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "Cpp_711__0",
+  "sample_id": "D/C++/711",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "qpdf/qpdf",
+  "cve_id": "CVE-2017-18184",
+  "cve_summary": "An issue was discovered in QPDF before 7.0.0. There is a stack-based out-of-bounds read in the function iterate_rc4 in QPDF_encryption.cc.",
+  "changed_file": "libqpdf/QPDF_encryption.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Computes the O value used in PDF encryption based on the user and owner passwords.  \n *  \n * Parameters:  \n * user_password (std::string const&): The password provided by the user.  \n * owner_password (std::string const&): The password set by the document owner.  \n * data (QPDF::EncryptionData const&): Encryption data containing parameters for the operation.  \n *  \n * Returns:  \n * std::string: The computed O value as a string.  \n *  \n * Logic:  \n * The function derives an RC4 key from the user and owner passwords, pads or truncates the user password, and then iterates the RC4 algorithm to generate the O value, which is returned as a string.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "std::string computeOValue(std::string const& user_password, std::string const& owner_password, QPDF::EncryptionData const& data) {\n    // Derive RC4 key from user and owner passwords\n    std::string key = deriveRC4Key(user_password, owner_password, data);\n\n    // Pad or truncate the user password\n    std::string padded_user_password = padOrTruncatePassword(user_password, data);\n\n    // Initialize RC4 state\n    RC4State rc4_state;\n    rc4_init(&rc4_state, key);\n\n    // Iterate RC4 to generate the O value\n    std::string o_value;\n    o_value.resize(data.key_length);\n    rc4_crypt(&rc4_state, &padded_user_password[0], &o_value[0], padded_user_password.size());\n\n    return o_value;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "bounds-checked rc4_crypt operation",
+      "string resizing with explicit size"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Both implementations perform similar defensive steps, such as deriving a key and processing the password. However, implementation 1 uses a fixed-size buffer (upass) and directly accesses it with a string return, while implementation 2 uses dynamic string resizing and bounds-checked operations. Implementation 2 includes explicit bounds-checked operations (e.g., rc4_crypt with size), while implementation 1 does not. Implementation 1 lacks explicit validation of the padded password size before use, which could lead to buffer issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "use of std::string for padded password to avoid buffer overflow"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 1,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Both implementations perform similar defensive steps, such as padding/truncating passwords and deriving keys. However, implementation 1 uses a fixed-size buffer for the user password, which could be vulnerable to buffer overflow if not properly managed. Implementation 2 uses std::string for the padded password, which is inherently safer. Implementation 1 lacks explicit bounds checks for buffer usage, while implementation 2 uses resize() and direct access to string data, which is safer.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

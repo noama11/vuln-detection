@@ -1,0 +1,36 @@
+{
+  "case_id": "C_574__1",
+  "sample_id": "D/C/574",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "mjg59/linux",
+  "cve_id": "CVE-2016-3695",
+  "cve_summary": "The einj_error_inject function in drivers/acpi/apei/einj.c in the Linux kernel allows local users to simulate hardware errors and consequently cause a denial of service by leveraging failure to disable APEI error injection through EINJ when securelevel is set.",
+  "commit_message": "acpi: Disable APEI error injection if securelevel is set\n\nACPI provides an error injection mechanism, EINJ, for debugging and testing\nthe ACPI Platform Error Interface (APEI) and other RAS features. If\nsupported by the firmware, ACPI specification 5.0 and later provide for a\nway to specify a physical memory address to which to inject the error.\n\nInjecting errors through EINJ can produce errors which to the platform are\nindistinguishable from real hardware errors. This can have undesirable\nside-effects, such as causing the platform to mark hardware as needing\nreplacement.\n\nWhile it does not provide a method to load unauthenticated privileged code,\nthe effect of these errors may persist across reboots and affect trust in\nthe underlying hardware, so disable error injection through EINJ if\nsecurelevel is set.\n\nSigned-off-by: Linn Crosetto <linn@hpe.com>",
+  "changed_file": "drivers/acpi/apei/einj.c",
+  "docstring": "Summary: This function injects an error based on the specified type and parameters, ensuring that the operation adheres to security and validity checks.\n\nParameters:\n- type (u32): Specifies the type of error to inject.\n- flags (u32): Contains flags that modify the injection behavior.\n- param1 (u64): First parameter related to the error injection.\n- param2 (u64): Second parameter, often used for address masking.\n- param3 (u64): Third parameter for additional context.\n- param4 (u64): Fourth parameter for additional context.\n\nReturns: int - Returns the result of the error injection operation, with negative values indicating failure (e.g., -EPERM for permission denied, -EINVAL for invalid arguments).\n\nLogic: The function first checks the secure level and validates the flags. It performs sanity checks to ensure that the parameters are appropriate for memory-related errors. If the checks pass, it locks a mutex, calls a lower-level function to perform the injection, and then unlocks the mutex before returning the result.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    519,
+    571
+  ],
+  "vulnerable_line_range": [
+    518,
+    567
+  ],
+  "vulnerable_snippet": "static int einj_error_inject(u32 type, u32 flags, u64 param1, u64 param2,\r\n\t\t\t     u64 param3, u64 param4)\r\n{\r\n\tint rc;\r\n\tu64 base_addr, size;\r\n\r\n\t/* If user manually set \"flags\", make sure it is legal */\r\n\tif (flags && (flags &\r\n\t\t~(SETWA_FLAGS_APICID|SETWA_FLAGS_MEM|SETWA_FLAGS_PCIE_SBDF)))\r\n\t\treturn -EINVAL;\r\n\r\n\t/*\r\n\t * We need extra sanity checks for memory errors.\r\n\t * Other types leap directly to injection.\r\n\t */\r\n\r\n\t/* ensure param1/param2 existed */\r\n\tif (!(param_extension || acpi5))\r\n\t\tgoto inject;\r\n\r\n\t/* ensure injection is memory related */\r\n\tif (type & ACPI5_VENDOR_BIT) {\r\n\t\tif (vendor_flags != SETWA_FLAGS_MEM)\r\n\t\t\tgoto inject;\r\n\t} else if (!(type & MEM_ERROR_MASK) && !(flags & SETWA_FLAGS_MEM))\r\n\t\tgoto inject;\r\n\r\n\t/*\r\n\t * Disallow crazy address masks that give BIOS leeway to pick\r\n\t * injection address almost anywhere. Insist on page or\r\n\t * better granularity and that target address is normal RAM or\r\n\t * NVDIMM.\r\n\t */\r\n\tbase_addr = param1 & param2;\r\n\tsize = ~param2 + 1;\r\n\r\n\tif (((param2 & PAGE_MASK) != PAGE_MASK) ||\r\n\t    ((region_intersects(base_addr, size, IORESOURCE_SYSTEM_RAM, IORES_DESC_NONE)\r\n\t\t\t\t!= REGION_INTERSECTS) &&\r\n\t     (region_intersects(base_addr, size, IORESOURCE_MEM, IORES_DESC_PERSISTENT_MEMORY)\r\n\t\t\t\t!= REGION_INTERSECTS)))\r\n\t\treturn -EINVAL;\r\n\r\ninject:\r\n\tmutex_lock(&einj_mutex);\r\n\trc = __einj_error_inject(type, flags, param1, param2, param3, param4);\r\n\tmutex_unlock(&einj_mutex);\r\n\r\n\treturn rc;\r\n}",
+  "fixed_line_range": [
+    519,
+    571
+  ],
+  "fixed_snippet": "static int einj_error_inject(u32 type, u32 flags, u64 param1, u64 param2,\r\n\t\t\t     u64 param3, u64 param4)\r\n{\r\n\tint rc;\r\n\tu64 base_addr, size;\r\n\r\n\tif (get_securelevel() > 0)\r\n\t\treturn -EPERM;\r\n\r\n\t/* If user manually set \"flags\", make sure it is legal */\r\n\tif (flags && (flags &\r\n\t\t~(SETWA_FLAGS_APICID|SETWA_FLAGS_MEM|SETWA_FLAGS_PCIE_SBDF)))\r\n\t\treturn -EINVAL;\r\n\r\n\t/*\r\n\t * We need extra sanity checks for memory errors.\r\n\t * Other types leap directly to injection.\r\n\t */\r\n\r\n\t/* ensure param1/param2 existed */\r\n\tif (!(param_extension || acpi5))\r\n\t\tgoto inject;\r\n\r\n\t/* ensure injection is memory related */\r\n\tif (type & ACPI5_VENDOR_BIT) {\r\n\t\tif (vendor_flags != SETWA_FLAGS_MEM)\r\n\t\t\tgoto inject;\r\n\t} else if (!(type & MEM_ERROR_MASK) && !(flags & SETWA_FLAGS_MEM))\r\n\t\tgoto inject;\r\n\r\n\t/*\r\n\t * Disallow crazy address masks that give BIOS leeway to pick\r\n\t * injection address almost anywhere. Insist on page or\r\n\t * better granularity and that target address is normal RAM or\r\n\t * NVDIMM.\r\n\t */\r\n\tbase_addr = param1 & param2;\r\n\tsize = ~param2 + 1;\r\n\r\n\tif (((param2 & PAGE_MASK) != PAGE_MASK) ||\r\n\t    ((region_intersects(base_addr, size, IORESOURCE_SYSTEM_RAM, IORES_DESC_NONE)\r\n\t\t\t\t!= REGION_INTERSECTS) &&\r\n\t     (region_intersects(base_addr, size, IORESOURCE_MEM, IORES_DESC_PERSISTENT_MEMORY)\r\n\t\t\t\t!= REGION_INTERSECTS)))\r\n\t\treturn -EINVAL;\r\n\r\ninject:\r\n\tmutex_lock(&einj_mutex);\r\n\trc = __einj_error_inject(type, flags, param1, param2, param3, param4);\r\n\tmutex_unlock(&einj_mutex);\r\n\r\n\treturn rc;\r\n}",
+  "func_name": "einj_error_inject",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

@@ -1,0 +1,53 @@
+unsigned flac_process_audio_data(SF_PRIVATE *psf, unsigned len)
+{
+    unsigned bytes_processed = 0;
+    unsigned pos = 0;
+    unsigned read_len = 0;
+
+    if (psf == NULL || len == 0)
+        return 0;
+
+    /* Copy any already decoded data from the buffer if available */
+    if (psf->decoded_data_pos > 0) {
+        unsigned copy_len = SF_MIN(len, psf->decoded_data_pos);
+        memcpy(psf->output_buffer + pos, psf->decoded_data, copy_len);
+        pos += copy_len;
+        bytes_processed += copy_len;
+        psf->decoded_data_pos -= copy_len;
+        memmove(psf->decoded_data, psf->decoded_data + copy_len, psf->decoded_data_pos);
+    }
+
+    while (pos < len) {
+        read_len = len - pos;
+
+        if (psf->decoder_state == FLAC_DECODER_ERROR) {
+            SF_LOG_ERROR(psf, "FLAC decoder is in an error state.");
+            break;
+        }
+
+        if (psf->decoder_state == FLAC_DECODER_EOF) {
+            SF_LOG_INFO(psf, "End of FLAC stream reached.");
+            break;
+        }
+
+        /* Simulate decoding of additional data */
+        unsigned decoded = flac_decode_next_block(psf, psf->output_buffer + pos, read_len);
+        if (decoded == 0) {
+            if (psf->decoder_state == FLAC_DECODER_EOF) {
+                SF_LOG_INFO(psf, "End of stream reached during decoding.");
+            } else {
+                SF_LOG_ERROR(psf, "Failed to decode additional data.");
+            }
+            break;
+        }
+
+        pos += decoded;
+        bytes_processed += decoded;
+    }
+
+    if (psf->decoder_state == FLAC_DECODER_EOF || psf->decoder_state == FLAC_DECODER_ERROR) {
+        psf->frame = NULL;
+    }
+
+    return bytes_processed;
+}

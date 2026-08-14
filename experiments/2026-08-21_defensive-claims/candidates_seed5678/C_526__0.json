@@ -1,0 +1,39 @@
+{
+  "case_id": "C_526__0",
+  "implementation": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n#include \"MagickCore.h\"\n\nImage* ExtractPostscriptImage(Image *image, const ImageInfo *image_info, MagickOffsetType PS_Offset, ssize_t PS_Size, ExceptionInfo *exception) {\n    ImageInfo *clone_info = CloneImageInfo(image_info);\n    if (!clone_info) {\n        ThrowImageException(ResourceLimitError, \"MemoryAllocationFailed\");\n        return image;\n    }\n\n    char filename[MaxTextLength];\n    GetPathComponent(image->filename, TailPath, filename, MaxTextLength);\n    char *unique_filename = AcquireUniqueFilename(filename);\n    if (!unique_filename) {\n        DestroyImageInfo(clone_info);\n        ThrowImageException(ResourceLimitError, \"MemoryAllocationFailed\");\n        return image;\n    }\n\n    FILE *file = fopen(unique_filename, \"wb\");\n    if (!file) {\n        RelinquishUniqueFileResource(unique_filename);\n        DestroyImageInfo(clone_info);\n        ThrowImageException(FileOpenError, \"UnableToCreateFile\");\n        return image;\n    }\n\n    if (image->blob == NULL || image->blob->length < PS_Offset + PS_Size) {\n        fclose(file);\n        RelinquishUniqueFileResource(unique_filename);\n        DestroyImageInfo(clone_info);\n        ThrowImageException(CorruptImageError, \"InvalidPostscriptOffsetOrSize\");\n        return image;\n    }\n\n    size_t bytes_written = fwrite((const char*)image->blob->data + PS_Offset, 1, PS_Size, file);\n    if (bytes_written != PS_Size) {\n        fclose(file);\n        RelinquishUniqueFileResource(unique_filename);\n        DestroyImageInfo(clone_info);\n        ThrowImageException(CorruptImageError, \"PostscriptDataWriteFailed\");\n        return image;\n    }\n\n    fclose(file);\n\n    Image *nested_image = ReadImage(clone_info, exception);\n    if (!nested_image) {\n        RelinquishUniqueFileResource(unique_filename);\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    if (image->next != (Image *) NULL) {\n        Image *next_image = image->next;\n        image->next = nested_image;\n        nested_image->next = next_image;\n    } else {\n        image->next = nested_image;\n        nested_image->next = (Image *) NULL;\n    }\n\n    (void) CopyImageAttributes(image, nested_image);\n\n    RelinquishUniqueFileResource(unique_filename);\n    DestroyImageInfo(clone_info);\n\n    return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if CloneImageInfo returns NULL",
+      "protects_against": "memory allocation failure when cloning image info"
+    },
+    {
+      "step": "check if AcquireUniqueFilename returns NULL",
+      "protects_against": "memory allocation failure when creating a unique filename"
+    },
+    {
+      "step": "check if fopen returns NULL",
+      "protects_against": "file open failure when creating a temporary file"
+    },
+    {
+      "step": "validate image blob and offset/size",
+      "protects_against": "invalid PS_Offset or PS_Size that could cause buffer overflow"
+    },
+    {
+      "step": "check if fwrite returns expected size",
+      "protects_against": "partial or failed write of Postscript data to file"
+    },
+    {
+      "step": "check if ReadImage returns NULL",
+      "protects_against": "failure to read the nested image from the file"
+    },
+    {
+      "step": "clean up resources on error paths",
+      "protects_against": "resource leaks in case of errors during processing"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

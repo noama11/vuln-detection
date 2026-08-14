@@ -1,0 +1,36 @@
+{
+  "case_id": "C_1162__0",
+  "sample_id": "D/C/1162",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-0880",
+  "cve_summary": "Use-after-free vulnerability in Google Chrome before 25.0.1364.97 on Windows and Linux, and before 25.0.1364.99 on Mac OS X, allows remote attackers to cause a denial of service or possibly have unspecified other impact via vectors related to databases.",
+  "commit_message": "Add permission checks for PPB_Buffer.\nBUG=116317\nTEST=browser_tests\n\nReview URL: https://chromiumcodereview.appspot.com/11446075\n\ngit-svn-id: svn://svn.chromium.org/chrome/trunk/src@171951 0039d316-1c4b-4281-b951-d872f2087c98",
+  "changed_file": "ppapi/proxy/ppb_buffer_proxy.cc",
+  "docstring": "/**\n * Summary: Handles the creation of a buffer resource in response to a message.\n * \n * Parameters:\n * - instance (PP_Instance): The instance associated with the buffer.\n * - size (uint32_t): The size of the buffer to be created.\n * - result_resource (HostResource*): Pointer to store the created buffer's resource.\n * - result_shm_handle (ppapi::proxy::SerializedHandle*): Pointer to store the shared memory handle.\n * \n * Returns: None\n * \n * Logic: The function first checks for the necessary permissions and resource creation validity. If successful, it creates a buffer and retrieves its shared memory handle. The resulting resource and shared memory handle are then set for use by the caller. The function includes platform-specific handling for file descriptors based on the operating system.\n */",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    106,
+    149
+  ],
+  "vulnerable_line_range": [
+    106,
+    147
+  ],
+  "vulnerable_snippet": "void PPB_Buffer_Proxy::OnMsgCreate(\r\n    PP_Instance instance,\r\n    uint32_t size,\r\n    HostResource* result_resource,\r\n    ppapi::proxy::SerializedHandle* result_shm_handle) {\r\n  // Overwritten below on success.\r\n  result_shm_handle->set_null_shmem();\r\n  HostDispatcher* dispatcher = HostDispatcher::GetForInstance(instance);\r\n  if (!dispatcher)\r\n    return;\r\n\r\n  thunk::EnterResourceCreation enter(instance);\r\n  if (enter.failed())\r\n    return;\r\n  PP_Resource local_buffer_resource = enter.functions()->CreateBuffer(instance,\r\n                                                                      size);\r\n  if (local_buffer_resource == 0)\r\n    return;\r\n\r\n  thunk::EnterResourceNoLock<thunk::PPB_BufferTrusted_API> trusted_buffer(\r\n      local_buffer_resource, false);\r\n  if (trusted_buffer.failed())\r\n    return;\r\n  int local_fd;\r\n  if (trusted_buffer.object()->GetSharedMemory(&local_fd) != PP_OK)\r\n    return;\r\n\r\n  result_resource->SetHostResource(instance, local_buffer_resource);\r\n\r\n  // TODO(piman/brettw): Change trusted interface to return a PP_FileHandle,\r\n  // those casts are ugly.\r\n  base::PlatformFile platform_file =\r\n#if defined(OS_WIN)\r\n      reinterpret_cast<HANDLE>(static_cast<intptr_t>(local_fd));\r\n#elif defined(OS_POSIX)\r\n      local_fd;\r\n#else\r\n  #error Not implemented.\r\n#endif\r\n  result_shm_handle->set_shmem(\r\n      dispatcher->ShareHandleWithRemote(platform_file, false), size);\r\n}",
+  "fixed_line_range": [
+    106,
+    149
+  ],
+  "fixed_snippet": "void PPB_Buffer_Proxy::OnMsgCreate(\r\n    PP_Instance instance,\r\n    uint32_t size,\r\n    HostResource* result_resource,\r\n    ppapi::proxy::SerializedHandle* result_shm_handle) {\r\n  // Overwritten below on success.\r\n  result_shm_handle->set_null_shmem();\r\n  HostDispatcher* dispatcher = HostDispatcher::GetForInstance(instance);\r\n  if (!dispatcher)\r\n    return;\r\n  if (!dispatcher->permissions().HasPermission(ppapi::PERMISSION_DEV))\r\n    return;\r\n\r\n  thunk::EnterResourceCreation enter(instance);\r\n  if (enter.failed())\r\n    return;\r\n  PP_Resource local_buffer_resource = enter.functions()->CreateBuffer(instance,\r\n                                                                      size);\r\n  if (local_buffer_resource == 0)\r\n    return;\r\n\r\n  thunk::EnterResourceNoLock<thunk::PPB_BufferTrusted_API> trusted_buffer(\r\n      local_buffer_resource, false);\r\n  if (trusted_buffer.failed())\r\n    return;\r\n  int local_fd;\r\n  if (trusted_buffer.object()->GetSharedMemory(&local_fd) != PP_OK)\r\n    return;\r\n\r\n  result_resource->SetHostResource(instance, local_buffer_resource);\r\n\r\n  // TODO(piman/brettw): Change trusted interface to return a PP_FileHandle,\r\n  // those casts are ugly.\r\n  base::PlatformFile platform_file =\r\n#if defined(OS_WIN)\r\n      reinterpret_cast<HANDLE>(static_cast<intptr_t>(local_fd));\r\n#elif defined(OS_POSIX)\r\n      local_fd;\r\n#else\r\n  #error Not implemented.\r\n#endif\r\n  result_shm_handle->set_shmem(\r\n      dispatcher->ShareHandleWithRemote(platform_file, false), size);\r\n}",
+  "func_name": "OnMsgCreate",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

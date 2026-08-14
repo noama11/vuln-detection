@@ -1,0 +1,114 @@
+{
+  "case_id": "C_137__0",
+  "sample_id": "D/C/137",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-7826",
+  "cve_summary": "kernel/trace/trace_syscalls.c in the Linux kernel through 3.17.2 does not properly handle private syscall numbers during use of the ftrace subsystem, which allows local users to gain privileges or cause a denial of service (invalid pointer dereference) via a crafted application.",
+  "changed_file": "kernel/trace/trace_syscalls.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the entry of a system call for tracing purposes.\n\nParameters: \ndata (void*): Pointer to the trace array containing tracing information. \nregs (struct pt_regs*): Pointer to the register state at the time of the syscall. \nid (long): Identifier for the syscall being traced.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function retrieves the syscall number from the current process's register state and checks its validity. It then accesses the corresponding ftrace event file and verifies if tracing is enabled. If valid, it retrieves metadata for the syscall, prepares to log the entry into a ring buffer, and saves the current interrupt flags and preemption count. It reserves space in the trace buffer for the syscall entry event, populates the entry with the syscall number and its arguments, and finally commits the event to the trace buffer.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/ftrace_event.h>\n#include <linux/irqflags.h>\n#include <linux/preempt.h>\n\nvoid handle_syscall_trace_entry(void *data, struct pt_regs *regs, long id) {\n    int i;\n    struct ftrace_event_file *file;\n    struct ring_buffer *buffer;\n    struct ring_buffer_event *event;\n    struct trace_entry *entry;\n    unsigned long flags;\n    unsigned int pc;\n\n    if (!regs) {\n        return;\n    }\n\n    id = pt_regs_SYSCALL(regs);\n\n    file = find_event_file(data, id);\n    if (!file || !file->enabled) {\n        return;\n    }\n\n    buffer = file->ring_buffer;\n    if (!buffer) {\n        return;\n    }\n\n    flags = raw_local_save_flags();\n    pc = preempt_count();\n\n    event = ring_buffer_lock_reserve(buffer, sizeof(*entry));\n    if (!event) {\n        return;\n    }\n\n    entry = ring_buffer_event_data(event);\n    entry->type = TRACE_SYSCALL_ENTRY;\n    entry->pid = current->pid;\n\n    for (i = 0; i < 6; i++) {\n        entry->fields[i] = pt_regs_get_arg(regs, i);\n    }\n\n    entry->id = id;\n    entry->__data[0] = flags;\n    entry->__data[1] = pc;\n\n    ring_buffer_unlock_commit(buffer, event);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if regs is null before using it",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if file is null or not enabled before using it",
+      "protects_against": "null pointer dereference or invalid operation on disabled file"
+    },
+    {
+      "step": "check if buffer is null before using it",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if event is null before using it",
+      "protects_against": "null pointer dereference"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if regs is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `regs` to retrieve the syscall number via `trace_get_syscall_nr(current, regs)`, but does not check if `regs` is null before using it.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if file is null or not enabled before using it — protects against: null pointer dereference or invalid operation on disabled file",
+        "reasoning": "The implementation checks if `ftrace_file` is null via `if (!ftrace_file) return;` and also checks if it is disabled via `ftrace_trigger_soft_disabled(ftrace_file)`. These checks prevent null pointer dereference and invalid operations on a disabled file.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if buffer is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation accesses `tr->trace_buffer.buffer` directly and does not check if `buffer` is null before using it in `trace_buffer_lock_reserve`. This could lead to a null pointer dereference if `tr->trace_buffer.buffer` is null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if event is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `event` is null after calling `trace_buffer_lock_reserve` via `if (!event) return;`, which prevents a null pointer dereference before using `event`.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if regs is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `regs` to retrieve the syscall number via `trace_get_syscall_nr(current, regs)`, but does not check if `regs` is null before using it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if file is null or not enabled before using it — protects against: null pointer dereference or invalid operation on disabled file",
+        "reasoning": "The implementation checks if `ftrace_file` is null via `if (!ftrace_file) return;`, and also checks if it is disabled via `ftrace_trigger_soft_disabled(ftrace_file)`. These checks prevent null pointer dereference and invalid operations.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if buffer is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation accesses `tr->trace_buffer.buffer` directly and does not check if it is null before using it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if event is null before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `event` is null via `if (!event) return;`, which prevents null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

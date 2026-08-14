@@ -1,0 +1,34 @@
+{
+  "case_id": "C_43__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port, struct br_ip *group) {\n    int result = 0;\n\n    // Acquire the multicast lock of the bridge\n    rwlock_acquire_read(&br->multicast_lock);\n\n    // Check if the bridge is running and if the port is enabled\n    if (!br->running) {\n        result = -ENODEV;\n        goto unlock;\n    }\n\n    if (port && !port->enabled) {\n        result = -ENODEV;\n        goto unlock;\n    }\n\n    // Create a new multicast group entry\n    if (!port) {\n        struct br_multicast *mcast;\n        mcast = kzalloc(sizeof(*mcast), GFP_KERNEL);\n        if (!mcast) {\n            result = -ENOMEM;\n            goto unlock;\n        }\n\n        mcast->group = *group;\n        list_add(&mcast->list, &br->multicast_list);\n    } else {\n        struct br_port_group *pg;\n        pg = kzalloc(sizeof(*pg), GFP_KERNEL);\n        if (!pg) {\n            result = -ENOMEM;\n            goto unlock;\n        }\n\n        pg->group = *group;\n        timer_setup(&pg->timer, br_mcast_timer, 0);\n        pg->timer.expires = jiffies + br->multicast_membership_interval;\n        add_timer(&pg->timer);\n\n        list_add(&pg->list, &port->multicast_list);\n    }\n\nunlock:\n    // Release the lock\n    rwlock_release_read(&br->multicast_lock);\n    return result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port,\n                           struct br_ip *group) {\n    int err = 0;\n\n    spin_lock(&br->multicast_lock);\n    if (!netif_running(br->dev)) {\n        err = -EINVAL;\n        goto out;\n    }\n\n    if (!port) {\n        list_add(&group->mg_list, &br->multicast_list);\n    } else {\n        struct net_bridge_port_group *pgrp = kmalloc(sizeof(*pgrp), GFP_ATOMIC);\n        if (!pgrp) {\n            err = -ENOMEM;\n            goto out;\n        }\n\n        pgrp->group = *group;\n        INIT_LIST_HEAD(&pgrp->mg_list);\n        list_add(&pgrp->mg_list, &port->multicast_list);\n        pgrp->timer_expires = jiffies + br->multicast_membership_interval;\n        pgrp->query_timer_expires = jiffies + br->multicast_query_interval;\n    }\n\nout:\n    spin_unlock(&br->multicast_lock);\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port, struct br_ip *group) {\n    int err = 0;\n\n    spin_lock(&br->multicast_lock);\n\n    if (!netif_running(br->dev)) {\n        spin_unlock(&br->multicast_lock);\n        return -EINVAL;\n    }\n\n    if (port && !port->enabled) {\n        spin_unlock(&br->multicast_lock);\n        return -EINVAL;\n    }\n\n    struct br_mcast *mcast;\n    mcast = kzalloc(sizeof(*mcast), GFP_ATOMIC);\n    if (!mcast) {\n        spin_unlock(&br->multicast_lock);\n        return -ENOMEM;\n    }\n\n    memcpy(&mcast->group, group, sizeof(*group));\n\n    if (!port) {\n        hlist_add_head(&mcast->hlist, &br->multicast_list);\n    } else {\n        struct br_mcast_port *port_mcast;\n\n        port_mcast = kzalloc(sizeof(*port_mcast), GFP_ATOMIC);\n        if (!port_mcast) {\n            kfree(mcast);\n            spin_unlock(&br->multicast_lock);\n            return -ENOMEM;\n        }\n\n        port_mcast->mcast = mcast;\n        timer_setup(&port_mcast->membership_timer, NULL, 0);\n        timer_setup(&port_mcast->query_timer, NULL, 0);\n\n        hlist_add_head(&port_mcast->hlist, &port->multicast_list);\n    }\n\n    spin_unlock(&br->multicast_lock);\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port, struct br_ip *group) {\n    int err = 0;\n\n    spin_lock(&br->multicast_lock);\n\n    if (!netif_running(br->dev)) {\n        err = -EINVAL;\n        goto out;\n    }\n\n    if (port && !port->enabled) {\n        err = -EINVAL;\n        goto out;\n    }\n\n    struct br_mdb_entry *new_entry = kzalloc(sizeof(*new_entry), GFP_ATOMIC);\n    if (!new_entry) {\n        err = -ENOMEM;\n        goto out;\n    }\n\n    if (!port) {\n        hlist_add_head(&new_entry->hlist, &br->mdb);\n    } else {\n        struct br_mdb_port_group *new_port_group = kzalloc(sizeof(*new_port_group), GFP_ATOMIC);\n        if (!new_port_group) {\n            kfree(new_entry);\n            err = -ENOMEM;\n            goto out;\n        }\n\n        new_port_group->group = *group;\n        new_port_group->port = port;\n        new_port_group->timer.function = br_ip4_multicast_timer_expired;\n        new_port_group->timer.data = (unsigned long)new_port_group;\n\n        hlist_add_head(&new_port_group->hlist, &port->mcast_list);\n        mod_timer(&new_port_group->timer, jiffies + BR_MCAST_TIMER_INTERVAL);\n    }\n\nout:\n    spin_unlock(&br->multicast_lock);\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port, struct br_ip *group) {\n    int ret = 0;\n\n    spin_lock(&br->multicast_lock);\n\n    if (!(br->flags & BRIDGE_FLAGS_RUNNING) || (port && !(port->flags & BRIDGE_PORT_FLAGS_ENABLED))) {\n        ret = -EINVAL;\n        goto unlock;\n    }\n\n    struct br_multicast_entry *entry = kmalloc(sizeof(*entry), GFP_KERNEL);\n    if (!entry) {\n        ret = -ENOMEM;\n        goto unlock;\n    }\n\n    entry->group = *group;\n\n    if (!port) {\n        list_add(&entry->list, &br->multicast_list);\n    } else {\n        struct br_multicast_port_group *pg;\n\n        pg = kmalloc(sizeof(*pg), GFP_KERNEL);\n        if (!pg) {\n            ret = -ENOMEM;\n            kfree(entry);\n            goto unlock;\n        }\n\n        pg->port = port;\n        pg->group = *group;\n        INIT_LIST_HEAD(&pg->timer_list);\n\n        br_multicast_set_timers(pg);\n\n        list_add(&pg->list, &port->multicast_list);\n        entry->port_group = pg;\n    }\n\nunlock:\n    spin_unlock(&br->multicast_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

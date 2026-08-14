@@ -1,0 +1,130 @@
+{
+  "case_id": "C_1158__0",
+  "sample_id": "D/C/1158",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-2878",
+  "cve_summary": "Google Chrome before 28.0.1500.71 allows remote attackers to cause a denial of service (out-of-bounds read) via vectors related to the handling of text.",
+  "changed_file": "third_party/WebKit/Source/core/editing/TextIterator.cpp",
+  "docstring": "Summary: This function processes a text node in a simplified backwards text iterator, updating various member variables based on the text content and offsets.\n\nParameters: None\n\nReturns: bool - Indicates whether the first letter should be handled or not.\n\nLogic: The function first assigns the current node to `m_lastTextNode`. It then retrieves the starting offset and offset within the node by calling `handleFirstLetter`. If no renderer is obtained, it returns true. The function checks the text length and updates offsets and positions accordingly. Assertions are used to validate the computed offsets and lengths. Finally, it updates the last character processed and returns a boolean indicating if the first letter should be handled based on the member variable `m_shouldHandleFirstLetter`.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "bool processTextNodeBackward() {\n    m_lastTextNode = currentTextNode;\n    int startOffset = 0;\n    int offsetInNode = 0;\n    bool shouldHandleFirstLetter = handleFirstLetter(&startOffset, &offsetInNode);\n\n    if (!renderer) {\n        return true;\n    }\n\n    int textLength = renderer->textLength();\n\n    if (textLength <= 0) {\n        return shouldHandleFirstLetter;\n    }\n\n    if (offsetInNode < 0 || offsetInNode >= textLength) {\n        offsetInNode = 0;\n    }\n\n    int computedOffset = offsetInNode - startOffset;\n    int computedLength = textLength - computedOffset;\n\n    if (computedLength < 0) {\n        computedLength = 0;\n    }\n\n    // Update offsets and positions based on computed values\n    updateOffsetsAndPositions(computedOffset, computedLength);\n\n    // Validate computed values\n    assert(computedOffset >= 0 && computedOffset <= textLength);\n    assert(computedLength >= 0 && computedLength <= textLength);\n\n    // Update last character processed\n    m_lastCharacterProcessed = renderer->characterAt(offsetInNode);\n\n    return shouldHandleFirstLetter;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if renderer is null",
+      "protects_against": "dereferencing a null pointer"
+    },
+    {
+      "step": "validate text length",
+      "protects_against": "invalid or negative text length"
+    },
+    {
+      "step": "bound offsetInNode to valid range",
+      "protects_against": "out-of-bounds access to text"
+    },
+    {
+      "step": "bound computedLength to non-negative value",
+      "protects_against": "negative length calculations"
+    },
+    {
+      "step": "validate computedOffset and computedLength",
+      "protects_against": "invalid offset or length values"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check if renderer is null — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation checks if `renderer` is null with `if (!renderer)` and returns early if it is, preventing any dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate text length — protects against: invalid or negative text length",
+        "reasoning": "The implementation retrieves the text length via `text.length()` and uses it in calculations, but does not explicitly validate that it is non-negative. However, `text.length()` is a standard method that should return a non-negative value, and the implementation does not perform any explicit validation.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "bound offsetInNode to valid range — protects against: out-of-bounds access to text",
+        "reasoning": "The implementation uses `offsetInNode` in calculations but does not explicitly bound it to a valid range. It relies on the `handleFirstLetter` function to provide valid values, but there is no explicit validation in this function.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "bound computedLength to non-negative value — protects against: negative length calculations",
+        "reasoning": "The implementation calculates `m_textLength` as `m_positionEndOffset - m_positionStartOffset`. It does not explicitly ensure that this value is non-negative, but the code includes an assertion `m_positionStartOffset <= m_positionEndOffset` which indirectly ensures this.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate computedOffset and computedLength — protects against: invalid offset or length values",
+        "reasoning": "The implementation includes several assertions that validate the computed offset and length values, such as `0 <= m_positionStartOffset - offsetInNode` and `m_positionStartOffset <= m_positionEndOffset`, which serve as validation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if renderer is null — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation checks if `renderer` is null with `if (!renderer)` and returns early if it is, preventing any dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate text length — protects against: invalid or negative text length",
+        "reasoning": "The implementation uses `text.length()` which is a non-negative value provided by the `String` class. There is no explicit validation for negative values, but the source of the length is inherently non-negative.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound offsetInNode to valid range — protects against: out-of-bounds access to text",
+        "reasoning": "The implementation does not explicitly bound `offsetInNode` to the valid range of the text. It relies on assertions later, but these are not sufficient to prevent out-of-bounds access in production code.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound computedLength to non-negative value — protects against: negative length calculations",
+        "reasoning": "The implementation calculates `m_textLength` as `m_positionEndOffset - m_positionStartOffset`. This could be negative if the start offset exceeds the end offset, but the implementation does not explicitly ensure it is non-negative.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate computedOffset and computedLength — protects against: invalid offset or length values",
+        "reasoning": "The implementation includes assertions for `m_positionStartOffset`, `m_positionEndOffset`, and `m_textLength`, but these are only active in debug builds and do not prevent invalid values in production.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "case_id": "C_411__0",
+  "implementation": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <MagickCore/MagickCore.h>\n\nvoid UnregisterINLINEImage(void) {\n  UnregisterMagickInfo(\"INLINE\");\n  UnregisterMagickInfo(\"DATA\");\n}\n\nMagickBooleanType WriteINLINEImage(const ImageInfo *image_info, Image *image) {\n  Image\n    *clone_image;\n\n  MagickBooleanType\n    status;\n\n  MagickInfo\n    *magick_info;\n\n  char\n    *base64_data;\n\n  size_t\n    base64_length;\n\n  if (!image_info || !image) {\n    return MagickFalse;\n  }\n\n  if (image_info->debug) {\n    (void) LogMagickEvent(CoderEvent, GetMagickModule(), \"filename: %s\", image_info->filename);\n  }\n\n  magick_info = GetMagickInfo(image_info->magick, &image->exception);\n  if (!magick_info || !magick_info->decoder) {\n    return MagickFalse;\n  }\n\n  clone_image = CloneImage(image, 0, 0, MagickTrue, &image->exception);\n  if (!clone_image) {\n    return MagickFalse;\n  }\n\n  status = BlobImage(clone_image, &image->exception);\n  if (!status) {\n    clone_image = DestroyImage(clone_image);\n    return MagickFalse;\n  }\n\n  base64_length = (clone_image->blob->length * 4) / 3 + 4;\n  base64_data = (char *) AcquireMemory(base64_length);\n  if (!base64_data) {\n    clone_image = DestroyImage(clone_image);\n    return MagickFalse;\n  }\n\n  (void) Base64Encode(clone_image->blob->length, clone_image->blob->data, base64_data, base64_length);\n\n  clone_image->blob = CloneBlob(base64_length, base64_data);\n  if (!clone_image->blob) {\n    base64_data = RelinquishMemory(base64_data);\n    clone_image = DestroyImage(clone_image);\n    return MagickFalse;\n  }\n\n  status = WriteBlobImage(clone_image, &image->exception);\n\n  base64_data = RelinquishMemory(base64_data);\n  clone_image = DestroyImage(clone_image);\n\n  return status;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null input pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate magick_info and its decoder",
+      "protects_against": "invalid or missing decoder for the specified format"
+    },
+    {
+      "step": "check for successful image cloning",
+      "protects_against": "memory allocation failure during image cloning"
+    },
+    {
+      "step": "check for successful blob creation",
+      "protects_against": "failure to convert image to blob format"
+    },
+    {
+      "step": "allocate memory for base64 data and check for success",
+      "protects_against": "memory allocation failure during base64 encoding"
+    },
+    {
+      "step": "release allocated resources on all paths",
+      "protects_against": "memory leaks and resource leaks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

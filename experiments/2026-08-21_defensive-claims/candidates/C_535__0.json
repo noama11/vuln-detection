@@ -1,0 +1,59 @@
+{
+  "case_id": "C_535__0",
+  "implementation": "Image *ReadGroup4Image(const ImageInfo *image_info, ExceptionInfo *exception) {\n  Image *image = NULL;\n  FILE *file = NULL;\n  FILE *temp_file = NULL;\n  size_t size = 0;\n  unsigned char *buffer = NULL;\n\n  if (!image_info || !exception) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      ResourceLimitError, \"InvalidArgument\", \"Invalid image_info or exception\");\n    return NULL;\n  }\n\n  file = fopen(image_info->filename, \"rb\");\n  if (!file) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToOpenFile\", \"\");\n    return NULL;\n  }\n\n  temp_file = tmpfile();\n  if (!temp_file) {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToCreateTemporaryFile\", \"\");\n    return NULL;\n  }\n\n  if (fseek(file, 0, SEEK_END) != 0) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToSeekInFile\", \"\");\n    return NULL;\n  }\n\n  size = ftell(file);\n  if (size == (size_t) -1) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToGetFileSize\", \"\");\n    return NULL;\n  }\n\n  if (fseek(file, 0, SEEK_SET) != 0) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToResetFilePointer\", \"\");\n    return NULL;\n  }\n\n  buffer = (unsigned char *) AcquireMemory(size);\n  if (!buffer) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      ResourceLimitError, \"UnableToAllocateMemory\", \"\");\n    return NULL;\n  }\n\n  if (fread(buffer, sizeof(*buffer), size, file) != size) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileReadError, \"UnableToReadImage\", \"\");\n    return NULL;\n  }\n\n  if (fclose(file) != 0) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileCloseError, \"UnableToCloseFile\", \"\");\n    return NULL;\n  }\n\n  if (WriteTIFFImage(temp_file, buffer, size, exception) != MagickTrue) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileWriteError, \"UnableToWriteTIFFImage\", \"\");\n    return NULL;\n  }\n\n  if (fseek(temp_file, 0, SEEK_SET) != 0) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToResetTemporaryFilePointer\", \"\");\n    return NULL;\n  }\n\n  image = ReadImage(temp_file, exception);\n  if (!image) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileReadError, \"UnableToReadTIFFImage\", \"\");\n    return NULL;\n  }\n\n  if (fclose(temp_file) != 0) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileCloseError, \"UnableToCloseTemporaryFile\", \"\");\n  }\n\n  RelinquishMemory(buffer);\n  return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers",
+      "protects_against": "null or invalid image_info or exception pointers"
+    },
+    {
+      "step": "check file open operations",
+      "protects_against": "failure to open the source file or create a temporary file"
+    },
+    {
+      "step": "check file seek operations",
+      "protects_against": "failure to seek to the end or beginning of the file"
+    },
+    {
+      "step": "check file size retrieval",
+      "protects_against": "failure to get the file size or invalid size values"
+    },
+    {
+      "step": "allocate memory for buffer",
+      "protects_against": "insufficient memory to read the file contents"
+    },
+    {
+      "step": "check file read operation",
+      "protects_against": "failure to read the entire file contents"
+    },
+    {
+      "step": "check file close operations",
+      "protects_against": "failure to close the source or temporary files"
+    },
+    {
+      "step": "check TIFF writing operation",
+      "protects_against": "failure to write the TIFF image to the temporary file"
+    },
+    {
+      "step": "check temporary file seek operation",
+      "protects_against": "failure to reset the temporary file pointer before reading"
+    },
+    {
+      "step": "check TIFF reading operation",
+      "protects_against": "failure to read the TIFF image from the temporary file"
+    },
+    {
+      "step": "check temporary file close operation",
+      "protects_against": "failure to close the temporary file after reading"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leaks from the buffer allocation"
+    }
+  ],
+  "n_steps": 12,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

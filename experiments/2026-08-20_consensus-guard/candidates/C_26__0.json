@@ -1,0 +1,34 @@
+{
+  "case_id": "C_26__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct sk_buff *fragment_udp_packet(struct sk_buff *skb, u32 features) {\n    if (!skb || skb->len <= dev->mtu) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    if (skb_checksum_help(skb)) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    skb_reset_transport_header(skb);\n    skb_reset_network_header(skb);\n    skb_reset_mac_header(skb);\n\n    struct ipv6hdr *ipv6_hdr = ipv6_hdr(skb);\n    struct udphdr *udp_hdr = udp_hdr(skb);\n\n    ipv6_hdr->payload_len = htons(skb->len - sizeof(*ipv6_hdr));\n    udp_hdr->check = 0;\n    udp_hdr->check = csum_ipv6_magic(&ipv6_hdr->saddr, &ipv6_hdr->daddr, skb->len - sizeof(*ipv6_hdr), IPPROTO_UDP, skb_checksum(skb, 0, skb->len, 0));\n\n    skb->protocol = htons(ETH_P_IPV6);\n    skb->pkt_type = PACKET_BROADCAST;\n\n    skb = skb_gso_segment(skb, features);\n    if (IS_ERR(skb)) {\n        return skb;\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct sk_buff *fragment_udp_ipv6_packet(struct sk_buff *skb, u32 features)\n{\n    if (!skb || skb->len <= MSS)\n        return ERR_PTR(-EINVAL);\n\n    if (skb->protocol != htons(ETH_P_IPV6))\n        return ERR_PTR(-EPROTO);\n\n    if (skb_checksum_help(skb))\n        return ERR_PTR(-EPROTO);\n\n    skb_reset_transport_header(skb);\n    skb_set_network_header(skb, sizeof(struct ipv6hdr));\n    skb->protocol = htons(ETH_P_IPV6);\n\n    if (skb_segment(skb, features))\n        return ERR_PTR(-ENOMEM);\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "struct sk_buff *fragment_udp_ipv6_packet(struct sk_buff *skb, u32 features)\n{\n    struct ipv6hdr *ipv6h;\n    struct udphdr *udph;\n    int mss = skb->dev->mtu - sizeof(struct ipv6hdr) - sizeof(struct udphdr);\n    struct sk_buff *segs = NULL;\n\n    if (skb->len <= mss)\n        return skb;\n\n    if (!(features & NETIF_F_SG)) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    ipv6h = ipv6_hdr(skb);\n    udph = udp_hdr(skb);\n\n    udph->check = 0;\n\n    skb_reset_network_header(skb);\n    skb_set_transport_header(skb, sizeof(*ipv6h));\n\n    segs = ip6_fragment(skb, features, NULL);\n    if (IS_ERR(segs))\n        return segs;\n\n    skb = segs;\n    while (skb) {\n        struct sk_buff *next = skb->next;\n        struct udphdr *frag_udph = udp_hdr(skb);\n\n        frag_udph->check = 0;\n        frag_udph->check = csum_ipv6_magic(&ipv6h->saddr, &ipv6h->daddr, skb->len - sizeof(*ipv6h) - sizeof(*udph), IPPROTO_UDP, skb_checksum(skb, sizeof(*ipv6h) + sizeof(*udph), 0));\n\n        skb = next;\n    }\n\n    return segs;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "struct sk_buff *fragment_udp_packet(struct sk_buff *skb, u32 features) {\n    int mss = skb->dev->mtu - sizeof(struct ipv6hdr) - sizeof(struct udphdr);\n    struct udphdr *uh = udp_hdr(skb);\n\n    if (skb->len <= mss)\n        return skb;\n\n    if (features & NETIF_F_NO_CSUM) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    skb_reset_transport_header(skb);\n    skb_set_transport_header(skb, sizeof(struct udphdr));\n    uh = udp_hdr(skb);\n    uh->check = 0;\n    uh->check = csum_tcpudp_nofold(ipv6_hdr(skb)->saddr, ipv6_hdr(skb)->daddr,\n                                    skb->len, IPPROTO_UDP, skb_checksum(skb));\n\n    skb = skb_share_check(skb, GFP_ATOMIC);\n    if (!skb)\n        return ERR_PTR(-ENOMEM);\n\n    if (skb_segment(skb, features)) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "struct sk_buff *fragment_udp_packet(struct sk_buff *skb, u32 features)\n{\n    int mss = skb->dev ? skb->dev->mtu - sizeof(struct ipv6hdr) - sizeof(struct udphdr) : 0;\n\n    if (skb->len <= mss)\n        return skb;\n\n    if (!skb_is_gso(skb)) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    skb_checksum_help(skb);\n\n    skb_push(skb, sizeof(struct ipv6hdr));\n    skb_pull(skb, sizeof(struct udphdr));\n\n    skb = ip6_fragment(skb, features);\n\n    if (IS_ERR(skb)) {\n        return skb;\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

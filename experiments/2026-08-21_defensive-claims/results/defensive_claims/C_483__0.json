@@ -1,0 +1,146 @@
+{
+  "case_id": "C_483__0",
+  "sample_id": "D/C/483",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-6353",
+  "cve_summary": "net/sctp/socket.c in the Linux kernel through 4.10.1 does not properly restrict association peel-off operations during certain wait states, which allows local users to cause a denial of service (invalid unlock and double free) via a multithreaded application.  NOTE: this vulnerability exists because of an incorrect fix for CVE-2017-5986.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function peels off a new socket from an existing SCTP association.  \n *  \n * Parameters:  \n * sk (struct sock *): The original socket associated with the SCTP connection.  \n * id (sctp_assoc_t): The association ID to peel off from the original socket.  \n * sockp (struct socket **): A pointer to store the newly created socket.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function first retrieves the SCTP association using the provided ID. It checks whether the\n * association and socket are eligible for peeling off. If valid, it creates a new socket, copies\n * properties from the original socket, and migrates the association to the new socket before\n * returning it through the sockp parameter.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *assoc;\n    struct socket *new_sk = NULL;\n    int ret = -EINVAL;\n\n    if (!sk || !sockp)\n        return -EINVAL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        return -ENOENT;\n\n    if (!assoc->peer.sctp_peeloff_capable) {\n        ret = -EOPNOTSUPP;\n        goto out;\n    }\n\n    ret = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_SCTP, &new_sk);\n    if (ret < 0) {\n        new_sk = NULL;\n        goto out;\n    }\n\n    ret = sctp_copy_sock(new_sk, sk);\n    if (ret < 0)\n        goto out;\n\n    ret = sctp_migrate_assoc(new_sk, assoc);\n    if (ret < 0)\n        goto out;\n\n    *sockp = new_sk;\n    ret = 0;\n\nout:\n    if (ret < 0 && new_sk) {\n        sock_release(new_sk);\n        new_sk = NULL;\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing sk or sockp"
+    },
+    {
+      "step": "check association capability",
+      "protects_against": "attempting to peel off an association from a socket that does not support it"
+    },
+    {
+      "step": "check return value of sock_create_kern",
+      "protects_against": "failing to create a new socket and continuing with invalid state"
+    },
+    {
+      "step": "check return value of sctp_copy_sock",
+      "protects_against": "failing to copy socket properties and continuing with invalid state"
+    },
+    {
+      "step": "check return value of sctp_migrate_assoc",
+      "protects_against": "failing to migrate association and continuing with invalid state"
+    },
+    {
+      "step": "release new socket on error",
+      "protects_against": "resource leak when error occurs after socket creation"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 21,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sk or sockp",
+        "reasoning": "The implementation does not explicitly check if 'sk' or 'sockp' are null before using them. However, the function is exported and may be called with invalid pointers, which could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check association capability — protects against: attempting to peel off an association from a socket that does not support it",
+        "reasoning": "The implementation checks if the socket is of UDP style using 'sctp_style(sk, UDP)', which implies a check for association capability. This guards against peeling off from unsupported socket types.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of sock_create_kern — protects against: failing to create a new socket and continuing with invalid state",
+        "reasoning": "The implementation calls 'sock_create' and checks its return value. If it fails, the function returns the error code immediately, preventing invalid state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of sctp_copy_sock — protects against: failing to copy socket properties and continuing with invalid state",
+        "reasoning": "The implementation calls 'sctp_copy_sock' but does not check its return value. If it fails, the function continues execution, which could lead to invalid state.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check return value of sctp_migrate_assoc — protects against: failing to migrate association and continuing with invalid state",
+        "reasoning": "The implementation calls 'sctp_sock_migrate' but does not check its return value. If it fails, the function continues execution, which could lead to invalid state.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release new socket on error — protects against: resource leak when error occurs after socket creation",
+        "reasoning": "The implementation creates a new socket with 'sock_create', but if an error occurs after that (e.g., from 'sctp_copy_sock' or 'sctp_sock_migrate'), the new socket is not released, leading to a resource leak.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 21,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sk or sockp",
+        "reasoning": "The implementation does not explicitly check for null pointers for sk or sockp. However, the function uses sk and sockp directly, and if either is null, it would result in a null pointer dereference. This is not guarded against.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check association capability — protects against: attempting to peel off an association from a socket that does not support it",
+        "reasoning": "The implementation checks if the socket is of UDP style using `sctp_style(sk, UDP)`. If not, it returns -EINVAL. This guards against peeling off from a socket that does not support it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of sock_create_kern — protects against: failing to create a new socket and continuing with invalid state",
+        "reasoning": "The implementation calls `sock_create(..., &sock)` and checks the return value. If it fails, the function returns the error code immediately, preventing invalid state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of sctp_copy_sock — protects against: failing to copy socket properties and continuing with invalid state",
+        "reasoning": "The implementation calls `sctp_copy_sock(...)` but does not check its return value. If it fails, the function continues execution, which could lead to invalid state.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check return value of sctp_migrate_assoc — protects against: failing to migrate association and continuing with invalid state",
+        "reasoning": "The implementation calls `sctp_sock_migrate(...)` but does not check its return value. If it fails, the function continues execution, which could lead to invalid state.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release new socket on error — protects against: resource leak when error occurs after socket creation",
+        "reasoning": "The implementation creates a new socket with `sock_create(...)`, but if an error occurs after this point (e.g., from `sctp_copy_sock(...)` or `sctp_sock_migrate(...)`), the socket is not released, leading to a resource leak.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

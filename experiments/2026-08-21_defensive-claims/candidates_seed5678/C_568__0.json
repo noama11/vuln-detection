@@ -1,0 +1,39 @@
+{
+  "case_id": "C_568__0",
+  "implementation": "#include <stdlib.h>\n#include <string.h>\n\nImage* extract_and_process_postscript(Image *image, const ImageInfo *image_info, MagickOffsetType PS_Offset, ssize_t PS_Size, ExceptionInfo *exception) {\n    ImageInfo *clone_info = CloneImageInfo(image_info);\n    if (clone_info == NULL) {\n        return image;\n    }\n\n    char filename[MagickPathExtent] = {0};\n    GetPathComponent(image->filename, NativePath, filename, MagickPathExtent);\n\n    FILE *file = fopen(filename, \"wb\");\n    if (file == NULL) {\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    // Ensure PS_Offset and PS_Size are valid\n    if (PS_Offset < 0 || PS_Size <= 0) {\n        fclose(file);\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    // Write the Postscript data to the file\n    size_t bytes_written = 0;\n    if (image->blob != NULL && image->blob_size >= (size_t)PS_Offset + (size_t)PS_Size) {\n        bytes_written = fwrite((const char*)image->blob + PS_Offset, 1, PS_Size, file);\n    }\n\n    fclose(file);\n\n    if (bytes_written != PS_Size) {\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    // Check the file format using magic numbers\n    Image *nested_image = ReadImage(clone_info, filename, exception);\n    if (nested_image == NULL) {\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    // Replace the original image with the new one\n    Image *result = CloneImage(nested_image, 0, 0, MagickTrue, exception);\n    if (result != NULL) {\n        // Preserve attributes from the original image\n        result->depth = image->depth;\n        result->colors = image->colors;\n        result->montage = image->montage;\n        result->page = image->page;\n        result->tile = image->tile;\n        result->units = image->units;\n        result->x_resolution = image->x_resolution;\n        result->y_resolution = image->y_resolution;\n    }\n\n    // Clean up resources\n    DestroyImageInfo(clone_info);\n    DestroyImage(nested_image);\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null clone_info",
+      "protects_against": "memory access violations due to null pointer dereference"
+    },
+    {
+      "step": "check for null file pointer",
+      "protects_against": "file access violations due to null pointer dereference"
+    },
+    {
+      "step": "validate PS_Offset and PS_Size",
+      "protects_against": "invalid offset or size values that could cause buffer overflows or other memory issues"
+    },
+    {
+      "step": "check if image->blob is not null and has sufficient size",
+      "protects_against": "null pointer dereference and buffer overflows"
+    },
+    {
+      "step": "check if bytes_written matches PS_Size",
+      "protects_against": "incomplete or failed writes that could result in corrupted data"
+    },
+    {
+      "step": "check for null nested_image",
+      "protects_against": "null pointer dereference when accessing the nested image"
+    },
+    {
+      "step": "clean up resources in all code paths",
+      "protects_against": "resource leaks and potential memory exhaustion"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

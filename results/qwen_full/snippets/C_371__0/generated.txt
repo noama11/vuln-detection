@@ -1,0 +1,30 @@
+int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)
+{
+    int ret = -EINVAL;
+
+    if (!sk || !sockp)
+        return ret;
+
+    if (!sctp_assoc_id_valid(sk, id))
+        return ret;
+
+    if (sctp_has_pending_threads(sk, id))
+        return -EBUSY;
+
+    if (!sctp_can_peeloff(sk))
+        return -EOPNOTSUPP;
+
+    *sockp = NULL;
+
+    ret = sctp_create_new_socket(sk, id, sockp);
+    if (ret < 0)
+        return ret;
+
+    if (sctp_migrate_association(sk, id, *sockp) < 0) {
+        sctp_close_socket(*sockp);
+        *sockp = NULL;
+        return -EFAULT;
+    }
+
+    return 0;
+}

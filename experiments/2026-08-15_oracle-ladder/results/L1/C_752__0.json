@@ -1,0 +1,49 @@
+{
+  "case_id": "C_752__0",
+  "sample_id": "D/C/752",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-14284",
+  "cve_summary": "In the Linux kernel before 5.2.3, drivers/block/floppy.c allows a denial of service by setup_format_params division-by-zero. Two consecutive ioctls can trigger the bug: the first one should set the drive geometry with .sect and .rate values that make F_SECT_PER_TRACK be zero. Next, the floppy format operation should be called. It can be triggered by an unprivileged local user even when a floppy disk has not been inserted. NOTE: QEMU creates the floppy device by default.",
+  "changed_file": "drivers/block/floppy.c",
+  "docstring": "\"\"\"\nSummary: \nSets up format parameters for a floppy disk track.\n\nParameters: \ntrack (int): The track number to set up.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function initializes various parameters related to formatting a floppy disk track. It defines a structure to hold track formatting parameters and populates it based on the current floppy disk settings. It calculates the number of sectors per track and interleave based on the formatting requirements. The function also handles the positioning of logical sectors on the track, ensuring that each sector is assigned correctly and that busy sectors are skipped. Additionally, it adjusts sector numbers if a stretch is applied. The setup is finalized by assigning the kernel data and length for the raw command.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void setup_format_params(int v5)\n{\n    int v4;\n    int v3;\n    int v1;\n    int v2;\n    int v6;\n    struct fparm {\n        unsigned char v5, head, sect, size;\n    } *here = (struct fparm *)floppy_track_buffer;\n    raw_cmd = &default_raw_cmd;\n    raw_cmd->v5 = v5;\n    raw_cmd->flags = (FD_RAW_WRITE | FD_RAW_INTR | FD_RAW_SPIN |\n              FD_RAW_NEED_DISK | FD_RAW_NEED_SEEK);\n    raw_cmd->rate = _floppy->rate & 0x43;\n    raw_cmd->cmd_count = NR_F;\n    COMMAND = FM_MODE(_floppy, FD_FORMAT);\n    DR_SELECT = UNIT(current_drive) + PH_HEAD(_floppy, format_req.head);\n    F_SIZECODE = FD_SIZECODE(_floppy);\n    F_SECT_PER_TRACK = _floppy->sect << 2 >> F_SIZECODE;\n    F_GAP = _floppy->fmt_gap;\n    F_FILL = FD_FILL_BYTE;\n    raw_cmd->kernel_data = floppy_track_buffer;\n    raw_cmd->length = 4 * F_SECT_PER_TRACK;\n    if (!F_SECT_PER_TRACK)\n        return;\n    v2 = (F_SECT_PER_TRACK + 5) / 6;\n    v6 = 2 * v2 + 3;\n    v4 = (v6 * format_req.v5 + v2 * format_req.head)\n        % F_SECT_PER_TRACK;\n    v3 = 1;\n    if (_floppy->fmt_gap < 0x22)\n        v3++;\n    for (v1 = 0; v1 < F_SECT_PER_TRACK; ++v1) {\n        here[v1].v5 = format_req.v5;\n        here[v1].head = format_req.head;\n        here[v1].sect = 0;\n        here[v1].size = F_SIZECODE;\n    }\n    for (v1 = 1; v1 <= F_SECT_PER_TRACK; ++v1) {\n        here[v4].sect = v1;\n        v4 = (v4 + v3) % F_SECT_PER_TRACK;\n        if (here[v4].sect) {\n            ++v4;\n            if (v4 >= F_SECT_PER_TRACK) {\n                v4 -= F_SECT_PER_TRACK;\n                while (here[v4].sect)\n                    ++v4;\n            }\n        }\n    }\n    if (_floppy->stretch & FD_SECTBASEMASK) {\n        for (v1 = 0; v1 < F_SECT_PER_TRACK; v1++)\n            here[v1].sect += FD_SECTBASE(_floppy) - 1;\n    }\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 6
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform similar logic for setting up floppy disk track formatting parameters. They calculate interleave, position logical sectors, and handle sector assignment. The main difference is in variable names and minor code structure, which do not affect observable behavior. The logic for handling sector placement, interleave, and stretch is functionally equivalent. There is no security-relevant difference or functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of setting up format parameters for a floppy disk track. Both calculate the number of sectors per track, interleave, and handle logical sector positioning. The only differences are in variable names and minor code structure, which do not affect the observable behavior or the correctness of the function. There are no security-relevant differences or functional mismatches.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

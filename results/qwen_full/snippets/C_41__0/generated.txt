@@ -1,0 +1,39 @@
+int replace_network_table(struct net *net, const void __user *user, unsigned int len)
+{
+    void *tmp;
+    int err;
+
+    if (len % sizeof(struct table_entry) != 0)
+        return -EINVAL;
+
+    tmp = kmalloc(len, GFP_KERNEL);
+    if (!tmp)
+        return -ENOMEM;
+
+    if (copy_from_user(tmp, user, len)) {
+        kfree(tmp);
+        return -EFAULT;
+    }
+
+    err = validate_table_entries(tmp, len);
+    if (err) {
+        kfree(tmp);
+        return err;
+    }
+
+    err = allocate_table_resources(tmp, len);
+    if (err) {
+        kfree(tmp);
+        return err;
+    }
+
+    err = finalize_table_replacement(net, tmp, len);
+    if (err) {
+        free_table_resources(tmp);
+        kfree(tmp);
+        return err;
+    }
+
+    kfree(tmp);
+    return 0;
+}

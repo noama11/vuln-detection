@@ -1,0 +1,32 @@
+struct se_portal_group *create_target_portal_group(struct se_wwn *wwn,
+                                                   struct config_group *group,
+                                                   const char *name)
+{
+    struct se_portal_group *tpg;
+    int ret;
+
+    if (!name || strncmp(name, "tpgt_", 5)) {
+        return ERR_PTR(-EINVAL);
+    }
+
+    tpg = kzalloc(sizeof(*tpg), GFP_KERNEL);
+    if (!tpg) {
+        return ERR_PTR(-ENOMEM);
+    }
+
+    tpg->tpg_wwn = wwn;
+    tpg->tpg_group = group;
+    strncpy(tpg->tpg_name, name, sizeof(tpg->tpg_name) - 1);
+
+    ret = core_scsi_tpg_register(tpg);
+    if (ret) {
+        kfree(tpg);
+        return ERR_PTR(ret);
+    }
+
+    mutex_lock(&global_tpg_mutex);
+    list_add(&tpg->tpg_list, &global_tpg_list);
+    mutex_unlock(&global_tpg_mutex);
+
+    return tpg;
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "C_88__0",
+  "sample_id": "D/C/88",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-2015",
+  "cve_summary": "The ext4_orphan_del function in fs/ext4/namei.c in the Linux kernel before 3.7.3 does not properly handle orphan-list entries for non-journal filesystems, which allows physically proximate attackers to cause a denial of service (system hang) via a crafted filesystem on removable media, as demonstrated by the e2fsprogs tests/f_orphan_extents_inode/image.gz test.",
+  "changed_file": "fs/ext4/namei.c",
+  "docstring": "/**\n * Summary: \n * Removes an inode from the orphan list in an ext4 filesystem.\n * \n * Parameters:\n * handle (handle_t*): Transaction handle for journaling operations.\n * inode (struct inode*): The inode to be removed from the orphan list.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function first determines whether orphan-list processing is needed. It locks the orphan list\n * and checks if the inode is present. If the inode is found, it removes it from the list. If a\n * transaction handle is provided, it updates the orphan list on disk. The function handles\n * potential errors during the process and ensures proper cleanup before returning the result.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);\n    struct ext4_orphan *ohead = &sbi->s_orphan;\n    struct ext4_orphan *op;\n    int err = 0;\n\n    if (!ext4_has_feature_orphan(inode->i_sb))\n        return 0;\n\n    mutex_lock(&ohead->o_mutex);\n\n    list_for_each_entry(op, &ohead->o_list, o_list) {\n        if (op->o_ino == inode->i_ino) {\n            list_del(&op->o_list);\n            kfree(op);\n            break;\n        }\n    }\n\n    if (handle) {\n        err = ext4_handle_dirty_metadata(handle, NULL, ohead->o_inode);\n        if (err) {\n            mutex_unlock(&ohead->o_mutex);\n            return err;\n        }\n    }\n\n    mutex_unlock(&ohead->o_mutex);\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they manage the orphan list. The candidate implementation iterates through a list of orphans and removes the matching inode directly, while the reference implementation uses a more complex approach involving linked list pointers and updates the on-disk metadata with more detailed logic. The reference implementation also includes error handling and logging (e.g., jbd_debug) that the candidate implementation lacks. These differences could lead to different behaviors, particularly in error paths or when the orphan list is not structured as expected. The candidate implementation may not correctly update the on-disk metadata in all cases, which could lead to inconsistencies in the filesystem.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation and reference implementation differ in how they manage the orphan list. The candidate implementation iterates through the list to find and remove the inode, while the reference implementation uses a more direct approach by checking the inode's position in the list and updating the relevant pointers. Additionally, the reference implementation includes detailed error handling, logging, and journaling operations that are not present in the candidate implementation. These differences could lead to different behaviors in edge cases, such as when the list is empty or when the transaction handle is invalid. The candidate implementation lacks some of the robustness and error handling present in the reference implementation, which could be security-relevant if it leads to incorrect state or memory corruption.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

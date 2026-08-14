@@ -1,0 +1,114 @@
+{
+  "case_id": "C_847__0",
+  "sample_id": "D/C/847",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-17499",
+  "cve_summary": "ImageMagick before 6.9.9-24 and 7.x before 7.0.7-12 has a use-after-free in Magick::Image::read in Magick++/lib/Image.cpp.",
+  "changed_file": "Magick++/lib/Image.cpp",
+  "docstring": "Summary: This function reads an image into the Magick::Image object, ensuring that only a single image frame is processed.\n\nParameters:\n- image (MagickCore::Image *): Pointer to the image to be read.\n- exceptionInfo (MagickCore::ExceptionInfo *): Pointer to the exception information structure.\n\nReturns: None\n\nLogic: The function first checks if the provided image has multiple frames; if so, it destroys the extra frames. It then replaces the current image with the provided one. If the severity of the exception information indicates an undefined exception and the image pointer is null, it destroys the exception info and throws a warning if not in quiet mode. It uses the image-exception macro to report applicable image exceptions.",
+  "heuristic_leakage_flag": true,
+  "generated_code": "#include <MagickCore/magick.h>\n\nvoid ReadImage(MagickCore::Image *image, MagickCore::ExceptionInfo *exceptionInfo) {\n  if (image != (MagickCore::Image *) NULL) {\n    if (image->scene != 0) {\n      /* Destroy extra frames if multiple frames are present */\n      while (image->next != (MagickCore::Image *) NULL) {\n        MagickCore::Image *next = image->next;\n        image->next = (MagickCore::Image *) NULL;\n        DestroyImage(next);\n      }\n      image->scene = 0;\n    }\n\n    /* Replace current image with the provided one */\n    ReplaceImage(&image, image);\n  }\n\n  if (exceptionInfo != (MagickCore::ExceptionInfo *) NULL) {\n    if (exceptionInfo->severity == UndefinedException) {\n      if (image == (MagickCore::Image *) NULL) {\n        DestroyExceptionInfo(exceptionInfo);\n        if (!IsEventLogging()) {\n          (void) ThrowMagickException(exceptionInfo, GetMagickModule(), ImageWarning, \"NoImage\", \"Unable to read image\");\n        }\n      }\n    }\n\n    /* Report applicable image exceptions using the image-exception macro */\n    if (exceptionInfo->severity != NoException) {\n      (void) ThrowImageException(exceptionInfo);\n    }\n  }\n}",
+  "defensive_steps": [
+    {
+      "step": "check if image pointer is not null before accessing its members",
+      "protects_against": "dereferencing a null pointer"
+    },
+    {
+      "step": "check if exceptionInfo pointer is not null before accessing its members",
+      "protects_against": "dereferencing a null pointer"
+    },
+    {
+      "step": "destroy extra frames if multiple frames are present",
+      "protects_against": "memory leaks from unused image frames"
+    },
+    {
+      "step": "destroy exception info when severity is undefined and image is null",
+      "protects_against": "memory leaks from unused exception info"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if image pointer is not null before accessing its members — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation checks if image is not null before accessing image->next.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if exceptionInfo pointer is not null before accessing its members — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation accesses exceptionInfo->severity without checking if exceptionInfo is not null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "destroy extra frames if multiple frames are present — protects against: memory leaks from unused image frames",
+        "reasoning": "The implementation checks if image is not null and has multiple frames, then destroys the extra frames.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "destroy exception info when severity is undefined and image is null — protects against: memory leaks from unused exception info",
+        "reasoning": "The implementation calls DestroyExceptionInfo(exceptionInfo) when the severity is undefined and image is null.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if image pointer is not null before accessing its members — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation does not access any members of the image pointer directly before checking if it is null. The only access to the image pointer is in the conditional where it is compared to NULL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if exceptionInfo pointer is not null before accessing its members — protects against: dereferencing a null pointer",
+        "reasoning": "The implementation accesses the members of the exceptionInfo pointer (exceptionInfo->severity) without first checking if the pointer is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "destroy extra frames if multiple frames are present — protects against: memory leaks from unused image frames",
+        "reasoning": "The implementation does not include any logic to destroy extra frames if multiple frames are present.",
+        "verdict": "omits",
+        "severity": 0
+      },
+      {
+        "step": "destroy exception info when severity is undefined and image is null — protects against: memory leaks from unused exception info",
+        "reasoning": "The implementation does destroy the exception info when the severity is undefined and the image is null, as specified.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

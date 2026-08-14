@@ -1,0 +1,130 @@
+{
+  "case_id": "C_15__0",
+  "sample_id": "D/C/15",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-1146",
+  "cve_summary": "The mem_cgroup_usage_unregister_event function in mm/memcontrol.c in the Linux kernel before 3.2.10 does not properly handle multiple events that are attached to the same eventfd, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by registering memory threshold events.",
+  "changed_file": "mm/memcontrol.c",
+  "docstring": "\"\"\"\nSummary: \nUnregisters a memory cgroup usage event threshold from a specified cgroup.\n\nParameters: \ncgrp (struct cgroup*): Pointer to the cgroup from which the event threshold is being unregistered.\ncft (struct cftype*): Pointer to the cftype structure that defines the threshold type.\neventfd (struct eventfd_ctx*): Pointer to the eventfd context associated with the threshold.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function first retrieves the memory cgroup associated with the provided cgroup pointer. It locks the thresholds for safe access and determines the type of threshold to unregister. It calculates the new size of the threshold array after removing the specified eventfd. It copies the remaining thresholds to a new array, updates the current threshold index, and swaps the primary and spare threshold arrays. Finally, it ensures that no other processes are using the thresholds before unlocking the mutex.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/cgroup.h>\n#include <linux/eventfd.h>\n#include <linux/mutex.h>\n#include <linux/slab.h>\n#include <linux/vmalloc.h>\n\nvoid unregister_memcg_oom_event_threshold(struct cgroup *cgrp, struct cftype *cft, struct eventfd_ctx *eventfd) {\n    struct mem_cgroup *memcg = cgroup_to_mem_cgroup(cgrp);\n    struct memcg_eventfd_list *list = &memcg->oom_eventfds;\n    int i, j, new_size;\n    struct eventfd_ctx *tmp_eventfd;\n    struct memcg_eventfd_list *new_list = NULL;\n\n    mutex_lock(&list->threshold_mutex);\n\n    for (i = 0; i < list->count; ++i) {\n        if (list->eventfds[i] == eventfd) {\n            new_size = list->count - 1;\n\n            if (new_size == 0) {\n                kfree(list->eventfds);\n                list->eventfds = NULL;\n                list->count = 0;\n                mutex_unlock(&list->threshold_mutex);\n                return;\n            }\n\n            new_list = kmalloc(sizeof(struct memcg_eventfd_list), GFP_KERNEL);\n            if (!new_list) {\n                mutex_unlock(&list->threshold_mutex);\n                return;\n            }\n\n            new_list->eventfds = kmalloc(new_size * sizeof(struct eventfd_ctx *), GFP_KERNEL);\n            if (!new_list->eventfds) {\n                kfree(new_list);\n                mutex_unlock(&list->threshold_mutex);\n                return;\n            }\n\n            new_list->count = new_size;\n            new_list->threshold_mutex = list->threshold_mutex;\n\n            for (j = 0; j < new_size; ++j) {\n                if (j < i) {\n                    new_list->eventfds[j] = list->eventfds[j];\n                } else {\n                    new_list->eventfds[j] = list->eventfds[j + 1];\n                }\n            }\n\n            kfree(list->eventfds);\n            *list = *new_list;\n            kfree(new_list);\n            mutex_unlock(&list->threshold_mutex);\n            return;\n        }\n    }\n\n    mutex_unlock(&list->threshold_mutex);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "dereferencing null or invalid pointers"
+    },
+    {
+      "step": "validate index bounds during array traversal",
+      "protects_against": "out-of-bounds array access"
+    },
+    {
+      "step": "use mutex locking for concurrent access",
+      "protects_against": "race conditions during concurrent modification"
+    },
+    {
+      "step": "check for memory allocation failures",
+      "protects_against": "memory allocation errors causing undefined behavior"
+    },
+    {
+      "step": "release allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 3,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: dereferencing null or invalid pointers",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (cgrp, cft, or eventfd). However, the function is called in a context where these parameters are expected to be valid, and the code assumes they are non-null. There is no explicit null check in the code.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate index bounds during array traversal — protects against: out-of-bounds array access",
+        "reasoning": "The implementation uses a loop to traverse the array entries in thresholds->primary->entries. The loop index 'i' is bounded by thresholds->primary->size, which is a known size. There is no explicit validation of the index bounds, but the loop is bounded by the array size, so out-of-bounds access is not possible.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use mutex locking for concurrent access — protects against: race conditions during concurrent modification",
+        "reasoning": "The implementation uses a mutex lock (mutex_lock(&memcg->thresholds_lock)) at the beginning of the function and unlocks it at the end (mutex_unlock(&memcg->thresholds_lock)). This ensures that the thresholds are accessed in a thread-safe manner.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failures — protects against: memory allocation errors causing undefined behavior",
+        "reasoning": "The implementation does not perform any dynamic memory allocation. It uses a spare array that is already allocated. Therefore, there is no need to check for memory allocation failures.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "release allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not perform any dynamic memory allocation that would require explicit deallocation. The spare array is either reused or set to NULL, and no memory is leaked.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: dereferencing null or invalid pointers",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (cgrp, cft, or eventfd). However, the function is called with these parameters, and the code assumes they are valid. If any of these pointers are null, dereferencing them would cause undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate index bounds during array traversal — protects against: out-of-bounds array access",
+        "reasoning": "The implementation uses a loop to traverse the thresholds->primary->entries array. The loop index i is bounded by thresholds->primary->size, which ensures that the loop does not go out of bounds. This is a valid bounds check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use mutex locking for concurrent access — protects against: race conditions during concurrent modification",
+        "reasoning": "The implementation uses a mutex lock (mutex_lock(&memcg->thresholds_lock)) at the beginning of the function and unlocks it at the end (mutex_unlock(&memcg->thresholds_lock)). This ensures that the thresholds are accessed in a thread-safe manner.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failures — protects against: memory allocation errors causing undefined behavior",
+        "reasoning": "The implementation does not perform any dynamic memory allocation (e.g., via kmalloc or similar functions). Therefore, there is no need to check for allocation failures.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "release allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not perform any dynamic memory allocation, so there is no memory to release on error paths.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "C_181__0",
+  "sample_id": "D/C/181",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-1438",
+  "cve_summary": "The restore_fpu_checking function in arch/x86/include/asm/fpu-internal.h in the Linux kernel before 3.12.8 on the AMD K7 and K8 platforms does not clear pending exceptions before proceeding to an EMMS instruction, which allows local users to cause a denial of service (task kill) or possibly gain privileges via a crafted application.",
+  "commit_message": "x86, fpu, amd: Clear exceptions in AMD FXSAVE workaround\n\nBefore we do an EMMS in the AMD FXSAVE information leak workaround we\nneed to clear any pending exceptions, otherwise we trap with a\nfloating-point exception inside this code.\n\nReported-by: halfdog <me@halfdog.net>\nTested-by: Borislav Petkov <bp@suse.de>\nLink: http://lkml.kernel.org/r/CA%2B55aFxQnY_PCG_n4=0w-VG=YLXL-yr7oMxyy0WU2gCBAf3ydg@mail.gmail.com\nSigned-off-by: H. Peter Anvin <hpa@zytor.com>",
+  "changed_file": "arch/x86/include/asm/fpu-internal.h",
+  "docstring": "Summary: Restores the floating-point unit (FPU) checking state for a given task.\n\nParameters: \n- tsk (struct task_struct *): Pointer to the task structure for which FPU checking is to be restored.\n\nReturns: \n- int: The result of the FPU restore checking operation.\n\nLogic: The function checks if the CPU has a specific feature that affects FPU state saving and restoration. If this feature is present, it clears the x87 state by executing assembly instructions to set the FPU registers to defined values. Finally, it calls another function to perform the actual FPU restore checking and returns its result.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    291,
+    305
+  ],
+  "vulnerable_line_range": [
+    291,
+    304
+  ],
+  "vulnerable_snippet": "static inline int restore_fpu_checking(struct task_struct *tsk)\r\n{\r\n\t/* AMD K7/K8 CPUs don't save/restore FDP/FIP/FOP unless an exception\r\n\t   is pending.  Clear the x87 state here by setting it to fixed\r\n\t   values. \"m\" is a random variable that should be in L1 */\r\n\talternative_input(\r\n\t\tASM_NOP8 ASM_NOP2,\r\n\t\t\"emms\\n\\t\"\t\t/* clear stack tags */\r\n\t\t\"fildl %P[addr]\",\t/* set F?P to defined value */\r\n\t\tX86_FEATURE_FXSAVE_LEAK,\r\n\t\t[addr] \"m\" (tsk->thread.fpu.has_fpu));\r\n\r\n\treturn fpu_restore_checking(&tsk->thread.fpu);\r\n}",
+  "fixed_line_range": [
+    291,
+    305
+  ],
+  "fixed_snippet": "static inline int restore_fpu_checking(struct task_struct *tsk)\r\n{\r\n\t/* AMD K7/K8 CPUs don't save/restore FDP/FIP/FOP unless an exception\r\n\t   is pending.  Clear the x87 state here by setting it to fixed\r\n\t   values. \"m\" is a random variable that should be in L1 */\r\n\tif (unlikely(static_cpu_has(X86_FEATURE_FXSAVE_LEAK))) {\r\n\t\tasm volatile(\r\n\t\t\t\"fnclex\\n\\t\"\r\n\t\t\t\"emms\\n\\t\"\r\n\t\t\t\"fildl %P[addr]\"\t/* set F?P to defined value */\r\n\t\t\t: : [addr] \"m\" (tsk->thread.fpu.has_fpu));\r\n\t}\r\n\r\n\treturn fpu_restore_checking(&tsk->thread.fpu);\r\n}",
+  "func_name": "restore_fpu_checking",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

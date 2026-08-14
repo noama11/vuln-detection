@@ -1,0 +1,114 @@
+{
+  "case_id": "C_390__2",
+  "sample_id": "D/C/390",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "acpica/acpica",
+  "cve_id": "CVE-2017-13694",
+  "cve_summary": "The acpi_ps_complete_final_op() function in drivers/acpi/acpica/psobject.c in the Linux kernel through 4.12.9 does not flush the node and node_ext caches and causes a kernel stack dump, which allows local users to obtain sensitive information from kernel memory and bypass the KASLR protection mechanism (in the kernel through 4.9) via a crafted ACPI table.",
+  "changed_file": "source/components/parser/psobject.c",
+  "docstring": "\"\"\"\nSummary: \nCompletes the final operation in an ACPI parsing state and clears the scope stack.\n\nParameters: \nWalkState (ACPI_WALK_STATE*): Pointer to the current walk state of the ACPI parser. \nOp (ACPI_PARSE_OBJECT*): Pointer to the parse object representing the operation to complete. \nStatus (ACPI_STATUS): The current status of the operation.\n\nReturns: \nACPI_STATUS: The status of the operation after completion, indicating success or failure.\n\nLogic: The function processes the last operation in the parsing state and handles scope cleanup. It checks if the operation is valid and calls the ascending callback if applicable. The function handles control flow based on the status returned from callbacks and manages operation completion in the stack. It returns the resulting status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ACPI_STATUS AcpiPsCompleteThisOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status) {\n    ACPI_PARSE_OBJECT *ParentOp = NULL;\n\n    if (!WalkState || !Op) {\n        return (AE_BAD_PARAMETER);\n    }\n\n    if (WalkState->Op == Op) {\n        WalkState->Op = Op->Common.Next;\n    }\n\n    if (WalkState->Control.ImmediateNotify) {\n        WalkState->Control.ImmediateNotify = FALSE;\n    }\n\n    if (WalkState->Control.AscendingCallback) {\n        Status = WalkState->Control.AscendingCallback(WalkState, Op, Status);\n        if (ACPI_FAILURE(Status)) {\n            return (Status);\n        }\n    }\n\n    if (Op->Common.Parent) {\n        ParentOp = Op->Common.Parent;\n        if (ParentOp->Common.Value.ArgList) {\n            if (ParentOp->Common.Value.ArgList == Op) {\n                ParentOp->Common.Value.ArgList = Op->Common.Next;\n            }\n        }\n    }\n\n    return (Status);\n}",
+  "defensive_steps": [
+    {
+      "step": "check that WalkState and Op are not NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate Op before accessing its members",
+      "protects_against": "invalid memory access due to uninitialized or corrupted pointer"
+    },
+    {
+      "step": "check if Op is the current operation in WalkState before modifying it",
+      "protects_against": "incorrect state modification"
+    },
+    {
+      "step": "verify that ParentOp is valid before accessing its members",
+      "protects_against": "null pointer dereference or invalid memory access"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check that WalkState and Op are not NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if Op is NULL before accessing it in the do-while loop. However, it does not explicitly check if WalkState is NULL before using it. WalkState is used in the first line of the function, such as in the assignment to WalkState->AscendingCallback, which could cause a null pointer dereference if WalkState is NULL.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate Op before accessing its members — protects against: invalid memory access due to uninitialized or corrupted pointer",
+        "reasoning": "The implementation checks if Op is NULL before accessing its members in the do-while loop. This ensures that Op is valid before any access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if Op is the current operation in WalkState before modifying it — protects against: incorrect state modification",
+        "reasoning": "The implementation assigns Op to WalkState->Op, but there is no explicit check to ensure that Op is the current operation in WalkState before this assignment. This could lead to incorrect state modification if Op is not the expected current operation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify that ParentOp is valid before accessing its members — protects against: null pointer dereference or invalid memory access",
+        "reasoning": "The implementation does not reference a variable named ParentOp, nor does it appear to access any parent operation of Op. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 11,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check that WalkState and Op are not NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if Op is NULL before accessing it in the do-while loop. However, it does not explicitly check if WalkState is NULL before using it. WalkState is used in the first line of the function and in the loop, which could lead to a null pointer dereference if WalkState is NULL.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate Op before accessing its members — protects against: invalid memory access due to uninitialized or corrupted pointer",
+        "reasoning": "The implementation checks if Op is not NULL before accessing its members in the do-while loop. This ensures that Op is valid before any access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if Op is the current operation in WalkState before modifying it — protects against: incorrect state modification",
+        "reasoning": "The implementation assigns Op to WalkState->Op, but there is no explicit check to ensure that Op is the current operation in WalkState before modifying it. This could lead to incorrect state modification if Op is not the expected current operation.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "verify that ParentOp is valid before accessing its members — protects against: null pointer dereference or invalid memory access",
+        "reasoning": "The implementation does not reference or access a ParentOp variable or member. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

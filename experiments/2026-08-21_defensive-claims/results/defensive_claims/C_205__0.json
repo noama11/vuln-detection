@@ -1,0 +1,146 @@
+{
+  "case_id": "C_205__0",
+  "sample_id": "D/C/205",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7509",
+  "cve_summary": "fs/ext4/namei.c in the Linux kernel before 3.7 allows physically proximate attackers to cause a denial of service (system crash) via a crafted no-journal filesystem, a related issue to CVE-2013-2015.",
+  "changed_file": "fs/ext4/namei.c",
+  "docstring": "/**\n * Summary: Adds an inode to the orphan list in the ext4 filesystem.\n * \n * Parameters:\n * handle (handle_t*): A pointer to the journal handle for transaction management.\n * inode (struct inode*): A pointer to the inode to be added to the orphan list.\n * \n * Returns: int - Returns 0 on success or a negative error code on failure.\n * \n * Logic: The function first determines whether orphan-list processing should proceed. It locks the orphan\n * list and verifies if the inode is already in the orphan list. It ensures that the inode is valid\n * for orphan handling (e.g., regular files, directories, or symbolic links). It then attempts to\n * get write access to the journal and reserves space for the inode. If the inode is not already\n * part of the on-disk orphan list, it updates the orphan list in the superblock and marks the inode\n * as dirty. Finally, if all operations succeed, it adds the inode to the in-memory orphan list and\n * unlocks the orphan lock before returning the result of the operation.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ext4_orphan_add(handle_t *handle, struct inode *inode) {\n    int ret = 0;\n    struct super_block *sb = inode->i_sb;\n    struct ext4_super_block *es = EXT4_SB(sb)->s_es;\n    struct ext4_inode_info *ei = EXT4_I(inode);\n\n    if (!ext4_orphan_list_needed(sb, ei)) {\n        return 0;\n    }\n\n    mutex_lock(&EXT4_SB(sb)->s_orphan_lock);\n\n    if (ei->i_dtime) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    if (S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode)) {\n        ret = ext4_journal_get_write_access(handle, inode->i_ino);\n        if (ret < 0) {\n            goto out;\n        }\n\n        ret = ext4_journal_space_reserved(handle, sb, 1);\n        if (ret < 0) {\n            goto out;\n        }\n\n        if (le32_to_cpu(es->s_last_orphan) == 0) {\n            es->s_last_orphan = cpu_to_le32(inode->i_ino);\n            ext4_handle_dirty_metadata(handle, sb, es);\n        }\n\n        ei->i_orphan = 1;\n        mark_inode_dirty(inode);\n\n        list_add_tail(&ei->i_orphan_list, &EXT4_SB(sb)->s_orphan);\n    } else {\n        ret = -EINVAL;\n    }\n\nout:\n    mutex_unlock(&EXT4_SB(sb)->s_orphan_lock);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if orphan list is needed",
+      "protects_against": "unnecessary operations when orphan list processing is not required"
+    },
+    {
+      "step": "lock the orphan list before modification",
+      "protects_against": "concurrent modification of the orphan list by multiple threads"
+    },
+    {
+      "step": "validate inode type before processing",
+      "protects_against": "processing of invalid inode types that are not eligible for orphan handling"
+    },
+    {
+      "step": "check for existing dtime to prevent duplicate processing",
+      "protects_against": "adding an inode that is already marked for deletion"
+    },
+    {
+      "step": "check for successful journal write access",
+      "protects_against": "failing to reserve journal space for the operation"
+    },
+    {
+      "step": "unlock the orphan list on all paths",
+      "protects_against": "deadlock due to un-released lock"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if orphan list is needed",
+        "reasoning": "The implementation checks if the orphan list is needed via the `ext4_handle_valid(handle)` function before proceeding. This ensures unnecessary operations are avoided when the handle is invalid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "lock the orphan list before modification",
+        "reasoning": "The implementation explicitly locks the orphan list using `mutex_lock(&EXT4_SB(sb)->s_orphan_lock)` before any modification.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate inode type before processing",
+        "reasoning": "The implementation includes an assertion that checks if the inode is a regular file, directory, or symbolic link, or if it has zero links. This validates the inode type before processing.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for existing dtime to prevent duplicate processing",
+        "reasoning": "The implementation checks if the inode is already in the orphan list via `list_empty(&EXT4_I(inode)->i_orphan)`. If it is not empty, it skips further processing, preventing duplicate addition.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful journal write access",
+        "reasoning": "The implementation checks the return value of `ext4_journal_get_write_access(handle, EXT4_SB(sb)->s_sbh)` and jumps to `out_unlock` if it fails, ensuring the journal write access is successful before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock the orphan list on all paths",
+        "reasoning": "The implementation includes a `out_unlock` label that unconditionally calls `mutex_unlock(&EXT4_SB(sb)->s_orphan_lock)` before returning, ensuring the lock is released on all paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if orphan list is needed",
+        "reasoning": "The implementation checks if the journal exists (`if (!EXT4_SB(sb)->s_journal) return 0;`). If the journal does not exist, it returns early, avoiding unnecessary operations.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "lock the orphan list before modification",
+        "reasoning": "The implementation acquires a mutex lock (`mutex_lock(&EXT4_SB(sb)->s_orphan_lock);`) before modifying the orphan list, ensuring exclusive access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate inode type before processing",
+        "reasoning": "The implementation includes an assertion (`J_ASSERT(...)`) that checks if the inode is a regular file, directory, or symbolic link, or if its link count is zero. This ensures only valid inode types are processed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for existing dtime to prevent duplicate processing",
+        "reasoning": "The implementation checks if the inode is already in the orphan list (`if (!list_empty(&EXT4_I(inode)->i_orphan)) goto out_unlock;`). If it is, it skips further processing, preventing duplicate entries.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful journal write access",
+        "reasoning": "The implementation calls `ext4_journal_get_write_access` and checks its return value (`if (err) goto out_unlock;`). If the call fails, it exits early, preventing operations on an unprepared journal.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock the orphan list on all paths",
+        "reasoning": "The implementation includes a `goto out_unlock` label that unconditionally unlocks the orphan list (`mutex_unlock(&EXT4_SB(sb)->s_orphan_lock);`) before returning, ensuring the lock is released on all code paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

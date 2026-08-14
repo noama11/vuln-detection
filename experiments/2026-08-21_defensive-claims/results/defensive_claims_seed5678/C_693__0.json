@@ -1,0 +1,162 @@
+{
+  "case_id": "C_693__0",
+  "sample_id": "D/C/693",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-5333",
+  "cve_summary": "In the Linux kernel through 4.14.13, the rds_cmsg_atomic function in net/rds/rdma.c mishandles cases where page pinning fails or an invalid address is supplied, leading to an rds_atomic_free_op NULL pointer dereference.",
+  "changed_file": "net/rds/rdma.c",
+  "docstring": "Summary:  \nProcesses an atomic message operation for a given RDS socket and message, handling different types of atomic operations based on control message data.\n\nParameters:  \nrs (struct rds_sock *): The RDS socket associated with the operation.  \nrm (struct rds_message *): The RDS message to be modified with atomic operation details.  \ncmsg (struct cmsghdr *): Control message header containing atomic operation parameters.\n\nReturns:  \nint: Returns 0 on success, or a negative error code indicating failure.\n\nLogic:  \nThe function first validates the control message length and checks if an atomic operation is already active. It then extracts the atomic operation arguments from the control message and sets the appropriate operation type and parameters based on the message type. Memory for the operation's scatter-gather list is allocated, and the local address is verified for alignment. If notifications are required, a notifier structure is allocated. Finally, it sets the remote address and key for the operation, returning any error encountered during the process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int rds_atomic_op_setup(struct rds_sock *rs, struct rds_message *rm, struct cmsghdr *cmsg)\n{\n    int ret = -EINVAL;\n    struct rds_atomic_args *args = NULL;\n    struct scatterlist *sg = NULL;\n    struct rds_notifier *notifier = NULL;\n\n    if (cmsg->cmsg_len < CMSG_LEN(sizeof(*args)))\n        goto out;\n\n    args = CMSG_DATA(cmsg);\n\n    if (rs->atomic_op_active) {\n        ret = -EBUSY;\n        goto out;\n    }\n\n    if (args->op_type >= RDS_ATOMIC_OP_MAX) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    sg = kmalloc_array(args->sg_count, sizeof(*sg), GFP_KERNEL);\n    if (!sg)\n        goto out;\n\n    if (args->local_addr_len > sizeof(rm->atomic.local_addr)) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    memcpy(rm->atomic.local_addr, args->local_addr, args->local_addr_len);\n\n    if (args->notify) {\n        notifier = kmalloc(sizeof(*notifier), GFP_KERNEL);\n        if (!notifier) {\n            ret = -ENOMEM;\n            goto out;\n        }\n        notifier->cb = args->notify_cb;\n        notifier->data = args->notify_data;\n    }\n\n    rm->atomic.op_type = args->op_type;\n    rm->atomic.sgl = sg;\n    rm->atomic.sgl_len = args->sg_count;\n    rm->atomic.notifier = notifier;\n\n    if (args->remote_addr_len > sizeof(rm->atomic.remote_addr)) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    memcpy(rm->atomic.remote_addr, args->remote_addr, args->remote_addr_len);\n    rm->atomic.key = args->key;\n\n    rs->atomic_op_active = 1;\n    ret = 0;\n\nout:\n    if (ret < 0) {\n        kfree(sg);\n        kfree(notifier);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate control message length",
+      "protects_against": "malformed or undersized control message"
+    },
+    {
+      "step": "check for existing active atomic operation",
+      "protects_against": "concurrent or overlapping atomic operations"
+    },
+    {
+      "step": "validate operation type",
+      "protects_against": "invalid or out-of-bounds operation type"
+    },
+    {
+      "step": "allocate scatter-gather list with size check",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "bound local address copy to destination capacity",
+      "protects_against": "buffer overflow from oversized local address"
+    },
+    {
+      "step": "bound remote address copy to destination capacity",
+      "protects_against": "buffer overflow from oversized remote address"
+    },
+    {
+      "step": "clean up allocated resources on error",
+      "protects_against": "memory leaks on failure paths"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "validate control message length",
+        "reasoning": "The implementation checks if `cmsg->cmsg_len` is less than the expected size of `struct rds_atomic_args`, returning `-EINVAL` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for existing active atomic operation",
+        "reasoning": "The implementation checks if `rm->atomic.op_active` is true, returning `-EINVAL` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate operation type",
+        "reasoning": "The implementation uses a `switch` on `cmsg->cmsg_type` and includes a `BUG()` in the `default` case, implying that only valid types are processed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate scatter-gather list with size check",
+        "reasoning": "The implementation calls `rds_message_alloc_sgs(rm, 1)` to allocate the scatter-gather list and checks if the result is null, returning `-ENOMEM` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound local address copy to destination capacity",
+        "reasoning": "The implementation does not perform a copy of the local address into a fixed-size buffer. Instead, it uses `sg_set_page` to set up a scatter-gather entry directly from a page and offset, which does not involve a bounded copy.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound remote address copy to destination capacity",
+        "reasoning": "The implementation does not perform a copy of the remote address into a fixed-size buffer. It directly assigns `args->remote_addr` to `rm->atomic.op_remote_addr`, which is a pointer assignment and not a bounded copy.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on error",
+        "reasoning": "The implementation includes an `err` label that frees the allocated page and `op_notifier` on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "validate control message length",
+        "reasoning": "The implementation checks if `cmsg->cmsg_len` is less than the expected size of `struct rds_atomic_args`, returning `-EINVAL` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for existing active atomic operation",
+        "reasoning": "The implementation checks if `rm->atomic.op_active` is true, returning `-EINVAL` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate operation type",
+        "reasoning": "The implementation uses a `switch` on `cmsg->cmsg_type` and includes a `BUG()` in the `default` case, implying that only valid types are processed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate scatter-gather list with size check",
+        "reasoning": "The implementation calls `rds_message_alloc_sgs(rm, 1)` to allocate the scatter-gather list and checks if the result is `NULL`, returning `-ENOMEM` if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound local address copy to destination capacity",
+        "reasoning": "The implementation does not perform a copy of the local address into a fixed-size buffer. Instead, it uses `sg_set_page()` with a fixed size of 8 bytes, which is not a copy into a buffer and does not require a bound check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound remote address copy to destination capacity",
+        "reasoning": "The implementation does not perform a copy of the remote address into a fixed-size buffer. It directly assigns `args->remote_addr` to `rm->atomic.op_remote_addr`, which is a pointer assignment and not a copy operation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on error",
+        "reasoning": "The implementation includes an `err` label and performs cleanup of `page`, `rm->atomic.op_active`, and `rm->atomic.op_notifier` on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

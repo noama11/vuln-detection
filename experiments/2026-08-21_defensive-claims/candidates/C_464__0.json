@@ -1,0 +1,35 @@
+{
+  "case_id": "C_464__0",
+  "implementation": "int process_gif_image(struct iwgifrcontext* rctx) {\n    if (!rctx) {\n        return 0;\n    }\n\n    // Read image header\n    if (fread(&rctx->image_descriptor, sizeof(rctx->image_descriptor), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Extract dimensions and interlacing information\n    rctx->image_width = rctx->image_descriptor.width;\n    rctx->image_height = rctx->image_descriptor.height;\n    rctx->interlaced = (rctx->image_descriptor.flags & 0x40) != 0;\n\n    // Initialize color tables if a local color table is present\n    if (rctx->image_descriptor.flags & 0x80) {\n        int color_table_size = 2 << (rctx->image_descriptor.flags & 0x07);\n        if (color_table_size > GIF_MAX_COLOR_TABLE_SIZE) {\n            return 0;\n        }\n\n        if (fread(rctx->local_color_table, sizeof(uint32_t), color_table_size, rctx->file) != color_table_size) {\n            return 0;\n        }\n\n        // Handle transparency by modifying the color table\n        if (rctx->image_descriptor.flags & 0x01) {\n            int transparent_index = rctx->transparent_index;\n            if (transparent_index >= 0 && transparent_index < color_table_size) {\n                rctx->local_color_table[transparent_index] |= GIF_TRANSPARENT_FLAG;\n            }\n        }\n    }\n\n    // Read LZW code size\n    uint8_t lzw_code_size;\n    if (fread(&lzw_code_size, sizeof(lzw_code_size), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Validate LZW code size against GIF specification\n    if (lzw_code_size < 2 || lzw_code_size > 8) {\n        return 0;\n    }\n\n    // Initialize screen context\n    if (!initialize_screen_context(rctx, rctx->image_width, rctx->image_height)) {\n        return 0;\n    }\n\n    // Read pixel data in subblocks\n    uint8_t subblock_size;\n    while (fread(&subblock_size, sizeof(subblock_size), 1, rctx->file) == 1 && subblock_size != 0) {\n        if (subblock_size > GIF_MAX_SUBBLOCK_SIZE) {\n            return 0;\n        }\n\n        uint8_t subblock_data[GIF_MAX_SUBBLOCK_SIZE];\n        if (fread(subblock_data, sizeof(uint8_t), subblock_size, rctx->file) != subblock_size) {\n            return 0;\n        }\n\n        // Process subblock with LZW decoding\n        if (!decode_lzw_subblock(rctx, subblock_data, subblock_size, lzw_code_size)) {\n            return 0;\n        }\n    }\n\n    // Check for end of image\n    if (feof(rctx->file)) {\n        return 0;\n    }\n\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null context pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate color table size",
+      "protects_against": "buffer overflow when reading color table"
+    },
+    {
+      "step": "validate transparent index",
+      "protects_against": "out-of-bounds array access when modifying color table"
+    },
+    {
+      "step": "validate lzw code size",
+      "protects_against": "invalid lzw code size that violates gif specification"
+    },
+    {
+      "step": "check subblock size",
+      "protects_against": "buffer overflow when reading subblock data"
+    },
+    {
+      "step": "check for end of file",
+      "protects_against": "unexpected end of file during reading"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

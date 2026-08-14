@@ -1,0 +1,82 @@
+{
+  "case_id": "C_335__0",
+  "sample_id": "D/C/335",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7566",
+  "cve_summary": "The clie_5_attach function in drivers/usb/serial/visor.c in the Linux kernel through 4.4.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by inserting a USB device that lacks a bulk-out endpoint.",
+  "changed_file": "drivers/usb/serial/visor.c",
+  "docstring": "\"\"\"\nSummary: \nAttaches a USB serial device by configuring its bulk output endpoint addresses.\n\nParameters: \nserial (struct usb_serial*): Pointer to the USB serial structure representing the device.\n\nReturns: \nint: Returns 0 on success, or -ENODEV if there are insufficient bulk out endpoints.\n\nLogic: The function first verifies that the USB serial device has the required endpoint configuration and returns an error if it is not available. It then assigns the bulk out endpoint address from the second port to the first port. It sets up the USB pipe for sending data and updates the write URBs (USB Request Blocks) for the first port to use the new pipe. Finally, it returns 0 to indicate successful attachment.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int attach_usb_serial(struct usb_serial *serial) {\n    if (!serial || serial->num_ports < 2 || serial->port[0].bulk_out_endpointAddress == 0 || serial->port[1].bulk_out_endpointAddress == 0) {\n        return -ENODEV;\n    }\n\n    serial->port[0].bulk_out_endpointAddress = serial->port[1].bulk_out_endpointAddress;\n\n    unsigned int pipe = usb_sndbulkpipe(serial->dev, serial->port[0].bulk_out_endpointAddress);\n    serial->port[0].write_urb->pipe = pipe;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer and invalid endpoint addresses",
+      "protects_against": "null pointer dereference or invalid endpoint address access"
+    },
+    {
+      "step": "verify sufficient number of ports",
+      "protects_against": "accessing out-of-bounds port indices"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer and invalid endpoint addresses — protects against: null pointer dereference or invalid endpoint address access",
+        "reasoning": "The implementation does not explicitly check for null pointers or invalid endpoint addresses. It assumes that the serial and port structures are valid and accessible.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify sufficient number of ports — protects against: accessing out-of-bounds port indices",
+        "reasoning": "The implementation checks if the number of ports is less than 2 and returns -1 in that case, which prevents out-of-bounds access.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer and invalid endpoint addresses — protects against: null pointer dereference or invalid endpoint address access",
+        "reasoning": "The implementation does not explicitly check for null pointers or invalid endpoint addresses. It assumes that the serial and port structures are valid and that the endpoint addresses are correctly set.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify sufficient number of ports — protects against: accessing out-of-bounds port indices",
+        "reasoning": "The implementation checks that there are at least two bulk out endpoints, which implies that there are at least two ports. This ensures that accessing port[0] and port[1] is valid.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

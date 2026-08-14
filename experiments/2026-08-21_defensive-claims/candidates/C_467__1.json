@@ -1,0 +1,27 @@
+{
+  "case_id": "C_467__1",
+  "implementation": "#include <stdlib.h>\n#include <string.h>\n\n// Define a structure for private data\ntypedef struct {\n    int32_t* buffer;\n    size_t capacity;\n    size_t used;\n} PrivateData;\n\nFLAC__StreamDecoderWriteStatus write_callback(\n    const FLAC__StreamDecoder* decoder,\n    const FLAC__Frame* frame,\n    const int32_t* const buffer[],\n    void* client_data\n) {\n    // Cast client_data to our private data structure\n    PrivateData* data = (PrivateData*)client_data;\n    if (!data) {\n        return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;\n    }\n\n    // Calculate the number of samples in this frame\n    size_t samples = frame->header.blocksize;\n    size_t channels = frame->header.channels;\n\n    // Calculate the total number of samples to copy\n    size_t total_samples = samples * channels;\n\n    // Calculate the required capacity\n    size_t required_capacity = data->used + total_samples;\n\n    // If we need to grow the buffer\n    if (required_capacity > data->capacity) {\n        // Calculate the new capacity (double the current or 16, whichever is larger)\n        size_t new_capacity = data->capacity ? data->capacity * 2 : 16;\n        while (new_capacity < required_capacity) {\n            new_capacity *= 2;\n        }\n\n        // Allocate new buffer\n        int32_t* new_buffer = (int32_t*)realloc(data->buffer, new_capacity * sizeof(int32_t));\n        if (!new_buffer) {\n            return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;\n        }\n\n        data->buffer = new_buffer;\n        data->capacity = new_capacity;\n    }\n\n    // Copy the samples from the buffer\n    for (size_t i = 0; i < samples; i++) {\n        for (size_t ch = 0; ch < channels; ch++) {\n            if (data->used < data->capacity) {\n                data->buffer[data->used++] = buffer[ch][i];\n            }\n        }\n    }\n\n    return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check client_data is not null",
+      "protects_against": "null pointer dereference when casting client_data to PrivateData*"
+    },
+    {
+      "step": "bound buffer growth to prevent excessive memory allocation",
+      "protects_against": "malformed or excessive input that could cause excessive memory allocation or integer overflow"
+    },
+    {
+      "step": "use size_t for all size calculations",
+      "protects_against": "integer overflow and underflow when working with sizes and counts"
+    },
+    {
+      "step": "check for realloc failure",
+      "protects_against": "out-of-memory conditions that could cause undefined behavior"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

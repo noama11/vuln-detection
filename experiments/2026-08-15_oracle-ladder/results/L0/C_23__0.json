@@ -1,0 +1,48 @@
+{
+  "case_id": "C_23__0",
+  "sample_id": "D/C/23",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0038",
+  "cve_summary": "Integer overflow in the xfs_acl_from_disk function in fs/xfs/xfs_acl.c in the Linux kernel before 3.1.9 allows local users to cause a denial of service (panic) via a filesystem with a malformed ACL, leading to a heap-based buffer overflow.",
+  "changed_file": "fs/xfs/xfs_acl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Converts an XFS ACL structure from disk format to a POSIX ACL structure.  \n *  \n * Parameters:  \n * aclp (struct xfs_acl*): Pointer to the XFS ACL structure to convert.  \n *  \n * Returns:  \n * struct posix_acl*: Pointer to the newly allocated POSIX ACL structure on success,  \n * or an error pointer on failure.  \n *  \n * Logic:\n * The function reads the count of ACL entries and allocates memory for the POSIX ACL. It then\n * iterates through each entry, converting the tag and permissions from disk format to core format.\n * Depending on the tag type, it assigns the appropriate ID or marks it as undefined. If any errors\n * occur during this process, it releases the allocated ACL and returns an error pointer.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "STATIC struct posix_acl *\r\nxfs_acl_from_disk(struct xfs_acl *aclp)\r\n{\r\n\tstruct posix_acl_entry *acl_e;\r\n\tstruct posix_acl *acl;\r\n\tstruct xfs_acl_entry *ace;\r\n\tint count, i;\r\n\r\n\tcount = be32_to_cpu(aclp->acl_cnt);\r\n\tif (count > XFS_ACL_MAX_ENTRIES)\r\n\t\treturn ERR_PTR(-EFSCORRUPTED);\r\n\r\n\tacl = posix_acl_alloc(count, GFP_KERNEL);\r\n\tif (!acl)\r\n\t\treturn ERR_PTR(-ENOMEM);\r\n\r\n\tfor (i = 0; i < count; i++) {\r\n\t\tacl_e = &acl->a_entries[i];\r\n\t\tace = &aclp->acl_entry[i];\r\n\r\n\t\t/*\r\n\t\t * The tag is 32 bits on disk and 16 bits in core.\r\n\t\t *\r\n\t\t * Because every access to it goes through the core\r\n\t\t * format first this is not a problem.\r\n\t\t */\r\n\t\tacl_e->e_tag = be32_to_cpu(ace->ae_tag);\r\n\t\tacl_e->e_perm = be16_to_cpu(ace->ae_perm);\r\n\r\n\t\tswitch (acl_e->e_tag) {\r\n\t\tcase ACL_USER:\r\n\t\tcase ACL_GROUP:\r\n\t\t\tacl_e->e_id = be32_to_cpu(ace->ae_id);\r\n\t\t\tbreak;\r\n\t\tcase ACL_USER_OBJ:\r\n\t\tcase ACL_GROUP_OBJ:\r\n\t\tcase ACL_MASK:\r\n\t\tcase ACL_OTHER:\r\n\t\t\tacl_e->e_id = ACL_UNDEFINED_ID;\r\n\t\t\tbreak;\r\n\t\tdefault:\r\n\t\t\tgoto fail;\r\n\t\t}\r\n\t}\r\n\treturn acl;\r\n\r\nfail:\r\n\tposix_acl_release(acl);\r\n\treturn ERR_PTR(-EINVAL);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check for the count of ACL entries against XFS_ACL_MAX_ENTRIES, returning an error if the count exceeds this limit. The reference implementation lacks this check, which could allow processing of an abnormally large ACL count. This difference is security-relevant as it could lead to memory allocation issues or resource exhaustion if an attacker provides a maliciously large ACL count.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both convert an XFS ACL from disk format to a POSIX ACL structure, perform the same validation, and handle errors in the same way. There are no observable behavioral differences for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "case_id": "C_583__0",
+  "implementation": "#include <string.h>\n#include <errno.h>\n#include <pwd.h>\n\nenum nss_status {\n    NSS_STATUS_SUCCESS,\n    NSS_STATUS_NOTFOUND,\n    NSS_STATUS_UNAVAIL\n};\n\nenum nss_status get_user_account_info(const char* name, struct passwd* pwd, char* buffer, size_t buflen, int* errnop) {\n    if (!name || !pwd || !buffer || !errnop) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    if (strncmp(name, \"vu-\", 3) != 0) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    const char* machine_start = name + 3;\n    const char* uid_start = strchr(machine_start, '-');\n    if (!uid_start) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    size_t machine_len = (size_t)(uid_start - machine_start);\n    if (machine_len == 0) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    size_t buffer_remaining = buflen;\n    char* buffer_ptr = buffer;\n\n    size_t machine_name_len = machine_len;\n    if (machine_name_len >= buffer_remaining) {\n        *errnop = ENAMETOOLONG;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    strncpy(buffer_ptr, machine_start, machine_name_len);\n    buffer_ptr += machine_name_len;\n    buffer_remaining -= machine_name_len;\n\n    if (buffer_remaining == 0) {\n        *errnop = ENAMETOOLONG;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    *buffer_ptr = '-';\n    buffer_ptr++;\n    buffer_remaining--;\n\n    const char* uid_str = uid_start + 1;\n    char* endptr;\n    long uid = strtol(uid_str, &endptr, 10);\n\n    if (uid_str == endptr || *endptr != '\\0' || uid < 0 || uid > (long)UINT32_MAX) {\n        *errnop = EINVAL;\n        return NSS_STATUS_UNAVAIL;\n    }\n\n    // Simulate system bus call to map the user\n    // For the purpose of this example, we assume the call is successful\n    pwd->pw_name = buffer;\n    pwd->pw_uid = (uid_t)uid;\n    pwd->pw_gid = 100;\n    pwd->pw_dir = \"/home/user\";\n    pwd->pw_shell = \"/bin/sh\";\n\n    return NSS_STATUS_SUCCESS;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate username format",
+      "protects_against": "malformed username input"
+    },
+    {
+      "step": "bound copy length to buffer capacity",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate machine name length",
+      "protects_against": "malformed machine name"
+    },
+    {
+      "step": "validate UID string",
+      "protects_against": "malformed UID input"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

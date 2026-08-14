@@ -1,0 +1,178 @@
+{
+  "case_id": "C_866__0",
+  "sample_id": "D/C/866",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-5510",
+  "cve_summary": "coders/psd.c in ImageMagick allows remote attackers to have unspecified impact via a crafted PSD file, which triggers an out-of-bounds write.",
+  "changed_file": "coders/psd.c",
+  "docstring": "```plaintext\nSummary: Writes a PSD channel to an image, handling various compression methods and pixel formats.\n\nParameters:\npsd_info (const PSDInfo *): Information about the PSD file format.\nimage_info (const ImageInfo *): Metadata about the image being processed.\nimage (Image *): The current image to write.\nnext_image (Image *): The next image to process.\nquantum_type (QuantumType): The type of pixel data to be processed.\ncompact_pixels (unsigned char *): Buffer for storing compact pixel data.\nsize_offset (MagickOffsetType): Offset for writing data in the PSD file.\nseparate (MagickBooleanType): Flag indicating whether to write separate channels.\n\nReturns: size_t: The total number of bytes written to the image.\n\nLogic: The function initializes variables and checks for monochrome images. It handles compression based on the specified type (RLE or Zip) and writes pixel data to the image blob. It manages memory for compressed data and ensures proper cleanup after processing. The function iterates through each row of the image, exporting pixel data and applying necessary transformations based on the image's properties and compression settings.\n```",
+  "heuristic_leakage_flag": false,
+  "generated_code": "size_t WritePSDChannel(const PSDInfo *psd_info, const ImageInfo *image_info, Image *image, Image *next_image, QuantumType quantum_type, unsigned char *compact_pixels, MagickOffsetType size_offset, MagickBooleanType separate) {\n  size_t bytes_written = 0;\n  ssize_t y;\n  unsigned char *pixels = NULL;\n  size_t length = 0;\n  MagickBooleanType status = MagickTrue;\n\n  if (image == (Image *) NULL)\n    return 0;\n\n  if (image->columns == 0 || image->rows == 0)\n    return 0;\n\n  pixels = (unsigned char *) AcquireMemory(image->columns * 4);\n  if (pixels == (unsigned char *) NULL) {\n    ThrowBinaryException(ResourceLimitError, \"UnableToAcquireMemory\", image->filename);\n    return 0;\n  }\n\n  for (y = 0; y < (ssize_t) image->rows; y++) {\n    if (ExportImagePixels(image, 0, y, image->columns, 1, \"RGBO\", pixels) != MagickTrue) {\n      status = MagickFalse;\n      break;\n    }\n\n    if (psd_info->compression == RLECompression) {\n      length = CompressRLE(pixels, image->columns, compact_pixels + bytes_written);\n      if (length == 0) {\n        status = MagickFalse;\n        break;\n      }\n    } else {\n      (void) memcpy(compact_pixels + bytes_written, pixels, image->columns * 4);\n      length = image->columns * 4;\n    }\n\n    bytes_written += length;\n  }\n\n  if (status == MagickTrue) {\n    if (WriteBlobMemory(image, bytes_written, compact_pixels) != MagickTrue) {\n      status = MagickFalse;\n    }\n  }\n\n  if (pixels != (unsigned char *) NULL) {\n    pixels = (unsigned char *) RelinquishMemory(pixels);\n  }\n\n  if (status == MagickFalse) {\n    bytes_written = 0;\n  }\n\n  return bytes_written;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null image pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero image dimensions",
+      "protects_against": "invalid memory allocation or processing"
+    },
+    {
+      "step": "check memory allocation success",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check export image pixels status",
+      "protects_against": "invalid pixel data access"
+    },
+    {
+      "step": "check compression result",
+      "protects_against": "invalid compressed data"
+    },
+    {
+      "step": "check write blob memory status",
+      "protects_against": "failed write to image"
+    },
+    {
+      "step": "ensure memory is properly released",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "return zero on failure",
+      "protects_against": "incorrect byte count reporting"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 30,
+    "n_omits": 6,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null image pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the `image` pointer directly in multiple places (e.g., `GetVirtualPixels`, `WriteBlob`). There is no explicit check for a null `image` pointer.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for zero image dimensions — protects against: invalid memory allocation or processing",
+        "reasoning": "The implementation iterates over `next_image->rows` and uses `next_image->columns` in `GetVirtualPixels`. There is no explicit check for zero dimensions before these operations.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check memory allocation success — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the result of `AcquireQuantumMemory` for `compressed_pixels` and returns 0 if it fails. However, it does not check the result of `GetQuantumPixels` or any other allocations.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check export image pixels status — protects against: invalid pixel data access",
+        "reasoning": "The implementation calls `ExportQuantumPixels` and stores the result in `length`, but does not check whether the export was successful or if `length` is valid.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check compression result — protects against: invalid compressed data",
+        "reasoning": "The implementation checks for `Z_STREAM_ERROR` during `deflate`, but does not check for other potential errors or malformed compressed data after compression.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check write blob memory status — protects against: failed write to image",
+        "reasoning": "The implementation calls `WriteBlob` but does not check whether the write was successful or if it failed due to memory or I/O issues.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "ensure memory is properly released — protects against: memory leaks",
+        "reasoning": "The implementation calls `RelinquishMagickMemory` on `compressed_pixels` and `DestroyQuantumInfo` on `quantum_info`, which suggests proper cleanup is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return zero on failure — protects against: incorrect byte count reporting",
+        "reasoning": "The implementation returns 0 in multiple failure paths (e.g., null `quantum_info`, failed memory allocation, `Z_STREAM_ERROR`).",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 26,
+    "n_omits": 5,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null image pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the `image` pointer directly in multiple places (e.g., `GetVirtualPixels`, `WriteBlob`). There is no explicit check for a null `image` pointer before dereferencing it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for zero image dimensions — protects against: invalid memory allocation or processing",
+        "reasoning": "The implementation iterates over `next_image->rows` and uses `next_image->columns` in `GetVirtualPixels`. There is no explicit check for zero image dimensions before processing.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check memory allocation success — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `compressed_pixels` using `AcquireQuantumMemory`. It checks if the allocation is null and returns 0 in that case, which performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check export image pixels status — protects against: invalid pixel data access",
+        "reasoning": "The implementation calls `ExportQuantumPixels` and stores the result in `length`. However, it does not explicitly check if the export was successful or if `length` is valid before proceeding.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check compression result — protects against: invalid compressed data",
+        "reasoning": "The implementation uses `deflate` for compression and checks for `Z_STREAM_ERROR`. However, it does not check for other potential errors or validate the compressed data before writing it.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check write blob memory status — protects against: failed write to image",
+        "reasoning": "The implementation calls `WriteBlob` but does not check the return value to confirm whether the write was successful.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "ensure memory is properly released — protects against: memory leaks",
+        "reasoning": "The implementation calls `RelinquishMagickMemory` on `compressed_pixels` and `DestroyQuantumInfo` on `quantum_info`, which performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return zero on failure — protects against: incorrect byte count reporting",
+        "reasoning": "The implementation returns 0 in several error paths (e.g., null `quantum_info`, failed memory allocation, or `deflateInit` failure), which performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

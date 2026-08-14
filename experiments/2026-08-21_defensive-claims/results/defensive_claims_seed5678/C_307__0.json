@@ -1,0 +1,114 @@
+{
+  "case_id": "C_307__0",
+  "sample_id": "D/C/307",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2782",
+  "cve_summary": "The treo_attach function in drivers/usb/serial/visor.c in the Linux kernel before 4.5 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by inserting a USB device that lacks a (1) bulk-in or (2) interrupt-in endpoint.",
+  "changed_file": "drivers/usb/serial/visor.c",
+  "docstring": "\"\"\"\nSummary: \nAttaches a USB serial device by configuring its endpoints specifically for Handspring Treo and Kyocera devices.\n\nParameters: \nserial (struct usb_serial*): Pointer to the USB serial structure representing the device to be attached.\n\nReturns: \nint: Returns 0 on success, -ENODEV if required endpoints are missing, or -ENOMEM if memory allocation fails.\n\nLogic: The function first checks if the device is a Handspring or Kyocera device with the required interrupt endpoints. If not, it returns 0. It prepares the device endpoints for the communication requirements of Treo and Kyocera devices. Memory is allocated for a temporary port structure to facilitate the endpoint swap, and it is freed before the function returns.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/usb.h>\n#include <linux/slab.h>\n\nint attach_usb_serial(struct usb_serial *serial) {\n    int i;\n    struct usb_host_endpoint *ep;\n    struct usb_endpoint_descriptor *ep_desc;\n    struct usb_serial_port *port;\n\n    // Check if it's a Handspring or Kyocera device\n    if (serial->dev->descriptor.idVendor != 0x0830 && serial->dev->descriptor.idVendor != 0x0483) {\n        return 0;\n    }\n\n    // Check for required interrupt endpoints\n    bool has_interrupt = false;\n    for (i = 0; i < serial->dev->config->desc.bNumInterfaces; i++) {\n        for (int j = 0; j < serial->dev->config->interface[i].num_altsetting; j++) {\n            for (int k = 0; k < serial->dev->config->interface[i].altsetting[j].desc.bNumEndpoints; k++) {\n                ep_desc = &serial->dev->config->interface[i].altsetting[j].endpoint[k].desc;\n                if ((ep_desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_INT) {\n                    has_interrupt = true;\n                    break;\n                }\n            }\n            if (has_interrupt) break;\n        }\n        if (has_interrupt) break;\n    }\n\n    if (!has_interrupt) {\n        return -ENODEV;\n    }\n\n    // Allocate memory for temporary port structure\n    port = kzalloc(sizeof(struct usb_serial_port), GFP_KERNEL);\n    if (!port) {\n        return -ENOMEM;\n    }\n\n    // Prepare device endpoints for Treo and Kyocera communication requirements\n    for (i = 0; i < serial->num_ports; i++) {\n        ep = serial->port[i].write_endpoint;\n        if (ep) {\n            ep->desc.bInterval = 0x0A; // Set appropriate interval for Treo/Kyocera\n        }\n\n        ep = serial->port[i].read_endpoint;\n        if (ep) {\n            ep->desc.bInterval = 0x0A; // Set appropriate interval for Treo/Kyocera\n        }\n    }\n\n    // Free allocated memory\n    kfree(port);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check vendor ID before proceeding",
+      "protects_against": "processing non-Handspring or Kyocera devices"
+    },
+    {
+      "step": "verify presence of interrupt endpoints",
+      "protects_against": "missing required endpoints that would prevent proper device operation"
+    },
+    {
+      "step": "check memory allocation result",
+      "protects_against": "memory allocation failures that would leave the system in an inconsistent state"
+    },
+    {
+      "step": "ensure memory is freed before returning",
+      "protects_against": "memory leaks from allocated port structures"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check vendor ID before proceeding — protects against: processing non-Handspring or Kyocera devices",
+        "reasoning": "The implementation checks if the vendor ID is HANDSPRING_VENDOR_ID or KYOCERA_VENDOR_ID before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify presence of interrupt endpoints — protects against: missing required endpoints that would prevent proper device operation",
+        "reasoning": "The implementation checks if serial->num_interrupt_in is 0 before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failures that would leave the system in an inconsistent state",
+        "reasoning": "The implementation checks if kmalloc returns NULL and returns -ENOMEM in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure memory is freed before returning — protects against: memory leaks from allocated port structures",
+        "reasoning": "The implementation calls kfree(swap_port) before returning.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check vendor ID before proceeding — protects against: processing non-Handspring or Kyocera devices",
+        "reasoning": "The implementation checks if the vendor ID is either HANDSPRING_VENDOR_ID or KYOCERA_VENDOR_ID before proceeding. This directly performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify presence of interrupt endpoints — protects against: missing required endpoints that would prevent proper device operation",
+        "reasoning": "The implementation checks if serial->num_interrupt_in is at least 2, ensuring the presence of required interrupt endpoints. If not, it returns -ENODEV.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failures that would leave the system in an inconsistent state",
+        "reasoning": "The implementation allocates memory for swap_port and checks if the allocation was successful. If not, it returns -ENOMEM.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure memory is freed before returning — protects against: memory leaks from allocated port structures",
+        "reasoning": "The implementation frees the allocated swap_port memory before returning from the function.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

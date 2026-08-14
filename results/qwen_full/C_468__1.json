@@ -1,0 +1,53 @@
+{
+  "case_id": "C_468__1",
+  "sample_id": "D/C/468",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for memory binding, allowing users to set memory policies based on node masks.\n\nParameters:\n- start (compat_ulong_t): The starting address of the memory region.\n- len (compat_ulong_t): The length of the memory region.\n- mode (compat_ulong_t): The memory policy mode to apply.\n- nmask (compat_ulong_t __user *): A pointer to the user-space node mask.\n- maxnode (compat_ulong_t): The maximum number of nodes.\n- flags (compat_ulong_t): Flags for additional options.\n\nReturns: int - Returns 0 on success or a negative error code on failure.\n\nLogic: The function calculates the number of bits required for the node mask and allocates user space for it. It checks for errors in retrieving the bitmap and copying data to user space. Finally, it calls `sys_set_mempolicy` to apply the specified memory policy.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/compat.h>\n#include <linux/uaccess.h>\n\nint compat_sys_mbind(compat_ulong_t start, compat_ulong_t len,\n                     compat_ulong_t mode, compat_ulong_t __user *nmask,\n                     compat_ulong_t maxnode, compat_ulong_t flags)\n{\n    unsigned long nr_bits;\n    unsigned long __user *bitmap;\n    int err;\n\n    if (!nmask)\n        return -EINVAL;\n\n    nr_bits = (maxnode + 7) / 8 * 8;\n    bitmap = compat_alloc_user_space(nr_bits);\n    if (copy_from_user(bitmap, nmask, nr_bits))\n        return -EFAULT;\n\n    err = sys_set_mempolicy(mode, bitmap, nr_bits / sizeof(long), flags);\n    return err;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation calculates `nr_bits` as `(maxnode + 7) / 8 * 8`, which always rounds up to the next multiple of 8 bits. The reference implementation uses `min_t(unsigned long, maxnode-1, MAX_NUMNODES)` and aligns the result to `BITS_PER_LONG`. This leads to different memory allocation and copying behavior, particularly for large or non-multiple-of-8 node counts. The difference could affect memory safety if the user-provided `nmask` is malformed or if the system has a high node count, making this a security-relevant discrepancy.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the node mask. The candidate implementation calculates `nr_bits` as `(maxnode + 7) / 8 * 8`, which ensures the size is a multiple of 8 bytes, and copies the user-space node mask directly into the allocated user space. The reference implementation calculates `nr_bits` as `min(maxnode-1, MAX_NUMNODES)`, aligns it to `BITS_PER_LONG`, and uses `compat_get_bitmap` to retrieve the node mask into a kernel bitmap before copying it to user space. These differences in allocation and copying logic could lead to different behaviors for certain inputs, particularly when `maxnode` is large or exceeds `MAX_NUMNODES`. However, the core logic of applying the memory policy via `sys_set_mempolicy` is similar, and the difference does not appear to involve a missing security check or guard that is reachable via attacker-controlled input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

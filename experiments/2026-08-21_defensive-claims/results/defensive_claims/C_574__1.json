@@ -1,0 +1,98 @@
+{
+  "case_id": "C_574__1",
+  "sample_id": "D/C/574",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "mjg59/linux",
+  "cve_id": "CVE-2016-3695",
+  "cve_summary": "The einj_error_inject function in drivers/acpi/apei/einj.c in the Linux kernel allows local users to simulate hardware errors and consequently cause a denial of service by leveraging failure to disable APEI error injection through EINJ when securelevel is set.",
+  "changed_file": "drivers/acpi/apei/einj.c",
+  "docstring": "Summary: This function injects an error based on the specified type and parameters, ensuring that the operation adheres to security and validity checks.\n\nParameters:\n- type (u32): Specifies the type of error to inject.\n- flags (u32): Contains flags that modify the injection behavior.\n- param1 (u64): First parameter related to the error injection.\n- param2 (u64): Second parameter, often used for address masking.\n- param3 (u64): Third parameter for additional context.\n- param4 (u64): Fourth parameter for additional context.\n\nReturns: int - Returns the result of the error injection operation, with negative values indicating failure (e.g., -EPERM for permission denied, -EINVAL for invalid arguments).\n\nLogic: The function validates the flags and performs sanity checks to ensure that the parameters are appropriate for memory-related errors. If the checks pass, it locks a mutex, calls a lower-level function to perform the injection, and then unlocks the mutex before returning the result.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <pthread.h>\n#include <errno.h>\n\nint inject_error(unsigned int type, unsigned int flags, unsigned long long param1, unsigned long long param2, unsigned long long param3, unsigned long long param4) {\n    pthread_mutex_t error_mutex = PTHREAD_MUTEX_INITIALIZER;\n    int result = 0;\n\n    /* Validate flags to ensure they are within expected range */\n    if ((flags & ~(0x3)) != 0) {\n        return -EINVAL;\n    }\n\n    /* Validate type to ensure it is within expected range */\n    if (type > 0xFF) {\n        return -EINVAL;\n    }\n\n    /* Lock the mutex to ensure thread safety */\n    if (pthread_mutex_lock(&error_mutex) != 0) {\n        return -EPERM;\n    }\n\n    /* Call the lower-level function to perform the injection */\n    result = perform_injection(type, flags, param1, param2, param3, param4);\n\n    /* Unlock the mutex after injection is done */\n    if (pthread_mutex_unlock(&error_mutex) != 0) {\n        return -EPERM;\n    }\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate flags to ensure they are within expected range",
+      "protects_against": "invalid flags that could alter injection behavior in unintended ways"
+    },
+    {
+      "step": "validate type to ensure it is within expected range",
+      "protects_against": "invalid type values that could cause undefined injection behavior"
+    },
+    {
+      "step": "lock and unlock the mutex to ensure thread safety",
+      "protects_against": "race conditions during error injection"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate flags to ensure they are within expected range — protects against: invalid flags that could alter injection behavior in unintended ways",
+        "reasoning": "The implementation checks if the flags are within the expected range using a bitmask against known valid flags. If not, it returns -EINVAL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate type to ensure it is within expected range — protects against: invalid type values that could cause undefined injection behavior",
+        "reasoning": "The implementation does not perform a direct check on the 'type' parameter to ensure it is within an expected range. It only checks for memory-related conditions and skips to injection otherwise.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "lock and unlock the mutex to ensure thread safety — protects against: race conditions during error injection",
+        "reasoning": "The implementation explicitly locks the mutex before calling the injection function and unlocks it afterward, ensuring thread safety.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate flags to ensure they are within expected range — protects against: invalid flags that could alter injection behavior in unintended ways",
+        "reasoning": "The implementation checks that the flags are a subset of the allowed flags (SETWA_FLAGS_APICID, SETWA_FLAGS_MEM, SETWA_FLAGS_PCIE_SBDF). If not, it returns -EINVAL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate type to ensure it is within expected range — protects against: invalid type values that could cause undefined injection behavior",
+        "reasoning": "The implementation does not explicitly validate the type against an expected range. It only checks if the type is memory-related or not, but does not ensure the type is within a valid set of values.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "lock and unlock the mutex to ensure thread safety — protects against: race conditions during error injection",
+        "reasoning": "The implementation explicitly locks the einj_mutex before calling the lower-level injection function and unlocks it afterward, ensuring thread safety.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

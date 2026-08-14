@@ -1,0 +1,57 @@
+{
+  "case_id": "C_31__0",
+  "sample_id": "D/C/31",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-3191",
+  "cve_summary": "Integer signedness error in the CIFSFindNext function in fs/cifs/cifssmb.c in the Linux kernel before 3.1 allows remote CIFS servers to cause a denial of service (memory corruption) or possibly have unspecified other impact via a large length value in a response to a read request for a directory.",
+  "changed_file": "fs/cifs/cifssmb.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function performs a search operation in the CIFS (Common Internet File System) protocol, \n * retrieving the next set of search results based on a given search handle.  \n *  \n * Parameters:  \n * xid (int): Transaction ID for the request.  \n * tcon (struct cifs_tcon *): Pointer to the CIFS connection structure.  \n * searchHandle (__u16): Handle for the current search operation.  \n * psrch_inf (struct cifs_search_info *): Pointer to the structure containing search information.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function initializes a transaction request, sets up parameters for the search, \n * and sends the request to the server. It processes the server's response, updating the \n * search information structure accordingly. If the search reaches its end, it marks the \n * search as complete. Error handling is included for various failure scenarios.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int cifs_search_next(int xid, struct cifs_tcon *tcon, __u16 searchHandle, struct cifs_search_info *psrch_inf) {\n    struct smb_hdr *smb;\n    struct smb_composite_search_req *req;\n    struct smb_composite_search_rsp *rsp;\n    int rc = 0;\n    int bytes_returned = 0;\n\n    smb = cifs_composite_init(xid, tcon, CIFS_SEARCH, 0, NULL);\n    if (!smb) {\n        return -ENOMEM;\n    }\n\n    req = (struct smb_composite_search_req *)((char *)smb + sizeof(struct smb_hdr));\n    req->SearchHandle = searchHandle;\n    req->SearchCount = psrch_inf->SearchCount;\n    req->SearchFlags = psrch_inf->SearchFlags;\n\n    rc = SendReceive2(xid, tcon, (char *)smb, &bytes_returned, 0);\n    if (rc != 0) {\n        cifs_composite_free(smb);\n        return rc;\n    }\n\n    rsp = (struct smb_composite_search_rsp *)((char *)smb + sizeof(struct smb_hdr));\n    if (rsp->ByteCount == 0) {\n        psrch_inf->EndOfSearch = true;\n    } else {\n        psrch_inf->SearchCount = rsp->SearchCount;\n        psrch_inf->SearchFlags = rsp->SearchFlags;\n        psrch_inf->EndOfSearch = (rsp->EndOfSearch != 0);\n    }\n\n    cifs_composite_free(smb);\n    return 0;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 7,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "resume_name_length_check",
+      "buffer_corruption_check"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check on the resume name length before copying it to the buffer, ensuring it does not exceed PATH_MAX. It also includes a check for buffer corruption by verifying that the LastNameOffset does not exceed the maximum buffer size. Implementation 2 lacks these checks and directly copies and uses the resume name and offset without validation, potentially exposing it to buffer overflow or corruption. Neither implementation includes any other unique defensive steps.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 1,
+    "candidate_exposure": 1,
+    "reference_missing_steps": [
+      "null_check_on_composite_init"
+    ],
+    "candidate_missing_steps": [
+      "resume_name_length_check",
+      "response_data_offset_validation",
+      "buffer_allocation_and_release_handling"
+    ],
+    "n_reference_missing": 1,
+    "n_candidate_missing": 3,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs several defensive steps not present in Implementation 2, including bounds checks on the resume name length, validation of the server response data offset, and careful handling of buffer allocation and release. Implementation 2 performs defensive steps not in 1, such as a null check on the composite SMB initialization result. However, the omitted steps in each are either not reachable or low impact.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

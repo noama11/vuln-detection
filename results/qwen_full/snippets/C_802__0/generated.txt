@@ -1,0 +1,50 @@
+int kvm_create_device(struct kvm *kvm, struct kvm_create_device *cd)
+{
+	struct kvm_device_ops *ops;
+	struct kvm_device *dev;
+	int r = 0;
+
+	if (cd->type >= KVM_DEV_TYPE_MAX || !kvm_dev_ops[cd->type])
+		return -EINVAL;
+
+	ops = kvm_dev_ops[cd->type];
+	if (!ops->create)
+		return -ENODEV;
+
+	if (cd->flags & KVM_CREATE_DEVICE_TEST)
+		return 0;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
+
+	dev->kvm = kvm;
+	dev->ops = ops;
+
+	kvm->api_lock = 1;
+	r = ops->create(dev, cd->flags);
+	if (r)
+		goto unlock;
+
+	list_add(&dev->list, &kvm->devices);
+	if (ops->init)
+		ops->init(dev);
+
+	dev->fd = get_unused_fd_flags(0);
+	if (dev->fd < 0) {
+		r = dev->fd;
+		goto unlock;
+	}
+
+	fd_install(dev->fd, &dev->file);
+unlock:
+	kvm->api_lock = 0;
+
+	if (r) {
+		if (dev->ops->release)
+			dev->ops->release(dev);
+		kfree(dev);
+	}
+
+	return r;
+}

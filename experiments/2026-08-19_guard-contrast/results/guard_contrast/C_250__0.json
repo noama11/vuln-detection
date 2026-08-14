@@ -1,0 +1,58 @@
+{
+  "case_id": "C_250__0",
+  "sample_id": "D/C/250",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9576",
+  "cve_summary": "The blk_rq_map_user_iov function in block/blk-map.c in the Linux kernel before 4.8.14 does not properly restrict the type of iterator, which allows local users to read or write to arbitrary kernel memory locations or cause a denial of service (use-after-free) by leveraging access to a /dev/sg device.",
+  "changed_file": "block/blk-map.c",
+  "docstring": "\"\"\"\nSummary: \nMaps user I/O vectors to a request in a block request queue.\n\nParameters: \nq (struct request_queue *): The request queue to which the request belongs.\nrq (struct request *): The request to be mapped.\nmap_data (struct rq_map_data *): Data structure for mapping information.\niter (const struct iov_iter *): The I/O vector iterator containing user data.\ngfp_mask (gfp_t): Allocation flags for memory allocation.\n\nReturns: \nint: Returns 0 on success, or -EINVAL if mapping fails.\n\nLogic: The function determines if a copy of the data is necessary based on alignment and mapping data. It then iterates over the I/O vectors, mapping them to the request using a helper function. If successful, it sets the appropriate flags; otherwise, it cleans up and returns an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int map_user_io(struct request_queue *q, struct request *rq, struct rq_map_data *map_data,\n                const struct iov_iter *iter, gfp_t gfp_mask) {\n    int ret = 0;\n    size_t iov_offset = 0;\n    struct bio *bio = NULL;\n    struct bio *prev_bio = NULL;\n\n    if (!q || !rq || !map_data || !iter)\n        return -EINVAL;\n\n    while (iov_iter_count(iter)) {\n        struct page *page;\n        unsigned int len, offset;\n\n        iov_iter_get_pages(iter, &page, iov_iter_count(iter), 1, &offset);\n        len = iov_iter_count(iter);\n\n        bio = bio_alloc(gfp_mask, 1);\n        if (!bio) {\n            ret = -EINVAL;\n            goto cleanup;\n        }\n\n        bio_add_page(bio, page, len, offset);\n\n        if (prev_bio)\n            prev_bio = bio_chain(prev_bio, bio);\n        else\n            prev_bio = bio;\n\n        iov_iter_advance(iter, len);\n    }\n\n    if (prev_bio) {\n        bio = prev_bio;\n        submit_bio(WRITE, bio);\n    }\n\n    return ret;\n\ncleanup:\n    if (bio)\n        bio_put(bio);\n    return ret;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [
+      "null check on input pointers",
+      "cleanup of allocated bios on error"
+    ],
+    "candidate_missing_steps": [
+      "alignment checks for mapping",
+      "copy validation based on alignment and queue properties"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a null check on input pointers and includes a cleanup path to release allocated bios on error. Implementation 2 performs alignment checks and a validation of whether a copy is needed before mapping, which is not present in implementation 1. Neither implementation performs a check for arithmetic overflow or truncation in the loop. Implementation 1 lacks the alignment and copy validation logic present in implementation 2, which could leave it exposed to misaligned or unsafe mappings.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "iovec_type_check",
+      "alignment_check",
+      "virt_boundary_check"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 3,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a null check on input pointers but lacks checks for alignment, virt boundary, or whether the I/O vector is an iovec. It also lacks a validation of the I/O vector type. Implementation 2 includes these additional checks, including a check for iovec type, alignment, and virt boundary conditions. Implementation 1 omits these validations, which could leave it exposed to invalid or misaligned input. Implementation 2 does not perform any additional defensive steps that 1 omits that are relevant to the specification.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

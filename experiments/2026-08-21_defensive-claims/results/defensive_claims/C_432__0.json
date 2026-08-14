@@ -1,0 +1,130 @@
+{
+  "case_id": "C_432__0",
+  "sample_id": "D/C/432",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-10810",
+  "cve_summary": "Memory leak in the virtio_gpu_object_create function in drivers/gpu/drm/virtio/virtgpu_object.c in the Linux kernel through 4.11.8 allows attackers to cause a denial of service (memory consumption) by triggering object-initialization failures.",
+  "changed_file": "drivers/gpu/drm/virtio/virtgpu_object.c",
+  "docstring": "/**\n * Summary: Creates a virtual GPU object for the specified device.\n * \n * Parameters:\n * vgdev (struct virtio_gpu_device *): Pointer to the virtual GPU device.\n * size (unsigned long): Size of the GPU object to create.\n * kernel (bool): Indicates if the object is for kernel use.\n * pinned (bool): Indicates if the object should be pinned in memory.\n * bo_ptr (struct virtio_gpu_object **): Pointer to store the created GPU object.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function determines the type of buffer object based on the kernel flag, calculates the\n * required memory size, allocates memory for the GPU object, initializes it, and sets up its\n * placement. If a step fails, it returns an appropriate error code. On success, it assigns the\n * created object to the provided pointer.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int create_virtio_gpu_object(struct virtio_gpu_device *vgdev, unsigned long size, bool kernel, bool pinned, struct virtio_gpu_object **bo_ptr) {\n    struct virtio_gpu_object *bo = NULL;\n    size_t obj_size = sizeof(struct virtio_gpu_object);\n    int ret = -ENOMEM;\n\n    if (!vgdev || !bo_ptr) {\n        return -EINVAL;\n    }\n\n    bo = (struct virtio_gpu_object *)malloc(obj_size);\n    if (!bo) {\n        return -ENOMEM;\n    }\n\n    if (kernel) {\n        bo->type = VIRTIO_GPU_OBJECT_KERNEL;\n    } else {\n        bo->type = VIRTIO_GPU_OBJECT_USER;\n    }\n\n    bo->size = size;\n    bo->pinned = pinned;\n\n    if (pinned) {\n        ret = pin_memory(vgdev, bo);\n        if (ret < 0) {\n            goto error;\n        }\n    }\n\n    *bo_ptr = bo;\n    return 0;\n\nerror:\n    free(bo);\n    *bo_ptr = NULL;\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing vgdev or bo_ptr"
+    },
+    {
+      "step": "allocate memory for GPU object",
+      "protects_against": "out of memory condition when allocating GPU object"
+    },
+    {
+      "step": "initialize GPU object pointer to null",
+      "protects_against": "uninitialized pointer usage"
+    },
+    {
+      "step": "set bo_ptr to null on error",
+      "protects_against": "dangling pointer reference in case of failure"
+    },
+    {
+      "step": "free allocated memory on error",
+      "protects_against": "memory leak in case of failure"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing vgdev or bo_ptr",
+        "reasoning": "The implementation does not explicitly check for null pointers for vgdev or bo_ptr. Dereferencing vgdev and assigning to *bo_ptr could lead to a null pointer dereference if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "allocate memory for GPU object — protects against: out of memory condition when allocating GPU object",
+        "reasoning": "The implementation allocates memory for the GPU object using kzalloc and checks if the allocation was successful. If bo is NULL, it returns -ENOMEM.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize GPU object pointer to null — protects against: uninitialized pointer usage",
+        "reasoning": "The implementation explicitly sets *bo_ptr to NULL at the beginning of the function.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "set bo_ptr to null on error — protects against: dangling pointer reference in case of failure",
+        "reasoning": "The implementation sets *bo_ptr to NULL at the beginning of the function and does not change it again in the case of an error. Therefore, it remains NULL in the event of a failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error — protects against: memory leak in case of failure",
+        "reasoning": "The implementation allocates memory for the GPU object using kzalloc. If the allocation fails, it returns -ENOMEM. If the allocation succeeds but subsequent steps fail, the implementation returns the error code without freeing the allocated memory. There is no explicit call to kfree in the error path, which could lead to a memory leak.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing vgdev or bo_ptr",
+        "reasoning": "The implementation does not explicitly check for null pointers for vgdev or bo_ptr. Dereferencing *bo_ptr and vgdev->mman.bdev could lead to null pointer dereference if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "allocate memory for GPU object — protects against: out of memory condition when allocating GPU object",
+        "reasoning": "The implementation allocates memory for the GPU object using kzalloc and checks if the allocation was successful. If it fails, it returns -ENOMEM.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize GPU object pointer to null — protects against: uninitialized pointer usage",
+        "reasoning": "The implementation initializes *bo_ptr to NULL before any allocation or assignment.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "set bo_ptr to null on error — protects against: dangling pointer reference in case of failure",
+        "reasoning": "The implementation sets *bo_ptr to NULL before any allocation or assignment, and does not change it again in case of failure. Therefore, it remains NULL in error cases.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error — protects against: memory leak in case of failure",
+        "reasoning": "The implementation frees the allocated memory (bo) in case of failure during drm_gem_object_init. However, it does not explicitly free any memory in case of failure during ttm_bo_init, relying on the destroy callback instead.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

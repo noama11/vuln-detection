@@ -1,0 +1,36 @@
+{
+  "case_id": "C_1238__0",
+  "sample_id": "D/C/1238",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2016-5182",
+  "cve_summary": "Blink in Google Chrome prior to 54.0.2840.59 for Windows, Mac, and Linux; 54.0.2840.85 for Android had insufficient validation in bitmap handling, which allowed a remote attacker to potentially exploit heap corruption via crafted HTML pages.",
+  "commit_message": "[AF] Prevent Logging Password Values to Console\n\nBefore sending over to be logged by DevTools, filter out DOM nodes that\nhave a type attribute equal to \"password\", and that are not empty.\n\nBug: 934609\nChange-Id: I147ad0c2bad13cc50394f4b5ff2f4bfb7293114b\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/1506498\nCommit-Queue: Sebastien Lalancette <seblalancette@chromium.org>\nReviewed-by: Vadym Doroshenko <dvadym@chromium.org>\nReviewed-by: Mathieu Perreault <mathp@chromium.org>\nCr-Commit-Position: refs/heads/master@{#638615}",
+  "changed_file": "components/autofill/content/renderer/page_form_analyser_logger.cc",
+  "docstring": "Summary: This code defines the `PageFormAnalyserLogger` class, which logs messages related to form analysis in a web page context.\n\nParameters: \nN/A\n\nReturns: \nN/A\n\nLogic: The `PageFormAnalyserLogger` class contains a nested `LogEntry` structure that holds a log message and associated web nodes. The constructor initializes the logger with a reference to a `WebLocalFrame`, while the destructor cleans up resources. The `Send` method allows logging messages with a specified console level and either a single node or a vector of nodes. The `Flush` method processes the buffered log entries, constructing a formatted message for each entry and filtering out sensitive information, such as password fields with values. Finally, it sends the constructed messages to the console and clears the buffer for future logging. The use of `std::move` optimizes performance by transferring ownership of resources where applicable.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    5,
+    76
+  ],
+  "vulnerable_line_range": [
+    34,
+    50
+  ],
+  "vulnerable_snippet": "void PageFormAnalyserLogger::Flush() {\r\n  std::string text;\r\n  for (ConsoleLevel level : {kError, kWarning, kVerbose}) {\r\n    for (LogEntry& entry : node_buffer_[level]) {\r\n      text.clear();\r\n      text += \"[DOM] \";\r\n      text += entry.message;\r\n      for (unsigned i = 0; i < entry.nodes.size(); ++i)\r\n        text += \" %o\";\r\n\r\n      blink::WebConsoleMessage message(level, blink::WebString::FromUTF8(text));\r\n      message.nodes = std::move(entry.nodes);  // avoids copying node vectors.\r\n      frame_->AddMessageToConsole(message);\r\n    }\r\n  }\r\n  node_buffer_.clear();\r\n}",
+  "fixed_line_range": [
+    38,
+    74
+  ],
+  "fixed_snippet": "void PageFormAnalyserLogger::Flush() {\r\n  std::string text;\r\n  for (ConsoleLevel level : {kError, kWarning, kVerbose}) {\r\n    for (LogEntry& entry : node_buffer_[level]) {\r\n      text.clear();\r\n      text += \"[DOM] \";\r\n      text += entry.message;\r\n\r\n      std::vector<blink::WebNode> nodesToLog;\r\n      for (unsigned i = 0; i < entry.nodes.size(); ++i) {\r\n        if (entry.nodes[i].IsElementNode()) {\r\n          const blink::WebElement element =\r\n              entry.nodes[i].ToConst<blink::WebElement>();\r\n          const blink::WebInputElement* webInputElement =\r\n              blink::ToWebInputElement(&element);\r\n\r\n          // Filter out password inputs with values from being logged, as their\r\n          // values are also logged.\r\n          const bool shouldObfuscate =\r\n              webInputElement &&\r\n              webInputElement->IsPasswordFieldForAutofill() &&\r\n              !webInputElement->Value().IsEmpty();\r\n\r\n          if (!shouldObfuscate) {\r\n            text += \" %o\";\r\n            nodesToLog.push_back(element);\r\n          }\r\n        }\r\n      }\r\n\r\n      blink::WebConsoleMessage message(level, blink::WebString::FromUTF8(text));\r\n      message.nodes = std::move(nodesToLog);  // avoids copying node vectors.\r\n      frame_->AddMessageToConsole(message);\r\n    }\r\n  }\r\n  node_buffer_.clear();\r\n}",
+  "func_name": "Flush",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

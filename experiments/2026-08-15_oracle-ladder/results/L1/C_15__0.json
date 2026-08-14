@@ -1,0 +1,49 @@
+{
+  "case_id": "C_15__0",
+  "sample_id": "D/C/15",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-1146",
+  "cve_summary": "The mem_cgroup_usage_unregister_event function in mm/memcontrol.c in the Linux kernel before 3.2.10 does not properly handle multiple events that are attached to the same eventfd, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by registering memory threshold events.",
+  "changed_file": "mm/memcontrol.c",
+  "docstring": "\"\"\"\nSummary: \nUnregisters a memory cgroup usage event threshold from a specified cgroup.\n\nParameters: \ncgrp (struct cgroup*): Pointer to the cgroup from which the event threshold is being unregistered.\ncft (struct cftype*): Pointer to the cftype structure that defines the threshold type.\neventfd (struct eventfd_ctx*): Pointer to the eventfd context associated with the threshold.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function first retrieves the memory cgroup associated with the provided cgroup pointer. It locks the thresholds for safe access and determines the type of threshold to unregister. It calculates the new size of the threshold array after removing the specified eventfd. It copies the remaining thresholds to a new array, updates the current threshold index, and swaps the primary and spare threshold arrays. Finally, it ensures that no other processes are using the thresholds before unlocking the mutex.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void mem_cgroup_usage_unregister_event(struct cgroup *v2,\n    struct cftype *v1, struct eventfd_ctx *v3)\n{\n    struct mem_cgroup *v5 = mem_cgroup_from_cont(v2);\n    struct mem_cgroup_thresholds *v7;\n    struct mem_cgroup_threshold_ary *new;\n    int v8 = MEMFILE_TYPE(v1->private);\n    u64 v10;\n    int v4, j, size;\n    mutex_lock(&v5->thresholds_lock);\n    if (v8 == _MEM)\n        v7 = &v5->v7;\n    else if (v8 == _MEMSWAP)\n        v7 = &v5->memsw_thresholds;\n    else\n        BUG();\n    BUG_ON(!v7);\n    if (!v7->primary)\n        goto v9;\n    v10 = mem_cgroup_usage(v5, v8 == _MEMSWAP);\n    __mem_cgroup_threshold(v5, v8 == _MEMSWAP);\n    size = 0;\n    for (v4 = 0; v4 < v7->primary->size; v4++) {\n        if (v7->primary->entries[v4].v3 != v3)\n            size++;\n    }\n    new = v7->spare;\n    if (!size) {\n        kfree(new);\n        new = NULL;\n        goto v6;\n    }\n    new->size = size;\n    new->current_threshold = -1;\n    for (v4 = 0, j = 0; v4 < v7->primary->size; v4++) {\n        if (v7->primary->entries[v4].v3 == v3)\n            continue;\n        new->entries[j] = v7->primary->entries[v4];\n        if (new->entries[j].threshold < v10) {\n            ++new->current_threshold;\n        }\n        j++;\n    }\nv6:\n    v7->spare = v7->primary;\n    rcu_assign_pointer(v7->primary, new);\n    synchronize_rcu();\nv9:\n    mutex_unlock(&v5->thresholds_lock);\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 10
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform the same core logic: they lock the thresholds, determine the threshold type, calculate the new size of the threshold array after removing the specified eventfd, copy the remaining thresholds to a new array, update the current threshold index, and swap the primary and spare arrays. The only differences are in variable names and code formatting, which do not affect behavior. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both implementations lock the thresholds, determine the correct thresholds structure, calculate the new size of the threshold array after removing the specified eventfd, copy the remaining thresholds to a new array, update the current threshold index, and swap the primary and spare arrays. The logic for handling the removal of the eventfd and updating the thresholds is the same in both implementations. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

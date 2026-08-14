@@ -1,0 +1,146 @@
+{
+  "case_id": "C_120__0",
+  "sample_id": "D/C/120",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-4604",
+  "cve_summary": "The bat_socket_read function in net/batman-adv/icmp_socket.c in the Linux kernel before 3.3 allows remote attackers to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted batman-adv ICMP packet.",
+  "changed_file": "net/batman-adv/icmp_socket.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a socket associated with a file descriptor.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the socket.\nbuf (char __user *): Buffer to store the read data.\ncount (size_t): Number of bytes to read from the socket.\nppos (loff_t *): Pointer to the current file position (not used in this function).\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: The function checks if the socket is non-blocking and if there are no queued packets, returning -EAGAIN if so. It validates the buffer and its size, returning -EINVAL for invalid parameters and -EFAULT for access issues. It waits for data to be available in the socket's queue. Upon acquiring the lock, it retrieves the first packet from the queue, updates the queue length, and releases the lock. It then copies packet data to the user buffer, cleans up the packet, and returns the number of bytes read or an error code if the copy fails.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t read_from_socket(struct file *file, char __user *buf, size_t count, loff_t *ppos)\n{\n    ssize_t bytes_read = 0;\n    struct socket *sock = file->private_data;\n    struct sk_buff *skb;\n\n    if (!sock) {\n        return -EINVAL;\n    }\n\n    if (file->f_flags & O_NONBLOCK) {\n        if (skb_queue_empty(&sock->sk->sk_receive_queue)) {\n            return -EAGAIN;\n        }\n    }\n\n    if (!access_ok(buf, count)) {\n        return -EFAULT;\n    }\n\n    skb = skb_dequeue(&sock->sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    if (skb->len > count) {\n        kfree_skb(skb);\n        return -EINVAL;\n    }\n\n    if (copy_to_user(buf, skb->data, skb->len)) {\n        kfree_skb(skb);\n        return -EFAULT;\n    }\n\n    bytes_read = skb->len;\n    kfree_skb(skb);\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if socket is valid",
+      "protects_against": "null or invalid socket pointer"
+    },
+    {
+      "step": "check for non-blocking socket with no queued packets",
+      "protects_against": "blocking on a non-blocking socket with no data available"
+    },
+    {
+      "step": "validate user buffer and size",
+      "protects_against": "invalid or inaccessible user buffer"
+    },
+    {
+      "step": "check if packet length exceeds requested count",
+      "protects_against": "reading more data than requested"
+    },
+    {
+      "step": "copy data to user buffer with error checking",
+      "protects_against": "copying data to invalid user buffer"
+    },
+    {
+      "step": "free packet memory after use",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if socket is valid — protects against: null or invalid socket pointer",
+        "reasoning": "The implementation uses `file->private_data` to get the socket client, but does not explicitly check if the socket is valid or null. However, since `file->private_data` is set by the kernel when the file is opened, it is assumed to be valid in this context. There is no explicit validation of the socket pointer.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for non-blocking socket with no queued packets — protects against: blocking on a non-blocking socket with no data available",
+        "reasoning": "The implementation checks if the socket is non-blocking (`file->f_flags & O_NONBLOCK`) and if there are no queued packets (`socket_client->queue_len == 0`), returning `-EAGAIN` in that case. This performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user buffer and size — protects against: invalid or inaccessible user buffer",
+        "reasoning": "The implementation checks if `buf` is null and if `count` is less than the size of `struct icmp_packet`, returning `-EINVAL` in those cases. It also calls `access_ok(VERIFY_WRITE, buf, count)` to check if the buffer is accessible, returning `-EFAULT` if not. These checks validate the user buffer and size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if packet length exceeds requested count — protects against: reading more data than requested",
+        "reasoning": "The implementation does not check if the packet length (`socket_packet->icmp_len`) exceeds the requested count (`count`). It directly copies `socket_packet->icmp_len` bytes to the user buffer, which could exceed the requested count if the packet is larger than `count`.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "copy data to user buffer with error checking — protects against: copying data to invalid user buffer",
+        "reasoning": "The implementation uses `copy_to_user` to copy data to the user buffer and checks the return value. If an error occurs, it returns `-EFAULT`. This performs the required error checking.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free packet memory after use — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree(socket_packet)` after copying the data to the user buffer, ensuring the packet memory is freed. This prevents memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if socket is valid — protects against: null or invalid socket pointer",
+        "reasoning": "The implementation uses `file->private_data` to get the socket client, but does not explicitly check if the socket is valid. However, the function is called with a `struct file *` which is expected to be valid by the kernel API, and the code proceeds under that assumption. There is no explicit validation of the socket pointer itself.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for non-blocking socket with no queued packets — protects against: blocking on a non-blocking socket with no data available",
+        "reasoning": "The implementation checks if the socket is non-blocking (`file->f_flags & O_NONBLOCK`) and if there are no queued packets (`socket_client->queue_len == 0`), and returns `-EAGAIN` in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user buffer and size — protects against: invalid or inaccessible user buffer",
+        "reasoning": "The implementation checks if `buf` is null and if `count` is less than the minimum required size (`sizeof(struct icmp_packet)`), returning `-EINVAL` if so. It also calls `access_ok(VERIFY_WRITE, buf, count)` to check if the buffer is accessible, returning `-EFAULT` if not.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if packet length exceeds requested count — protects against: reading more data than requested",
+        "reasoning": "The implementation uses `min(count, socket_packet->icmp_len)` to ensure that only the requested number of bytes are copied to the user buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy data to user buffer with error checking — protects against: copying data to invalid user buffer",
+        "reasoning": "The implementation calls `copy_to_user(buf, &socket_packet->icmp_packet, packet_len)` and checks the return value. If an error occurs, it returns `-EFAULT`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free packet memory after use — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree(socket_packet)` after the packet data has been copied to the user buffer, ensuring the memory is freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

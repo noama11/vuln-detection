@@ -1,0 +1,146 @@
+{
+  "case_id": "C_183__0",
+  "sample_id": "D/C/183",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "sidhpurwala-huzaifa/FreeRDP",
+  "cve_id": "CVE-2014-0791",
+  "cve_summary": "Integer overflow in the license_read_scope_list function in libfreerdp/core/license.c in FreeRDP through 1.0.2 allows remote RDP servers to cause a denial of service (application crash) or possibly have unspecified other impact via a large ScopeCount value in a Scope List in a Server License Request packet.",
+  "changed_file": "libfreerdp/core/license.c",
+  "docstring": "\"\"\"\nSummary: \nReads a list of license scopes from a stream and populates a SCOPE_LIST structure.\n\nParameters: \ns (wStream*): Pointer to the stream from which to read the license scopes.\nscopeList (SCOPE_LIST*): Pointer to the SCOPE_LIST structure to be populated.\n\nReturns: \nBOOL: Returns TRUE if the scope list is successfully read and populated; otherwise, returns FALSE.\n\nLogic: The function first checks if there are at least 4 bytes remaining in the stream to read the scope count. It then reads the scope count, allocates memory for the array of LICENSE_BLOBs, and populates each entry by reading binary blobs from the stream. If any read operation fails, it returns FALSE; otherwise, it returns TRUE upon successful completion.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "BOOL ReadLicenseScopes(wStream* s, SCOPE_LIST* scopeList)\n{\n    UINT32 scopeCount;\n\n    if (!s || !scopeList)\n        return FALSE;\n\n    if (Stream_GetRemainingLength(s) < 4)\n        return FALSE;\n\n    Stream_Read_UINT32(s, scopeCount);\n\n    if (scopeCount > 0xFFFFFFFF / sizeof(LICENSE_BLOB))\n        return FALSE;\n\n    scopeList->count = scopeCount;\n    scopeList->scopes = (LICENSE_BLOB*)malloc(scopeCount * sizeof(LICENSE_BLOB));\n\n    if (!scopeList->scopes)\n        return FALSE;\n\n    for (UINT32 i = 0; i < scopeCount; i++)\n    {\n        LICENSE_BLOB* blob = &scopeList->scopes[i];\n\n        if (Stream_GetRemainingLength(s) < sizeof(UINT32))\n            return FALSE;\n\n        Stream_Read_UINT32(s, blob->length);\n\n        if (blob->length > 0xFFFFFFFF / sizeof(UINT8))\n            return FALSE;\n\n        if (Stream_GetRemainingLength(s) < blob->length)\n            return FALSE;\n\n        blob->data = (UINT8*)malloc(blob->length);\n\n        if (!blob->data)\n            return FALSE;\n\n        Stream_Read(s, blob->data, blob->length);\n    }\n\n    return TRUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for sufficient stream length before reading",
+      "protects_against": "buffer underflow or invalid read"
+    },
+    {
+      "step": "validate scope count to prevent integer overflow",
+      "protects_against": "excessive memory allocation"
+    },
+    {
+      "step": "check for memory allocation success",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate blob length to prevent integer overflow",
+      "protects_against": "excessive memory allocation"
+    },
+    {
+      "step": "check for sufficient stream length before reading blob data",
+      "protects_against": "buffer underflow or invalid read"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 21,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 's' or 'scopeList' parameters. Dereferencing these pointers is possible if they are null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for sufficient stream length before reading — protects against: buffer underflow or invalid read",
+        "reasoning": "The implementation checks if the stream has at least 4 bytes remaining before reading the scope count. This prevents an invalid read for the scope count.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate scope count to prevent integer overflow — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not validate the scope count to ensure it is within a safe range. If 'scopeCount' is very large, it could cause an integer overflow or excessive memory allocation.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for memory allocation success — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check whether the 'malloc' call for the 'scopeList->array' succeeded. If it returns NULL, dereferencing it in the loop would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate blob length to prevent integer overflow — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not validate the blob length to prevent integer overflow. This is not directly visible in the code, but the 'license_read_binary_blob' function may not perform this check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for sufficient stream length before reading blob data — protects against: buffer underflow or invalid read",
+        "reasoning": "The implementation does not explicitly check for sufficient stream length before reading blob data. This depends on the 'license_read_binary_blob' function, which is not visible here.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 's' or 'scopeList' parameters. A null pointer for either could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for sufficient stream length before reading — protects against: buffer underflow or invalid read",
+        "reasoning": "The implementation checks the stream length before reading the scope count (4 bytes). This prevents an invalid read if the stream is too short.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate scope count to prevent integer overflow — protects against: excessive memory allocation",
+        "reasoning": "The implementation checks that the remaining stream length divided by the size of a LICENSE_BLOB is greater than or equal to the scope count. This prevents a potential integer overflow in the memory allocation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation success — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check whether the memory allocation (malloc) was successful. If it fails, the code proceeds and dereferences the allocated pointer, which could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate blob length to prevent integer overflow — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not perform any validation of the blob length. The function license_read_binary_blob is called, but it is not clear from the code whether it performs such a check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for sufficient stream length before reading blob data — protects against: buffer underflow or invalid read",
+        "reasoning": "The implementation does not explicitly check for sufficient stream length before reading blob data. The function license_read_binary_blob may perform such a check, but it is not visible in the provided code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

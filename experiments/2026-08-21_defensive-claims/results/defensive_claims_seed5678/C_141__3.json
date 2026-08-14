@@ -1,0 +1,130 @@
+{
+  "case_id": "C_141__3",
+  "sample_id": "D/C/141",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: Processes a single ticket for the Ceph authentication client, decoding and updating session keys and ticket information.\n\nParameters:\nac (struct ceph_auth_client *): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key *): Pointer to the secret key used for decryption.\np (void **): Pointer to the data buffer containing the ticket information.\nend (void *): Pointer to the end of the data buffer.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function begins by decoding the ticket type and structure version. It retrieves the appropriate ticket handler and decrypts the ticket data. It then extracts the new session key, validity period, and ticket blob. Depending on whether the ticket is encrypted or not, it handles decryption and memory allocation accordingly. Finally, it updates the session key and ticket information in the handler, cleans up allocated resources, and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int ret = -EINVAL;\n    struct ceph_auth_ticket_handler *handler = NULL;\n    void *ticket_data = NULL;\n    size_t ticket_len = 0;\n    struct ceph_crypto_key new_key = {0};\n    struct ceph_timespec now = {0};\n\n    if (!ac || !secret || !p || !end || *p >= end) {\n        goto out;\n    }\n\n    /* Decode ticket type and version */\n    uint32_t type;\n    uint32_t version;\n    if ((void*)(*p) + sizeof(type) + sizeof(version) > end) {\n        goto out;\n    }\n    memcpy(&type, *p, sizeof(type));\n    *p += sizeof(type);\n    memcpy(&version, *p, sizeof(version));\n    *p += sizeof(version);\n\n    /* Retrieve appropriate ticket handler */\n    handler = get_ticket_handler(ac, type);\n    if (!handler) {\n        goto out;\n    }\n\n    /* Determine ticket length and validate bounds */\n    if ((void*)(*p) + sizeof(ticket_len) > end) {\n        goto out;\n    }\n    memcpy(&ticket_len, *p, sizeof(ticket_len));\n    *p += sizeof(ticket_len);\n\n    if ((void*)(*p) + ticket_len > end) {\n        goto out;\n    }\n\n    /* Allocate memory for ticket data */\n    ticket_data = malloc(ticket_len);\n    if (!ticket_data) {\n        goto out;\n    }\n\n    /* Copy and decrypt ticket data */\n    memcpy(ticket_data, *p, ticket_len);\n    *p += ticket_len;\n\n    if (decrypt_ticket(ticket_data, ticket_len, secret, &new_key) < 0) {\n        goto out;\n    }\n\n    /* Extract session key, validity, and blob */\n    if (extract_session_key(ticket_data, ticket_len, &new_key) < 0) {\n        goto out;\n    }\n\n    if (extract_validity(ticket_data, ticket_len, &now) < 0) {\n        goto out;\n    }\n\n    void *blob = extract_blob(ticket_data, ticket_len);\n    if (!blob) {\n        goto out;\n    }\n\n    /* Update session key and ticket info in handler */\n    if (update_handler(handler, &new_key, &now, blob) < 0) {\n        goto out;\n    }\n\n    ret = 0;\n\nout:\n    free(ticket_data);\n    crypto_key_clear(&new_key);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers and buffer overflow before accessing data",
+      "protects_against": "null pointer dereference or buffer overflow when reading ticket type and version"
+    },
+    {
+      "step": "validate that the ticket length does not exceed the available buffer space",
+      "protects_against": "buffer overflow when copying ticket data"
+    },
+    {
+      "step": "check the return value of memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "ensure all allocated memory is freed on all exit paths",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "clear sensitive data after use",
+      "protects_against": "exposure of decrypted session key"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers and buffer overflow before accessing data — protects against: null pointer dereference or buffer overflow when reading ticket type and version",
+        "reasoning": "The implementation uses `ceph_decode_need` to check that the buffer has enough space before decoding the ticket type and version. This ensures that buffer overflow is prevented when reading these values.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate that the ticket length does not exceed the available buffer space — protects against: buffer overflow when copying ticket data",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_safe` macros to ensure that the buffer has enough space before copying or decoding data. These checks prevent buffer overflow when copying ticket data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check the return value of memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any explicit memory allocation that requires checking the return value. The `ceph_decode_buffer` function is used, but it is not clear if it performs dynamic allocation or if it checks for allocation failure.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "ensure all allocated memory is freed on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation frees the old session key and ticket blob before assigning new ones. On exit, it returns an integer result and does not appear to leak memory. However, it is unclear if `ceph_decode_buffer` or `ceph_crypto_key_decode` allocate memory that must be explicitly freed.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clear sensitive data after use — protects against: exposure of decrypted session key",
+        "reasoning": "The implementation does not explicitly clear the decrypted session key or other sensitive data after use. The `new_session_key` is assigned to `th->session_key`, but there is no indication that the old key is zeroed out or otherwise cleared.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers and buffer overflow before accessing data — protects against: null pointer dereference or buffer overflow when reading ticket type and version",
+        "reasoning": "The implementation uses `ceph_decode_need(p, end, sizeof(u32) + 1, bad);` before reading the ticket type and version. This ensures that the buffer has enough space before accessing it, preventing buffer overflow. There is no explicit null pointer check for `p` or `end`, but the function is likely called in a context where these are valid, and the `ceph_decode_need` macro likely handles bounds checking.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate that the ticket length does not exceed the available buffer space — protects against: buffer overflow when copying ticket data",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_safe` macros to validate that the required data fits within the buffer before reading it. For example, `ceph_decode_need(p, end, dlen, bad);` and `ceph_decode_copy(p, ticket_buf, dlen);` ensure that the buffer is not overflowed when copying data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check the return value of memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the return value of `kmalloc` with `if (!ticket_buf) { ret = -ENOMEM; goto out; }` to handle allocation failure. This ensures that the function does not proceed with a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure all allocated memory is freed on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation uses a centralized cleanup section (`out:`) where it calls `kfree(ticket_buf);` and `kfree(dbuf);` before returning. This ensures that all allocated memory is freed regardless of the exit path.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clear sensitive data after use — protects against: exposure of decrypted session key",
+        "reasoning": "The implementation does not explicitly clear the decrypted session key or other sensitive data after use. The `new_session_key` is assigned to `th->session_key`, but there is no call to a function like `memset` to zero out the data.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

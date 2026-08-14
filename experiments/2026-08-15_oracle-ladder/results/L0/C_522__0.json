@@ -1,0 +1,48 @@
+{
+  "case_id": "C_522__0",
+  "sample_id": "D/C/522",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "systemd/systemd",
+  "cve_id": "CVE-2016-10156",
+  "cve_summary": "A flaw in systemd v228 in /src/basic/fs-util.c caused world writable suid files to be created when using the systemd timers features, allowing local attackers to escalate their privileges to root. This is fixed in v229.",
+  "changed_file": "src/basic/fs-util.c",
+  "docstring": "Summary: This function creates or updates a file at the specified path with given attributes.\n\nParameters: \npath (const char*): The path of the file to create or update.  \nparents (bool): If true, create parent directories as needed.  \nstamp (usec_t): The timestamp to set on the file.  \nuid (uid_t): The user ID to set as the owner of the file.  \ngid (gid_t): The group ID to set as the owner of the file.  \nmode (mode_t): The file permissions to set; if invalid, defaults to 0644.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function first checks if the path is valid and optionally creates parent directories. It then attempts to open the file with specified permissions, updates its mode and ownership if provided, and sets the file's timestamp. If any operation fails, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int touch_file(const char *path, bool parents, usec_t stamp, uid_t uid, gid_t gid, mode_t mode) {\r\n        _cleanup_close_ int fd;\r\n        int r;\r\n\r\n        assert(path);\r\n\r\n        if (parents)\r\n                mkdir_parents(path, 0755);\r\n\r\n        fd = open(path, O_WRONLY|O_CREAT|O_CLOEXEC|O_NOCTTY,\r\n                        (mode == 0 || mode == MODE_INVALID) ? 0644 : mode);\r\n        if (fd < 0)\r\n                return -errno;\r\n\r\n        if (mode != MODE_INVALID) {\r\n                r = fchmod(fd, mode);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (uid != UID_INVALID || gid != GID_INVALID) {\r\n                r = fchown(fd, uid, gid);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (stamp != USEC_INFINITY) {\r\n                struct timespec ts[2];\r\n\r\n                timespec_store(&ts[0], stamp);\r\n                ts[1] = ts[0];\r\n                r = futimens(fd, ts);\r\n        } else\r\n                r = futimens(fd, NULL);\r\n        if (r < 0)\r\n                return -errno;\r\n\r\n        return 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation uses the condition `(mode == 0 || mode == MODE_INVALID)` to default to 0644, while the reference implementation uses `mode > 0 ? mode : 0644`. This means that if `mode` is 0 but not equal to `MODE_INVALID`, the candidate implementation will default to 0644, whereas the reference implementation will use the provided mode of 0. This is a minor functional difference that could affect file permissions in edge cases, but it is not security-critical or crash-inducing.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in behavior. Both handle the same logic for creating or updating a file, including parent directory creation, file opening, mode setting, ownership setting, and timestamp setting. There are no observable differences in how they handle any input or error conditions.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

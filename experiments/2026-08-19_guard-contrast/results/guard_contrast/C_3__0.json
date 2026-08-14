@@ -1,0 +1,62 @@
+{
+  "case_id": "C_3__0",
+  "sample_id": "D/C/3",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-5517",
+  "cve_summary": "The online_pages function in mm/memory_hotplug.c in the Linux kernel before 3.6 allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact in opportunistic circumstances by using memory that was hot-added by an administrator.",
+  "changed_file": "mm/memory_hotplug.c",
+  "docstring": "\"\"\"\nSummary: \nThis function brings a range of memory pages online, updating the relevant zone and notifying the system of the status change.\n\nParameters: \npfn (unsigned long): The starting page frame number of the range to be onlined. \nnr_pages (unsigned long): The number of pages to be onlined.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function locks memory hotplugging and initializes a notification structure. It checks if the node corresponding to the given page frame number is present. If not, it updates the notification's node ID. It sends a notification to indicate that memory is going online and checks for errors. If successful, it checks if the zone is populated and may require a rebuild of zonelists. It then attempts to online the specified range of pages, updating zone statistics and potentially triggering a zonelist rebuild. Finally, it notifies the system that memory is online and unlocks memory hotplugging before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int online_pages(unsigned long pfn, unsigned long nr_pages) {\n    int ret = 0;\n    struct memory_notify notification;\n\n    lock_hotplug();\n\n    notification.start_pfn = pfn;\n    notification.nr_pages = nr_pages;\n\n    if (!node_online(pfn_to_nid(pfn))) {\n        notification.status_change_nid = pfn_to_nid(pfn);\n    }\n\n    ret = send_memory_notify(MEM_GOING_ONLINE, &notification, NULL);\n    if (ret) {\n        unlock_hotplug();\n        return ret;\n    }\n\n    if (!zone_populated(pfn_to_zone(pfn))) {\n        rebuild_zonelist();\n    }\n\n    ret = online_page_range(pfn, nr_pages);\n    if (ret) {\n        unlock_hotplug();\n        return ret;\n    }\n\n    update_zone_statistics(pfn, nr_pages);\n    rebuild_zonelist_if_needed();\n\n    send_memory_notify(MEM_ONLINE, &notification, NULL);\n    unlock_hotplug();\n\n    return 0;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 5,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "mutex_lock_before_zone_modifications",
+      "populated_zone_check_before_modifying_zone_data",
+      "conditional_zonelist_rebuild",
+      "error_handling_for_walk_system_ram_range",
+      "debug_logging_on_failure"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 5,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check on the return value of send_memory_notify and online_page_range, and conditionally calls rebuild_zonelist() if the zone is unpopulated. Implementation 2 performs additional defensive steps, including a mutex lock around zone modifications, a check for populated_zone before modifying zone data, and a fallback to build_all_zonelists if needed. It also includes error handling for the walk_system_ram_range function and prints a debug message on failure. Implementation 1 lacks these locking and zone validation steps, leaving it more exposed to race conditions and invalid zone state.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 3,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [
+      "zone population check and zonelist rebuild",
+      "early return on send_memory_notify failure"
+    ],
+    "candidate_missing_steps": [
+      "mutex lock for zone updates",
+      "MEM_CANCEL_ONLINE fallback on failure",
+      "debug logging on error",
+      "atomic zone statistics update"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 4,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a bounds check on the return value of `send_memory_notify` and `online_page_range`, and calls `rebuild_zonelist()` if the zone is unpopulated. Implementation 2 performs a more detailed validation of the node's presence and uses a mutex to protect zone updates, includes a fallback to `MEM_CANCEL_ONLINE` on failure, and prints a debug message on error. It also ensures zone statistics are updated atomically with a lock. Implementation 1 lacks the mutex protection and fallback logic, while Implementation 2 lacks the explicit zone population check and zonelist rebuild logic.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

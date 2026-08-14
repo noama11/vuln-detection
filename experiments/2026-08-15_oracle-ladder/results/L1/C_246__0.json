@@ -1,0 +1,49 @@
+{
+  "case_id": "C_246__0",
+  "sample_id": "D/C/246",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function handles the dumping of netlink messages from a socket, managing memory allocation and ensuring proper synchronization.\n\nParameters:  \nsk (struct sock *): The socket from which to dump netlink messages.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks a mutex to ensure thread safety and checks if the callback is running. It then verifies if the socket's receive buffer is full. Depending on the conditions, it allocates a socket buffer (skb) of appropriate size for the dump operation. If allocation fails, it cleans up and returns an error. The function then calls the dump callback to fill the skb with data. If the dump is successful, it checks for filters and sends the skb or frees it accordingly. Finally, it handles the completion of the dump, unlocking the mutex and cleaning up resources before returning.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int netlink_dump(struct sock *v10)\n{\n    struct netlink_sock *v9 = nlk_sk(v10);\n    struct netlink_callback *v3;\n    struct sk_buff *v11 = NULL;\n    struct nlmsghdr *v8;\n    struct v7 *v7;\n    int v6, v4 = -ENOBUFS;\n    int v1;\n    int v2;\n    mutex_lock(v9->cb_mutex);\n    if (!v9->cb_running) {\n        v4 = -EINVAL;\n        goto v5;\n    }\n    if (atomic_read(&v10->sk_rmem_alloc) >= v10->sk_rcvbuf)\n        goto v5;\n    v3 = &v9->v3;\n    v1 = max_t(int, v3->min_dump_alloc, NLMSG_GOODSIZE);\n    if (v1 < v9->max_recvmsg_len) {\n        v2 = v9->max_recvmsg_len;\n        v11 = alloc_skb(v2, GFP_KERNEL |\n                        __GFP_NOWARN | __GFP_NORETRY);\n    }\n    if (!v11) {\n        v2 = v1;\n        v11 = alloc_skb(v2, GFP_KERNEL);\n    }\n    if (!v11)\n        goto v5;\n    skb_reserve(v11, skb_tailroom(v11) - v2);\n    netlink_skb_set_owner_r(v11, v10);\n    v6 = v3->dump(v11, v3);\n    if (v6 > 0) {\n        mutex_unlock(v9->cb_mutex);\n        if (sk_filter(v10, v11))\n            kfree_skb(v11);\n        else\n            __netlink_sendskb(v10, v11);\n        return 0;\n    }\n    v8 = nlmsg_put_answer(v11, v3, NLMSG_DONE, sizeof(v6), NLM_F_MULTI);\n    if (!v8)\n        goto v5;\n    nl_dump_check_consistent(v3, v8);\n    memcpy(nlmsg_data(v8), &v6, sizeof(v6));\n    if (sk_filter(v10, v11))\n        kfree_skb(v11);\n    else\n        __netlink_sendskb(v10, v11);\n    if (v3->done)\n        v3->done(v3);\n    v9->cb_running = false;\n    v7 = v3->v7;\n    v11 = v3->v11;\n    mutex_unlock(v9->cb_mutex);\n    module_put(v7);\n    consume_skb(v11);\n    return 0;\nv5:\n    mutex_unlock(v9->cb_mutex);\n    kfree_skb(v11);\n    return v4;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 11
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both handle the allocation of a socket buffer (skb), call the dump callback, manage filters, and clean up resources appropriately. The candidate implementation uses different variable names and a slightly different code structure, but the logic and behavior are the same. There are no differences in error handling, memory management, or input validation that would affect security or correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both implementations lock the mutex, check the same conditions, allocate the skb in a similar way, and handle the same error paths. The only differences are in variable names and minor code formatting, which do not affect the behavior of the function. There are no security-relevant differences or functional mismatches.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

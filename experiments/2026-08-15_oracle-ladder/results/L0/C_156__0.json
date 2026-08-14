@@ -1,0 +1,48 @@
+{
+  "case_id": "C_156__0",
+  "sample_id": "D/C/156",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2014-4344",
+  "cve_summary": "The acc_ctx_cont function in the SPNEGO acceptor in lib/gssapi/spnego/spnego_mech.c in MIT Kerberos 5 (aka krb5) 1.5.x through 1.12.x before 1.12.2 allows remote attackers to cause a denial of service (NULL pointer dereference and application crash) via an empty continuation token at a certain point during a SPNEGO negotiation.",
+  "changed_file": "src/lib/gssapi/spnego/spnego_mech.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a continuation context for the SPNEGO (Simple and Protected GSSAPI Negotiation Mechanism) protocol.\n\nParameters: \nminstat (OM_uint32*): Pointer to store the minimum status code.\nbuf (gss_buffer_t): Buffer containing the token to be processed.\nctx (gss_ctx_id_t*): Pointer to the context identifier.\nresponseToken (gss_buffer_t*): Pointer to store the response token.\nmechListMIC (gss_buffer_t*): Pointer to store the mechanism list MIC.\nnegState (OM_uint32*): Pointer to store the negotiation state.\nreturn_token (send_token_flag*): Pointer to indicate the token sending flag.\n\nReturns: \nOM_uint32: Status code indicating the result of the operation.\n\nLogic: \nThe function verifies the token header, checks for valid context, and processes the negotiation response. It updates the negotiation state and manages memory for the supported mechanism. If any checks fail, it returns an error status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static OM_uint32\r\nacc_ctx_cont(OM_uint32 *minstat,\r\n\t     gss_buffer_t buf,\r\n\t     gss_ctx_id_t *ctx,\r\n\t     gss_buffer_t *responseToken,\r\n\t     gss_buffer_t *mechListMIC,\r\n\t     OM_uint32 *negState,\r\n\t     send_token_flag *return_token)\r\n{\r\n\tOM_uint32 ret, tmpmin;\r\n\tgss_OID supportedMech;\r\n\tspnego_gss_ctx_id_t sc;\r\n\tunsigned int len;\r\n\tunsigned char *ptr, *bufstart;\r\n\r\n\tsc = (spnego_gss_ctx_id_t)*ctx;\r\n\tret = GSS_S_DEFECTIVE_TOKEN;\r\n\t*negState = REJECT;\r\n\t*minstat = 0;\r\n\tsupportedMech = GSS_C_NO_OID;\r\n\t*return_token = ERROR_TOKEN_SEND;\r\n\t*responseToken = *mechListMIC = GSS_C_NO_BUFFER;\r\n\r\n\tptr = bufstart = buf->value;\r\n#define REMAIN (buf->length - (ptr - bufstart))\r\n\tif (REMAIN == 0 || REMAIN > INT_MAX)\r\n\t\treturn GSS_S_DEFECTIVE_TOKEN;\r\n\r\n\t/*\r\n\t * Attempt to work with old Sun SPNEGO.\r\n\t */\r\n\tif (*ptr == HEADER_ID) {\r\n\t\tret = g_verify_token_header(gss_mech_spnego,\r\n\t\t\t\t\t    &len, &ptr, 0, REMAIN);\r\n\t\tif (ret) {\r\n\t\t\t*minstat = ret;\r\n\t\t\treturn GSS_S_DEFECTIVE_TOKEN;\r\n\t\t}\r\n\t}\r\n\tif (*ptr != (CONTEXT | 0x01)) {\r\n\t\treturn GSS_S_DEFECTIVE_TOKEN;\r\n\t}\r\n\tret = get_negTokenResp(minstat, ptr, REMAIN,\r\n\t\t\t       negState, &supportedMech,\r\n\t\t\t       responseToken, mechListMIC);\r\n\tif (ret != GSS_S_COMPLETE)\r\n\t\tgoto cleanup;\r\n\r\n\tif (*responseToken == GSS_C_NO_BUFFER &&\r\n\t    *mechListMIC == GSS_C_NO_BUFFER) {\r\n\r\n\t\tret = GSS_S_DEFECTIVE_TOKEN;\r\n\t\tgoto cleanup;\r\n\t}\r\n\tif (supportedMech != GSS_C_NO_OID) {\r\n\t\tret = GSS_S_DEFECTIVE_TOKEN;\r\n\t\tgoto cleanup;\r\n\t}\r\n\tsc->firstpass = 0;\r\n\t*negState = ACCEPT_INCOMPLETE;\r\n\t*return_token = CONT_TOKEN_SEND;\r\ncleanup:\r\n\tif (supportedMech != GSS_C_NO_OID) {\r\n\t\tgeneric_gss_release_oid(&tmpmin, &supportedMech);\r\n\t}\r\n\treturn ret;\r\n#undef REMAIN\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation includes an additional check for `REMAIN == 0`, which the reference implementation does not. This means the candidate implementation will return `GSS_S_DEFECTIVE_TOKEN` for empty buffers, while the reference implementation will only do so if the buffer length exceeds `INT_MAX`. This is a behavioral difference that could affect how malformed or adversarial inputs are handled, potentially impacting security by rejecting a broader set of invalid inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same checks, handle the same conditions, and produce the same outputs for all valid and invalid inputs. There is no observable behavioral difference.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

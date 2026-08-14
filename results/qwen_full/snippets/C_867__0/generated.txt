@@ -1,0 +1,71 @@
+ssize_t WritePSDChannels(const PSDInfo *psd_info, const ImageInfo *image_info,
+                         Image *image, Image *next_image,
+                         MagickOffsetType size_offset, MagickBooleanType separate)
+{
+  ssize_t bytes_written = 0;
+  MagickBooleanType is_compressed = MagickFalse;
+  void *compact_pixels = NULL;
+  size_t compact_length = 0;
+
+  if (next_image != (Image *) NULL)
+    is_compressed = (next_image->compression == ZipCompression ||
+                     next_image->compression == JPEGCompression ||
+                     next_image->compression == FaxCompression ||
+                     next_image->compression == Group4Compression ||
+                     next_image->compression == JPEGLosslessCompression);
+
+  if (is_compressed)
+    compact_pixels = AcquireCompactPixelPacket(image, &compact_length);
+
+  if (compact_pixels == (void *) NULL)
+    return 0;
+
+  if (image->storage_class == PseudoClass)
+  {
+    // Handle PseudoClass pixel data
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, GrayChannel, size_offset);
+  }
+  else if (image->colorspace == RGBColorspace)
+  {
+    // Write RGB channels
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, RedChannel, size_offset);
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, GreenChannel, size_offset);
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, BlueChannel, size_offset);
+  }
+  else if (image->colorspace == CMYKColorspace)
+  {
+    // Write CMYK channels
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, CyanChannel, size_offset);
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, MagentaChannel, size_offset);
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, YellowChannel, size_offset);
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, BlackChannel, size_offset);
+  }
+
+  if (separate)
+  {
+    // Handle separate channel writing
+    for (ssize_t i = 0; i < (ssize_t) image->number_channels; i++)
+    {
+      bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                       compact_length, i, size_offset);
+    }
+  }
+
+  if (image->mask != (PixelInfo *) NULL)
+  {
+    // Handle alpha or mask channels
+    bytes_written += WritePSDChannel(psd_info, image_info, image, compact_pixels,
+                                     compact_length, AlphaChannel, size_offset);
+  }
+
+  RelinquishMagickMemory(compact_pixels);
+  return bytes_written;
+}

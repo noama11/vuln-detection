@@ -1,0 +1,35 @@
+{
+  "case_id": "C_39__0",
+  "implementation": "#include <linux/errno.h>\n#include <linux/uaccess.h>\n#include <linux/slab.h>\n\nlong sys_semtimedop(int semid, struct oabi_sembuf __user *tsops, unsigned nsops, const struct timespec __user *timeout) {\n    struct oabi_sembuf *sops;\n    long ret = -EINVAL;\n\n    if (nsops == 0) {\n        return -EINVAL;\n    }\n\n    sops = kmalloc_array(nsops, sizeof(*sops), GFP_KERNEL);\n    if (!sops) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(sops, tsops, nsops * sizeof(*sops))) {\n        goto out;\n    }\n\n    if (timeout) {\n        struct timespec to;\n        if (copy_from_user(&to, timeout, sizeof(to))) {\n            ret = -EFAULT;\n            goto out;\n        }\n        ret = do_semtimedop(semid, sops, nsops, &to);\n    } else {\n        ret = do_semtimedop(semid, sops, nsops, NULL);\n    }\n\nout:\n    kfree(sops);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check nsops is non-zero",
+      "protects_against": "invalid zero operation count"
+    },
+    {
+      "step": "use kmalloc_array with explicit size",
+      "protects_against": "memory allocation overflow"
+    },
+    {
+      "step": "check kmalloc_array return value",
+      "protects_against": "out-of-memory condition"
+    },
+    {
+      "step": "use copy_from_user with explicit size",
+      "protects_against": "invalid user pointer access"
+    },
+    {
+      "step": "check copy_from_user return status",
+      "protects_against": "invalid user data access"
+    },
+    {
+      "step": "ensure memory is freed on all exit paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

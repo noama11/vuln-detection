@@ -1,0 +1,82 @@
+{
+  "case_id": "C_249__1",
+  "sample_id": "D/C/249",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9756",
+  "cve_summary": "arch/x86/kvm/emulate.c in the Linux kernel before 4.8.12 does not properly initialize Code Segment (CS) in certain error cases, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "arch/x86/kvm/emulate.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the far return operation in x86 emulation.\n\nParameters: \nctxt (struct x86_emulate_ctxt *): Pointer to the emulation context containing CPU state and operations.\n\nReturns: \nint: Status of the emulation operation, where X86EMUL_CONTINUE indicates success, and other values indicate different error states.\n\nLogic: \nThe function retrieves the instruction pointer (EIP) and code segment (CS) from the stack using the emulate_pop function. It checks for privilege level violations and loads the segment descriptor for the code segment. Finally, it assigns the new instruction pointer and handles potential errors during the process. If any operation fails, it returns an appropriate error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int handle_far_return(struct x86_emulate_ctxt *ctxt) {\n    unsigned long eip, cs;\n    int rc;\n\n    /* Retrieve the instruction pointer (EIP) from the stack */\n    rc = emulate_pop(ctxt, &eip);\n    if (rc != X86EMUL_CONTINUE)\n        return rc;\n\n    /* Retrieve the code segment (CS) from the stack */\n    rc = emulate_pop(ctxt, &cs);\n    if (rc != X86EMUL_CONTINUE)\n        return rc;\n\n    /* Check for privilege level violations and load the segment descriptor */\n    if (!ctxt->ops->get_segment(ctxt, &cs, 0)) {\n        return X86EMUL_UNHANDLEABLE;\n    }\n\n    /* Assign the new instruction pointer */\n    ctxt->eip = eip;\n\n    return X86EMUL_CONTINUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check emulate_pop return value before proceeding",
+      "protects_against": "failure to retrieve EIP or CS from the stack"
+    },
+    {
+      "step": "validate get_segment returns success before using the segment",
+      "protects_against": "invalid or unhandled code segment descriptor"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check emulate_pop return value before proceeding — protects against: failure to retrieve EIP or CS from the stack",
+        "reasoning": "The implementation checks the return value of emulate_pop for both eip and cs, and returns early if it is not X86EMUL_CONTINUE.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate get_segment returns success before using the segment — protects against: invalid or unhandled code segment descriptor",
+        "reasoning": "The implementation calls get_segment but does not check its return value or validate the result before using it.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check emulate_pop return value before proceeding — protects against: failure to retrieve EIP or CS from the stack",
+        "reasoning": "The implementation does not contain any code related to emulate_pop or retrieving EIP or CS from the stack. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate get_segment returns success before using the segment — protects against: invalid or unhandled code segment descriptor",
+        "reasoning": "The implementation does not contain any code related to get_segment or loading a code segment descriptor. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

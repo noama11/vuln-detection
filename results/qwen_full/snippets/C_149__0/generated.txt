@@ -1,0 +1,44 @@
+int setsockopt_pppol2tp(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen) {
+    int err = 0;
+    struct sock *sk = sock->sk;
+    struct pppol2tp_session *session;
+
+    if (level != SOL_PPPOL2TP)
+        return -EINVAL;
+
+    if (!sock->sk->sk_bound_dev_if)
+        return -EINVAL;
+
+    if (!optval || optlen < sizeof(int))
+        return -EINVAL;
+
+    if (!sock->sk->sk_state || sock->sk->sk_state != TCP_ESTABLISHED)
+        return -ENOTCONN;
+
+    session = pppol2tp_get_session(sk);
+    if (!session)
+        return -ENOENT;
+
+    switch (optname) {
+        case PPPOX_OPT_SESSION_ID:
+            {
+                __u32 session_id;
+                if (copy_from_user(&session_id, optval, sizeof(session_id)))
+                    return -EFAULT;
+                session->session_id = session_id;
+            }
+            break;
+        case PPPOX_OPT_TUNNEL_ID:
+            {
+                __u32 tunnel_id;
+                if (copy_from_user(&tunnel_id, optval, sizeof(tunnel_id)))
+                    return -EFAULT;
+                session->tunnel_id = tunnel_id;
+            }
+            break;
+        default:
+            return -ENOPROTOOPT;
+    }
+
+    return err;
+}

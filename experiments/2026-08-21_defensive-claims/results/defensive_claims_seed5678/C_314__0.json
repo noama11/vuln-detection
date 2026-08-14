@@ -1,0 +1,98 @@
+{
+  "case_id": "C_314__0",
+  "sample_id": "D/C/314",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "openssl/openssl",
+  "cve_id": "CVE-2016-2180",
+  "cve_summary": "The TS_OBJ_print_bio function in crypto/ts/ts_lib.c in the X.509 Public Key Infrastructure Time-Stamp Protocol (TSP) implementation in OpenSSL through 1.0.2h allows remote attackers to cause a denial of service (out-of-bounds read and application crash) via a crafted time-stamp file that is mishandled by the *openssl ts* command.",
+  "changed_file": "crypto/ts/ts_lib.c",
+  "docstring": "/**\n * Summary: Prints the textual representation of an ASN1_OBJECT to a BIO stream.\n * \n * Parameters:\n * bio (BIO*): The BIO stream to which the object representation will be printed.\n * obj (const ASN1_OBJECT*): The ASN1_OBJECT to be converted to a string.\n * \n * Returns: int - Returns 1 on success, indicating the object was printed.\n * \n * Logic: The function converts the ASN1_OBJECT to a string using OBJ_obj2txt and then writes the resulting\n * string followed by a newline to the specified BIO stream.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int print_asn1_object_to_bio(BIO *bio, const ASN1_OBJECT *obj) {\n    char buffer[1024];\n    int len = OBJ_obj2txt(buffer, sizeof(buffer), obj, 0);\n    if (len < 0) {\n        return 0;\n    }\n    if (BIO_write(bio, buffer, len) != len) {\n        return 0;\n    }\n    if (BIO_write(bio, \"\\n\", 1) != 1) {\n        return 0;\n    }\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "limit buffer size to prevent overflow",
+      "protects_against": "excessively large ASN1_OBJECT strings that could cause buffer overflow"
+    },
+    {
+      "step": "check return value of OBJ_obj2txt",
+      "protects_against": "conversion failure when converting ASN1_OBJECT to string"
+    },
+    {
+      "step": "verify full write to BIO for string and newline",
+      "protects_against": "partial writes to the BIO stream that could leave output incomplete"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "limit buffer size to prevent overflow — protects against: excessively large ASN1_OBJECT strings that could cause buffer overflow",
+        "reasoning": "The implementation uses a fixed-size buffer `obj_txt` of 128 bytes and passes `sizeof(obj_txt)` to `OBJ_obj2txt`, which limits the output to the buffer size and prevents overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of OBJ_obj2txt — protects against: conversion failure when converting ASN1_OBJECT to string",
+        "reasoning": "The implementation does not check the return value of `OBJ_obj2txt` to determine if the conversion was successful or truncated. It proceeds to use the `len` variable, which could be negative in case of failure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify full write to BIO for string and newline — protects against: partial writes to the BIO stream that could leave output incomplete",
+        "reasoning": "The implementation calls `BIO_write` for the string and the newline, but does not check the return values to ensure that the full data was written to the stream. This could leave the output incomplete if the writes fail or are partial.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "limit buffer size to prevent overflow — protects against: excessively large ASN1_OBJECT strings that could cause buffer overflow",
+        "reasoning": "The implementation uses a fixed-size buffer `obj_txt` of 128 bytes and passes `sizeof(obj_txt)` to `OBJ_obj2txt`, which limits the output to the buffer size and prevents overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of OBJ_obj2txt — protects against: conversion failure when converting ASN1_OBJECT to string",
+        "reasoning": "The implementation does not check the return value of `OBJ_obj2txt`, which could indicate that the output was truncated or the conversion failed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "verify full write to BIO for string and newline — protects against: partial writes to the BIO stream that could leave output incomplete",
+        "reasoning": "The implementation uses `BIO_printf` to write the string and newline to the BIO, but does not check the return value of `BIO_printf` to ensure the write was fully successful.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

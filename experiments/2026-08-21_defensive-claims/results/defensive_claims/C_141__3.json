@@ -1,0 +1,162 @@
+{
+  "case_id": "C_141__3",
+  "sample_id": "D/C/141",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: Processes a single ticket for the Ceph authentication client, decoding and updating session keys and ticket information.\n\nParameters:\nac (struct ceph_auth_client *): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key *): Pointer to the secret key used for decryption.\np (void **): Pointer to the data buffer containing the ticket information.\nend (void *): Pointer to the end of the data buffer.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function begins by decoding the ticket type and structure version. It retrieves the appropriate ticket handler and decrypts the ticket data. It then extracts the new session key, validity period, and ticket blob. Depending on whether the ticket is encrypted or not, it handles decryption and memory allocation accordingly. Finally, it updates the session key and ticket information in the handler, cleans up allocated resources, and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int ret = -EINVAL;\n    struct ceph_auth_ticket_handler *handler = NULL;\n    struct ceph_ticket *ticket = NULL;\n    struct ceph_crypto_key *new_key = NULL;\n    void *decrypted = NULL;\n    size_t decrypted_len = 0;\n\n    if (!ac || !secret || !p || !*p || *p >= end) {\n        goto out;\n    }\n\n    if (end - *p < sizeof(*ticket)) {\n        goto out;\n    }\n\n    ticket = (struct ceph_ticket *)*p;\n    *p += sizeof(*ticket);\n\n    if (le32_to_cpu(ticket->magic) != CEPH_AUTH_TICKET_MAGIC) {\n        goto out;\n    }\n\n    handler = get_ticket_handler(ac, le32_to_cpu(ticket->type));\n    if (!handler) {\n        goto out;\n    }\n\n    if (le32_to_cpu(ticket->encrypted)) {\n        decrypted_len = le32_to_cpu(ticket->encrypted_len);\n        decrypted = malloc(decrypted_len);\n        if (!decrypted) {\n            ret = -ENOMEM;\n            goto out;\n        }\n\n        ret = decrypt_ticket(secret, *p, end - *p, decrypted, &decrypted_len);\n        if (ret < 0) {\n            goto out;\n        }\n\n        *p = decrypted;\n        end = *p + decrypted_len;\n    }\n\n    if (end - *p < sizeof(*new_key)) {\n        goto out;\n    }\n\n    new_key = (struct ceph_crypto_key *)*p;\n    *p += sizeof(*new_key);\n\n    if (new_key->len > CEPH_CRYPTO_MAX_KEY_LEN) {\n        goto out;\n    }\n\n    if (end - *p < new_key->len) {\n        goto out;\n    }\n\n    if (new_key->len > 0) {\n        new_key->data = *p;\n        *p += new_key->len;\n    }\n\n    handler->session_key = new_key;\n    handler->ticket_blob = *p;\n    handler->ticket_blob_len = end - *p;\n\n    ret = 0;\n\nout:\n    if (decrypted) {\n        free(decrypted);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify buffer bounds before accessing data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate ticket magic number",
+      "protects_against": "malformed or invalid ticket data"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "verify key length is within acceptable bounds",
+      "protects_against": "excessive memory allocation"
+    },
+    {
+      "step": "ensure buffer has sufficient space for key data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "free allocated memory on exit",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 16,
+    "n_omits": 4,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the parameters or internal structures. However, the code assumes that the input pointers are valid and does not perform any null checks before dereferencing them.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify buffer bounds before accessing data — protects against: buffer overflow",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_32_safe` to verify buffer bounds before accessing data. These functions ensure that the buffer has enough space before reading from it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate ticket magic number — protects against: malformed or invalid ticket data",
+        "reasoning": "The implementation does not explicitly validate a magic number. It checks the structure version (`tkt_struct_v`), but not a magic number to verify the ticket format.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not explicitly check for memory allocation failure. It assumes that the `ceph_crypto_key_decode` and `ceph_decode_buffer` functions succeed and does not handle potential allocation failures.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "verify key length is within acceptable bounds — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not explicitly verify the key length before decoding or allocating memory for it. It assumes that the key length is valid and does not perform any bounds checking.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "ensure buffer has sufficient space for key data — protects against: buffer overflow",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_32_safe` to ensure that the buffer has sufficient space for key data before reading from it. These functions help prevent buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on exit — protects against: memory leak",
+        "reasoning": "The implementation frees the old session key and ticket blob before assigning new ones. It also returns early on error, which helps prevent memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters `ac`, `secret`, `p`, or `end`. Dereferencing these without checks could lead to null pointer dereference if any of them are null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "verify buffer bounds before accessing data — protects against: buffer overflow",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_32_safe`/`ceph_decode_8_safe` macros to verify buffer bounds before accessing data. These functions ensure that the buffer has enough space before reading from it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate ticket magic number — protects against: malformed or invalid ticket data",
+        "reasoning": "The implementation checks the ticket structure version (`tkt_struct_v`) against a hardcoded value (1). This is a form of validation for the ticket format, but it does not check for a 'magic number' explicitly.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the result of `kmalloc` for null and returns `-ENOMEM` if the allocation fails. This ensures that memory allocation failures are handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify key length is within acceptable bounds — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not explicitly check the length of the key before decoding it. It relies on `ceph_crypto_key_decode` to handle the decoding, but there is no explicit bound check on the key length.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "ensure buffer has sufficient space for key data — protects against: buffer overflow",
+        "reasoning": "The implementation uses `ceph_decode_need` and `ceph_decode_32_safe` macros to ensure that the buffer has sufficient space for key data before accessing it. This prevents buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on exit — protects against: memory leak",
+        "reasoning": "The implementation calls `kfree` on `ticket_buf` and `dbuf` before returning, ensuring that any allocated memory is freed, regardless of the success or failure of the function.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

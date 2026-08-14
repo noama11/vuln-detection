@@ -1,0 +1,47 @@
+int ext4_orphan_add(handle_t *handle, struct inode *inode) {
+    int err = 0;
+    struct ext4_inode_info *ei = EXT4_I(inode);
+    struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
+    struct ext4_orphan_list *orphan;
+
+    if (!ext4_handle_valid(handle))
+        return -EINVAL;
+
+    if (ei->i_orphan.next || ei->i_orphan.prev)
+        return -EEXIST;
+
+    if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode) &&
+        !S_ISLNK(inode->i_mode))
+        return -EINVAL;
+
+    orphan = &sbi->s_orphan;
+    spin_lock(&orphan->lock);
+
+    if (!list_empty(&ei->i_orphan)) {
+        spin_unlock(&orphan->lock);
+        return -EEXIST;
+    }
+
+    err = ext4_journal_get_write_access(handle, inode->i_sb->s_bdev,
+                                        inode->i_ino, 0);
+    if (err) {
+        spin_unlock(&orphan->lock);
+        return err;
+    }
+
+    if (sbi->s_desc->s_inodes_count == 0) {
+        spin_unlock(&orphan->lock);
+        return -ENOSPC;
+    }
+
+    err = ext4_journal_dirty_inode(handle, inode);
+    if (err) {
+        spin_unlock(&orphan->lock);
+        return err;
+    }
+
+    list_add_tail(&ei->i_orphan, &orphan->list);
+    spin_unlock(&orphan->lock);
+
+    return err;
+}

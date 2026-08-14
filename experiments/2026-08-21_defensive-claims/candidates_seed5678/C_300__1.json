@@ -1,0 +1,31 @@
+{
+  "case_id": "C_300__1",
+  "implementation": "#include <sys/socket.h>\n#include <netinet/in.h>\n#include <string.h>\n\nint receive_message(int sockfd, void* buf, size_t* buflen, int flags, struct in6_addr* addr, uint32_t* ifindex, int* hoplimit) {\n    if (!buf || !buflen || !addr || !ifindex || !hoplimit) {\n        return -1;\n    }\n\n    struct msghdr msg = {0};\n    struct iovec iov = {buf, *buflen};\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n\n    char cmsgbuf[CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int))];\n    memset(cmsgbuf, 0, sizeof(cmsgbuf));\n\n    msg.msg_control = cmsgbuf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n\n    ssize_t bytes_received = recvmsg(sockfd, &msg, flags);\n    if (bytes_received < 0) {\n        return -1;\n    }\n\n    *buflen = (size_t)bytes_received;\n\n    *addr = in6addr_any;\n    *ifindex = 0;\n    *hoplimit = -1;\n\n    struct cmsghdr* cmsg;\n    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo* pktinfo = (struct in6_pktinfo*)CMSG_DATA(cmsg);\n                *addr = pktinfo->ipi6_addr;\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int*)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "initialize buffers to zero",
+      "protects_against": "uninitialized memory reads"
+    },
+    {
+      "step": "validate return value of recvmsg",
+      "protects_against": "failure to receive message"
+    },
+    {
+      "step": "initialize output parameters to default values",
+      "protects_against": "uninitialized output values"
+    },
+    {
+      "step": "use CMSG_NXTHDR to safely iterate through control messages",
+      "protects_against": "buffer overflow when parsing control messages"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

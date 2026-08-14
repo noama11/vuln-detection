@@ -1,0 +1,49 @@
+{
+  "case_id": "C_108__0",
+  "sample_id": "D/C/108",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-0349",
+  "cve_summary": "The hidp_setup_hid function in net/bluetooth/hidp/core.c in the Linux kernel before 3.7.6 does not properly copy a certain name field, which allows local users to obtain sensitive information from kernel memory by setting a long name and making an HIDPCONNADD ioctl call.",
+  "changed_file": "net/bluetooth/hidp/core.c",
+  "docstring": "/**\n * Summary: Initializes a HID (Human Interface Device) session by setting up the necessary parameters and allocating resources.\n * \n * Parameters:\n * session (struct hidp_session *): Pointer to the HID session to be set up.\n * req (struct hidp_connadd_req *): Pointer to the connection request containing device information.\n * \n * Returns: \n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function allocates memory for the session's read data, copies data from the user space, and initializes a HID device structure with parameters from the request. It sets various properties of the HID device, including vendor, product, and country codes. If the device is blacklisted, it cleans up and returns an error. In case of any errors during the setup process, it handles memory deallocation and returns the appropriate error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int hidp_setup_hid(struct hidp_session *v5,\n                struct hidp_connadd_req *v4)\n{\n    struct hid_device *v3;\n    int v1;\n    v5->rd_data = kzalloc(v4->rd_size, GFP_KERNEL);\n    if (!v5->rd_data)\n        return -ENOMEM;\n    if (copy_from_user(v5->rd_data, v4->rd_data, v4->rd_size)) {\n        v1 = -EFAULT;\n        goto v2;\n    }\n    v5->rd_size = v4->rd_size;\n    v3 = hid_allocate_device();\n    if (IS_ERR(v3)) {\n        v1 = PTR_ERR(v3);\n        goto v2;\n    }\n    v5->v3 = v3;\n    v3->driver_data = v5;\n    v3->bus     = BUS_BLUETOOTH;\n    v3->vendor  = v4->vendor;\n    v3->product = v4->product;\n    v3->version = v4->version;\n    v3->country = v4->country;\n    strncpy(v3->name, v4->name, sizeof(v4->name) - 1);\n    snprintf(v3->phys, sizeof(v3->phys), \"%pMR\",\n         &bt_sk(v5->ctrl_sock->sk)->src);\n    snprintf(v3->uniq, sizeof(v3->uniq), \"%pMR\",\n         &bt_sk(v5->ctrl_sock->sk)->dst);\n    v3->dev.parent = &v5->conn->dev;\n    v3->ll_driver = &hidp_hid_driver;\n    v3->hid_get_raw_report = hidp_get_raw_report;\n    v3->hid_output_raw_report = hidp_output_raw_report;\n    if (hid_ignore(v3)) {\n        hid_destroy_device(v5->v3);\n        v5->v3 = NULL;\n        return -ENODEV;\n    }\n    return 0;\nv2:\n    kfree(v5->rd_data);\n    v5->rd_data = NULL;\n    return v1;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 5
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both allocate memory for read data, copy from user space, initialize the HID device structure, and handle errors similarly. The only differences are in variable names (e.g., v3 vs. hid, v4 vs. req), and in the candidate implementation, the strncpy call uses `sizeof(v4->name) - 1` instead of a fixed size like 128 in the reference. This could lead to a minor discrepancy in the name string length, but it is not security-relevant or crash-causing.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both allocate memory for read data, copy from user space, initialize the HID device with the same parameters, and handle errors in the same way. The only differences are in variable names (e.g., v3 vs. hid, v5 vs. session), which do not affect behavior. The logic for error handling, memory cleanup, and device initialization is identical.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

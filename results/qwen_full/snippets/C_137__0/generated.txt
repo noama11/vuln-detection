@@ -1,0 +1,33 @@
+void handle_syscall_entry(void *data, struct pt_regs *regs, long id) {
+    int syscall_num = regs->orig_ax;
+    struct ftrace_event_file *file;
+    struct trace_entry *entry;
+    unsigned long flags, premp;
+
+    if (syscall_num < 0 || syscall_num >= __NR_syscall_max)
+        return;
+
+    file = get_syscall_event_file(syscall_num);
+    if (!file || !ftrace_event_file_enabled(file))
+        return;
+
+    flags = raw_local_save_flags();
+    premp = arch_preempt_count();
+
+    entry = ring_buffer_reserve(data, sizeof(*entry) + sizeof(u64) * 6);
+    if (!entry)
+        return;
+
+    entry->type = TRACE_SYSCALL_ENTRY;
+    entry->pid = current->pid;
+    entry->tid = current->tgid;
+    entry->id = id;
+    entry->args[0] = regs->di;
+    entry->args[1] = regs->si;
+    entry->args[2] = regs->dx;
+    entry->args[3] = regs->r10;
+    entry->args[4] = regs->r8;
+    entry->args[5] = regs->r9;
+
+    ring_buffer_commit(data, entry);
+}

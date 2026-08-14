@@ -1,0 +1,114 @@
+{
+  "case_id": "C_718__0",
+  "sample_id": "D/C/718",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15127",
+  "cve_summary": "A flaw was found in the hugetlb_mcopy_atomic_pte function in mm/hugetlb.c in the Linux kernel before 4.13. A superfluous implicit page unlock for VM_SHARED hugetlbfs mapping could trigger a local denial of service (BUG).",
+  "changed_file": "mm/hugetlb.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function atomically copies a huge page table entry from a source address  \n * to a destination address in a specified memory management structure.  \n *  \n * Parameters:  \n * dst_mm (struct mm_struct *): The destination memory management structure.  \n * dst_pte (pte_t *): Pointer to the destination page table entry.  \n * dst_vma (struct vm_area_struct *): The destination virtual memory area.  \n * dst_addr (unsigned long): The destination address for the page.  \n * src_addr (unsigned long): The source address from which to copy the page.  \n * pagep (struct page **): Pointer to a page pointer for the copied page.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function allocates a huge page if none is provided, copies data from the  \n * user space, updates the page state, and sets the page table entry. It handles  \n * shared and private mappings differently and ensures proper locking and  \n * memory barriers are in place to maintain consistency.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int copy_huge_page_table_entry(struct mm_struct *dst_mm, pte_t *dst_pte, struct vm_area_struct *dst_vma, unsigned long dst_addr, unsigned long src_addr, struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = -EFAULT;\n\n    if (!dst_mm || !dst_pte || !dst_vma || !pagep) {\n        return -EINVAL;\n    }\n\n    if (!page) {\n        page = alloc_pages(GFP_HIGHUSER | __GFP_ZERO, HPAGE_SHIFT - PAGE_SHIFT);\n        if (!page) {\n            return -ENOMEM;\n        }\n    }\n\n    if (copy_from_user(page_address(page), (void __user *)src_addr, HPAGE_SIZE)) {\n        goto out;\n    }\n\n    if (dst_vma->vm_flags & VM_SHARED) {\n        set_page_dirty(page);\n    } else {\n        set_page_private(page, (unsigned long)dst_vma);\n    }\n\n    set_pte_at(dst_mm, dst_addr, dst_pte, pte_mkhuge(pte_mkyoung(pte_mkdirty(pte_mkwrite(pte_set_owner(pte_clear(pte_none(*dst_pte)), page))))));\n\n    flush_tlb_page(dst_vma, dst_addr);\n\n    *pagep = page;\n    ret = 0;\n\nout:\n    if (ret < 0 && !(*pagep)) {\n        __free_pages(page, HPAGE_SHIFT - PAGE_SHIFT);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate page allocation",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check for user copy failure",
+      "protects_against": "invalid user address or partial copy"
+    },
+    {
+      "step": "free allocated page on error",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the function's parameters. However, the function is likely called in a context where these pointers are already validated, and the code assumes they are non-null. There is no explicit null check in the code.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate page allocation — protects against: out of memory condition",
+        "reasoning": "The implementation checks the result of `alloc_huge_page` using `IS_ERR(page)`, which indicates whether the allocation failed. This is a valid check for out of memory conditions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for user copy failure — protects against: invalid user address or partial copy",
+        "reasoning": "The implementation checks the return value of `copy_huge_page_from_user`. If it returns a non-zero value, the function returns `-EFAULT`, indicating a failure in the user copy operation. This is a valid check for invalid user address or partial copy.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated page on error — protects against: memory leak",
+        "reasoning": "The implementation does not free the allocated page in the case of an error when `ret` is non-zero. The comment `/* don't free the page */` explicitly indicates that the page is not freed in this case, which results in a memory leak.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the function parameters. However, the function is likely called in a context where these pointers are guaranteed to be non-null, and the code does not dereference any of the parameters without prior validation or assignment. For example, `dst_vma->vm_flags` is used, but there is no explicit check for `dst_vma` being null. Therefore, this step is not performed.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate page allocation — protects against: out of memory condition",
+        "reasoning": "The implementation checks the result of `alloc_huge_page` using `IS_ERR(page)`, which indicates whether the allocation failed. If it did, the function returns `-ENOMEM`. This is a direct validation of the page allocation and protects against out-of-memory conditions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for user copy failure — protects against: invalid user address or partial copy",
+        "reasoning": "The implementation checks the return value of `copy_huge_page_from_user`. If it returns a non-zero value, the function returns `-EFAULT`, indicating a failure in the user copy. This protects against invalid user addresses or partial copy errors.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated page on error — protects against: memory leak",
+        "reasoning": "The implementation includes a `put_page(page)` call in the `out_release_nounlock` label, which is reached when an error occurs after a page has been allocated. This ensures that the allocated page is freed in the event of an error, preventing a memory leak.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

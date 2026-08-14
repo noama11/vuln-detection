@@ -1,0 +1,36 @@
+{
+  "case_id": "C_19__1",
+  "sample_id": "D/C/19",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0957",
+  "cve_summary": "The override_release function in kernel/sys.c in the Linux kernel before 3.4.16 allows local users to obtain sensitive information from kernel stack memory via a uname system call in conjunction with a UNAME26 personality.",
+  "commit_message": "kernel/sys.c: fix stack memory content leak via UNAME26\n\nCalling uname() with the UNAME26 personality set allows a leak of kernel\nstack contents.  This fixes it by defensively calculating the length of\ncopy_to_user() call, making the len argument unsigned, and initializing\nthe stack buffer to zero (now technically unneeded, but hey, overkill).\n\nCVE-2012-0957\n\nReported-by: PaX Team <pageexec@freemail.hu>\nSigned-off-by: Kees Cook <keescook@chromium.org>\nCc: Andi Kleen <ak@linux.intel.com>\nCc: PaX Team <pageexec@freemail.hu>\nCc: Brad Spengler <spender@grsecurity.net>\nCc: <stable@vger.kernel.org>\nSigned-off-by: Andrew Morton <akpm@linux-foundation.org>\nSigned-off-by: Linus Torvalds <torvalds@linux-foundation.org>",
+  "changed_file": "kernel/sys.c",
+  "docstring": "\"\"\"\nSummary: \nThis function modifies the Linux version string for compatibility with programs that cannot handle versions starting with \"Linux 3.0\".\n\nParameters: \nrelease (char __user *): A pointer to a user-space buffer where the modified version string will be copied.\nlen (size_t): The length of the user-space buffer.\n\nReturns: \nint: The number of bytes copied to the user buffer on success, or a negative error code on failure.\n\nLogic: \nThe function checks if the current process's personality indicates it requires a 26-character uname format. If so, it constructs a version string that maps the current version to a 2.6.x format, where x is derived from the current version code. It then copies this string to the user-provided buffer, ensuring it does not exceed the buffer's length.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1255,
+    1292
+  ],
+  "vulnerable_line_range": [
+    1268,
+    1290
+  ],
+  "vulnerable_snippet": "static int override_release(char __user *release, int len)\r\n{\r\n\tint ret = 0;\r\n\tchar buf[65];\r\n\r\n\tif (current->personality & UNAME26) {\r\n\t\tchar *rest = UTS_RELEASE;\r\n\t\tint ndots = 0;\r\n\t\tunsigned v;\r\n\r\n\t\twhile (*rest) {\r\n\t\t\tif (*rest == '.' && ++ndots >= 3)\r\n\t\t\t\tbreak;\r\n\t\t\tif (!isdigit(*rest) && *rest != '.')\r\n\t\t\t\tbreak;\r\n\t\t\trest++;\r\n\t\t}\r\n\t\tv = ((LINUX_VERSION_CODE >> 8) & 0xff) + 40;\r\n\t\tsnprintf(buf, len, \"2.6.%u%s\", v, rest);\r\n\t\tret = copy_to_user(release, buf, len);\r\n\t}\r\n\treturn ret;\r\n}",
+  "fixed_line_range": [
+    1268,
+    1292
+  ],
+  "fixed_snippet": "static int override_release(char __user *release, size_t len)\r\n{\r\n\tint ret = 0;\r\n\r\n\tif (current->personality & UNAME26) {\r\n\t\tconst char *rest = UTS_RELEASE;\r\n\t\tchar buf[65] = { 0 };\r\n\t\tint ndots = 0;\r\n\t\tunsigned v;\r\n\t\tsize_t copy;\r\n\r\n\t\twhile (*rest) {\r\n\t\t\tif (*rest == '.' && ++ndots >= 3)\r\n\t\t\t\tbreak;\r\n\t\t\tif (!isdigit(*rest) && *rest != '.')\r\n\t\t\t\tbreak;\r\n\t\t\trest++;\r\n\t\t}\r\n\t\tv = ((LINUX_VERSION_CODE >> 8) & 0xff) + 40;\r\n\t\tcopy = min(sizeof(buf), max_t(size_t, 1, len));\r\n\t\tcopy = scnprintf(buf, copy, \"2.6.%u%s\", v, rest);\r\n\t\tret = copy_to_user(release, buf, copy + 1);\r\n\t}\r\n\treturn ret;\r\n}",
+  "func_name": "override_release",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

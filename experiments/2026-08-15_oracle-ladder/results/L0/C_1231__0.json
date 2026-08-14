@@ -1,0 +1,48 @@
+{
+  "case_id": "C_1231__0",
+  "sample_id": "D/C/1231",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2015-1210, CVE-2015-1211",
+  "cve_summary": "",
+  "changed_file": "third_party/WebKit/Source/bindings/core/v8/V8ThrowException.cpp",
+  "docstring": "Summary: This code fragment defines a set of functions for creating and throwing various types of DOM exceptions in a V8 JavaScript environment.\n\nParameters: \nN/A\n\nReturns: \nN/A\n\nLogic: The code includes several static functions that handle the creation and throwing of different types of exceptions, such as general errors, type errors, range errors, syntax errors, and reference errors. The `createDOMException` function checks the error code and creates the appropriate exception using the creation context. It also attaches a stack trace to the exception object for debugging purposes. The `throwException` function is responsible for actually throwing the exception in the V8 isolate unless execution is terminating. Each specific error creation function calls the corresponding V8 exception constructor, ensuring that the error message is appropriately set. The use of assertions helps maintain the integrity of the context and the exception handling process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "v8::Handle<v8::Value> V8ThrowException::createDOMException(v8::Isolate* isolate, int ec, const String& sanitizedMessage, const String& unsanitizedMessage, const v8::Handle<v8::Object>& creationContext)\r\n{\r\n    if (ec <= 0 || v8::V8::IsExecutionTerminating())\r\n        return v8Undefined();\r\n\r\n    ASSERT(ec == SecurityError || unsanitizedMessage.isEmpty());\r\n\r\n    if (ec == V8GeneralError)\r\n        return V8ThrowException::createGeneralError(isolate, sanitizedMessage);\r\n    if (ec == V8TypeError)\r\n        return V8ThrowException::createTypeError(isolate, sanitizedMessage);\r\n    if (ec == V8RangeError)\r\n        return V8ThrowException::createRangeError(isolate, sanitizedMessage);\r\n    if (ec == V8SyntaxError)\r\n        return V8ThrowException::createSyntaxError(isolate, sanitizedMessage);\r\n    if (ec == V8ReferenceError)\r\n        return V8ThrowException::createReferenceError(isolate, sanitizedMessage);\r\n\r\n    v8::Handle<v8::Object> sanitizedCreationContext = creationContext;\r\n\r\n    // FIXME: Is the current context always the right choice?\r\n    Frame* frame = toFrameIfNotDetached(creationContext->CreationContext());\r\n    if (!frame || !BindingSecurity::shouldAllowAccessToFrame(isolate, frame, DoNotReportSecurityError))\r\n        sanitizedCreationContext = isolate->GetCurrentContext()->Global();\r\n\r\n\r\n    RefPtrWillBeRawPtr<DOMException> domException = DOMException::create(ec, sanitizedMessage, unsanitizedMessage);\r\n    v8::Handle<v8::Value> exception = toV8(domException.get(), sanitizedCreationContext, isolate);\r\n\r\n    if (exception.IsEmpty())\r\n        return v8Undefined();\r\n\r\n    // Attach an Error object to the DOMException. This is then lazily used to get the stack value.\r\n    v8::Handle<v8::Value> error = v8::Exception::Error(v8String(isolate, domException->message()));\r\n    ASSERT(!error.IsEmpty());\r\n    ASSERT(exception->IsObject());\r\n    exception->ToObject(isolate)->SetAccessor(v8AtomicString(isolate, \"stack\"), domExceptionStackGetter, domExceptionStackSetter, error);\r\n    V8HiddenValue::setHiddenValue(isolate, exception->ToObject(isolate), V8HiddenValue::error(isolate), error);\r\n\r\n    return exception;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation differs from the reference implementation in the handling of the `sanitizedCreationContext`. The candidate implementation includes logic to potentially modify the `sanitizedCreationContext` based on the `creationContext` and the current frame, while the reference implementation directly uses the provided `creationContext`. This could lead to different exception objects being created in certain contexts, particularly when the frame access is restricted. This difference is security-relevant as it affects the context in which exceptions are created, potentially impacting access control and error visibility.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in their logic and behavior. Both create and throw DOM exceptions in the V8 environment, with the same checks, error types, and handling of the creation context. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

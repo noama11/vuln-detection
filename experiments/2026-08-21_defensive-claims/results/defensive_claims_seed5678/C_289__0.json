@@ -1,0 +1,130 @@
+{
+  "case_id": "C_289__0",
+  "sample_id": "D/C/289",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-5243",
+  "cve_summary": "The tipc_nl_compat_link_dump function in net/tipc/netlink_compat.c in the Linux kernel through 4.6.3 does not properly copy a certain string, which allows local users to obtain sensitive information from kernel stack memory by reading a Netlink message.",
+  "changed_file": "net/tipc/netlink_compat.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Dumps link information into a TIPC (Transparent Inter-Process Communication)  \n * message for compatibility with netlink.  \n *  \n * Parameters:  \n * msg (struct tipc_nl_compat_msg *): Pointer to the message structure to  \n * store the link information.  \n * attrs (struct nlattr **): Array of netlink attributes containing link data.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function first checks if the required link attribute is present. It then  \n * parses the nested attributes to extract link information such as destination,  \n * status (up or down), and name. Finally, it adds this information to the  \n * provided message structure in a specific TLV (Type-Length-Value) format.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int tipc_nl_compat_dump_link(struct tipc_nl_compat_msg *msg, struct nlattr **attrs)\n{\n    struct nlattr *link_attr;\n    struct nlattr *tb[TIPC_NLA_MAX + 1];\n\n    if (!attrs || !msg)\n        return -EINVAL;\n\n    link_attr = attrs[TIPC_NLA_LINK];\n    if (!link_attr)\n        return -EINVAL;\n\n    if (nla_parse(tb, TIPC_NLA_MAX, nla_data(link_attr), nla_len(link_attr), NULL))\n        return -EINVAL;\n\n    if (!tb[TIPC_NLA_LINK_DEST] || !tb[TIPC_NLA_LINK_STATUS] || !tb[TIPC_NLA_LINK_NAME])\n        return -EINVAL;\n\n    msg->dest = nla_get_u32(tb[TIPC_NLA_LINK_DEST]);\n    msg->status = nla_get_u32(tb[TIPC_NLA_LINK_STATUS]);\n\n    if (nla_len(tb[TIPC_NLA_LINK_NAME]) >= TIPC_MAX_LINK_NAME)\n        return -EINVAL;\n\n    strncpy(msg->name, nla_data(tb[TIPC_NLA_LINK_NAME]), TIPC_MAX_LINK_NAME - 1);\n    msg->name[TIPC_MAX_LINK_NAME - 1] = '\\0';\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate presence of required attributes",
+      "protects_against": "missing or malformed input data"
+    },
+    {
+      "step": "check for valid attribute parsing",
+      "protects_against": "invalid or corrupted attribute data"
+    },
+    {
+      "step": "validate presence of required nested attributes",
+      "protects_against": "missing or malformed nested attributes"
+    },
+    {
+      "step": "bound string copy to buffer size",
+      "protects_against": "buffer overflow"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 20,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if 'msg' or 'attrs' are null before dereferencing them. Dereferencing these pointers could lead to a null pointer dereference if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate presence of required attributes — protects against: missing or malformed input data",
+        "reasoning": "The implementation checks for the presence of 'attrs[TIPC_NLA_LINK]' and returns an error if it is missing. This validates the presence of a required attribute.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid attribute parsing — protects against: invalid or corrupted attribute data",
+        "reasoning": "The implementation calls 'nla_parse_nested' and checks its return value. If parsing fails, it returns the error code, which ensures invalid or corrupted attribute data is rejected.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate presence of required nested attributes — protects against: missing or malformed nested attributes",
+        "reasoning": "The implementation does not check for the presence of required nested attributes such as 'TIPC_NLA_LINK_DEST', 'TIPC_NLA_LINK_UP', or 'TIPC_NLA_LINK_NAME'. If any of these are missing, the function will dereference a null pointer and crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound string copy to buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation uses 'strcpy' to copy the link name into 'link_info.str'. This does not bound the copy to the size of the destination buffer, which could lead to a buffer overflow if the source string is longer than the buffer.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if 'msg' or 'attrs' are null before dereferencing them. Dereferencing these pointers could lead to a null pointer dereference if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate presence of required attributes — protects against: missing or malformed input data",
+        "reasoning": "The implementation checks for the presence of the 'TIPC_NLA_LINK' attribute in the 'attrs' array. If it is missing, the function returns an error. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid attribute parsing — protects against: invalid or corrupted attribute data",
+        "reasoning": "The implementation calls 'nla_parse_nested' to parse the nested attributes and checks the return value. If parsing fails, the function returns the error. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate presence of required nested attributes — protects against: missing or malformed nested attributes",
+        "reasoning": "The implementation does not explicitly check for the presence of required nested attributes (e.g., TIPC_NLA_LINK_DEST, TIPC_NLA_LINK_NAME) before accessing them. It directly dereferences them, which could lead to undefined behavior if they are missing.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound string copy to buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation uses 'nla_strlcpy', which is a bounded string copy function. It limits the copy to the size of the destination buffer, preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

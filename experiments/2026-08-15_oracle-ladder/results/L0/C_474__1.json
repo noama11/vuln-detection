@@ -1,0 +1,48 @@
+{
+  "case_id": "C_474__1",
+  "sample_id": "D/C/474",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "aquynh/capstone",
+  "cve_id": "CVE-2017-6952",
+  "cve_summary": "Integer overflow in the cs_winkernel_malloc function in winkernel_mm.c in Capstone 3.0.4 and earlier allows attackers to cause a denial of service (heap-based buffer overflow in a kernel driver) or possibly have unspecified other impact via a large value.",
+  "changed_file": "windows/winkernel_mm.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates memory of a specified size from the NonPagedPool in a Windows kernel environment.  \n *  \n * Parameters:  \n * size (size_t): The number of bytes to allocate. Must be greater than zero.  \n *  \n * Returns:  \n * void*: A pointer to the allocated memory block on success, or NULL on failure.  \n *  \n * Logic:\n * The function first checks that the requested size is non-zero to prevent wasting memory. It then\n * calculates the total size needed for the allocation, including a header. Memory is allocated\n * using ExAllocatePoolWithTag, and if successful, the size is stored in the block header. Finally,\n * it returns a pointer to the data portion of the allocated block.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "void * CAPSTONE_API cs_winkernel_malloc(size_t size)\r\n{\r\n\t// Disallow zero length allocation because they waste pool header space and,\r\n\t// in many cases, indicate a potential validation issue in the calling code.\r\n\tNT_ASSERT(size);\r\n\r\n\t// FP; a use of NonPagedPool is required for Windows 7 support\r\n#pragma prefast(suppress : 30030)\t\t// Allocating executable POOL_TYPE memory\r\n\tsize_t number_of_bytes = 0;\r\n\tCS_WINKERNEL_MEMBLOCK *block = NULL;\r\n\t// A specially crafted size value can trigger the overflow.\r\n\t// If the sum in a value that overflows or underflows the capacity of the type,\r\n\t// the function returns NULL.\r\n\tif (!NT_SUCCESS(RtlSizeTAdd(size, sizeof(CS_WINKERNEL_MEMBLOCK), &number_of_bytes))) {\r\n\t\treturn NULL;\r\n\t}\r\n\tblock = (CS_WINKERNEL_MEMBLOCK *)ExAllocatePoolWithTag(\r\n\t\t\tNonPagedPool, number_of_bytes, CS_WINKERNEL_POOL_TAG);\r\n\tif (!block) {\r\n\t\treturn NULL;\r\n\t}\r\n\tblock->size = size;\r\n\r\n\treturn block->data;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a check for integer overflow using RtlSizeTAdd, which the reference implementation lacks. This check is crucial for preventing potential memory safety issues, such as buffer overflows, when the size parameter is large enough to cause an overflow. Since this is a Windows kernel function and the input size can be attacker-controlled, the absence of this check in the reference implementation introduces a security-relevant vulnerability.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both validate the size, check for overflow using RtlSizeTAdd, allocate memory with ExAllocatePoolWithTag, and return the data pointer. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

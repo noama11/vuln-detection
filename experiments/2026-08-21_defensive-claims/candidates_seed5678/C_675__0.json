@@ -1,0 +1,31 @@
+{
+  "case_id": "C_675__0",
+  "implementation": "#include <linux/slab.h>\n#include <linux/netlink.h>\n\nint create_hardware_radio(struct sk_buff *msg, struct genl_info *info) {\n    struct hwsim_new_radio_params params = {0};\n    int ret = 0;\n\n    // Initialize default values\n    params.regulatory_strict = false;\n    params.no_p2p = false;\n    params.channels = 0;\n    params.name = NULL;\n\n    // Extract attributes from the netlink message\n    if (info->attrs[ATTR_RADIO_REGULATORY_STRICT]) {\n        params.regulatory_strict = true;\n    }\n\n    if (info->attrs[ATTR_RADIO_NO_P2P]) {\n        params.no_p2p = true;\n    }\n\n    if (info->attrs[ATTR_RADIO_CHANNELS]) {\n        params.channels = nla_get_u32(info->attrs[ATTR_RADIO_CHANNELS]);\n        if (params.channels <= 0) {\n            return -EINVAL;\n        }\n    }\n\n    if (info->attrs[ATTR_RADIO_NAME]) {\n        size_t name_len = strlen(nla_data(info->attrs[ATTR_RADIO_NAME])) + 1;\n        params.name = kmalloc(name_len, GFP_KERNEL);\n        if (!params.name) {\n            return -ENOMEM;\n        }\n        strncpy(params.name, nla_data(info->attrs[ATTR_RADIO_NAME]), name_len - 1);\n        params.name[name_len - 1] = '\\0';\n    }\n\n    if (info->attrs[ATTR_RADIO_REGDOMAIN_IDX]) {\n        int regdomain_idx = nla_get_u32(info->attrs[ATTR_RADIO_REGDOMAIN_IDX]);\n        if (regdomain_idx < 0 || regdomain_idx >= MAX_REGDOMAINS) {\n            ret = -EINVAL;\n            goto error;\n        }\n        params.regdomain_idx = regdomain_idx;\n    }\n\n    // Create the radio\n    ret = mac80211_hwsim_new_radio(&params);\n\n    error:\n    if (params.name) {\n        kfree(params.name);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "null pointer dereference when accessing attributes in the netlink message"
+    },
+    {
+      "step": "validate channel count is positive",
+      "protects_against": "invalid or negative channel count values"
+    },
+    {
+      "step": "allocate memory for radio name with error checking",
+      "protects_against": "out-of-memory conditions when allocating for the radio name"
+    },
+    {
+      "step": "bound and validate regdomain index",
+      "protects_against": "out-of-bounds index for the regdomain array"
+    },
+    {
+      "step": "ensure allocated memory is freed on error paths",
+      "protects_against": "memory leaks when an error occurs during radio creation"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

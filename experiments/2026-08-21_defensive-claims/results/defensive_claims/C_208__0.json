@@ -1,0 +1,130 @@
+{
+  "case_id": "C_208__0",
+  "sample_id": "D/C/208",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-5697",
+  "cve_summary": "The get_bitmap_file function in drivers/md/md.c in the Linux kernel before 4.1.6 does not initialize a certain bitmap data structure, which allows local users to obtain sensitive information from kernel memory via a GET_BITMAP_FILE ioctl call.",
+  "changed_file": "drivers/md/md.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves the bitmap file associated with a given mddev structure and copies  \n * it to user space.  \n *  \n * Parameters:  \n * mddev (struct mddev *): Pointer to the mddev structure containing bitmap info.  \n * arg (void __user *): Pointer to user space where the bitmap file information will be copied.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * Allocates memory for a bitmap file structure. If the bitmap is disabled, it sets  \n * the pathname to an empty string. If the bitmap is enabled, it retrieves the file  \n * path and copies it to the structure. Finally, it attempts to copy the structure  \n * to user space and cleans up allocated memory before returning the result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_bitmap_file(struct mddev *mddev, void __user *arg) {\n    struct bitmap_file *bf = NULL;\n    int ret = -ENOMEM;\n\n    bf = kmalloc(sizeof(*bf), GFP_KERNEL);\n    if (!bf)\n        goto out;\n\n    if (!mddev->bitmap)\n        bf->pathname[0] = '\\0';\n    else {\n        const char *path = mddev->bitmap->filename;\n        if (!path || strlen(path) >= BITMAP_FILE_PATH_LEN) {\n            ret = -EINVAL;\n            goto out;\n        }\n        strncpy(bf->pathname, path, BITMAP_FILE_PATH_LEN - 1);\n        bf->pathname[BITMAP_FILE_PATH_LEN - 1] = '\\0';\n    }\n\n    if (copy_to_user(arg, bf, sizeof(*bf))) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    ret = 0;\n\nout:\n    kfree(bf);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "validate bitmap filename length before copying",
+      "protects_against": "buffer overflow due to long filename"
+    },
+    {
+      "step": "null-terminate the filename string",
+      "protects_against": "string operations on unterminated strings"
+    },
+    {
+      "step": "check for copy_to_user failure",
+      "protects_against": "invalid user space pointer"
+    },
+    {
+      "step": "free allocated memory on all exit paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if 'file' is NULL after calling kmalloc, and returns -ENOMEM if the allocation fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate bitmap filename length before copying — protects against: buffer overflow due to long filename",
+        "reasoning": "The implementation uses 'file_path' which is expected to handle the buffer size, but there is no explicit validation of the filename length before copying.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "null-terminate the filename string — protects against: string operations on unterminated strings",
+        "reasoning": "If the bitmap is disabled, the implementation null-terminates the string. However, if the bitmap is enabled, it relies on 'file_path' to ensure the string is null-terminated, which may not be explicitly guaranteed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for copy_to_user failure — protects against: invalid user space pointer",
+        "reasoning": "The implementation checks the return value of 'copy_to_user' and sets 'err' to -EFAULT if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation calls 'kfree(file)' before returning, ensuring the allocated memory is freed regardless of the success or failure of the operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if 'file' is NULL after calling kzalloc, and returns -ENOMEM if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate bitmap filename length before copying — protects against: buffer overflow due to long filename",
+        "reasoning": "The implementation uses 'file_path' which is expected to handle the buffer size, and 'memmove' with a calculated size. However, there is no explicit validation of the filename length before copying.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "null-terminate the filename string — protects against: string operations on unterminated strings",
+        "reasoning": "The implementation sets 'file->pathname[0] = '\\0'' when the bitmap is disabled, ensuring a null-terminated string. When enabled, 'file_path' is expected to handle the null-termination, but it is not explicitly verified.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for copy_to_user failure — protects against: invalid user space pointer",
+        "reasoning": "The implementation checks the return value of 'copy_to_user' and sets 'err = -EFAULT' if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation calls 'kfree(file)' before returning, regardless of the success or failure of the operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

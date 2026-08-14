@@ -1,0 +1,36 @@
+{
+  "case_id": "C_84__0",
+  "sample_id": "D/C/84",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-2128",
+  "cve_summary": "The tcp_read_sock function in net/ipv4/tcp.c in the Linux kernel before 2.6.34 does not properly manage skb consumption, which allows local users to cause a denial of service (system crash) via a crafted splice system call for a TCP socket.",
+  "commit_message": "net: Fix oops from tcp_collapse() when using splice()\n\ntcp_read_sock() can have a eat skbs without immediately advancing copied_seq.\nThis can cause a panic in tcp_collapse() if it is called as a result\nof the recv_actor dropping the socket lock.\n\nA userspace program that splices data from a socket to either another\nsocket or to a file can trigger this bug.\n\nSigned-off-by: Steven J. Magnani <steve@digidescorp.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/ipv4/tcp.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a TCP socket into a specified read descriptor using a provided actor function.\n\nParameters: \nsk (struct sock *): Pointer to the socket structure representing the TCP connection.\ndesc (read_descriptor_t *): Pointer to the read descriptor where data will be stored.\nrecv_actor (sk_read_actor_t): Function pointer that processes the received data.\n\nReturns: \nint: The number of bytes copied to the read descriptor, or a negative error code if an error occurs.\n\nLogic: \nThe function first checks if the socket is in the TCP_LISTEN state, returning an error if so. It then enters a loop to retrieve TCP segments (sk_buffs) and processes them based on their offsets and the presence of urgent data. The recv_actor is called to handle the data, and the sequence number is updated accordingly. The function also manages the cleanup of read buffers and adjusts the TCP receive space. Finally, it returns the total number of bytes copied.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1318,
+    1381
+  ],
+  "vulnerable_line_range": [
+    1318,
+    1380
+  ],
+  "vulnerable_snippet": "int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,\r\n\t\t  sk_read_actor_t recv_actor)\r\n{\r\n\tstruct sk_buff *skb;\r\n\tstruct tcp_sock *tp = tcp_sk(sk);\r\n\tu32 seq = tp->copied_seq;\r\n\tu32 offset;\r\n\tint copied = 0;\r\n\r\n\tif (sk->sk_state == TCP_LISTEN)\r\n\t\treturn -ENOTCONN;\r\n\twhile ((skb = tcp_recv_skb(sk, seq, &offset)) != NULL) {\r\n\t\tif (offset < skb->len) {\r\n\t\t\tint used;\r\n\t\t\tsize_t len;\r\n\r\n\t\t\tlen = skb->len - offset;\r\n\t\t\t/* Stop reading if we hit a patch of urgent data */\r\n\t\t\tif (tp->urg_data) {\r\n\t\t\t\tu32 urg_offset = tp->urg_seq - seq;\r\n\t\t\t\tif (urg_offset < len)\r\n\t\t\t\t\tlen = urg_offset;\r\n\t\t\t\tif (!len)\r\n\t\t\t\t\tbreak;\r\n\t\t\t}\r\n\t\t\tused = recv_actor(desc, skb, offset, len);\r\n\t\t\tif (used < 0) {\r\n\t\t\t\tif (!copied)\r\n\t\t\t\t\tcopied = used;\r\n\t\t\t\tbreak;\r\n\t\t\t} else if (used <= len) {\r\n\t\t\t\tseq += used;\r\n\t\t\t\tcopied += used;\r\n\t\t\t\toffset += used;\r\n\t\t\t}\r\n\t\t\t/*\r\n\t\t\t * If recv_actor drops the lock (e.g. TCP splice\r\n\t\t\t * receive) the skb pointer might be invalid when\r\n\t\t\t * getting here: tcp_collapse might have deleted it\r\n\t\t\t * while aggregating skbs from the socket queue.\r\n\t\t\t */\r\n\t\t\tskb = tcp_recv_skb(sk, seq-1, &offset);\r\n\t\t\tif (!skb || (offset+1 != skb->len))\r\n\t\t\t\tbreak;\r\n\t\t}\r\n\t\tif (tcp_hdr(skb)->fin) {\r\n\t\t\tsk_eat_skb(sk, skb, 0);\r\n\t\t\t++seq;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\tsk_eat_skb(sk, skb, 0);\r\n\t\tif (!desc->count)\r\n\t\t\tbreak;\r\n\t}\r\n\ttp->copied_seq = seq;\r\n\r\n\ttcp_rcv_space_adjust(sk);\r\n\r\n\t/* Clean up data we have read: This will do ACK frames. */\r\n\tif (copied > 0)\r\n\t\ttcp_cleanup_rbuf(sk, copied);\r\n\treturn copied;\r\n}",
+  "fixed_line_range": [
+    1318,
+    1381
+  ],
+  "fixed_snippet": "int tcp_read_sock(struct sock *sk, read_descriptor_t *desc,\r\n\t\t  sk_read_actor_t recv_actor)\r\n{\r\n\tstruct sk_buff *skb;\r\n\tstruct tcp_sock *tp = tcp_sk(sk);\r\n\tu32 seq = tp->copied_seq;\r\n\tu32 offset;\r\n\tint copied = 0;\r\n\r\n\tif (sk->sk_state == TCP_LISTEN)\r\n\t\treturn -ENOTCONN;\r\n\twhile ((skb = tcp_recv_skb(sk, seq, &offset)) != NULL) {\r\n\t\tif (offset < skb->len) {\r\n\t\t\tint used;\r\n\t\t\tsize_t len;\r\n\r\n\t\t\tlen = skb->len - offset;\r\n\t\t\t/* Stop reading if we hit a patch of urgent data */\r\n\t\t\tif (tp->urg_data) {\r\n\t\t\t\tu32 urg_offset = tp->urg_seq - seq;\r\n\t\t\t\tif (urg_offset < len)\r\n\t\t\t\t\tlen = urg_offset;\r\n\t\t\t\tif (!len)\r\n\t\t\t\t\tbreak;\r\n\t\t\t}\r\n\t\t\tused = recv_actor(desc, skb, offset, len);\r\n\t\t\tif (used < 0) {\r\n\t\t\t\tif (!copied)\r\n\t\t\t\t\tcopied = used;\r\n\t\t\t\tbreak;\r\n\t\t\t} else if (used <= len) {\r\n\t\t\t\tseq += used;\r\n\t\t\t\tcopied += used;\r\n\t\t\t\toffset += used;\r\n\t\t\t}\r\n\t\t\t/*\r\n\t\t\t * If recv_actor drops the lock (e.g. TCP splice\r\n\t\t\t * receive) the skb pointer might be invalid when\r\n\t\t\t * getting here: tcp_collapse might have deleted it\r\n\t\t\t * while aggregating skbs from the socket queue.\r\n\t\t\t */\r\n\t\t\tskb = tcp_recv_skb(sk, seq-1, &offset);\r\n\t\t\tif (!skb || (offset+1 != skb->len))\r\n\t\t\t\tbreak;\r\n\t\t}\r\n\t\tif (tcp_hdr(skb)->fin) {\r\n\t\t\tsk_eat_skb(sk, skb, 0);\r\n\t\t\t++seq;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\tsk_eat_skb(sk, skb, 0);\r\n\t\tif (!desc->count)\r\n\t\t\tbreak;\r\n\t\ttp->copied_seq = seq;\r\n\t}\r\n\ttp->copied_seq = seq;\r\n\r\n\ttcp_rcv_space_adjust(sk);\r\n\r\n\t/* Clean up data we have read: This will do ACK frames. */\r\n\tif (copied > 0)\r\n\t\ttcp_cleanup_rbuf(sk, copied);\r\n\treturn copied;\r\n}",
+  "func_name": "tcp_read_sock",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_184__1",
+  "sample_id": "D/C/184",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "file/file",
+  "cve_id": "CVE-2014-0237",
+  "cve_summary": "The cdf_unpack_summary_info function in cdf.c in the Fileinfo component in PHP before 5.4.29 and 5.5.x before 5.5.13 allows remote attackers to cause a denial of service (performance degradation) by triggering many file_printf calls.",
+  "changed_file": "src/cdf.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Unpacks summary information from a CDF stream and populates the provided  \n * structures with the extracted data.  \n *  \n * Parameters:  \n * sst (const cdf_stream_t *): Pointer to the CDF stream from which to unpack data.  \n * h (const cdf_header_t *): Pointer to the CDF header containing metadata.  \n * ssi (cdf_summary_info_header_t *): Pointer to the structure to fill with summary info.  \n * info (cdf_property_info_t **): Pointer to an array of property info structures to be populated.  \n * count (size_t *): Pointer to a variable to store the count of properties read.  \n *  \n * Returns:  \n * int: Returns 0 on success, or -1 on failure indicating an error occurred during unpacking.  \n *  \n * Logic:\n * The function checks the validity of stream offsets, retrieves summary information, and populates\n * the provided structures with the byte order, OS version, OS type, class, and property information\n * count. It also reads property information from the stream.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int unpack_summary_info(const cdf_stream_t *s, const cdf_header_t *h, cdf_summary_info_header_t *si, cdf_property_info_t **info, size_t *count) {\n    int result = -1;\n    size_t i = 0;\n\n    if (!s || !h || !si || !info || !count) {\n        return -1;\n    }\n\n    if (h->si_offset >= s->size || h->si_size > s->size - h->si_offset) {\n        return -1;\n    }\n\n    if (h->si_size < sizeof(cdf_summary_info_header_t)) {\n        return -1;\n    }\n\n    if (cdf_stream_read(s, h->si_offset, si, sizeof(cdf_summary_info_header_t)) != sizeof(cdf_summary_info_header_t)) {\n        return -1;\n    }\n\n    if (si->property_count > 0) {\n        *info = (cdf_property_info_t *)malloc(si->property_count * sizeof(cdf_property_info_t));\n        if (!*info) {\n            return -1;\n        }\n\n        for (i = 0; i < si->property_count; i++) {\n            size_t prop_offset = h->si_offset + sizeof(cdf_summary_info_header_t) + i * sizeof(cdf_property_info_t);\n            if (prop_offset >= s->size) {\n                free(*info);\n                *info = NULL;\n                return -1;\n            }\n\n            if (cdf_stream_read(s, prop_offset, &(*info)[i], sizeof(cdf_property_info_t)) != sizeof(cdf_property_info_t)) {\n                for (size_t j = 0; j <= i; j++) {\n                    free((*info)[j].value);\n                }\n                free(*info);\n                *info = NULL;\n                return -1;\n            }\n        }\n    }\n\n    *count = si->property_count;\n    result = 0;\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate stream offsets and sizes",
+      "protects_against": "buffer overflow and invalid memory access"
+    },
+    {
+      "step": "check if property count is valid before allocating memory",
+      "protects_against": "memory allocation failure and invalid memory access"
+    },
+    {
+      "step": "validate property offset before reading",
+      "protects_against": "buffer overflow and invalid memory access"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function may fail if any of the pointers are null, as it dereferences them (e.g., sst->sst_tab).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate stream offsets and sizes — protects against: buffer overflow and invalid memory access",
+        "reasoning": "The implementation calls `cdf_check_stream_offset` to validate stream offsets for `si` and `sd`, which protects against buffer overflow and invalid memory access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if property count is valid before allocating memory — protects against: memory allocation failure and invalid memory access",
+        "reasoning": "The implementation uses a loop limit (`CDF_LOOP_LIMIT`) to prevent excessive iteration, which indirectly prevents invalid memory access. However, it does not explicitly validate the property count before allocating memory.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate property offset before reading — protects against: buffer overflow and invalid memory access",
+        "reasoning": "The implementation does not perform any validation of property offsets before reading them.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not allocate any memory for the property array or other structures, so there is no allocated memory to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the function may fail if any of the pointers are null, as it dereferences them without validation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate stream offsets and sizes — protects against: buffer overflow and invalid memory access",
+        "reasoning": "The implementation calls `cdf_check_stream_offset` to validate the stream offsets for `si` and `sd`, which ensures the offsets are valid before accessing the data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if property count is valid before allocating memory — protects against: memory allocation failure and invalid memory access",
+        "reasoning": "The implementation does not explicitly check the validity of the property count before allocating memory. It calls `cdf_read_property_info`, which may handle this internally, but the implementation does not perform the check directly.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate property offset before reading — protects against: buffer overflow and invalid memory access",
+        "reasoning": "The implementation passes the property offset to `cdf_read_property_info`, but it does not explicitly validate the offset before reading. The validation may be handled internally by the helper function, but the implementation does not perform it directly.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not allocate memory directly, and the only allocation is handled by `cdf_read_property_info`. If this function allocates memory, it is unclear whether it frees it on error. The implementation does not explicitly free any memory on error paths.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

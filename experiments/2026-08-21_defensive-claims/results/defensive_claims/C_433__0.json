@@ -1,0 +1,194 @@
+{
+  "case_id": "C_433__0",
+  "sample_id": "D/C/433",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "blueness/sthttpd",
+  "cve_id": "CVE-2017-10671",
+  "cve_summary": "Heap-based Buffer Overflow in the de_dotdot function in libhttpd.c in sthttpd before 2.27.1 allows remote attackers to cause a denial of service (daemon crash) or possibly have unspecified other impact via a crafted filename.",
+  "changed_file": "src/libhttpd.c",
+  "docstring": "\"\"\"\nSummary: \nThis function normalizes a file path by collapsing redundant directory indicators.\n\nParameters: \nfile (char*): A pointer to the file path string to be normalized.\n\nReturns: \nNone\n\nLogic: \nThe function performs several operations on the input file path:\n1. It collapses multiple consecutive slashes ('//') into a single slash.\n2. It removes any leading './' and occurrences of '/.' within the path.\n3. It alternates between removing leading '../' and resolving any instances of 'xxx/../' by removing the preceding directory.\n4. Finally, it eliminates any trailing '/..' from the end of the path, ensuring that the resulting path is simplified and valid.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\nvoid normalize_path(char* file) {\n    if (file == NULL) {\n        return;\n    }\n\n    size_t len = strlen(file);\n    if (len == 0) {\n        return;\n    }\n\n    // Allocate a buffer to hold the normalized path\n    char* normalized = (char*)malloc(len + 1);\n    if (normalized == NULL) {\n        return; // Memory allocation failed\n    }\n\n    char* dest = normalized;\n    const char* src = file;\n\n    // Skip leading './'\n    while (*src == '.' && src[1] == '/') {\n        src += 2;\n    }\n\n    // Process the rest of the path\n    while (*src != '\\0') {\n        if (*src == '/') {\n            // Skip consecutive slashes\n            while (*src == '/') {\n                src++;\n            }\n            // Add a single slash to the result\n            *dest++ = '/';\n        } else if (*src == '.' && src[1] == '.' && (src[2] == '/' || src[2] == '\\0')) {\n            // Handle '..' (but don't go beyond the start of the path)\n            if (dest > normalized + 1 && *(dest - 2) == '/') {\n                // Remove the last directory from the result\n                while (dest > normalized && *(dest - 1) != '/') {\n                    dest--;\n                }\n            }\n            src += 3; // Skip '../'\n        } else {\n            // Copy normal character\n            *dest++ = *src++;\n        }\n    }\n\n    // Eliminate trailing '/..'\n    if (dest > normalized && *(dest - 1) == '/' && dest - normalized >= 3 && *(dest - 3) == '.' && *(dest - 2) == '.' && *(dest - 1) == '/') {\n        dest -= 3;\n    }\n\n    // Null-terminate the normalized path\n    *dest = '\\0';\n\n    // Copy the normalized path back to the original buffer\n    strcpy(file, normalized);\n\n    // Free the allocated memory\n    free(normalized);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for empty string",
+      "protects_against": "processing empty string"
+    },
+    {
+      "step": "allocate memory for normalized path",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "bound consecutive slashes",
+      "protects_against": "infinite loop or buffer overflow from multiple consecutive slashes"
+    },
+    {
+      "step": "handle leading './'",
+      "protects_against": "incorrect path normalization with leading './'"
+    },
+    {
+      "step": "handle '../' and resolve preceding directories",
+      "protects_against": "incorrect path normalization with '../'"
+    },
+    {
+      "step": "eliminate trailing '/..'",
+      "protects_against": "incorrect path normalization with trailing '/..'"
+    },
+    {
+      "step": "null-terminate the normalized path",
+      "protects_against": "string not being null-terminated"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 9,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 3,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `strstr`, `strcpy`, and `memmove` on the input `file` pointer without checking if it is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for empty string — protects against: processing empty string",
+        "reasoning": "The implementation does not check if the input string is empty before processing it. However, the logic is robust enough to handle empty strings gracefully (e.g., `strlen` would be 0, and loops would not execute).",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for normalized path — protects against: memory allocation failure",
+        "reasoning": "The implementation does not allocate any memory. It modifies the input string in place using `strcpy` and `memmove`, so there is no need to allocate memory.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound consecutive slashes — protects against: infinite loop or buffer overflow from multiple consecutive slashes",
+        "reasoning": "The implementation uses a loop to collapse multiple consecutive slashes by overwriting the string in place. It does not bound the number of slashes processed, but the loop is bounded by the string length and will terminate.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle leading './' — protects against: incorrect path normalization with leading './'",
+        "reasoning": "The implementation includes a loop that removes leading `./` by using `memmove` to shift the string left. This directly handles the case of leading `./`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle '../' and resolve preceding directories — protects against: incorrect path normalization with '../'",
+        "reasoning": "The implementation includes a loop that removes leading `../` and resolves `xxx/../` by overwriting the string in place. This directly handles the case of `../` and resolves the preceding directory.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "eliminate trailing '/..' — protects against: incorrect path normalization with trailing '/..'",
+        "reasoning": "The implementation includes a loop that removes trailing `/..` by overwriting the string in place. This directly handles the case of trailing `/..`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "null-terminate the normalized path — protects against: string not being null-terminated",
+        "reasoning": "The implementation uses `strcpy` and `memmove`, which preserve the null-termination of the string. Additionally, the final loop that removes trailing `/..` sets `*cp2 = '\\0'`, ensuring the string is null-terminated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does not allocate any memory, so there is no need to free it.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses string functions like `strstr`, `strcpy`, and `strlen` which would cause a null pointer dereference if `file` is null. There is no check for a null pointer.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for empty string — protects against: processing empty string",
+        "reasoning": "The implementation processes the input string without checking if it is empty. There is no explicit check for an empty string.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "allocate memory for normalized path — protects against: memory allocation failure",
+        "reasoning": "The implementation modifies the input string in-place and does not allocate any additional memory for the normalized path.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound consecutive slashes — protects against: infinite loop or buffer overflow from multiple consecutive slashes",
+        "reasoning": "The implementation uses a loop to collapse multiple consecutive slashes into a single slash. It does not have a bound on the number of slashes, but the loop is controlled by the presence of slashes in the string.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle leading './' — protects against: incorrect path normalization with leading './'",
+        "reasoning": "The implementation includes a loop to remove leading './' from the path.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle '../' and resolve preceding directories — protects against: incorrect path normalization with '../'",
+        "reasoning": "The implementation includes logic to handle leading '../' and resolve instances of 'xxx/../' by removing the preceding directory.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "eliminate trailing '/..' — protects against: incorrect path normalization with trailing '/..'",
+        "reasoning": "The implementation includes logic to eliminate any trailing '/..' from the end of the path.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "null-terminate the normalized path — protects against: string not being null-terminated",
+        "reasoning": "The implementation uses `strcpy`, `memmove`, and string manipulation functions that ensure the string is null-terminated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does not allocate any memory, so there is no need to free it.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

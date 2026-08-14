@@ -1,0 +1,34 @@
+{
+  "case_id": "C_820__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int dvb_diseqc_send_master_cmd(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint rc;\n\tint i;\n\n\tif (d->msg[0] < 0x20 || d->msg[0] > 0x2f)\n\t\treturn -EINVAL;\n\n\tif (d->msg[1] < 0x01 || d->msg[1] > 0x0f)\n\t\treturn -EINVAL;\n\n\td->msg[4] = 0x10;\n\td->msg[5] = 0x00;\n\td->msg[6] = 0x00;\n\td->msg[7] = 0x00;\n\td->msg[8] = 0x00;\n\td->msg[9] = 0x00;\n\n\tfor (i = 0; i < 3; i++) {\n\t\trc = dvb_frontend_set_tone(fe, DVB_FRONTEND_TONE_OFF);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\trc = dvb_frontend_set_voltage(fe, SEC_VOLTAGE_13);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\tmsleep(100);\n\t\trc = dvb_frontend_set_tone(fe, DVB_FRONTEND_TONE_ON);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\trc = dvb_frontend_set_voltage(fe, SEC_VOLTAGE_18);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\tmsleep(100);\n\t\trc = dvb_frontend_set_tone(fe, DVB_FRONTEND_TONE_OFF);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\trc = dvb_frontend_set_voltage(fe, SEC_VOLTAGE_13);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\tmsleep(100);\n\t\trc = dvb_frontend_send_diseqc_msg(fe, d->msg, 10);\n\t\tif (rc)\n\t\t\treturn rc;\n\t\tmsleep(200);\n\t\tif (rc >= 0)\n\t\t\treturn 0;\n\t}\n\n\treturn rc;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int dvb_diseqc_send_master_cmd(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint i;\n\tstruct dvb_diseqc_dev *diseqc = fe->diseqc;\n\n\t/* Validate message length */\n\tif (d->msg[0] < 1 || d->msg[0] > 6) {\n\t\tdprintk(1, \"diseqc: invalid message length %d\\n\", d->msg[0]);\n\t\treturn -EINVAL;\n\t}\n\n\td->msg[0] = ((d->msg[0] - 1) << 2) | (d->msg[0] & 0x03);\n\td->msg[1] = 0x30;\n\n\tif (fe->ops.set_tone)\n\t\tfe->ops.set_tone(fe, SEC_TONE_OFF);\n\n\tif (fe->ops.set_voltage)\n\t\tfe->ops.set_voltage(fe, SEC_VOLTAGE_13);\n\n\tmsleep(150);\n\n\tfor (i = 0; i < 50; i++) {\n\t\tif (fe->ops.diseqc_master_cmd)\n\t\t\tbreak;\n\t\tmsleep(10);\n\t}\n\n\tif (i == 50) {\n\t\tdprintk(1, \"diseqc: timeout waiting for LNB to be ready\\n\");\n\t\treturn -ETIMEDOUT;\n\t}\n\n\tif (fe->ops.diseqc_master_cmd(fe, d) < 0)\n\t\treturn -EIO;\n\n\tfor (i = 0; i < 50; i++) {\n\t\tif (fe->ops.diseqc_rcv_slave_reply)\n\t\t\tbreak;\n\t\tmsleep(10);\n\t}\n\n\tif (i == 50) {\n\t\tdprintk(1, \"diseqc: timeout waiting for reply\\n\");\n\t\treturn -ETIMEDOUT;\n\t}\n\n\tif (fe->ops.diseqc_rcv_slave_reply(fe, d) < 0)\n\t\treturn -EIO;\n\n\treturn 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int dvb_diseqc_send_master_msg(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint i, result = 0;\n\n\tif (d->msg[0] < 4 || d->msg[0] > 6) {\n\t\tdprintk(1, \"invalid DiSEqC message length (0x%02x)\\n\", d->msg[0]);\n\t\treturn -EINVAL;\n\t}\n\n\tif (d->msg[1] & 0x01) {\n\t\td->msg[1] &= ~0x01;\n\t\td->msg[1] |= (d->msg[0] & 0x03);\n\t}\n\n\td->msg[1] |= (d->msg[0] & 0x03);\n\n\tif (d->msg[0] > 6)\n\t\td->msg[0] = 6;\n\n\tfor (i = 0; i < d->msg[0]; i++)\n\t\td->msg[i] &= 0x7f;\n\n\td->msg[0]--;\n\n\tif (d->msg[0] < 3) {\n\t\td->msg[0] = 3;\n\t\td->msg[1] |= 0x04;\n\t}\n\n\tif (d->msg[1] & 0x01)\n\t\td->msg[1] |= 0x01;\n\n\tif (fe->ops.diseqc_send_master_cmd) {\n\t\tresult = fe->ops.diseqc_send_master_cmd(fe, d);\n\t\tif (result < 0)\n\t\t\treturn result;\n\t}\n\n\treturn result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int dvb_frontend_send_diseqc_msg(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint i;\n\tint rc = 0;\n\n\tif (d->msg[0] > 6) {\n\t\trc = -EINVAL;\n\t\tgoto error;\n\t}\n\n\tif (dvb_debug) {\n\t\tprintk(KERN_DEBUG \"DiSEqC: sending master command\\n\");\n\t\tfor (i = 0; i < d->msg[0] + 1; i++)\n\t\t\tprintk(KERN_DEBUG \"byte %d: 0x%02x\\n\", i, d->msg[i]);\n\t}\n\n\td->msg[0]++;\n\td->msg[1] &= 0x0f;\n\n\tif (d->msg[1] & 0x08)\n\t\td->msg[1] = (d->msg[1] & ~0x08) | 0x10;\n\n\td->msg[1] &= 0x1f;\n\n\td->msg[1] |= 0x20;\n\n\td->msg[1] |= 0x80;\n\n\td->msg[0] = 6;\n\n\tfor (i = 0; i < 100; i++) {\n\t\tif (fe->ops->set_tone && fe->ops->set_voltage)\n\t\t\tbreak;\n\t\tudelay(10);\n\t}\n\n\tudelay(1000);\n\n\trc = fe->ops->send_diseqc_master_cmd(fe, d);\n\n\tudelay(1000);\n\n\treturn rc;\n\nerror:\n\treturn rc;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int dvb_diseqc_send_master_cmd(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint rc;\n\n\tif (d->msg_len < 1 || d->msg_len > 6) {\n\t\tdvb_frontend_log_error(fe, \"DiSEqC message length invalid: %d\", d->msg_len);\n\t\treturn -EINVAL;\n\t}\n\n\tif (dvb_frontend_debug)\n\t\tdvb_frontend_log_debug(fe, \"DiSEqC master cmd: %*ph\", d->msg_len, d->msg);\n\n\td->cmd_len = d->msg_len;\n\td->tx_toneBURST = DISEQC_BURST_A;\n\n\trc = dvb_frontend_wait_for_lnb(fe);\n\tif (rc)\n\t\treturn rc;\n\n\tmsleep(20);\n\n\trc = dvb_frontend_exec_cmd(fe, d);\n\tif (rc)\n\t\treturn rc;\n\n\tif (d->tx_toneBURST == DISEQC_BURST_A)\n\t\tmsleep(50);\n\telse if (d->tx_toneBURST == DISEQC_BURST_T)\n\t\tmsleep(100);\n\n\treturn 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

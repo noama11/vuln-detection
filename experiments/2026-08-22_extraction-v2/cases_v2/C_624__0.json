@@ -1,0 +1,36 @@
+{
+  "case_id": "C_624__0",
+  "sample_id": "D/C/624",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "xkbcommon/libxkbcommon",
+  "cve_id": "CVE-2018-15853",
+  "cve_summary": "Endless recursion exists in xkbcomp/expr.c in xkbcommon and libxkbcommon before 0.8.1, which could be used by local attackers to crash xkbcommon users by supplying a crafted keymap file that triggers boolean negation.",
+  "commit_message": "xkbcomp: fix stack overflow when evaluating boolean negation\n\nThe expression evaluator would go into an infinite recursion when\nevaluating something like this as a boolean: `!True`. Instead of\nrecursing to just `True` and negating, it recursed to `!True` itself\nagain.\n\nBug inherited from xkbcomp.\n\nCaught with the afl fuzzer.\n\nSigned-off-by: Ran Benita <ran234@gmail.com>",
+  "changed_file": "src/xkbcomp/expr.c",
+  "docstring": "\"\"\"\nSummary: \nResolves a boolean expression based on its type and value.\n\nParameters: \nctx (struct xkb_context *): The context for logging errors.\nexpr (const ExprDef *): The expression definition to resolve.\nset_rtrn (bool *): Pointer to store the resolved boolean value.\n\nReturns: \nbool: Returns true if the expression was successfully resolved to a boolean value, false otherwise.\n\nLogic: \nThe function evaluates the provided expression based on its operator type. It handles various cases including constant values, identifiers, field references, and unary operations. If the expression is a boolean constant, it checks the type and sets the output accordingly. For identifiers, it checks for known boolean representations (\"true\", \"false\", etc.). It logs errors for unsupported operations or unknown identifiers. The function returns false for unsupported operations or if the expression cannot be resolved.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    123,
+    190
+  ],
+  "vulnerable_line_range": [
+    123,
+    190
+  ],
+  "vulnerable_snippet": "bool\r\nExprResolveBoolean(struct xkb_context *ctx, const ExprDef *expr,\r\n                   bool *set_rtrn)\r\n{\r\n    bool ok = false;\r\n    const char *ident;\r\n\r\n    switch (expr->expr.op) {\r\n    case EXPR_VALUE:\r\n        if (expr->expr.value_type != EXPR_TYPE_BOOLEAN) {\r\n            log_err(ctx,\r\n                    \"Found constant of type %s where boolean was expected\\n\",\r\n                    expr_value_type_to_string(expr->expr.value_type));\r\n            return false;\r\n        }\r\n        *set_rtrn = expr->boolean.set;\r\n        return true;\r\n\r\n    case EXPR_IDENT:\r\n        ident = xkb_atom_text(ctx, expr->ident.ident);\r\n        if (ident) {\r\n            if (istreq(ident, \"true\") ||\r\n                istreq(ident, \"yes\") ||\r\n                istreq(ident, \"on\")) {\r\n                *set_rtrn = true;\r\n                return true;\r\n            }\r\n            else if (istreq(ident, \"false\") ||\r\n                     istreq(ident, \"no\") ||\r\n                     istreq(ident, \"off\")) {\r\n                *set_rtrn = false;\r\n                return true;\r\n            }\r\n        }\r\n        log_err(ctx, \"Identifier \\\"%s\\\" of type boolean is unknown\\n\", ident);\r\n        return false;\r\n\r\n    case EXPR_FIELD_REF:\r\n        log_err(ctx, \"Default \\\"%s.%s\\\" of type boolean is unknown\\n\",\r\n                xkb_atom_text(ctx, expr->field_ref.element),\r\n                xkb_atom_text(ctx, expr->field_ref.field));\r\n        return false;\r\n\r\n    case EXPR_INVERT:\r\n    case EXPR_NOT:\r\n        ok = ExprResolveBoolean(ctx, expr, set_rtrn);\r\n        if (ok)\r\n            *set_rtrn = !*set_rtrn;\r\n        return ok;\r\n    case EXPR_ADD:\r\n    case EXPR_SUBTRACT:\r\n    case EXPR_MULTIPLY:\r\n    case EXPR_DIVIDE:\r\n    case EXPR_ASSIGN:\r\n    case EXPR_NEGATE:\r\n    case EXPR_UNARY_PLUS:\r\n        log_err(ctx, \"%s of boolean values not permitted\\n\",\r\n                expr_op_type_to_string(expr->expr.op));\r\n        break;\r\n\r\n    default:\r\n        log_wsgo(ctx, \"Unknown operator %d in ResolveBoolean\\n\",\r\n                 expr->expr.op);\r\n        break;\r\n    }\r\n\r\n    return false;\r\n}",
+  "fixed_line_range": [
+    123,
+    190
+  ],
+  "fixed_snippet": "bool\r\nExprResolveBoolean(struct xkb_context *ctx, const ExprDef *expr,\r\n                   bool *set_rtrn)\r\n{\r\n    bool ok = false;\r\n    const char *ident;\r\n\r\n    switch (expr->expr.op) {\r\n    case EXPR_VALUE:\r\n        if (expr->expr.value_type != EXPR_TYPE_BOOLEAN) {\r\n            log_err(ctx,\r\n                    \"Found constant of type %s where boolean was expected\\n\",\r\n                    expr_value_type_to_string(expr->expr.value_type));\r\n            return false;\r\n        }\r\n        *set_rtrn = expr->boolean.set;\r\n        return true;\r\n\r\n    case EXPR_IDENT:\r\n        ident = xkb_atom_text(ctx, expr->ident.ident);\r\n        if (ident) {\r\n            if (istreq(ident, \"true\") ||\r\n                istreq(ident, \"yes\") ||\r\n                istreq(ident, \"on\")) {\r\n                *set_rtrn = true;\r\n                return true;\r\n            }\r\n            else if (istreq(ident, \"false\") ||\r\n                     istreq(ident, \"no\") ||\r\n                     istreq(ident, \"off\")) {\r\n                *set_rtrn = false;\r\n                return true;\r\n            }\r\n        }\r\n        log_err(ctx, \"Identifier \\\"%s\\\" of type boolean is unknown\\n\", ident);\r\n        return false;\r\n\r\n    case EXPR_FIELD_REF:\r\n        log_err(ctx, \"Default \\\"%s.%s\\\" of type boolean is unknown\\n\",\r\n                xkb_atom_text(ctx, expr->field_ref.element),\r\n                xkb_atom_text(ctx, expr->field_ref.field));\r\n        return false;\r\n\r\n    case EXPR_INVERT:\r\n    case EXPR_NOT:\r\n        ok = ExprResolveBoolean(ctx, expr->unary.child, set_rtrn);\r\n        if (ok)\r\n            *set_rtrn = !*set_rtrn;\r\n        return ok;\r\n    case EXPR_ADD:\r\n    case EXPR_SUBTRACT:\r\n    case EXPR_MULTIPLY:\r\n    case EXPR_DIVIDE:\r\n    case EXPR_ASSIGN:\r\n    case EXPR_NEGATE:\r\n    case EXPR_UNARY_PLUS:\r\n        log_err(ctx, \"%s of boolean values not permitted\\n\",\r\n                expr_op_type_to_string(expr->expr.op));\r\n        break;\r\n\r\n    default:\r\n        log_wsgo(ctx, \"Unknown operator %d in ResolveBoolean\\n\",\r\n                 expr->expr.op);\r\n        break;\r\n    }\r\n\r\n    return false;\r\n}",
+  "func_name": "ExprResolveBoolean",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

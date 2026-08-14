@@ -1,0 +1,146 @@
+{
+  "case_id": "C_149__0",
+  "sample_id": "D/C/149",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "/**\n * Summary: \n * Sets socket options for a PPPoL2TP socket.\n * \n * Parameters:\n * sock (struct socket *): Pointer to the socket for which options are being set.\n * level (int): Level at which the option resides (should be SOL_PPPOL2TP).\n * optname (int): Name of the option to set.\n * optval (char __user *): Pointer to the value to set for the option.\n * optlen (unsigned int): Length of the option value.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function handles PPPoL2TP socket option requests and checks whether the option length is\n * sufficient. It retrieves the option value from user space and checks if the socket is connected.\n * It then retrieves the session context associated with the socket. Depending on the session ID, it\n * either sets options for the tunnel or the session. Finally, it cleans up and returns the\n * appropriate error code or success indicator.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int setsockopt_pppol2tp(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen) {\n    int ret = -EINVAL;\n    struct sock *sk = sock->sk;\n    struct pppol2tp_session *session;\n\n    if (!sock || !sk) {\n        return -EINVAL;\n    }\n\n    if (level != SOL_PPPOL2TP) {\n        return -EINVAL;\n    }\n\n    if (!optval || optlen == 0) {\n        return -EINVAL;\n    }\n\n    if (!sock->sk->sk_bound_dev_if || !sock->sk->sk_state) {\n        return -EINVAL;\n    }\n\n    session = pppol2tp_find_session(sock->sk->sk_bound_dev_if, sock->sk->sk_state);\n    if (!session) {\n        return -ENOENT;\n    }\n\n    if (optlen > USHRT_MAX) {\n        optlen = USHRT_MAX;\n    }\n\n    void *opt = kmalloc(optlen, GFP_KERNEL);\n    if (!opt) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(opt, optval, optlen)) {\n        kfree(opt);\n        return -EFAULT;\n    }\n\n    switch (optname) {\n        case PPPOL2TP_SO_SET_TUNNEL:\n            ret = pppol2tp_set_tunnel_options(session, opt, optlen);\n            break;\n        case PPPOL2TP_SO_SET_SESSION:\n            ret = pppol2tp_set_session_options(session, opt, optlen);\n            break;\n        default:\n            ret = -EINVAL;\n            break;\n    }\n\n    kfree(opt);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check sock and sk for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate level is SOL_PPPOL2TP",
+      "protects_against": "invalid option level"
+    },
+    {
+      "step": "check optval and optlen for null or zero",
+      "protects_against": "invalid option value or length"
+    },
+    {
+      "step": "bound optlen to USHRT_MAX",
+      "protects_against": "excessive memory allocation"
+    },
+    {
+      "step": "check kmalloc return",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check copy_from_user return",
+      "protects_against": "invalid user space pointer"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check sock and sk for null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock->sk` to get `sk`, but does not explicitly check if `sock` or `sk` is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate level is SOL_PPPOL2TP — protects against: invalid option level",
+        "reasoning": "The implementation checks if `level != SOL_PPPOL2TP` and returns early. This validates the level.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check optval and optlen for null or zero — protects against: invalid option value or length",
+        "reasoning": "The implementation checks `optlen < sizeof(int)` but does not check if `optval` is null. Dereferencing a null pointer in `get_user(val, (int __user *)optval)` could cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound optlen to USHRT_MAX — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not perform any memory allocation based on `optlen`, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check kmalloc return — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any memory allocation using `kmalloc`, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check copy_from_user return — protects against: invalid user space pointer",
+        "reasoning": "The implementation uses `get_user(val, (int __user *)optval)` to retrieve the value from user space. This function returns an error if the pointer is invalid, and the implementation checks the return value and returns `-EFAULT` in that case.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check sock and sk for null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock->sk` to get `sk`, but does not explicitly check if `sock` or `sk` is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate level is SOL_PPPOL2TP — protects against: invalid option level",
+        "reasoning": "The implementation checks if `level != SOL_PPPOL2TP` and returns `-EINVAL` in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check optval and optlen for null or zero — protects against: invalid option value or length",
+        "reasoning": "The implementation checks `optlen < sizeof(int)` but does not check if `optval` is null. Dereferencing a null `optval` in `get_user(val, (int __user *)optval)` would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound optlen to USHRT_MAX — protects against: excessive memory allocation",
+        "reasoning": "The implementation does not perform any allocation based on `optlen`, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check kmalloc return — protects against: memory allocation failure",
+        "reasoning": "The implementation does not use `kmalloc`, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check copy_from_user return — protects against: invalid user space pointer",
+        "reasoning": "The implementation uses `get_user(val, (int __user *)optval)` to copy from user space and checks its return value. If it fails, it returns `-EFAULT`.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

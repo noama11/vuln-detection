@@ -1,0 +1,49 @@
+{
+  "case_id": "C_217__1",
+  "sample_id": "D/C/217",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4036",
+  "cve_summary": "Array index error in the tcm_vhost_make_tpg function in drivers/vhost/scsi.c in the Linux kernel before 4.0 might allow guest OS users to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted VHOST_SCSI_SET_ENDPOINT ioctl call.  NOTE: the affected function was renamed to vhost_scsi_make_tpg before the vulnerability was announced.",
+  "changed_file": "drivers/vhost/scsi.c",
+  "docstring": "/**\n * Summary: Creates a target portal group (TPG) for a SCSI virtual host.\n * \n * Parameters:\n * wwn (struct se_wwn *): The worldwide name associated with the TPG.\n * group (struct config_group *): The configuration group to which the TPG belongs.\n * name (const char *): The name of the TPG, expected to start with \"tpgt_\".\n * \n * Returns: \n * struct se_portal_group *: A pointer to the created TPG on success, or an error pointer on failure.\n * \n * Logic: The function validates the TPG name, allocates memory for the TPG structure, initializes it, and registers it with the core SCSI transport. If any step fails, appropriate error handling is performed, including memory cleanup and returning error codes. The new TPG is added to a global list of TPGs, ensuring thread safety with mutex locks.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static struct se_portal_group *\nvhost_scsi_make_tpg(struct se_wwn *v8,\n           struct config_group *group,\n           const char *v1)\n{\n    struct v7 *v5 = container_of(v8,\n            struct v7, tport_wwn);\n    struct v6 *v3;\n    u16 v4;\n    int v2;\n    if (strstr(v1, \"tpgt_\") != v1)\n        return ERR_PTR(-EINVAL);\n    if (kstrtou16(v1 + 5, 10, &v4) || v4 >= VHOST_SCSI_MAX_TARGET)\n        return ERR_PTR(-EINVAL);\n    v3 = kzalloc(sizeof(struct v6), GFP_KERNEL);\n    if (!v3) {\n        pr_err(\"Unable to allocate struct v6\");\n        return ERR_PTR(-ENOMEM);\n    }\n    mutex_init(&v3->tv_tpg_mutex);\n    INIT_LIST_HEAD(&v3->tv_tpg_list);\n    v3->v5 = v5;\n    v3->tport_tpgt = v4;\n    v2 = core_tpg_register(&vhost_scsi_fabric_configfs->tf_ops, v8,\n                &v3->se_tpg, v3, TRANSPORT_TPG_TYPE_NORMAL);\n    if (v2 < 0) {\n        kfree(v3);\n        return NULL;\n    }\n    mutex_lock(&vhost_scsi_mutex);\n    list_add_tail(&v3->tv_tpg_list, &vhost_scsi_list);\n    mutex_unlock(&vhost_scsi_mutex);\n    return &v3->se_tpg;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "Both implementations perform similar logic: they validate the TPG name, parse the numeric part, allocate memory, initialize structures, register the TPG, and add it to a global list. The main differences are in variable names and the type used for the numeric part of the name (u16 vs. unsigned long). The candidate implementation uses `u16` and checks against `VHOST_SCSI_MAX_TARGET`, while the reference implementation uses `unsigned long` and checks against `UINT_MAX`. This could lead to different behaviors for large values of `tpgt`, particularly if `VHOST_SCSI_MAX_TARGET` is smaller than `UINT_MAX`. However, this is not a security-relevant issue unless the value is attacker-controlled and leads to resource exhaustion or memory issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both validate the TPG name starts with 'tpgt_', extract the numeric part, and ensure it is within bounds. Both allocate memory for the TPG structure, initialize it, register it with the core SCSI transport, and add it to a global list with thread safety. The only differences are in variable names and struct names, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

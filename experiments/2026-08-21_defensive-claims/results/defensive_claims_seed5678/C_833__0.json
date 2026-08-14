@@ -1,0 +1,146 @@
+{
+  "case_id": "C_833__0",
+  "sample_id": "D/C/833",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "luke-jr/bfgminer",
+  "cve_id": "CVE-2014-4502",
+  "cve_summary": "Multiple heap-based buffer overflows in the parse_notify function in sgminer before 4.2.2, cgminer before 4.3.5, and BFGMiner before 4.1.0 allow remote pool servers to have unspecified impact via a (1) large or (2) negative value in the Extranonc2_size parameter in a mining.subscribe response and a crafted mining.notify request.",
+  "changed_file": "util.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Initiates a Stratum mining session by sending a subscription request to the pool.  \n *  \n * Parameters:  \n * pool (struct pool*): Pointer to the pool structure containing connection details.  \n *  \n * Returns:  \n * bool: Returns true if the session is successfully initiated, false otherwise.  \n *  \n * Logic:  \n * The function first sets up a CURL connection for the Stratum protocol. It then constructs  \n * a JSON-RPC request to subscribe to mining notifications, sending it to the pool. It waits  \n * for a response and processes the received JSON to extract the session ID and nonce values.  \n * If successful, it updates the pool's state with these values and logs the session details.  \n * In case of failure, it handles errors appropriately, including retrying the subscription if  \n * a session ID was previously received.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdbool.h>\n#include <string.h>\n#include <curl/curl.h>\n\n// Function to initiate a Stratum mining session\nbool initiate_stratum_session(struct pool* pool) {\n    if (!pool) {\n        return false;\n    }\n\n    CURL* curl = curl_easy_init();\n    if (!curl) {\n        return false;\n    }\n\n    // Set up the CURL connection for Stratum protocol\n    curl_easy_setopt(curl, CURLOPT_URL, pool->url);\n    curl_easy_setopt(curl, CURLOPT_POST, 1L);\n\n    // Construct the JSON-RPC request to subscribe\n    char json_request[1024];\n    snprintf(json_request, sizeof(json_request), \"{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"method\\\":\\\"mining.subscribe\\\",\\\"params\\\":[\\\"client/0.1\\\"]}\");\n\n    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_request);\n\n    // Set up response handling\n    char response[4096];\n    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &write_callback);\n    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);\n\n    // Perform the request\n    CURLcode res = curl_easy_perform(curl);\n    if (res != CURLE_OK) {\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    // Parse the JSON response to extract session ID and nonce\n    // This is a simplified placeholder for actual JSON parsing logic\n    char* session_id = parse_json_response(response, \"session_id\");\n    char* nonce = parse_json_response(response, \"nonce\");\n\n    if (!session_id || !nonce) {\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    // Update the pool's state with the session ID and nonce\n    strncpy(pool->session_id, session_id, sizeof(pool->session_id) - 1);\n    strncpy(pool->nonce, nonce, sizeof(pool->nonce) - 1);\n\n    // Log the session details\n    log_session_details(pool);\n\n    curl_easy_cleanup(curl);\n    return true;\n}\n\n// Placeholder for JSON parsing function\nchar* parse_json_response(const char* response, const char* key) {\n    // Actual JSON parsing logic would go here\n    return NULL;\n}\n\n// Placeholder for logging function\nvoid log_session_details(struct pool* pool) {\n    // Actual logging logic would go here\n}\n\n// Placeholder for write callback function\nsize_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {\n    size_t realsize = size * nmemb;\n    char* response = (char*)userp;\n\n    // Ensure we do not overflow the buffer\n    size_t remaining = sizeof(char) * 4096 - strlen(response);\n    if (realsize > remaining) {\n        realsize = remaining;\n    }\n\n    strncat(response, (char*)contents, realsize);\n    return realsize;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "null pointer dereference when pool is null"
+    },
+    {
+      "step": "check for null pointer from curl_easy_init",
+      "protects_against": "null pointer dereference when curl_easy_init fails"
+    },
+    {
+      "step": "bound string copy to buffer capacity",
+      "protects_against": "buffer overflow when copying session_id and nonce"
+    },
+    {
+      "step": "limit the size of the JSON-RPC request",
+      "protects_against": "buffer overflow when constructing the JSON-RPC request"
+    },
+    {
+      "step": "limit the size of the response buffer",
+      "protects_against": "buffer overflow when receiving the response"
+    },
+    {
+      "step": "ensure write callback does not overflow the buffer",
+      "protects_against": "buffer overflow when writing the response"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 23,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when pool is null",
+        "reasoning": "The implementation dereferences the 'pool' pointer without checking if it is null. For example, it accesses 'pool->sessionid' and 'pool->sock' without a null check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null pointer from curl_easy_init — protects against: null pointer dereference when curl_easy_init fails",
+        "reasoning": "The implementation calls 'setup_stratum_curl(pool)' but does not check if it returns a null pointer. If 'setup_stratum_curl' internally uses 'curl_easy_init' and returns null on failure, the code proceeds without handling the error.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "bound string copy to buffer capacity — protects against: buffer overflow when copying session_id and nonce",
+        "reasoning": "The implementation uses 'json_array_string' to extract 'sessionid' and 'nonce1' from the JSON response. These are not copied into fixed-size buffers using unsafe functions like 'strcpy' or 'sprintf', so there is no risk of buffer overflow in this context.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "limit the size of the JSON-RPC request — protects against: buffer overflow when constructing the JSON-RPC request",
+        "reasoning": "The implementation uses 'sprintf' to construct the JSON-RPC request into a fixed-size buffer 's[RBUFSIZE]'. However, there is no explicit check to ensure the formatted string does not exceed the buffer size, which could lead to a buffer overflow.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "limit the size of the response buffer — protects against: buffer overflow when receiving the response",
+        "reasoning": "The implementation uses 'recv_line(pool)' to receive the response. The function 'recv_line' is not visible, but the implementation does not perform any explicit bounds checking on the returned string 'sret' before processing it.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "ensure write callback does not overflow the buffer — protects against: buffer overflow when writing the response",
+        "reasoning": "The implementation does not use a custom write callback for receiving the response. Instead, it uses 'recv_line(pool)', which is not visible. There is no explicit evidence of a write callback being used or bounded.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 6,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when pool is null",
+        "reasoning": "The implementation does not appear to handle the case where 'pool' is null. The code snippet provided does not show any logic related to the 'pool' parameter.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer from curl_easy_init — protects against: null pointer dereference when curl_easy_init fails",
+        "reasoning": "The implementation does not appear to handle the case where 'curl_easy_init' returns null. The code snippet provided does not show any logic related to curl_easy_init.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "bound string copy to buffer capacity — protects against: buffer overflow when copying session_id and nonce",
+        "reasoning": "The implementation does not appear to handle the case where 'session_id' and 'nonce' are copied into buffers with a fixed capacity. The code snippet provided does not show any logic related to copying session_id and nonce.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "limit the size of the JSON-RPC request — protects against: buffer overflow when constructing the JSON-RPC request",
+        "reasoning": "The implementation does not appear to handle the case where the JSON-RPC request is too large. The code snippet provided does not show any logic related to constructing the JSON-RPC request.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "limit the size of the response buffer — protects against: buffer overflow when receiving the response",
+        "reasoning": "The implementation does not appear to handle the case where the response buffer is too small. The code snippet provided does not show any logic related to receiving the response.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "ensure write callback does not overflow the buffer — protects against: buffer overflow when writing the response",
+        "reasoning": "The implementation does not appear to handle the case where the write callback overflows the buffer. The code snippet provided does not show any logic related to the write callback.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "low",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

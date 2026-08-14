@@ -1,0 +1,35 @@
+{
+  "case_id": "C_371__0",
+  "implementation": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    int ret = -EINVAL;\n    struct socket *new_sk = NULL;\n\n    if (!sk || !sockp)\n        return -EINVAL;\n\n    if (id == 0)\n        return -EINVAL;\n\n    if (!sctp_assoc_exists(sk, id))\n        return -ENOENT;\n\n    if (sctp_has_pending_buffers(sk, id)) {\n        return -EBUSY;\n    }\n\n    new_sk = sctp_create_new_socket();\n    if (!new_sk) {\n        return -ENOMEM;\n    }\n\n    if (sctp_copy_socket_props(sk, new_sk)) {\n        ret = -EFAULT;\n        goto error;\n    }\n\n    if (sctp_migrate_association(sk, id, new_sk)) {\n        ret = -EFAULT;\n        goto error;\n    }\n\n    *sockp = new_sk;\n    return 0;\n\nerror:\n    if (new_sk) {\n        sctp_free_socket(new_sk);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing sk or sockp"
+    },
+    {
+      "step": "validate association ID",
+      "protects_against": "invalid or zero association ID"
+    },
+    {
+      "step": "check for existing association",
+      "protects_against": "attempting to peel off a non-existent association"
+    },
+    {
+      "step": "check for pending buffers",
+      "protects_against": "peeling off an association with pending buffers that could lead to data loss or race conditions"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out-of-memory condition when creating a new socket"
+    },
+    {
+      "step": "clean up on error",
+      "protects_against": "resource leaks if an error occurs during socket creation or association migration"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

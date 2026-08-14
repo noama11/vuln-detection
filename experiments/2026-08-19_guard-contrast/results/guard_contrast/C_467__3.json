@@ -1,0 +1,56 @@
+{
+  "case_id": "C_467__3",
+  "sample_id": "D/C/467",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "erikd/libsndfile",
+  "cve_id": "CVE-2017-7742",
+  "cve_summary": "In libsndfile before 1.0.28, an error in the *flac_buffer_copy()* function (flac.c) can be exploited to cause a segmentation violation (with read memory access) via a specially crafted FLAC file during a resample attempt, a similar issue to CVE-2017-7585.",
+  "changed_file": "src/flac.c",
+  "docstring": "Summary:  \nProcesses audio data in a loop for a FLAC decoder, reading up to a specified length.\n\nParameters:  \npsf (SF_PRIVATE*): Pointer to the private state of the audio file.  \nlen (unsigned): The maximum number of bytes to read.\n\nReturns:  \nunsigned: The number of bytes successfully read.\n\nLogic: The function initializes the position and remaining length for reading. If a frame is available and not fully processed, it copies the buffered data. It then enters a loop to decode audio data until the specified length is reached or an end-of-stream state is encountered. Finally, it returns the number of bytes read.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "unsigned flac_process_audio_data(SF_PRIVATE *psf, unsigned len)\n{\n    unsigned bytes_read = 0;\n    unsigned remaining = len;\n    char *buffer = psf->buffer;\n    size_t buffer_pos = psf->frame_pos;\n\n    if (buffer_pos < psf->frame_size && psf->frame_remaining > 0) {\n        size_t copy_len = psf->frame_remaining;\n        if (copy_len > remaining)\n            copy_len = remaining;\n        memcpy(buffer + buffer_pos, psf->frame_buffer + psf->frame_pos, copy_len);\n        buffer_pos += copy_len;\n        psf->frame_pos += copy_len;\n        bytes_read += copy_len;\n        remaining -= copy_len;\n    }\n\n    while (remaining > 0 && !psf->eof_reached) {\n        size_t decoded = flac_decode_audio(psf, buffer + buffer_pos, remaining);\n        if (decoded == 0)\n            break;\n        buffer_pos += decoded;\n        bytes_read += decoded;\n        remaining -= decoded;\n    }\n\n    psf->frame_pos = buffer_pos;\n    return bytes_read;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "bounded_read_limit"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 1,
+    "confidence": "high",
+    "rationale": "Implementation 1 includes a bounds check to limit the read length to 0x1000000 (16MB) in the loop, which prevents excessive memory allocation or processing. Implementation 2 does not include such a bound on the amount of data processed in a single call. This makes implementation 2 more exposed to potential resource exhaustion or excessive memory usage on large inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 2,
+    "candidate_exposure": 2,
+    "reference_missing_steps": [
+      "copy length clamping to remaining and frame_remaining",
+      "EOF check before decoding"
+    ],
+    "candidate_missing_steps": [
+      "state validation and logging",
+      "frame pointer nullification on error"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "medium",
+    "rationale": "Implementation 1 includes bounds checks on the decoder state and ensures the frame pointer is nullified in error cases. It also logs errors, which is not present in implementation 2. Implementation 2 includes a bounds check for copying data from the frame buffer and ensures it does not copy more than the remaining length or frame_remaining. It also checks for EOF and avoids decoding if no data is available. Neither implementation includes checks for null pointers or buffer overflows that the other does not.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

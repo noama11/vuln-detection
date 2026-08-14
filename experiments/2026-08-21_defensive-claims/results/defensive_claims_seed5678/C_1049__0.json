@@ -1,0 +1,114 @@
+{
+  "case_id": "C_1049__0",
+  "sample_id": "D/C/1049",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2011-2843",
+  "cve_summary": "Google Chrome before 14.0.835.163 does not properly handle media buffers, which allows remote attackers to cause a denial of service (out-of-bounds read) via unspecified vectors.",
+  "changed_file": "media/video/ffmpeg_video_decode_engine.cc",
+  "docstring": "/**\n * Summary: Initializes the FFmpegVideoDecodeEngine by setting up the codec context and preparing for video decoding.\n * \n * Parameters:\n * message_loop (MessageLoop*): The message loop for handling asynchronous events.\n * event_handler (VideoDecodeEngine::EventHandler*): The event handler to notify upon initialization completion.\n * context (VideoDecodeContext*): The context for video decoding.\n * config (const VideoDecoderConfig&): Configuration parameters for the video decoder.\n * \n * Returns: None\n * \n * Logic: This function allocates and configures an AVCodecContext for video decoding, sets up threading for decoding, and prepares a buffer pool for output frames. It also handles codec-specific configurations and error detection settings. The function checks for available buffers and initializes the codec, notifying the event handler upon completion.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <libavcodec/avcodec.h>\n#include <libavutil/pixfmt.h>\n\n// Function to initialize the FFmpeg video decode engine\nvoid FFmpegVideoDecodeEngine_Initialize(MessageLoop* message_loop, VideoDecodeEngine::EventHandler* event_handler, VideoDecodeContext* context, const VideoDecoderConfig* config) {\n    // Allocate codec context\n    AVCodecContext* codec_ctx = avcodec_alloc_context3(NULL);\n    if (!codec_ctx) {\n        // Handle allocation failure\n        return;\n    }\n\n    // Configure codec context based on the provided config\n    codec_ctx->thread_count = 4; // Default to 4 threads\n    codec_ctx->flags |= AV_CODEC_FLAG_LOW_DELAY;\n\n    // Set pixel format and other codec-specific parameters\n    codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;\n\n    // Initialize buffer pool for output frames\n    int buffer_pool_size = 10; // Default buffer pool size\n    if (config->buffer_pool_size > 0 && config->buffer_pool_size < 100) {\n        buffer_pool_size = config->buffer_pool_size;\n    }\n\n    // Validate buffer pool size to avoid excessive memory allocation\n    if (buffer_pool_size > 100) {\n        buffer_pool_size = 100;\n    }\n\n    // Initialize codec\n    AVCodec* codec = avcodec_find_decoder(codec_ctx->codec_id);\n    if (!codec) {\n        avcodec_free_context(&codec_ctx);\n        return;\n    }\n\n    if (avcodec_open2(codec_ctx, codec, NULL) < 0) {\n        avcodec_free_context(&codec_ctx);\n        return;\n    }\n\n    // Store the codec context in the provided context\n    context->codec_context = codec_ctx;\n\n    // Notify event handler upon completion\n    if (event_handler && event_handler->on_initialized) {\n        event_handler->on_initialized(message_loop, context);\n    }\n}",
+  "defensive_steps": [
+    {
+      "step": "validate buffer pool size to avoid excessive memory allocation",
+      "protects_against": "malformed or excessively large buffer pool size values"
+    },
+    {
+      "step": "check for null codec context allocation",
+      "protects_against": "memory allocation failure when creating the codec context"
+    },
+    {
+      "step": "check for null codec lookup",
+      "protects_against": "invalid or unsupported codec IDs"
+    },
+    {
+      "step": "check for successful codec initialization",
+      "protects_against": "failure to open the codec"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate buffer pool size to avoid excessive memory allocation — protects against: malformed or excessively large buffer pool size values",
+        "reasoning": "The implementation uses a fixed limit of `Limits::kMaxVideoFrames` for the buffer pool size, which is a hard-coded constant. This prevents excessive memory allocation by limiting the number of frames in the buffer pool.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null codec context allocation — protects against: memory allocation failure when creating the codec context",
+        "reasoning": "The implementation calls `avcodec_alloc_context()` to allocate the codec context but does not check if the result is null. If this function returns null, the code proceeds to use the null pointer, which would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null codec lookup — protects against: invalid or unsupported codec IDs",
+        "reasoning": "The implementation calls `avcodec_find_decoder(codec_context_->codec_id)` to find the codec, but does not check if the result is null. If the codec is not found, the code proceeds to use the null pointer in the subsequent logic, which would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for successful codec initialization — protects against: failure to open the codec",
+        "reasoning": "The implementation checks the return value of `avcodec_thread_init` and `avcodec_open`, which is correct. However, it does not separately check for failure in opening the codec in a way that is clearly visible in the code. The logic combines the result with other conditions, but it does not handle the case where `avcodec_open` fails independently.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 21,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "validate buffer pool size to avoid excessive memory allocation — protects against: malformed or excessively large buffer pool size values",
+        "reasoning": "The implementation uses a fixed maximum number of frames (`Limits::kMaxVideoFrames`) to create the buffer pool, and does not validate or limit the size of individual frames based on the input configuration. Since the buffer pool size is not validated against potentially excessive values, this step is omitted.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null codec context allocation — protects against: memory allocation failure when creating the codec context",
+        "reasoning": "The implementation calls `avcodec_alloc_context()` to create the codec context but does not check whether the returned pointer is null. This omission could lead to a null pointer dereference if the allocation fails.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for null codec lookup — protects against: invalid or unsupported codec IDs",
+        "reasoning": "The implementation calls `avcodec_find_decoder(codec_context_->codec_id)` to find the codec, but does not check whether the returned `AVCodec*` is null. This omission could lead to a null pointer dereference if the codec is not found.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for successful codec initialization — protects against: failure to open the codec",
+        "reasoning": "The implementation calls `avcodec_open(codec_context_, codec)` but does not check the return value of this function directly. Instead, it checks the success of the entire initialization process in a compound condition. This is insufficient to detect and handle a failure in `avcodec_open()` specifically.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "C_835__0",
+  "sample_id": "D/C/835",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "luke-jr/bfgminer",
+  "cve_id": "CVE-2014-4501",
+  "cve_summary": "Multiple stack-based buffer overflows in sgminer before 4.2.2, cgminer before 4.3.5, and BFGMiner before 3.3.0 allow remote pool servers to have unspecified impact via a long URL in a client.reconnect stratum message to the (1) extract_sockaddr or (2) parse_reconnect functions in util.c.",
+  "commit_message": "Stratum: extract_sockaddr: Truncate overlong addresses rather than stack overflow\n\nThanks to Mick Ayzenberg <mick@dejavusecurity.com> for finding this!",
+  "changed_file": "util.c",
+  "docstring": "Summary: Extracts the socket address and port from a given URL and stores them in a provided pool structure.\n\nParameters: \n- pool (struct pool *): A pointer to a pool structure where the extracted socket address and port will be stored.\n- url (char *): A string containing the URL from which to extract the socket address and port.\n\nReturns: \n- bool: Returns true if the extraction is successful; otherwise, returns false.\n\nLogic: The function first locates the start of the URL and checks for IPv6 address brackets. It then identifies the port if present. If the URL length is valid, it copies the address into a buffer, truncating if necessary, and sets a default port if none is specified. Finally, it updates the pool structure with the extracted values and returns the success status.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    975,
+    1026
+  ],
+  "vulnerable_line_range": [
+    975,
+    1019
+  ],
+  "vulnerable_snippet": "bool extract_sockaddr(struct pool *pool, char *url)\r\n{\r\n\tchar *url_begin, *url_end, *ipv6_begin, *ipv6_end, *port_start = NULL;\r\n\tchar url_address[256], port[6];\r\n\tint url_len, port_len = 0;\r\n\r\n\turl_begin = strstr(url, \"//\");\r\n\tif (!url_begin)\r\n\t\turl_begin = url;\r\n\telse\r\n\t\turl_begin += 2;\r\n\r\n\t/* Look for numeric ipv6 entries */\r\n\tipv6_begin = strstr(url_begin, \"[\");\r\n\tipv6_end = strstr(url_begin, \"]\");\r\n\tif (ipv6_begin && ipv6_end && ipv6_end > ipv6_begin)\r\n\t\turl_end = strstr(ipv6_end, \":\");\r\n\telse\r\n\t\turl_end = strstr(url_begin, \":\");\r\n\tif (url_end) {\r\n\t\turl_len = url_end - url_begin;\r\n\t\tport_len = strlen(url_begin) - url_len - 1;\r\n\t\tif (port_len < 1)\r\n\t\t\treturn false;\r\n\t\tport_start = url_end + 1;\r\n\t} else\r\n\t\turl_len = strlen(url_begin);\r\n\r\n\tif (url_len < 1)\r\n\t\treturn false;\r\n\r\n\tsprintf(url_address, \"%.*s\", url_len, url_begin);\r\n\r\n\tif (port_len)\r\n\t\tsnprintf(port, 6, \"%.*s\", port_len, port_start);\r\n\telse\r\n\t\tstrcpy(port, \"80\");\r\n\r\n\tfree(pool->stratum_port);\r\n\tpool->stratum_port = strdup(port);\r\n\tfree(pool->sockaddr_url);\r\n\tpool->sockaddr_url = strdup(url_address);\r\n\r\n\treturn true;\r\n}",
+  "fixed_line_range": [
+    975,
+    1026
+  ],
+  "fixed_snippet": "bool extract_sockaddr(struct pool *pool, char *url)\r\n{\r\n\tchar *url_begin, *url_end, *ipv6_begin, *ipv6_end, *port_start = NULL;\r\n\tchar url_address[256], port[6];\r\n\tint url_len, port_len = 0;\r\n\r\n\turl_begin = strstr(url, \"//\");\r\n\tif (!url_begin)\r\n\t\turl_begin = url;\r\n\telse\r\n\t\turl_begin += 2;\r\n\r\n\t/* Look for numeric ipv6 entries */\r\n\tipv6_begin = strstr(url_begin, \"[\");\r\n\tipv6_end = strstr(url_begin, \"]\");\r\n\tif (ipv6_begin && ipv6_end && ipv6_end > ipv6_begin)\r\n\t\turl_end = strstr(ipv6_end, \":\");\r\n\telse\r\n\t\turl_end = strstr(url_begin, \":\");\r\n\tif (url_end) {\r\n\t\turl_len = url_end - url_begin;\r\n\t\tport_len = strlen(url_begin) - url_len - 1;\r\n\t\tif (port_len < 1)\r\n\t\t\treturn false;\r\n\t\tport_start = url_end + 1;\r\n\t} else\r\n\t\turl_len = strlen(url_begin);\r\n\r\n\tif (url_len < 1)\r\n\t\treturn false;\r\n\t\r\n\tif (url_len >= sizeof(url_address))\r\n\t{\r\n\t\tapplog(LOG_WARNING, \"%s: Truncating overflowed address '%.*s'\",\r\n\t\t       __func__, url_len, url_begin);\r\n\t\turl_len = sizeof(url_address) - 1;\r\n\t}\r\n\r\n\tsprintf(url_address, \"%.*s\", url_len, url_begin);\r\n\r\n\tif (port_len)\r\n\t\tsnprintf(port, 6, \"%.*s\", port_len, port_start);\r\n\telse\r\n\t\tstrcpy(port, \"80\");\r\n\r\n\tfree(pool->stratum_port);\r\n\tpool->stratum_port = strdup(port);\r\n\tfree(pool->sockaddr_url);\r\n\tpool->sockaddr_url = strdup(url_address);\r\n\r\n\treturn true;\r\n}",
+  "func_name": "extract_sockaddr",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_580__0",
+  "sample_id": "D/C/580",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2015-8898",
+  "cve_summary": "The WriteImages function in magick/constitute.c in ImageMagick before 6.9.2-4 allows remote attackers to cause a denial of service (NULL pointer dereference) via a crafted image file.",
+  "changed_file": "MagickCore/constitute.c",
+  "docstring": "\"\"\"\nSummary: \nWriteImages() writes an image sequence into one or more files, allowing for multiple output files based on the input images and specified filename format.\n\nParameters: \nimage_info (const ImageInfo *): the image information structure.\nimages (Image *): the list of images to be written.\nfilename (const char *): the base filename for the output files.\nexception (ExceptionInfo *): structure to return any errors or warnings.\n\nReturns: \nMagickBooleanType: indicates success (MagickTrue) or failure (MagickFalse) of the image writing process.\n\nLogic: \nThe function first validates the input parameters and clones the image info. It prepares the filenames for each image in the list, sets up the image info, and ensures consistent scene numbers across images. It then iterates through the image list, writing each image to the specified output files while monitoring progress. If the adjoin flag is set to MagickFalse, it generates multiple files; otherwise, it handles writing as a single file if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int read_entry(\r\n\tgit_index_entry **out,\r\n\tsize_t *out_size,\r\n\tgit_index *index,\r\n\tconst void *buffer,\r\n\tsize_t buffer_size,\r\n\tconst char *last)\r\n{\r\n\tsize_t path_length, entry_size;\r\n\tconst char *path_ptr;\r\n\tstruct entry_short source;\r\n\tgit_index_entry entry = {{0}};\r\n\tbool compressed = index->version >= INDEX_VERSION_NUMBER_COMP;\r\n\tchar *tmp_path = NULL;\r\n\r\n\tif (INDEX_FOOTER_SIZE + minimal_entry_size > buffer_size)\r\n\t\treturn -1;\r\n\r\n\t/* buffer is not guaranteed to be aligned */\r\n\tmemcpy(&source, buffer, sizeof(struct entry_short));\r\n\r\n\tentry.ctime.seconds = (git_time_t)ntohl(source.ctime.seconds);\r\n\tentry.ctime.nanoseconds = ntohl(source.ctime.nanoseconds);\r\n\tentry.mtime.seconds = (git_time_t)ntohl(source.mtime.seconds);\r\n\tentry.mtime.nanoseconds = ntohl(source.mtime.nanoseconds);\r\n\tentry.dev = ntohl(source.dev);\r\n\tentry.ino = ntohl(source.ino);\r\n\tentry.mode = ntohl(source.mode);\r\n\tentry.uid = ntohl(source.uid);\r\n\tentry.gid = ntohl(source.gid);\r\n\tentry.file_size = ntohl(source.file_size);\r\n\tgit_oid_cpy(&entry.id, &source.oid);\r\n\tentry.flags = ntohs(source.flags);\r\n\r\n\tif (entry.flags & GIT_IDXENTRY_EXTENDED) {\r\n\t\tuint16_t flags_raw;\r\n\t\tsize_t flags_offset;\r\n\r\n\t\tflags_offset = offsetof(struct entry_long, flags_extended);\r\n\t\tmemcpy(&flags_raw, (const char *) buffer + flags_offset,\r\n\t\t\tsizeof(flags_raw));\r\n\t\tflags_raw = ntohs(flags_raw);\r\n\r\n\t\tmemcpy(&entry.flags_extended, &flags_raw, sizeof(flags_raw));\r\n\t\tpath_ptr = (const char *) buffer + offsetof(struct entry_long, path);\r\n\t} else\r\n\t\tpath_ptr = (const char *) buffer + offsetof(struct entry_short, path);\r\n\r\n\tif (!compressed) {\r\n\t\tpath_length = entry.flags & GIT_IDXENTRY_NAMEMASK;\r\n\r\n\t\t/* if this is a very long string, we must find its\r\n\t\t * real length without overflowing */\r\n\t\tif (path_length == 0xFFF) {\r\n\t\t\tconst char *path_end;\r\n\r\n\t\t\tpath_end = memchr(path_ptr, '\\0', buffer_size);\r\n\t\t\tif (path_end == NULL)\r\n\t\t\t\treturn -1;\r\n\r\n\t\t\tpath_length = path_end - path_ptr;\r\n\t\t}\r\n\r\n\t\tentry_size = index_entry_size(path_length, 0, entry.flags);\r\n\t\tentry.path = (char *)path_ptr;\r\n\t} else {\r\n\t\tsize_t varint_len;\r\n\t\tsize_t strip_len = git_decode_varint((const unsigned char *)path_ptr,\r\n\t\t\t\t\t\t     &varint_len);\r\n\t\tsize_t last_len = strlen(last);\r\n\t\tsize_t prefix_len = last_len - strip_len;\r\n\t\tsize_t suffix_len = strlen(path_ptr + varint_len);\r\n\t\tsize_t path_len;\r\n\r\n\t\tif (varint_len == 0)\r\n\t\t\treturn index_error_invalid(\"incorrect prefix length\");\r\n\r\n\t\tGITERR_CHECK_ALLOC_ADD(&path_len, prefix_len, suffix_len);\r\n\t\tGITERR_CHECK_ALLOC_ADD(&path_len, path_len, 1);\r\n\t\ttmp_path = git__malloc(path_len);\r\n\t\tGITERR_CHECK_ALLOC(tmp_path);\r\n\r\n\t\tmemcpy(tmp_path, last, prefix_len);\r\n\t\tmemcpy(tmp_path + prefix_len, path_ptr + varint_len, suffix_len + 1);\r\n\t\tentry_size = index_entry_size(suffix_len, varint_len, entry.flags);\r\n\t\tentry.path = tmp_path;\r\n\t}\r\n\r\n\tif (entry_size == 0)\r\n\t\treturn -1;\r\n\r\n\tif (INDEX_FOOTER_SIZE + entry_size > buffer_size)\r\n\t\treturn -1;\r\n\r\n\tif (index_entry_dup(out, index, &entry) < 0) {\r\n\t\tgit__free(tmp_path);\r\n\t\treturn -1;\r\n\t}\r\n\r\n\tgit__free(tmp_path);\r\n\t*out_size = entry_size;\r\n\treturn 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_674__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to be a function for reading Git index entries, not for writing image sequences. It does not align with the logic or purpose of the reference implementation, which is for writing images. This is a degenerate generation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the specification and appears to be a function for reading Git index entries, not for writing image sequences. It does not align with the logic or purpose of the reference implementation, which is for writing images to files. This is a degenerate generation.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "C_287__0",
+  "sample_id": "D/C/287",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "wireshark/wireshark",
+  "cve_id": "CVE-2016-5350",
+  "cve_summary": "epan/dissectors/packet-dcerpc-spoolss.c in the SPOOLS component in Wireshark 1.12.x before 1.12.12 and 2.x before 2.0.4 mishandles unexpected offsets, which allows remote attackers to cause a denial of service (infinite loop) via a crafted packet.",
+  "changed_file": "epan/dissectors/packet-dcerpc-spoolss.c",
+  "docstring": "/**\n * Summary: \n * Dissects a 16-bit Unicode string from a given tvbuff and adds it to a protocol tree.\n * \n * Parameters: \n * tvb (tvbuff_t*): Pointer to the tvbuff containing the data to dissect. \n * offset (int): The starting position in the tvbuff from which to read the string. \n * pinfo (packet_info*): Pointer to packet information (unused in this function). \n * tree (proto_tree*): Pointer to the protocol tree where the dissected string will be added. \n * drep (guint8*): Pointer to the data representation (unused in this function). \n * data (char**): Pointer to a string pointer where the dissected string will be stored. \n * hf_name (int): The field identifier for the protocol tree entry.\n * \n * Returns: \n * int: The new offset after reading the string.\n * \n * Logic: \n * The function adjusts the offset to ensure it is even, retrieves the remaining data as a UTF-16 string, adds it to the protocol tree, and updates the provided data pointer if necessary. It returns the updated offset after processing the string.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int dissect_unicode_string(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, guint8 *drep, char **data, int hf_name) {\n    int original_offset = offset;\n    int length = 0;\n    char *utf8_str = NULL;\n\n    /* Adjust offset to be even */\n    if (offset % 2 != 0) {\n        offset++;\n    }\n\n    /* Get the length of the remaining data in the tvb */\n    length = tvb_reported_length_remaining(tvb, offset);\n\n    /* If there is data remaining, dissect it as UTF-16 string */\n    if (length > 0) {\n        utf8_str = tvb_get_unicode_string(tvb, offset, length, TRUE);\n        if (utf8_str != NULL) {\n            proto_tree_add_string(tree, hf_name, tvb, original_offset, length, utf8_str);\n            if (data != NULL) {\n                *data = utf8_str;\n            }\n            offset += length;\n        }\n    }\n\n    return offset;\n}",
+  "defensive_steps": [
+    {
+      "step": "adjust offset to be even",
+      "protects_against": "reading unaligned data which could cause undefined behavior"
+    },
+    {
+      "step": "check if there is data remaining before attempting to read",
+      "protects_against": "reading beyond the bounds of the tvbuff"
+    },
+    {
+      "step": "verify the result of tvb_get_unicode_string is not NULL before using it",
+      "protects_against": "dereferencing a NULL pointer which could cause a crash"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "adjust offset to be even — protects against: reading unaligned data which could cause undefined behavior",
+        "reasoning": "The implementation checks if the offset is odd and adjusts it to be even by adding the necessary value. This ensures the offset is aligned for reading UTF-16 data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if there is data remaining before attempting to read — protects against: reading beyond the bounds of the tvbuff",
+        "reasoning": "The implementation calls tvb_captured_length_remaining to determine how much data is left and checks if it is <= 0 before proceeding. If no data is left, it returns early.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify the result of tvb_get_unicode_string is not NULL before using it — protects against: dereferencing a NULL pointer which could cause a crash",
+        "reasoning": "The implementation does not explicitly check if the result of tvb_get_string_enc is NULL. It proceeds to use the returned string directly, which could lead to a crash if the function returns NULL.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "adjust offset to be even — protects against: reading unaligned data which could cause undefined behavior",
+        "reasoning": "The implementation checks if the offset is odd and adjusts it to be even by adding the necessary value. This ensures the offset is aligned for reading UTF-16 data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if there is data remaining before attempting to read — protects against: reading beyond the bounds of the tvbuff",
+        "reasoning": "The implementation calls tvb_reported_length_remaining to determine how much data is left and checks if it is <= 0 before proceeding. If no data is left, it returns early.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify the result of tvb_get_unicode_string is not NULL before using it — protects against: dereferencing a NULL pointer which could cause a crash",
+        "reasoning": "The implementation does not explicitly check if the result of tvb_get_string_enc is NULL. It proceeds to use the returned string directly, which could lead to a crash if the function returns NULL.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

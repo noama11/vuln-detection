@@ -1,0 +1,82 @@
+{
+  "case_id": "C_738__0",
+  "sample_id": "D/C/738",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-15924",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.11. fm10k_init_module in drivers/net/ethernet/intel/fm10k/fm10k_main.c has a NULL pointer dereference because there is no -ENOMEM upon an alloc_workqueue failure.",
+  "changed_file": "drivers/net/ethernet/intel/fm10k/fm10k_main.c",
+  "docstring": "/**\n * Summary: Initializes the FM10K driver module.\n * \n * Parameters: None\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function logs the driver version and copyright information, \n * creates a workqueue for the driver, and initializes debugging. \n * It then registers the PCI driver and returns the result of the registration.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int fm10k_init_module(void) {\n    int err;\n\n    pr_info(\"FM10K driver version 1.0\\n\");\n    pr_info(\"Copyright (c) 2023 Intel Corporation\\n\");\n\n    fm10k_wq = create_workqueue(\"fm10k\");\n    if (!fm10k_wq) {\n        pr_err(\"Failed to create workqueue\\n\");\n        return -ENOMEM;\n    }\n\n    fm10k_debug_init();\n\n    err = pci_register_driver(&fm10k_driver);\n    if (err) {\n        pr_err(\"Failed to register PCI driver: %d\\n\", err);\n        destroy_workqueue(fm10k_wq);\n        fm10k_debug_exit();\n    }\n\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check workqueue creation result",
+      "protects_against": "insufficient memory to create workqueue"
+    },
+    {
+      "step": "clean up resources on PCI registration failure",
+      "protects_against": "resource leaks if PCI registration fails"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check workqueue creation result — protects against: insufficient memory to create workqueue",
+        "reasoning": "The implementation calls alloc_workqueue but does not check the return value to ensure the workqueue was successfully created.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "clean up resources on PCI registration failure — protects against: resource leaks if PCI registration fails",
+        "reasoning": "The implementation returns the result of fm10k_register_pci_driver directly without any cleanup logic in case of failure, which could lead to resource leaks if registration fails.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check workqueue creation result — protects against: insufficient memory to create workqueue",
+        "reasoning": "The implementation checks the result of the workqueue creation by verifying if `fm10k_workqueue` is NULL and returns `-ENOMEM` if it is. This directly performs the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up resources on PCI registration failure — protects against: resource leaks if PCI registration fails",
+        "reasoning": "The implementation does not handle the case where `fm10k_register_pci_driver()` returns a negative error code. If registration fails, the workqueue is not freed, which could lead to a resource leak. This omission is reachable if the registration fails.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "case_id": "C_365__0",
+  "implementation": "int configure_usb_console(struct console *co, char *options) {\n    int baud_rate = 0;\n    int data_bits = 0;\n    char parity = '\\0';\n    int flow_control = 0;\n    int ret = 0;\n    char *token = NULL;\n\n    if (!co || !options) {\n        return -1;\n    }\n\n    token = strtok(options, \",\");\n    while (token != NULL) {\n        if (strncmp(token, \"baud=\", 5) == 0) {\n            baud_rate = atoi(token + 5);\n        } else if (strncmp(token, \"bits=\", 5) == 0) {\n            data_bits = atoi(token + 5);\n        } else if (strncmp(token, \"parity=\", 7) == 0) {\n            parity = token[7];\n        } else if (strncmp(token, \"flow=\", 5) == 0) {\n            flow_control = atoi(token + 5);\n        }\n        token = strtok(NULL, \",\");\n    }\n\n    if (baud_rate <= 0 || data_bits <= 0 || (parity != 'n' && parity != 'o' && parity != 'e')) {\n        return -1;\n    }\n\n    struct usb_serial *port = get_usb_serial_port(co->index);\n    if (!port) {\n        return -2;\n    }\n\n    if (port->state != USB_SERIAL_CONNECTED) {\n        log_error(\"USB serial port is not connected.\");\n        return -3;\n    }\n\n    ret = open_usb_serial_port(port);\n    if (ret < 0) {\n        return ret;\n    }\n\n    ret = configure_usb_serial_port(port, baud_rate, data_bits, parity, flow_control);\n    if (ret < 0) {\n        close_usb_serial_port(port);\n        return ret;\n    }\n\n    co->configured = 1;\n    co->is_system_console = 1;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null console or options pointer"
+    },
+    {
+      "step": "validate parsed configuration values",
+      "protects_against": "invalid or out-of-range baud rate, data bits, or parity"
+    },
+    {
+      "step": "check usb serial port state",
+      "protects_against": "attempting to configure an unconnected port"
+    },
+    {
+      "step": "clean up resources on failure",
+      "protects_against": "resource leaks when configuration fails"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

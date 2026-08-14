@@ -1,0 +1,53 @@
+{
+  "case_id": "C_123__0",
+  "sample_id": "D/C/123",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1182",
+  "cve_summary": "kernel/signal.c in the Linux kernel before 2.6.39 allows local users to spoof the uid and pid of a signal sender via a sigqueueinfo system call.",
+  "changed_file": "kernel/signal.c",
+  "docstring": "Summary: This function implements the system call `rt_sigqueueinfo`, which sends real-time signals to a specified process.\n\nParameters: \n- pid (pid_t): The process ID of the target process.\n- sig (int): The signal number to be sent.\n- uinfo (siginfo_t __user *): A pointer to user-space siginfo structure containing additional signal information.\n\nReturns: \n- int: Returns 0 on success, or a negative error code indicating the failure reason (e.g., -EFAULT for a bad user pointer, -EPERM for permission errors).\n\nLogic: The function first copies the siginfo structure from user space. It checks if the signal code is valid and ensures that the caller is not attempting to impersonate another process. If the checks pass, it sets the signal number in the siginfo structure and calls `kill_proc_info` to send the signal to the specified process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/signal.h>\n#include <linux/errno.h>\n#include <linux/uaccess.h>\n#include <linux/sched.h>\n\nint rt_sigqueueinfo(pid_t pid, int sig, siginfo_t __user *uinfo) {\n    siginfo_t info;\n\n    if (copy_from_user(&info, uinfo, sizeof(siginfo_t)))\n        return -EFAULT;\n\n    if (info.si_code >= 0)\n        return -EINVAL;\n\n    if (pid == 1 || (current->euid != 0 && pid != current->pid))\n        return -EPERM;\n\n    info.si_signo = sig;\n    return kill_proc_info(sig, &info, pid);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check for `pid == 1` (the init process) and a permission check based on `current->euid`, which the reference implementation does not include. This difference could prevent the reference implementation from enforcing the same level of access control for sending signals to the init process or other processes under certain conditions. This is a behavioral difference that could be exploited by an attacker to send signals to processes they should not be allowed to, making it security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation checks if `si_code >= 0` and returns `-EINVAL`, while the reference implementation only allows `SI_QUEUE` and returns `-EPERM` if the code is not `SI_QUEUE`. This leads to different behaviors for certain values of `si_code`, such as negative values or values other than `SI_QUEUE`. The reference implementation also includes a `WARN_ON_ONCE` for negative `si_code`, which is not present in the candidate. These differences are relevant to signal validation and could affect how signals are handled or whether they are rejected, potentially impacting system security or correctness.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

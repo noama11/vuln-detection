@@ -1,0 +1,114 @@
+{
+  "case_id": "C_384__0",
+  "sample_id": "D/C/384",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "uclouvain/openjpeg",
+  "cve_id": "CVE-2017-14164",
+  "cve_summary": "A size-validation issue was discovered in opj_j2k_write_sot in lib/openjp2/j2k.c in OpenJPEG 2.2.0. The vulnerability causes an out-of-bounds write, which may lead to remote denial of service (heap-based buffer overflow affecting opj_write_bytes_LE in lib/openjp2/cio.c) or possibly remote code execution. NOTE: this vulnerability exists because of an incomplete fix for CVE-2017-14152.",
+  "changed_file": "src/lib/openjp2/j2k.c",
+  "docstring": "Summary: This code fragment defines two static functions for handling the SOT (Start of tile-part) marker in a J2K codec, one for writing and one for reading SOT values.\n\nParameters: \nopj_j2k_write_sot:\np_j2k (opj_j2k_t*): J2K codec instance.\np_data (OPJ_BYTE*): Output buffer for written data.\np_total_data_size (OPJ_UINT32): Size of the output buffer.\np_data_written (OPJ_UINT32*): Pointer to store the number of bytes written.\np_stream (const opj_stream_private_t*): Stream to write data to.\np_manager (opj_event_mgr_t*): User event manager.\n\nopj_j2k_get_sot_values:\np_header_data (OPJ_BYTE*): Data contained in the SOT marker.\np_header_size (OPJ_UINT32): Size of the SOT marker data.\np_tile_no (OPJ_UINT32*): Pointer to store the tile number.\np_tot_len (OPJ_UINT32*): Pointer to store the total length.\np_current_part (OPJ_UINT32*): Pointer to store the current part number.\np_num_parts (OPJ_UINT32*): Pointer to store the number of parts.\np_manager (opj_event_mgr_t*): User event manager.\n\nReturns: \nopj_j2k_write_sot: OPJ_BOOL indicating success or failure of the write operation.\nopj_j2k_get_sot_values: OPJ_BOOL indicating success or failure of reading SOT values.\n\nLogic: The `opj_j2k_write_sot` function writes the SOT marker to a specified stream, updating the output buffer and the number of bytes written. The `opj_j2k_get_sot_values` function reads the SOT marker data into provided pointers without altering the decoder state, performing minimal checks only on the header size. Both functions utilize",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <assert.h>\n\n#define OPJ_TRUE 1\n#define OPJ_FALSE 0\n\ntypedef unsigned char OPJ_BYTE;\ntypedef unsigned int OPJ_UINT32;\ntypedef int OPJ_BOOL;\n\ntypedef struct opj_j2k_t opj_j2k_t;\ntypedef struct opj_stream_private_t opj_stream_private_t;\ntypedef struct opj_event_mgr_t opj_event_mgr_t;\n\nOPJ_BOOL opj_j2k_write_sot(opj_j2k_t* p_j2k, OPJ_BYTE* p_data, OPJ_UINT32 p_total_data_size, \n                           OPJ_UINT32* p_data_written, const opj_stream_private_t* p_stream, \n                           opj_event_mgr_t* p_manager) {\n    if (!p_j2k || !p_data || !p_data_written || !p_stream || !p_manager) {\n        return OPJ_FALSE;\n    }\n\n    if (p_total_data_size < 17) {  // Minimum size for SOT marker\n        return OPJ_FALSE;\n    }\n\n    // Write SOT marker (0xFF91)\n    if (p_total_data_size < 2) {\n        return OPJ_FALSE;\n    }\n    p_data[0] = 0xFF;\n    p_data[1] = 0x91;\n\n    // Write length (4 bytes)\n    if (p_total_data_size < 6) {\n        return OPJ_FALSE;\n    }\n    p_data[2] = 0x00;\n    p_data[3] = 0x00;\n    p_data[4] = 0x00;\n    p_data[5] = 0x00;\n\n    // Write tile number (2 bytes)\n    if (p_total_data_size < 8) {\n        return OPJ_FALSE;\n    }\n    p_data[6] = 0x00;\n    p_data[7] = 0x00;\n\n    // Write current part number (1 byte)\n    if (p_total_data_size < 9) {\n        return OPJ_FALSE;\n    }\n    p_data[8] = 0x00;\n\n    // Write number of parts (1 byte)\n    if (p_total_data_size < 10) {\n        return OPJ_FALSE;\n    }\n    p_data[9] = 0x00;\n\n    // Write remaining bytes to zero\n    if (p_total_data_size < 17) {\n        return OPJ_FALSE;\n    }\n    memset(p_data + 10, 0, 7);\n\n    *p_data_written = 17;\n\n    return OPJ_TRUE;\n}\n\nOPJ_BOOL opj_j2k_get_sot_values(OPJ_BYTE* p_header_data, OPJ_UINT32 p_header_size, \n                                OPJ_UINT32* p_tile_no, OPJ_UINT32* p_tot_len, \n                                OPJ_UINT32* p_current_part, OPJ_UINT32* p_num_parts, \n                                opj_event_mgr_t* p_manager) {\n    if (!p_header_data || !p_tile_no || !p_tot_len || !p_current_part || !p_num_parts || !p_manager) {\n        return OPJ_FALSE;\n    }\n\n    if (p_header_size < 10) {\n        return OPJ_FALSE;\n    }\n\n    // Check marker is SOT (0xFF91)\n    if (p_header_data[0] != 0xFF || p_header_data[1] != 0x91) {\n        return OPJ_FALSE;\n    }\n\n    // Read length (4 bytes)\n    *p_tot_len = ((OPJ_UINT32)p_header_data[2] << 24) |\n                 ((OPJ_UINT32)p_header_data[3] << 16) |\n                 ((OPJ_UINT32)p_header_data[4] << 8)  |\n                 (OPJ_UINT32)p_header_data[5];\n\n    // Read tile number (2 bytes)\n    *p_tile_no = ((OPJ_UINT32)p_header_data[6] << 8) | (OPJ_UINT32)p_header_data[7];\n\n    // Read current part number (1 byte)\n    *p_current_part = (OPJ_UINT32)p_header_data[8];\n\n    // Read number of parts (1 byte)\n    *p_num_parts = (OPJ_UINT32)p_header_data[9];\n\n    return OPJ_TRUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check all input pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify buffer size is sufficient before writing",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate header size before reading",
+      "protects_against": "reading beyond buffer bounds"
+    },
+    {
+      "step": "check for correct SOT marker signature",
+      "protects_against": "processing invalid or malformed SOT markers"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 27,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check all input pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check any input pointers for null before dereferencing them.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "verify buffer size is sufficient before writing — protects against: buffer overflow",
+        "reasoning": "The implementation does not verify whether the buffer size is sufficient before writing data into it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate header size before reading — protects against: reading beyond buffer bounds",
+        "reasoning": "The implementation does not validate the header size before reading from the header data buffer.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for correct SOT marker signature — protects against: processing invalid or malformed SOT markers",
+        "reasoning": "The implementation does not check for the correct SOT marker signature before processing the data.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check all input pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses assert statements to check that p_j2k, p_manager, and p_stream are not null. These checks are performed before any dereference of the pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify buffer size is sufficient before writing — protects against: buffer overflow",
+        "reasoning": "This implementation does not perform any writing to a buffer provided by the caller. It uses a fixed-size local buffer (l_data) of size 2, which is sufficient for its needs.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate header size before reading — protects against: reading beyond buffer bounds",
+        "reasoning": "The implementation reads exactly 2 bytes from the stream into a fixed-size local buffer (l_data) of size 2. There is no risk of reading beyond the buffer bounds.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for correct SOT marker signature — protects against: processing invalid or malformed SOT markers",
+        "reasoning": "The implementation checks if the read marker (l_marker) is equal to J2K_MS_SOC. If it is not, the function returns OPJ_FALSE, indicating failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

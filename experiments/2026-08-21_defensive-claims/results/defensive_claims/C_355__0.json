@@ -1,0 +1,114 @@
+{
+  "case_id": "C_355__0",
+  "sample_id": "D/C/355",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-17499",
+  "cve_summary": "ImageMagick before 6.9.9-24 and 7.x before 7.0.7-12 has a use-after-free in Magick::Image::read in Magick++/lib/Image.cpp.",
+  "changed_file": "Magick++/lib/Image.cpp",
+  "docstring": "Summary: This function reads an image into the Magick::Image object, ensuring that only a single image frame is processed.\n\nParameters:\n- image (MagickCore::Image *): Pointer to the image to be read.\n- exceptionInfo (MagickCore::ExceptionInfo *): Pointer to the exception information structure.\n\nReturns: None\n\nLogic: The function first checks if the provided image pointer is valid and if it has a subsequent frame. If so, it destroys any additional frames to ensure only one frame is retained. It then replaces the current image with the new one. If the exception severity is undefined and the image is null, it destroys the exception info and handles the no-image condition. If the image is not null, it throws an exception based on the image's exception information.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <MagickCore/MagickCore.h>\n\nvoid readSingleImageFrame(MagickCore::Image *image, MagickCore::ExceptionInfo *exceptionInfo) {\n  if (image == NULL) {\n    if (exceptionInfo != NULL && exceptionInfo->severity == UndefinedException) {\n      DestroyExceptionInfo(exceptionInfo);\n      return;\n    }\n\n    if (exceptionInfo != NULL) {\n      (void) ThrowMagickException(exceptionInfo, GetMagickModule(), ImageError, \"NoImage\", \"Unable to read image\");\n      return;\n    }\n\n    return;\n  }\n\n  if (image->next != NULL) {\n    MagickCore::Image *next = image->next;\n    while (next != NULL) {\n      MagickCore::Image *temp = next->next;\n      DestroyImage(next);\n      next = temp;\n    }\n    image->next = NULL;\n  }\n\n  if (image->exception != NULL) {\n    (void) ThrowMagickException(exceptionInfo, GetMagickModule(), ImageError, \"ImageException\", \"%s\", image->exception->reason);\n  }\n}",
+  "defensive_steps": [
+    {
+      "step": "check if image pointer is NULL before proceeding",
+      "protects_against": "dereferencing a null pointer which would cause a crash"
+    },
+    {
+      "step": "check if exceptionInfo is not NULL before using it",
+      "protects_against": "dereferencing a null pointer when handling exceptions"
+    },
+    {
+      "step": "ensure image->next is not NULL before attempting to destroy additional frames",
+      "protects_against": "dereferencing a null pointer when iterating through image frames"
+    },
+    {
+      "step": "check if image->exception is not NULL before using it",
+      "protects_against": "dereferencing a null pointer when accessing exception information"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if image pointer is NULL before proceeding — protects against: dereferencing a null pointer which would cause a crash",
+        "reasoning": "The implementation checks if image is not NULL before accessing image->next. This ensures that the image pointer is valid before proceeding.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if exceptionInfo is not NULL before using it — protects against: dereferencing a null pointer when handling exceptions",
+        "reasoning": "The implementation uses exceptionInfo->severity without checking if exceptionInfo is NULL. This could lead to a null pointer dereference if exceptionInfo is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "ensure image->next is not NULL before attempting to destroy additional frames — protects against: dereferencing a null pointer when iterating through image frames",
+        "reasoning": "The implementation checks if image->next is not NULL before proceeding to destroy additional frames. This ensures that image->next is valid before using it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if image->exception is not NULL before using it — protects against: dereferencing a null pointer when accessing exception information",
+        "reasoning": "The implementation uses image->exception without checking if it is NULL. This could lead to a null pointer dereference if image->exception is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 18,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if image pointer is NULL before proceeding — protects against: dereferencing a null pointer which would cause a crash",
+        "reasoning": "The implementation checks if `image != NULL` before accessing `image->next`, and also uses `image` in the final `if (image != NULL)` block. However, in the `if (exceptionInfo->severity == ...)` block, it uses `image == NULL` without checking if `image` is NULL first. This could lead to a NULL dereference if `image` is NULL and `exceptionInfo->severity` is `UndefinedException`.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check if exceptionInfo is not NULL before using it — protects against: dereferencing a null pointer when handling exceptions",
+        "reasoning": "The implementation uses `exceptionInfo->severity` without checking if `exceptionInfo` is NULL. This could lead to a NULL dereference if `exceptionInfo` is NULL.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "ensure image->next is not NULL before attempting to destroy additional frames — protects against: dereferencing a null pointer when iterating through image frames",
+        "reasoning": "The implementation checks if `image != NULL` and `image->next != NULL` before accessing `image->next`. This ensures that `image->next` is not NULL before attempting to destroy additional frames.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if image->exception is not NULL before using it — protects against: dereferencing a null pointer when accessing exception information",
+        "reasoning": "The implementation calls `throwException(&image->exception, quiet())` without checking if `image->exception` is NULL. This could lead to a NULL dereference if `image->exception` is NULL.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "C_147__0",
+  "implementation": "void sctp_update_association(struct sctp_association *asoc, struct sctp_association *new) {\n    if (!asoc || !new) {\n        return;\n    }\n\n    /* Copy new parameters from 'new' to 'asoc' */\n    memcpy(&asoc->params, &new->params, sizeof(asoc->params));\n\n    /* Remove peer addresses from 'asoc' that are not in 'new' */\n    for (size_t i = 0; i < asoc->peer_addrs_count; ++i) {\n        int found = 0;\n        for (size_t j = 0; j < new->peer_addrs_count && !found; ++j) {\n            if (memcmp(&asoc->peer_addrs[i], &new->peer_addrs[j], sizeof(struct sockaddr)) == 0) {\n                found = 1;\n            }\n        }\n        if (!found) {\n            /* Remove the address from 'asoc' */\n            memmove(&asoc->peer_addrs[i], &asoc->peer_addrs[i + 1], \n                    (asoc->peer_addrs_count - i - 1) * sizeof(struct sockaddr));\n            --asoc->peer_addrs_count;\n            --i; /* Adjust index after removal */\n        }\n    }\n\n    if (asoc->state == SCTP_ESTABLISHED) {\n        asoc->next_tsn = new->next_tsn;\n        sctp_clear_ssn_map(asoc);\n        sctp_flush_ulp_reassembly(asoc);\n        asoc->error_count = 0;\n    } else {\n        for (size_t i = 0; i < new->peer_addrs_count; ++i) {\n            if (asoc->peer_addrs_count < SCTP_MAX_PEER_ADDRS) {\n                memcpy(&asoc->peer_addrs[asoc->peer_addrs_count++], \n                       &new->peer_addrs[i], sizeof(struct sockaddr));\n            }\n        }\n        sctp_update_ssn_map(asoc);\n        asoc->assoc_id = new->assoc_id;\n    }\n\n    /* Update SCTP-AUTH related parameters */\n    memcpy(&asoc->auth, &new->auth, sizeof(asoc->auth));\n    sctp_transfer_shared_keys(asoc, new);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound copy of peer addresses to available capacity",
+      "protects_against": "buffer overflow when adding new peer addresses"
+    }
+  ],
+  "n_steps": 2,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

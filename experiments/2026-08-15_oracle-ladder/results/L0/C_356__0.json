@@ -1,0 +1,48 @@
+{
+  "case_id": "C_356__0",
+  "sample_id": "D/C/356",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2017-17081",
+  "cve_summary": "The gmc_mmx function in libavcodec/x86/mpegvideodsp.c in FFmpeg 3.4 does not properly validate widths and heights, which allows remote attackers to cause a denial of service (integer signedness error and out-of-array read) via a crafted MPEG file.",
+  "changed_file": "libavcodec/x86/mpegvideodsp.c",
+  "docstring": "\"\"\"\nSummary: \nThis function performs motion compensation using MMX instructions for video processing.\n\nParameters: \ndst (uint8_t*): Pointer to the destination buffer where the result is stored.\nsrc (uint8_t*): Pointer to the source buffer from which data is read.\nstride (int): The number of bytes between consecutive rows in the source buffer.\nh (int): The height of the block to process.\nox (int): The x-offset for the motion vector.\noy (int): The y-offset for the motion vector.\ndxx (int): The x-component of the motion vector.\ndxy (int): The xy-component of the motion vector.\ndyx (int): The yx-component of the motion vector.\ndyy (int): The y-component of the motion vector.\nshift (int): The shift value for subpixel motion compensation.\nr (int): A parameter used in the calculation.\nwidth (int): The width of the source image.\nheight (int): The height of the source image.\n\nReturns: \nNone\n\nLogic: \nThe function first checks if the motion vector requires emulation or if it exceeds certain limits. If so, it falls back to a software implementation. Otherwise, it uses inline assembly to perform optimized calculations for motion compensation, processing blocks of pixels based on the provided motion vectors and offsets.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void gmc_mmx(uint8_t *dst, uint8_t *src,\r\n                    int stride, int h, int ox, int oy,\r\n                    int dxx, int dxy, int dyx, int dyy,\r\n                    int shift, int r, int width, int height)\r\n{\r\n    const int w    = 8;\r\n    const int ix   = ox  >> (16 + shift);\r\n    const int iy   = oy  >> (16 + shift);\r\n    const int oxs  = ox  >> 4;\r\n    const int oys  = oy  >> 4;\r\n    const int dxxs = dxx >> 4;\r\n    const int dxys = dxy >> 4;\r\n    const int dyxs = dyx >> 4;\r\n    const int dyys = dyy >> 4;\r\n    const uint16_t r4[4]   = { r, r, r, r };\r\n    const uint16_t dxy4[4] = { dxys, dxys, dxys, dxys };\r\n    const uint16_t dyy4[4] = { dyys, dyys, dyys, dyys };\r\n    const uint64_t shift2  = 2 * shift;\r\n#define MAX_STRIDE 4096U\r\n#define MAX_H 8U\r\n    uint8_t edge_buf[(MAX_H + 1) * MAX_STRIDE];\r\n    int x, y;\r\n\r\n    const int dxw = (dxx - (1 << (16 + shift))) * (w - 1);\r\n    const int dyh = (dyy - (1 << (16 + shift))) * (h - 1);\r\n    const int dxh = dxy * (h - 1);\r\n    const int dyw = dyx * (w - 1);\r\n    int need_emu  =  (unsigned) ix >= width  - w || width < w ||\r\n                     (unsigned) iy >= height - h || height< h\r\n                     ;\r\n\r\n    if ( // non-constant fullpel offset (3% of blocks)\r\n        ((ox ^ (ox + dxw)) | (ox ^ (ox + dxh)) | (ox ^ (ox + dxw + dxh)) |\r\n         (oy ^ (oy + dyw)) | (oy ^ (oy + dyh)) | (oy ^ (oy + dyw + dyh))) >> (16 + shift) ||\r\n        // uses more than 16 bits of subpel mv (only at huge resolution)\r\n        (dxx | dxy | dyx | dyy) & 15 ||\r\n        (need_emu && (h > MAX_H || stride > MAX_STRIDE))) {\r\n        // FIXME could still use mmx for some of the rows\r\n        ff_gmc_c(dst, src, stride, h, ox, oy, dxx, dxy, dyx, dyy,\r\n                 shift, r, width, height);\r\n        return;\r\n    }\r\n\r\n    src += ix + iy * stride;\r\n    if (need_emu) {\r\n        ff_emulated_edge_mc_8(edge_buf, src, stride, stride, w + 1, h + 1, ix, iy, width, height);\r\n        src = edge_buf;\r\n    }\r\n\r\n    __asm__ volatile (\r\n        \"movd         %0, %%mm6         \\n\\t\"\r\n        \"pxor      %%mm7, %%mm7         \\n\\t\"\r\n        \"punpcklwd %%mm6, %%mm6         \\n\\t\"\r\n        \"punpcklwd %%mm6, %%mm6         \\n\\t\"\r\n        :: \"r\" (1 << shift));\r\n\r\n    for (x = 0; x < w; x += 4) {\r\n        uint16_t dx4[4] = { oxs - dxys + dxxs * (x + 0),\r\n                            oxs - dxys + dxxs * (x + 1),\r\n                            oxs - dxys + dxxs * (x + 2),\r\n                            oxs - dxys + dxxs * (x + 3) };\r\n        uint16_t dy4[4] = { oys - dyys + dyxs * (x + 0),\r\n                            oys - dyys + dyxs * (x + 1),\r\n                            oys - dyys + dyxs * (x + 2),\r\n                            oys - dyys + dyxs * (x + 3) };\r\n\r\n        for (y = 0; y < h; y++) {\r\n            __asm__ volatile (\r\n                \"movq      %0, %%mm4    \\n\\t\"\r\n                \"movq      %1, %%mm5    \\n\\t\"\r\n                \"paddw     %2, %%mm4    \\n\\t\"\r\n                \"paddw     %3, %%mm5    \\n\\t\"\r\n                \"movq   %%mm4, %0       \\n\\t\"\r\n                \"movq   %%mm5, %1       \\n\\t\"\r\n                \"psrlw    $12, %%mm4    \\n\\t\"\r\n                \"psrlw    $12, %%mm5    \\n\\t\"\r\n                : \"+m\" (*dx4), \"+m\" (*dy4)\r\n                : \"m\" (*dxy4), \"m\" (*dyy4));\r\n\r\n            __asm__ volatile (\r\n                \"movq      %%mm6, %%mm2 \\n\\t\"\r\n                \"movq      %%mm6, %%mm1 \\n\\t\"\r\n                \"psubw     %%mm4, %%mm2 \\n\\t\"\r\n                \"psubw     %%mm5, %%mm1 \\n\\t\"\r\n                \"movq      %%mm2, %%mm0 \\n\\t\"\r\n                \"movq      %%mm4, %%mm3 \\n\\t\"\r\n                \"pmullw    %%mm1, %%mm0 \\n\\t\" // (s - dx) * (s - dy)\r\n                \"pmullw    %%mm5, %%mm3 \\n\\t\" // dx * dy\r\n                \"pmullw    %%mm5, %%mm2 \\n\\t\" // (s - dx) * dy\r\n                \"pmullw    %%mm4, %%mm1 \\n\\t\" // dx * (s - dy)\r\n\r\n                \"movd         %4, %%mm5 \\n\\t\"\r\n                \"movd         %3, %%mm4 \\n\\t\"\r\n                \"punpcklbw %%mm7, %%mm5 \\n\\t\"\r\n                \"punpcklbw %%mm7, %%mm4 \\n\\t\"\r\n                \"pmullw    %%mm5, %%mm3 \\n\\t\" // src[1, 1] * dx * dy\r\n                \"pmullw    %%mm4, %%mm2 \\n\\t\" // src[0, 1] * (s - dx) * dy\r\n\r\n                \"movd         %2, %%mm5 \\n\\t\"\r\n                \"movd         %1, %%mm4 \\n\\t\"\r\n                \"punpcklbw %%mm7, %%mm5 \\n\\t\"\r\n                \"punpcklbw %%mm7, %%mm4 \\n\\t\"\r\n                \"pmullw    %%mm5, %%mm1 \\n\\t\" // src[1, 0] * dx * (s - dy)\r\n                \"pmullw    %%mm4, %%mm0 \\n\\t\" // src[0, 0] * (s - dx) * (s - dy)\r\n                \"paddw        %5, %%mm1 \\n\\t\"\r\n                \"paddw     %%mm3, %%mm2 \\n\\t\"\r\n                \"paddw     %%mm1, %%mm0 \\n\\t\"\r\n                \"paddw     %%mm2, %%mm0 \\n\\t\"\r\n\r\n                \"psrlw        %6, %%mm0 \\n\\t\"\r\n                \"packuswb  %%mm0, %%mm0 \\n\\t\"\r\n                \"movd      %%mm0, %0    \\n\\t\"\r\n\r\n                : \"=m\" (dst[x + y * stride])\r\n                : \"m\" (src[0]), \"m\" (src[1]),\r\n                  \"m\" (src[stride]), \"m\" (src[stride + 1]),\r\n                  \"m\" (*r4), \"m\" (shift2));\r\n            src += stride;\r\n        }\r\n        src += 4 - h * stride;\r\n    }\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate and reference implementations are nearly identical, with the only difference being in the calculation of the `need_emu` variable. The reference implementation includes an additional condition `width < w || height < h` in the `need_emu` check, while the candidate implementation does not. This could lead to different behavior when the width or height is less than the block size `w` or `h`, potentially causing the candidate implementation to use the MMX code path when it should fall back to the software implementation. This is a functional mismatch that could affect correctness for certain inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code structure, logic, and behavior. There are no observable differences in how they handle inputs or perform computations. Both implementations use the same inline assembly for MMX instructions and follow the same fallback logic for emulation. Therefore, they are behaviorally equivalent.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

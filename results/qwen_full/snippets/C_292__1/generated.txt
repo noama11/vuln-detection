@@ -1,0 +1,29 @@
+void unregister_ppp_channel(struct ppp_channel *chan) {
+    if (!chan)
+        return;
+
+    chan->ppp = NULL;
+
+    /* Acquire write lock to ensure no ongoing operations */
+    write_lock(&chan->lock);
+
+    /* Disconnect the channel */
+    ppp_disconnect(chan);
+
+    /* Remove from the list of all channels */
+    list_del(&chan->list);
+
+    /* Decrement the reference count of the channel's file structure */
+    if (chan->file) {
+        struct file *file = chan->file;
+        if (file) {
+            filp_close(file, NULL);
+            if (atomic_dec_and_test(&file->f_count))
+                kfree(file);
+        }
+    }
+
+    /* Destroy the channel if no longer in use */
+    kfree(chan);
+    wake_up_all(&chan->wait_queue);
+}

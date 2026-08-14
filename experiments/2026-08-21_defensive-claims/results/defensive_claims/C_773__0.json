@@ -1,0 +1,146 @@
+{
+  "case_id": "C_773__0",
+  "sample_id": "D/C/773",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "miniupnp/miniupnp",
+  "cve_id": "CVE-2019-12109",
+  "cve_summary": "A Denial Of Service vulnerability in MiniUPnP MiniUPnPd through 2.1 exists due to a NULL pointer dereference in GetOutboundPinholeTimeout in upnpsoap.c for rem_port.",
+  "changed_file": "miniupnpd/upnpsoap.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the retrieval of the outbound pinhole timeout for a specified action in a UPnP HTTP context.\n\nParameters: \nh (struct upnphttp *): Pointer to the UPnP HTTP context.\naction (const char *): The action name for the UPnP request.\nns (const char *): The namespace associated with the UPnP action.\n\nReturns: \nNone\n\nLogic: The function first checks if IPv6 forwarding is disabled and returns an error if so. It then parses the incoming request for parameters such as internal client IP, ports, remote host, and protocol. It logs the request details and attempts to check the outbound pinhole timeout. Based on the result of this check, it constructs an appropriate SOAP response or sends an error message if the protocol is unsupported or if the action fails.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void handle_outbound_pinhole_timeout(struct upnphttp *h, const char *action, const char *ns) {\n    if (!ipv6_forwarding_enabled()) {\n        send_soap_error(h, 400, \"IPv6 forwarding is disabled.\");\n        return;\n    }\n\n    char *internal_client_ip = NULL;\n    char *internal_port = NULL;\n    char *remote_host = NULL;\n    char *protocol = NULL;\n\n    if (!parse_request(h->request, &internal_client_ip, &internal_port, &remote_host, &protocol)) {\n        send_soap_error(h, 400, \"Failed to parse request parameters.\");\n        free(internal_client_ip);\n        free(internal_port);\n        free(remote_host);\n        free(protocol);\n        return;\n    }\n\n    if (!validate_ip_address(internal_client_ip)) {\n        send_soap_error(h, 400, \"Invalid internal client IP address.\");\n        free(internal_client_ip);\n        free(internal_port);\n        free(remote_host);\n        free(protocol);\n        return;\n    }\n\n    if (!validate_port(internal_port)) {\n        send_soap_error(h, 400, \"Invalid internal port.\");\n        free(internal_client_ip);\n        free(internal_port);\n        free(remote_host);\n        free(protocol);\n        return;\n    }\n\n    if (!validate_protocol(protocol)) {\n        send_soap_error(h, 400, \"Unsupported protocol.\");\n        free(internal_client_ip);\n        free(internal_port);\n        free(remote_host);\n        free(protocol);\n        return;\n    }\n\n    int timeout = check_outbound_pinhole_timeout(internal_client_ip, internal_port, remote_host, protocol);\n\n    if (timeout < 0) {\n        send_soap_error(h, 500, \"Failed to check outbound pinhole timeout.\");\n    } else {\n        char response[256];\n        snprintf(response, sizeof(response), \"<timeout>%d</timeout>\", timeout);\n        send_soap_response(h, response);\n    }\n\n    free(internal_client_ip);\n    free(internal_port);\n    free(remote_host);\n    free(protocol);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if IPv6 forwarding is enabled before proceeding",
+      "protects_against": "attempting to handle pinhole timeout when IPv6 forwarding is disabled"
+    },
+    {
+      "step": "validate internal client IP address",
+      "protects_against": "malformed or invalid IP address in the request"
+    },
+    {
+      "step": "validate internal port",
+      "protects_against": "malformed or invalid port number in the request"
+    },
+    {
+      "step": "validate protocol",
+      "protects_against": "unsupported or malformed protocol in the request"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks when parsing or validation fails"
+    },
+    {
+      "step": "bound snprintf to prevent buffer overflow",
+      "protects_against": "buffer overflow when constructing the SOAP response"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 15,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if IPv6 forwarding is enabled before proceeding — protects against: attempting to handle pinhole timeout when IPv6 forwarding is disabled",
+        "reasoning": "The implementation checks if IPv6 forwarding is disabled using `GETFLAG(IPV6FCFWDISABLEDMASK)`, and returns an error if so. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate internal client IP address — protects against: malformed or invalid IP address in the request",
+        "reasoning": "The implementation retrieves the internal client IP address using `GetValueFromNameValueList`, but does not perform any validation on the returned value to ensure it is a valid IP address.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate internal port — protects against: malformed or invalid port number in the request",
+        "reasoning": "The implementation retrieves the internal port string and converts it to an unsigned short using `atoi`, but does not validate that the string is a valid port number or that the resulting value is within the valid port range (1-65535).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate protocol — protects against: unsupported or malformed protocol in the request",
+        "reasoning": "The implementation retrieves the protocol string but does not validate it. The only protocol-related check is a placeholder comment (`/*proto = atoi(protocol);*/`) and a hardcoded error for protocol not supported in the switch statement, which is not tied to actual protocol validation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks when parsing or validation fails",
+        "reasoning": "The implementation calls `ClearNameValueList(&data)` at the end of the function, which presumably frees the memory allocated by `ParseNameValue`. However, it does not explicitly handle memory deallocation on early return paths (e.g., if `GetValueFromNameValueList` fails).",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "bound snprintf to prevent buffer overflow — protects against: buffer overflow when constructing the SOAP response",
+        "reasoning": "The implementation uses `snprintf(body, sizeof(body), ...)` to construct the SOAP response, which bounds the write to the size of the `body` buffer. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check if IPv6 forwarding is enabled before proceeding — protects against: attempting to handle pinhole timeout when IPv6 forwarding is disabled",
+        "reasoning": "The implementation checks if IPv6 forwarding is disabled using `GETFLAG(IPV6FCFWDISABLEDMASK)`, and returns an error if so. This directly implements the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate internal client IP address — protects against: malformed or invalid IP address in the request",
+        "reasoning": "The implementation retrieves the internal client IP address using `GetValueFromNameValueList`, but does not perform any validation on it. There is no check for a valid IP format.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate internal port — protects against: malformed or invalid port number in the request",
+        "reasoning": "The implementation retrieves the internal port as a string and converts it to an unsigned short using `atoi`, but does not validate that the string is a valid port number (e.g., within 1-65535 or not containing non-numeric characters).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate protocol — protects against: unsupported or malformed protocol in the request",
+        "reasoning": "The implementation retrieves the protocol string but does not validate it. The only protocol-related check is in the `switch` statement, which handles a return code from a function that is not implemented (commented out). There is no validation of the protocol string itself.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks when parsing or validation fails",
+        "reasoning": "The implementation calls `ClearNameValueList(&data)` on both the success and error paths, which appears to be responsible for freeing memory associated with the parsed data. This suggests that the implementation performs the necessary cleanup.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound snprintf to prevent buffer overflow — protects against: buffer overflow when constructing the SOAP response",
+        "reasoning": "The implementation uses `snprintf(body, sizeof(body), ...)` to construct the SOAP response, which bounds the write to the size of the `body` buffer. This prevents buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

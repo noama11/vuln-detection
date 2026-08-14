@@ -1,0 +1,34 @@
+{
+  "case_id": "Cpp_804__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void handleIncomingRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Routing pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    std::size_t selectedAcceptorIndex = std::hash<std::string>()(routingData.toString()) % NUM_ACCEPTORS;\n    Acceptor* newAcceptor = acceptors[selectedAcceptorIndex];\n\n    newAcceptor->thread->addTask([=]() {\n        auto socket = pipeline->detachSocket();\n        socket->attachTo(newAcceptor->eventBase);\n\n        auto newPipeline = createPipeline(routingData);\n        newAcceptor->addServerConnection(socket, newPipeline);\n\n        newPipeline->activateTransport();\n        newPipeline->readBufferedBytes();\n    });\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void handleRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Routing pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    uint32_t acceptorId = std::hash<std::string>()(routingData.toString()) % NUM_ACCEPTORS;\n    Acceptor* acceptor = getAcceptor(acceptorId);\n\n    if (!acceptor) {\n        LOG(ERROR) << \"Failed to find acceptor for ID: \" << acceptorId;\n        return;\n    }\n\n    folly::fibers::runInMainLoop([=] {\n        folly::EventBase* evb = acceptor->getEventBase();\n        folly::AsyncSocket* socket = pipeline->getSocket();\n\n        if (socket) {\n            socket->attachEventBase(evb);\n        }\n\n        auto newPipeline = createPipeline(routingData);\n        if (!newPipeline) {\n            LOG(ERROR) << \"Failed to create new pipeline for connection ID: \" << connId;\n            return;\n        }\n\n        acceptor->addServerConnection(connId, newPipeline);\n        newPipeline->activateTransport();\n        newPipeline->readBufferedBytes();\n    });\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void handleIncomingRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Routing pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    size_t acceptorIndex = std::hash<RoutingData>()(routingData) % numAcceptors;\n    Acceptor* acceptor = &acceptors[acceptorIndex];\n\n    folly::fibers::runInMainLoop([=]() {\n        folly::EventBase* eventBase = acceptor->getEventBase();\n        folly::AsyncSocket::UniquePtr socket = pipeline->releaseSocket();\n\n        socket->attachEventBase(eventBase);\n\n        PipelineBuilder builder;\n        builder.setRoutingData(routingData);\n        auto newPipeline = builder.build();\n        acceptor->addServerConnection(std::move(newPipeline));\n\n        newPipeline->activateTransport();\n        newPipeline->readBufferedBytes();\n    });\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void handleIncomingRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    size_t acceptorIndex = std::hash<RoutingData>{}(routingData) % kNumAcceptors;\n    Acceptor* acceptor = &acceptors[acceptorIndex];\n\n    folly::fibers::requestIODeviceFiberContext(acceptor->getEventBase()->getUnderlyingEventBase()->loop());\n\n    folly::AsyncSocket::UniquePtr socket(acceptor->getSocket());\n    socket->attachEventBase(acceptor->getEventBase());\n\n    auto newPipeline = createPipelineWithRoutingData(routingData);\n    acceptor->addServerConnection(connId, std::move(socket), std::move(newPipeline));\n\n    newPipeline->activateTransport();\n    newPipeline->readBufferedBytes();\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void handleRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Routing pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    size_t acceptorIndex = std::hash<std::string>()(routingData.toString()) % numAcceptors;\n    Acceptor* newAcceptor = acceptors[acceptorIndex];\n\n    newAcceptor->thread->runInEventBaseThread([pipeline, newAcceptor, routingData, connId] {\n        auto socket = pipeline->getSocket();\n        socket->attachEventBase(newAcceptor->eventBase);\n        \n        auto newPipeline = newAcceptor->createPipeline(routingData);\n        newPipeline->addServerConnection(connId);\n        newPipeline->activateTransport();\n        newPipeline->readBufferedBytes();\n    });\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

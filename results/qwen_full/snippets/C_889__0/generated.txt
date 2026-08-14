@@ -1,0 +1,48 @@
+ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {
+    ssize_t ret = 0;
+    struct hid_gadget_request *req;
+    int err;
+
+    if (!access_ok(VERIFY_READ, buffer, count))
+        return -EFAULT;
+
+    spin_lock(&write_queue_lock);
+
+    while (write_pending) {
+        wait_event_interruptible(write_queue_wait, !write_pending);
+        if (signal_pending(current)) {
+            ret = -ERESTARTSYS;
+            goto out_unlock;
+        }
+    }
+
+    req = hid_gadget_request_alloc(count);
+    if (!req) {
+        ret = -ENOMEM;
+        goto out_unlock;
+    }
+
+    if (copy_from_user(req->data, buffer, count)) {
+        ret = -EFAULT;
+        goto out_free_req;
+    }
+
+    err = usb_ep_queue(ep_out, &req->req, GFP_ATOMIC);
+    if (err) {
+        dev_err(&gadget->dev, "Failed to queue HID write request: %d\n", err);
+        ret = -EIO;
+        goto out_free_req;
+    }
+
+    write_pending = 1;
+
+    spin_unlock(&write_queue_lock);
+    wake_up(&write_queue_wait);
+    return count;
+
+out_free_req:
+    hid_gadget_request_free(req);
+out_unlock:
+    spin_unlock(&write_queue_lock);
+    return ret;
+}

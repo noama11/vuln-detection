@@ -1,0 +1,114 @@
+{
+  "case_id": "C_795__0",
+  "sample_id": "D/C/795",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "domoticz/domoticz",
+  "cve_id": "CVE-2019-10664",
+  "cve_summary": "Domoticz before 4.10578 allows SQL Injection via the idx parameter in CWebServer::GetFloorplanImage in WebServer.cpp.",
+  "changed_file": "main/WebServer.cpp",
+  "docstring": "Summary: This function retrieves a floorplan image based on a request and sends it back in the reply.\n\nParameters: \n- session (WebEmSession&): The session object associated with the web request.\n- req (const request&): The incoming request containing parameters.\n- rep (reply&): The reply object to which the image will be sent.\n\nReturns: None\n\nLogic: The function first extracts the \"idx\" parameter from the request. If \"idx\" is empty, it exits early. It then queries the database for the image associated with the given ID. If no image is found, it exits. If an image is retrieved, it sets the content of the reply with the image data. The function determines the appropriate file extension based on the first byte of the image data and adds it as an attachment header to the reply.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <stdlib.h>\n\n// Function to retrieve a floorplan image based on a request and send it back in the reply\nvoid send_floorplan_image(WebEmSession* session, const request* req, reply* rep) {\n    // Extract the \"idx\" parameter from the request\n    const char* idx = request_get_param(req, \"idx\");\n    if (!idx || idx[0] == '\\0') {\n        // If \"idx\" is empty or null, exit early\n        return;\n    }\n\n    // Query the database for the image associated with the given ID\n    unsigned char* image_data = NULL;\n    size_t image_size = 0;\n    int success = database_query_image(idx, &image_data, &image_size);\n\n    if (!success || !image_data || image_size == 0) {\n        // If no image is found, exit\n        return;\n    }\n\n    // Determine the file extension based on the first byte of the image data\n    const char* file_extension = \"unknown\";\n    if (image_size > 0) {\n        switch (image_data[0]) {\n            case 'P': // PNG\n                file_extension = \"png\";\n                break;\n            case 'G': // GIF\n                file_extension = \"gif\";\n                break;\n            case '\\377': // JPEG\n                file_extension = \"jpg\";\n                break;\n            default:\n                file_extension = \"unknown\";\n                break;\n        }\n    }\n\n    // Set the content of the reply with the image data\n    reply_set_content(rep, image_data, image_size);\n\n    // Add the file extension as an attachment header to the reply\n    char filename[256];\n    snprintf(filename, sizeof(filename), \"floorplan.%s\", file_extension);\n    reply_add_header(rep, \"Content-Disposition\", filename);\n\n    // Free the allocated memory for the image data\n    free(image_data);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if idx is null or empty",
+      "protects_against": "null or empty idx parameter in the request"
+    },
+    {
+      "step": "check if image_data is null or image_size is zero",
+      "protects_against": "database query returning null or zero-sized image data"
+    },
+    {
+      "step": "bound the filename buffer size",
+      "protects_against": "buffer overflow when constructing the filename"
+    },
+    {
+      "step": "free allocated memory for image_data",
+      "protects_against": "memory leak after using the image data"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if idx is null or empty — protects against: null or empty idx parameter in the request",
+        "reasoning": "The implementation checks if idx is an empty string and returns early if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if image_data is null or image_size is zero — protects against: database query returning null or zero-sized image data",
+        "reasoning": "The implementation checks if the result is empty and returns early if it is, which implies the image data is not available.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound the filename buffer size — protects against: buffer overflow when constructing the filename",
+        "reasoning": "The implementation constructs the filename using a std::string, which is dynamically sized and does not use a fixed-size buffer that could overflow.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory for image_data — protects against: memory leak after using the image data",
+        "reasoning": "The implementation uses a std::vector to store the image data, which is automatically deallocated when it goes out of scope. There is no manual allocation or deallocation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check if idx is null or empty — protects against: null or empty idx parameter in the request",
+        "reasoning": "The implementation checks if idx is an empty string and returns early if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if image_data is null or image_size is zero — protects against: database query returning null or zero-sized image data",
+        "reasoning": "The implementation does not show any checks for image_data being null or image_size being zero.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound the filename buffer size — protects against: buffer overflow when constructing the filename",
+        "reasoning": "The implementation does not show any filename buffer being constructed or manipulated.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory for image_data — protects against: memory leak after using the image data",
+        "reasoning": "The implementation does not show any code that frees the allocated memory for image_data.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

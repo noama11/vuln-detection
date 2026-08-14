@@ -1,0 +1,48 @@
+{
+  "case_id": "C_149__0",
+  "sample_id": "D/C/149",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "/**\n * Summary: \n * Sets socket options for a PPPoL2TP socket.\n * \n * Parameters:\n * sock (struct socket *): Pointer to the socket for which options are being set.\n * level (int): Level at which the option resides (should be SOL_PPPOL2TP).\n * optname (int): Name of the option to set.\n * optval (char __user *): Pointer to the value to set for the option.\n * optlen (unsigned int): Length of the option value.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function handles PPPoL2TP socket option requests and checks whether the option length is\n * sufficient. It retrieves the option value from user space and checks if the socket is connected.\n * It then retrieves the session context associated with the socket. Depending on the session ID, it\n * either sets options for the tunnel or the session. Finally, it cleans up and returns the\n * appropriate error code or success indicator.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int pppol2tp_setsockopt(struct socket *sock, int level, int optname,\r\n\t\t\t       char __user *optval, unsigned int optlen)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct l2tp_session *session;\r\n\tstruct l2tp_tunnel *tunnel;\r\n\tstruct pppol2tp_session *ps;\r\n\tint val;\r\n\tint err;\r\n\r\n\tif (level != SOL_PPPOL2TP)\r\n\t\treturn -EINVAL;\r\n\r\n\tif (optlen < sizeof(int))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (get_user(val, (int __user *)optval))\r\n\t\treturn -EFAULT;\r\n\r\n\terr = -ENOTCONN;\r\n\tif (sk->sk_user_data == NULL)\r\n\t\tgoto end;\r\n\r\n\t/* Get session context from the socket */\r\n\terr = -EBADF;\r\n\tsession = pppol2tp_sock_to_session(sk);\r\n\tif (session == NULL)\r\n\t\tgoto end;\r\n\r\n\t/* Special case: if session_id == 0x0000, treat as operation on tunnel\r\n\t */\r\n\tps = l2tp_session_priv(session);\r\n\tif ((session->session_id == 0) &&\r\n\t    (session->peer_session_id == 0)) {\r\n\t\terr = -EBADF;\r\n\t\ttunnel = l2tp_sock_to_tunnel(ps->tunnel_sock);\r\n\t\tif (tunnel == NULL)\r\n\t\t\tgoto end_put_sess;\r\n\r\n\t\terr = pppol2tp_tunnel_setsockopt(sk, tunnel, optname, val);\r\n\t\tsock_put(ps->tunnel_sock);\r\n\t} else\r\n\t\terr = pppol2tp_session_setsockopt(sk, session, optname, val);\r\n\r\n\terr = 0;\r\n\r\nend_put_sess:\r\n\tsock_put(sk);\r\nend:\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation returns -EINVAL when the level is not SOL_PPPOL2TP, while the reference implementation delegates to udp_prot.setsockopt in that case. This is a behavioral difference that could affect how non-PPPoL2TP options are handled, potentially leading to different outcomes for invalid or unrelated options. This difference is reachable via attacker-controlled input and may affect the robustness of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same checks and handle the same conditions in the same way. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

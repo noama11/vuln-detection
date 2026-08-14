@@ -1,0 +1,48 @@
+{
+  "case_id": "C_718__0",
+  "sample_id": "D/C/718",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15127",
+  "cve_summary": "A flaw was found in the hugetlb_mcopy_atomic_pte function in mm/hugetlb.c in the Linux kernel before 4.13. A superfluous implicit page unlock for VM_SHARED hugetlbfs mapping could trigger a local denial of service (BUG).",
+  "changed_file": "mm/hugetlb.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function atomically copies a huge page table entry from a source address  \n * to a destination address in a specified memory management structure.  \n *  \n * Parameters:  \n * dst_mm (struct mm_struct *): The destination memory management structure.  \n * dst_pte (pte_t *): Pointer to the destination page table entry.  \n * dst_vma (struct vm_area_struct *): The destination virtual memory area.  \n * dst_addr (unsigned long): The destination address for the page.  \n * src_addr (unsigned long): The source address from which to copy the page.  \n * pagep (struct page **): Pointer to a page pointer for the copied page.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function allocates a huge page if none is provided, copies data from the  \n * user space, updates the page state, and sets the page table entry. It handles  \n * shared and private mappings differently and ensures proper locking and  \n * memory barriers are in place to maintain consistency.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int hugetlb_mcopy_atomic_pte(struct mm_struct *dst_mm,\r\n\t\t\t    pte_t *dst_pte,\r\n\t\t\t    struct vm_area_struct *dst_vma,\r\n\t\t\t    unsigned long dst_addr,\r\n\t\t\t    unsigned long src_addr,\r\n\t\t\t    struct page **pagep)\r\n{\r\n\tint vm_shared = dst_vma->vm_flags & VM_SHARED;\r\n\tstruct hstate *h = hstate_vma(dst_vma);\r\n\tpte_t _dst_pte;\r\n\tspinlock_t *ptl;\r\n\tint ret;\r\n\tstruct page *page;\r\n\r\n\tif (!*pagep) {\r\n\t\tret = -ENOMEM;\r\n\t\tpage = alloc_huge_page(dst_vma, dst_addr, 0);\r\n\t\tif (IS_ERR(page))\r\n\t\t\tgoto out;\r\n\r\n\t\tret = copy_huge_page_from_user(page,\r\n\t\t\t\t\t\t(const void __user *) src_addr,\r\n\t\t\t\t\t\tpages_per_huge_page(h), false);\r\n\r\n\t\t/* fallback to copy_from_user outside mmap_sem */\r\n\t\tif (unlikely(ret)) {\r\n\t\t\tret = -EFAULT;\r\n\t\t\t*pagep = page;\r\n\t\t\t/* don't free the page */\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t} else {\r\n\t\tpage = *pagep;\r\n\t\t*pagep = NULL;\r\n\t}\r\n\r\n\t/*\r\n\t * The memory barrier inside __SetPageUptodate makes sure that\r\n\t * preceding stores to the page contents become visible before\r\n\t * the set_pte_at() write.\r\n\t */\r\n\t__SetPageUptodate(page);\r\n\tset_page_huge_active(page);\r\n\r\n\t/*\r\n\t * If shared, add to page cache\r\n\t */\r\n\tif (vm_shared) {\r\n\t\tstruct address_space *mapping = dst_vma->vm_file->f_mapping;\r\n\t\tpgoff_t idx = vma_hugecache_offset(h, dst_vma, dst_addr);\r\n\r\n\t\tret = huge_add_to_page_cache(page, mapping, idx);\r\n\t\tif (ret)\r\n\t\t\tgoto out_release_nounlock;\r\n\t}\r\n\r\n\tptl = huge_pte_lockptr(h, dst_mm, dst_pte);\r\n\tspin_lock(ptl);\r\n\r\n\tret = -EEXIST;\r\n\tif (!huge_pte_none(huge_ptep_get(dst_pte)))\r\n\t\tgoto out_release_unlock;\r\n\r\n\tif (vm_shared) {\r\n\t\tpage_dup_rmap(page, true);\r\n\t} else {\r\n\t\tClearPagePrivate(page);\r\n\t\thugepage_add_new_anon_rmap(page, dst_vma, dst_addr);\r\n\t}\r\n\r\n\t_dst_pte = make_huge_pte(dst_vma, page, dst_vma->vm_flags & VM_WRITE);\r\n\tif (dst_vma->vm_flags & VM_WRITE)\r\n\t\t_dst_pte = huge_pte_mkdirty(_dst_pte);\r\n\t_dst_pte = pte_mkyoung(_dst_pte);\r\n\r\n\tset_huge_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);\r\n\r\n\t(void)huge_ptep_set_access_flags(dst_vma, dst_addr, dst_pte, _dst_pte,\r\n\t\t\t\t\tdst_vma->vm_flags & VM_WRITE);\r\n\thugetlb_count_add(pages_per_huge_page(h), dst_mm);\r\n\r\n\t/* No need to invalidate - it was non-present before */\r\n\tupdate_mmu_cache(dst_vma, dst_addr, dst_pte);\r\n\r\n\tspin_unlock(ptl);\r\n\tif (vm_shared)\r\n\t\tunlock_page(page);\r\n\tret = 0;\r\nout:\r\n\treturn ret;\r\nout_release_unlock:\r\n\tspin_unlock(ptl);\r\n\tif (vm_shared)\r\n\t\tunlock_page(page);\r\nout_release_nounlock:\r\n\tput_page(page);\r\n\tgoto out;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of logic, control flow, and variable handling. Both perform the same checks, memory allocations, and locking mechanisms. There are no observable differences in behavior for any input, including edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in structure, logic, and behavior. All code paths, variable names, and function calls match, and there are no observable differences in how they handle inputs or produce outputs. There is no evidence of a behavioral discrepancy.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

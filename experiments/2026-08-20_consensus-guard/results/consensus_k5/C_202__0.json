@@ -1,0 +1,72 @@
+{
+  "case_id": "C_202__0",
+  "sample_id": "D/C/202",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-8569",
+  "cve_summary": "The (1) pptp_bind and (2) pptp_connect functions in drivers/net/ppp/pptp.c in the Linux kernel through 4.3.3 do not verify an address length, which allows local users to obtain sensitive information from kernel memory and bypass the KASLR protection mechanism via a crafted application.",
+  "changed_file": "drivers/net/ppp/pptp.c",
+  "docstring": "/**\n * Summary: Binds a PPTP socket to a specified user address.\n * \n * Parameters:\n * sock (struct socket *): The socket to bind.\n * uservaddr (struct sockaddr *): The user-specified address to bind to.\n * sockaddr_len (int): The length of the user-specified address.\n * \n * Returns: int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function locks the socket, assigns the source address from the user-specified address\n * structure, and attempts to add a channel. If the channel addition fails, it sets an error code.\n * Finally, it releases the socket lock and returns the error code.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 0,
+    "steps": [
+      {
+        "step": "bounds check on uservaddr",
+        "performed_by_count": 5,
+        "why_it_matters": "If uservaddr is not a valid struct sockaddr_pppox or is too small, dereferencing it could cause a buffer overflow or invalid memory access."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a bounds check on the uservaddr input before dereferencing it as a struct sockaddr_pppox. A majority of the independent implementations perform a cast of uservaddr to struct sockaddr_in, implying that they assume the input is valid. However, the target directly casts uservaddr to struct sockaddr_pppox without validating its length or structure, which could lead to memory-safety issues if the input is malformed or insufficiently sized.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 3,
+    "n_steps_majority": 3,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "error handling for add_chan",
+        "performed_by_count": 5,
+        "why_it_matters": "If add_chan fails, the target does not set sk_err, which could leave the socket in an inconsistent state."
+      },
+      {
+        "step": "setting sk_err on failure",
+        "performed_by_count": 5,
+        "why_it_matters": "The target does not set sk->sk_err on failure, which could prevent the caller from being informed of the error."
+      },
+      {
+        "step": "locking the socket before modifying it",
+        "performed_by_count": 5,
+        "why_it_matters": "The target locks the socket, which is correct, but it does not perform the other consensus steps that are typically done while the socket is locked."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a bounds check on the sockaddr_len parameter, ensuring it is at least the size of struct sockaddr_pppox. This is a defensive step not performed by any of the independent implementations. The independent implementations all directly cast the uservaddr to a sockaddr_in without validating the length or type of the input, which could lead to undefined behavior if the input is not a valid sockaddr_in. The target does not perform any of the consensus steps (e.g., error handling for add_chan, locking, or setting sk_err), but it does perform a validation step that the others omit.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

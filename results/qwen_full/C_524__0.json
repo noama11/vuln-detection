@@ -1,0 +1,53 @@
+{
+  "case_id": "C_524__0",
+  "sample_id": "D/C/524",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-10150",
+  "cve_summary": "Use-after-free vulnerability in the kvm_ioctl_create_device function in virt/kvm/kvm_main.c in the Linux kernel before 4.8.13 allows host OS users to cause a denial of service (host OS crash) or possibly gain privileges via crafted ioctl calls on the /dev/kvm device.",
+  "changed_file": "virt/kvm/kvm_main.c",
+  "docstring": "/**\n * Summary: Creates a device in the KVM (Kernel-based Virtual Machine) environment.\n * \n * Parameters:\n * kvm (struct kvm *): Pointer to the KVM instance where the device will be created.\n * cd (struct kvm_create_device *): Pointer to the structure containing device creation parameters.\n * \n * Returns: int - 0 on success, negative error code on failure.\n * \n * Logic: The function first checks if the device type is valid and retrieves the corresponding device operations. If the test flag is set, it returns immediately. It allocates memory for the device and locks the KVM structure to safely create the device. If creation is successful, it adds the device to the KVM's device list and initializes it if an init function is provided. It then attempts to obtain a file descriptor for the device. If any step fails, it cleans up by removing the device and calling the destroy function. Finally, it returns the file descriptor in the provided structure.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int kvm_dev_create(struct kvm *kvm, struct kvm_create_device *cd)\n{\n\tint r;\n\tstruct kvm_device_ops *ops;\n\tstruct kvm_device *dev;\n\tstruct kvm_device *dev_list;\n\n\tops = kvm_find_device_ops(cd->type);\n\tif (!ops)\n\t\treturn -EINVAL;\n\n\tif (cd->flags & KVM_CREATE_DEVICE_TEST)\n\t\treturn 0;\n\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\n\tif (!dev)\n\t\treturn -ENOMEM;\n\n\tkvm_lock(kvm);\n\tlist_for_each_entry(dev_list, &kvm->devices, list) {\n\t\tif (dev_list->ops == ops) {\n\t\t\tr = -EEXIST;\n\t\t\tgoto unlock;\n\t\t}\n\t}\n\n\tdev->ops = ops;\n\tdev->kvm = kvm;\n\tdev->id = cd->id;\n\n\tr = ops->init(dev);\n\tif (r)\n\t\tgoto unlock;\n\n\tdev->fd = anon_inode_getfd(ops->name, &kvm_device_fops, dev,\n\t\t\t\t    O_CLOEXEC);\n\tif (dev->fd < 0) {\n\t\tr = dev->fd;\n\t\tgoto unlock;\n\t}\n\n\tlist_add(&dev->list, &kvm->devices);\nunlock:\n\tkvm_unlock(kvm);\n\n\tif (r)\n\t\tops->destroy(dev);\n\n\tcd->fd = dev->fd;\n\treturn r;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for device creation and error handling. The candidate implementation checks for existing devices with the same ops before allocating and initializing a new one, while the reference implementation calls an ops->create function to handle creation. Additionally, the candidate implementation uses a list traversal to check for duplicate device types, whereas the reference implementation does not. These differences could lead to different behaviors when creating devices, particularly in error conditions or when multiple devices of the same type are involved. The candidate implementation also uses O_CLOEXEC for the file descriptor, while the reference uses O_RDWR | O_CLOEXEC, which may affect how the file is handled in child processes.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for device creation and error handling. The candidate implementation checks for existing devices using a list traversal and returns -EEXIST if a duplicate is found, while the reference implementation uses an array lookup and returns -ENODEV if the type is invalid. Additionally, the candidate implementation calls the init function before adding the device to the list, whereas the reference implementation calls the init function after adding the device. The candidate implementation also uses O_CLOEXEC for the file descriptor, while the reference uses O_RDWR | O_CLOEXEC. These differences could affect behavior for certain inputs, particularly in error conditions and device initialization order, and may have security implications if the order of operations or error handling is exploitable.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

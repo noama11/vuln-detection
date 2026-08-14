@@ -1,0 +1,36 @@
+{
+  "case_id": "C_844__0",
+  "sample_id": "D/C/844",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-4578",
+  "cve_summary": "sound/core/timer.c in the Linux kernel through 4.6 does not initialize certain r1 data structures, which allows local users to obtain sensitive information from kernel stack memory via crafted use of the ALSA timer interface, related to the (1) snd_timer_user_ccallback and (2) snd_timer_user_tinterrupt functions.",
+  "commit_message": "ALSA: timer: Fix leak in events via snd_timer_user_ccallback\n\nThe stack object \u201cr1\u201d has a total size of 32 bytes. Its field\n\u201cevent\u201d and \u201cval\u201d both contain 4 bytes padding. These 8 bytes\npadding bytes are sent to user without being initialized.\n\nSigned-off-by: Kangjie Lu <kjlu@gatech.edu>\nSigned-off-by: Takashi Iwai <tiwai@suse.de>",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function handles user callbacks for a sound timer instance, processing  \n * timer events and managing associated data.  \n *  \n * Parameters:  \n * timeri (struct snd_timer_instance*): Pointer to the timer instance.  \n * event (int): The event type, indicating the timer event (e.g., start, pause).  \n * tstamp (struct timespec*): Pointer to the timestamp of the event.  \n * resolution (unsigned long): The resolution value associated with the event.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function checks if the event is within the valid range and updates the  \n * timestamp if it is. It then verifies if the event should be processed based  \n * on a filter and whether a read operation is available. If valid, it prepares  \n * a timer read structure, locks the associated queue, appends the read to the  \n * timer queue, and then unlocks the queue. Finally, it signals any waiting  \n * processes and wakes up any sleeping threads waiting for changes in the queue.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1212,
+    1235
+  ],
+  "vulnerable_line_range": [
+    1212,
+    1234
+  ],
+  "vulnerable_snippet": "static void snd_timer_user_ccallback(struct snd_timer_instance *timeri,\r\n\t\t\t\t     int event,\r\n\t\t\t\t     struct timespec *tstamp,\r\n\t\t\t\t     unsigned long resolution)\r\n{\r\n\tstruct snd_timer_user *tu = timeri->callback_data;\r\n\tstruct snd_timer_tread r1;\r\n\tunsigned long flags;\r\n\r\n\tif (event >= SNDRV_TIMER_EVENT_START &&\r\n\t    event <= SNDRV_TIMER_EVENT_PAUSE)\r\n\t\ttu->tstamp = *tstamp;\r\n\tif ((tu->filter & (1 << event)) == 0 || !tu->tread)\r\n\t\treturn;\r\n\tr1.event = event;\r\n\tr1.tstamp = *tstamp;\r\n\tr1.val = resolution;\r\n\tspin_lock_irqsave(&tu->qlock, flags);\r\n\tsnd_timer_user_append_to_tqueue(tu, &r1);\r\n\tspin_unlock_irqrestore(&tu->qlock, flags);\r\n\tkill_fasync(&tu->fasync, SIGIO, POLL_IN);\r\n\twake_up(&tu->qchange_sleep);\r\n}",
+  "fixed_line_range": [
+    1212,
+    1235
+  ],
+  "fixed_snippet": "static void snd_timer_user_ccallback(struct snd_timer_instance *timeri,\r\n\t\t\t\t     int event,\r\n\t\t\t\t     struct timespec *tstamp,\r\n\t\t\t\t     unsigned long resolution)\r\n{\r\n\tstruct snd_timer_user *tu = timeri->callback_data;\r\n\tstruct snd_timer_tread r1;\r\n\tunsigned long flags;\r\n\r\n\tif (event >= SNDRV_TIMER_EVENT_START &&\r\n\t    event <= SNDRV_TIMER_EVENT_PAUSE)\r\n\t\ttu->tstamp = *tstamp;\r\n\tif ((tu->filter & (1 << event)) == 0 || !tu->tread)\r\n\t\treturn;\r\n\tmemset(&r1, 0, sizeof(r1));\r\n\tr1.event = event;\r\n\tr1.tstamp = *tstamp;\r\n\tr1.val = resolution;\r\n\tspin_lock_irqsave(&tu->qlock, flags);\r\n\tsnd_timer_user_append_to_tqueue(tu, &r1);\r\n\tspin_unlock_irqrestore(&tu->qlock, flags);\r\n\tkill_fasync(&tu->fasync, SIGIO, POLL_IN);\r\n\twake_up(&tu->qchange_sleep);\r\n}",
+  "func_name": "snd_timer_user_ccallback",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

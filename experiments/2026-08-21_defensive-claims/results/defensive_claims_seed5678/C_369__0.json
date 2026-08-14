@@ -1,0 +1,130 @@
+{
+  "case_id": "C_369__0",
+  "sample_id": "D/C/369",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "radareorg/radare2",
+  "cve_id": "CVE-2017-15385",
+  "cve_summary": "The store_versioninfo_gnu_verdef function in libr/bin/format/elf/elf.c in radare2 2.0.0 allows remote attackers to cause a denial of service (r_read_le16 invalid write and application crash) or possibly have unspecified other impact via a crafted ELF file.",
+  "changed_file": "libr/bin/format/elf/elf.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses and stores version information from an ELF binary's version definition section.\n\nParameters: \nbin (ELFOBJ*): Pointer to the ELF binary object.\nshdr (Elf_(Shdr)*): Pointer to the section header containing version definitions.\nsz (int): Size of the section.\n\nReturns: \nSdb*: A pointer to a newly created Sdb structure containing the version information, or NULL on failure.\n\nLogic: \nThe function first checks if the section header is valid and allocates memory for version definitions. It retrieves section names and initializes an Sdb structure. It then iterates through the version definitions, reading their attributes and storing them in the Sdb. For each version definition, it also processes auxiliary entries and handles potential errors in memory allocation or invalid data. Finally, it returns the populated Sdb or NULL if an error occurs during processing.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming ELFOBJ, Elf_(Shdr), Sdb, and related types are defined elsewhere.\n\nSdb* process_version_definitions(ELFOBJ* bin, Elf_(Shdr)* shdr, int sz) {\n    if (!bin || !shdr || sz <= 0) {\n        return NULL;\n    }\n\n    // Allocate memory for version definitions.\n    void* vdef_data = malloc(sz);\n    if (!vdef_data) {\n        return NULL;\n    }\n\n    // Retrieve section names and initialize Sdb structure.\n    Sdb* sdb = sdb_new0();\n    if (!sdb) {\n        free(vdef_data);\n        return NULL;\n    }\n\n    // Iterate through version definitions.\n    size_t offset = 0;\n    while (offset < sz) {\n        // Read attributes of the current version definition.\n        // Assuming a structure like Elf_(Verdef) is used.\n        Elf_(Verdef) vdef;\n        if (offset + sizeof(Elf_(Verdef)) > sz) {\n            sdb_free(sdb);\n            free(vdef_data);\n            return NULL;\n        }\n        memcpy(&vdef, (char*)vdef_data + offset, sizeof(Elf_(Verdef)));\n\n        // Process the current version definition.\n        // Example: Store in Sdb.\n        char key[256];\n        snprintf(key, sizeof(key), \"version_%d\", vdef.vd_ndx);\n        if (!sdb_num_put(sdb, key, vdef.vd_version, NULL)) {\n            sdb_free(sdb);\n            free(vdef_data);\n            return NULL;\n        }\n\n        // Process auxiliary entries.\n        size_t aux_offset = offset + sizeof(Elf_(Verdef));\n        while (aux_offset < sz) {\n            Elf_(Verdaux) vdaux;\n            if (aux_offset + sizeof(Elf_(Verdaux)) > sz) {\n                sdb_free(sdb);\n                free(vdef_data);\n                return NULL;\n            }\n            memcpy(&vdaux, (char*)vdef_data + aux_offset, sizeof(Elf_(Verdaux)));\n\n            // Process the auxiliary entry.\n            // Example: Store in Sdb.\n            char aux_key[256];\n            snprintf(aux_key, sizeof(aux_key), \"aux_version_%d\", vdaux.vda_name);\n            if (!sdb_num_put(sdb, aux_key, vdaux.vda_value, NULL)) {\n                sdb_free(sdb);\n                free(vdef_data);\n                return NULL;\n            }\n\n            aux_offset += sizeof(Elf_(Verdaux));\n        }\n\n        offset += sizeof(Elf_(Verdef));\n    }\n\n    free(vdef_data);\n    return sdb;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for valid memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "bound offset and copy length",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "check for valid Sdb initialization",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "release resources on error paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters `bin`, `shdr`, or any dynamically allocated pointers before dereferencing them. However, the function returns early if `shdr->sh_link` is invalid, and it checks `defs` for null after allocation. There are no explicit null checks for the input parameters.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for valid memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for `defs` using `calloc`, and checks if `defs` is null before proceeding. If allocation fails, it returns `false`. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound offset and copy length — protects against: buffer overflow",
+        "reasoning": "The implementation bounds the offset and copy length in the loop where it processes `verdef` entries. It checks that `vstart` does not exceed `end` before reading from it. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid Sdb initialization — protects against: null pointer dereference",
+        "reasoning": "The implementation calls `sdb_new0()` to initialize the `sdb` structure. It does not explicitly check whether `sdb_new0()` returns a valid pointer before using it. However, the function `sdb_new0()` is assumed to return a valid pointer or NULL, and the implementation does not check for NULL before using it. This step is omitted.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "release resources on error paths — protects against: memory leak",
+        "reasoning": "The implementation includes an `out_error` label that frees `defs` and calls `sdb_free(sdb)` before returning `NULL`. This ensures that allocated resources are released on error paths. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the function parameters or intermediate pointers like `bin`, `shdr`, or `defs`. However, it uses `calloc` and checks the result of `calloc` for `defs`, which indirectly guards against null pointer dereference for that variable. Other pointers like `bin` or `shdr` are not explicitly checked, but the function returns early if `shdr->sh_link` is invalid or `shdr->sh_size` is less than 1, which may prevent some null pointer dereferences.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for valid memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the result of `calloc` for `defs` and returns `false` if it fails. This is a valid check for memory allocation failure. However, it does not check the return value of `sdb_new0()` when creating `sdb` or `sdb_verdef`, which could also fail and lead to null pointer dereference.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "bound offset and copy length — protects against: buffer overflow",
+        "reasoning": "The implementation includes several bounds checks, such as checking if `vstart` exceeds `end` before accessing data, and ensuring that `aux.vda_name` does not exceed `bin->dynstr_size`. These checks prevent buffer overflow by ensuring that memory is not accessed beyond the allocated or valid bounds.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid Sdb initialization — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check the return value of `sdb_new0()` when creating `sdb` or `sdb_verdef`. If `sdb_new0()` returns NULL, subsequent calls to `sdb_set` or `sdb_num_set` would result in null pointer dereference.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release resources on error paths — protects against: memory leak",
+        "reasoning": "The implementation includes an `out_error` label that frees `defs` and `sdb` in case of an error. This ensures that allocated memory is released on error paths, preventing memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

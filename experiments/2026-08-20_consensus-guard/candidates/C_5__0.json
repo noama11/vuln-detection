@@ -1,0 +1,34 @@
+{
+  "case_id": "C_5__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t size, int msg_flags) {\n    int ret;\n    struct sock *sk = sock->sk;\n\n    while (1) {\n        ret = sk->ops->recvmsg(iocb, sk, msg, size, msg_flags);\n        if (ret > 0) {\n            msg->msg_len = ret;\n            sock_update_classid(sk);\n            return ret;\n        }\n\n        if (ret != -EAGAIN) {\n            return ret;\n        }\n\n        if (signal_pending(current)) {\n            return -EINTR;\n        }\n\n        if (wait_for_event(sk->wait, sk->ops->pending_data(sk), TASK_INTERRUPTIBLE, 0) < 0) {\n            return -ERESTARTSYS;\n        }\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t size, int msg_flags) {\n    int ret;\n    struct sock *sk = sock->sk;\n\n    if (unlikely(!sk))\n        return -EINVAL;\n\n    if (unlikely(size > INT_MAX))\n        size = INT_MAX;\n\n    if (msg_flags & MSG_OOB)\n        ret = sk->sk_prot->recvmsg(sk, msg, size, msg_flags, NULL, NULL);\n    else\n        ret = sk->sk_prot->recvmsg(sk, msg, size, msg_flags, NULL, NULL);\n\n    if (ret > 0) {\n        sock_update_net_families(sk);\n        net_INC_STATS(sock_net(sk), LINUX_MIB_RECVMSGBYTES, ret);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t size, int msg_flags) {\n    int ret;\n    struct sock *sk = sock->sk;\n\n    if (sock->ops->recvmsg == NULL)\n        return -EOPNOTSUPP;\n\n    if (msg_flags & MSG_OOB)\n        sk->ooo_is_set = 1;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EOPNOTSUPP;\n\n    ret = sk->sk_type == SOCK_DGRAM ? sock->ops->recvmsg(iocb, sock, msg, size, msg_flags) :\n                                       sock->ops->recvmsg(iocb, sock, msg, size, msg_flags);\n\n    if (ret > 0) {\n        sk->sk_data_processed += ret;\n        netdev_update_stats(sk->sk_netdev);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int msg_flags) {\n    int bytes_received;\n    int result;\n    unsigned int flags = 0;\n\n    if (msg_flags & MSG_DONTWAIT)\n        flags |= O_NONBLOCK;\n\n    do {\n        result = sock->ops->recvmsg(iocb, sock, msg, size, flags);\n        if (result > 0) {\n            msg->msg_flags = msg_flags;\n            bytes_received = result;\n            break;\n        } else if (result == -EAGAIN) {\n            if (msg_flags & MSG_DONTWAIT) {\n                return -EAGAIN;\n            }\n            schedule_timeout_unordered(HZ / 10);\n        } else if (result < 0) {\n            return result;\n        }\n    } while (1);\n\n    sock_update_stats(sock, bytes_received);\n    return bytes_received;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int msg_flags) {\n    int ret = 0;\n    struct sock *sk = sock->sk;\n\n    while (1) {\n        ret = sk->ops->recvmsg(iocb, sock, msg, size, msg_flags);\n        if (ret > 0) {\n            sock_update_stats(sk, ret);\n            return ret;\n        }\n\n        if (ret != -EAGAIN && ret != -EINTR) {\n            return ret;\n        }\n\n        if (wait_for_pending_notification(sk)) {\n            continue;\n        }\n\n        if (check_for_incoming_messages(sk)) {\n            continue;\n        }\n\n        if (has_timeout_occurred(sk)) {\n            return -ETIMEDOUT;\n        }\n    }\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

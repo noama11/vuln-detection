@@ -1,0 +1,98 @@
+{
+  "case_id": "C_679__0",
+  "sample_id": "D/C/679",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-7757",
+  "cve_summary": "Memory leak in the sas_smp_get_phy_events function in drivers/scsi/libsas/sas_expander.c in the Linux kernel through 4.15.7 allows local users to cause a denial of service (memory consumption) via many read accesses to files in the /sys/class/sas_phy directory, as demonstrated by the /sys/class/sas_phy/phy-1:0:12/invalid_dword_count file.",
+  "changed_file": "drivers/scsi/libsas/sas_expander.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves physical layer event counts for a given SAS PHY.  \n *  \n * Parameters:  \n * phy (struct sas_phy*): Pointer to the SAS PHY structure for which events are queried.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function allocates memory for a request and response buffer, initializes the request with the appropriate command and PHY number, and executes a task to retrieve the event counts. If successful, it updates the PHY structure with various error counts from the response. Finally, it cleans up allocated memory before returning the result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_sas_phy_event_counts(struct sas_phy *phy) {\n    void *request = NULL;\n    void *response = NULL;\n    int result = -ENOMEM;\n    size_t request_size = 512;  // Assume a fixed size for the request buffer\n    size_t response_size = 512; // Assume a fixed size for the response buffer\n\n    if (!phy) {\n        return -EINVAL;\n    }\n\n    request = malloc(request_size);\n    if (!request) {\n        goto cleanup;\n    }\n\n    response = malloc(response_size);\n    if (!response) {\n        goto cleanup;\n    }\n\n    // Initialize the request with the appropriate command and PHY number\n    // (Assuming a placeholder for actual initialization logic)\n    // ...\n\n    // Execute the task to retrieve event counts\n    // (Assuming a placeholder for actual task execution logic)\n    // ...\n\n    // Assume the task was successful and the response is valid\n    result = 0;\n\n    // Update the phy structure with error counts from the response\n    // (Assuming a placeholder for actual parsing logic)\n    // ...\n\n    cleanup:\n    free(request);\n    free(response);\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check phy pointer for NULL before use",
+      "protects_against": "NULL pointer dereference"
+    },
+    {
+      "step": "allocate memory for request and response buffers",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "free allocated memory on all return paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check phy pointer for NULL before use — protects against: NULL pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the 'phy' pointer is NULL before using it. However, the function 'dev_to_rphy' and 'sas_find_dev_by_rphy' may implicitly handle invalid pointers, but this is not visible in the code. Since the code does not explicitly check for NULL, it is possible to dereference a NULL pointer if 'phy' is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "allocate memory for request and response buffers — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for the request and response buffers using 'alloc_smp_req' and 'alloc_smp_resp'. It checks the return values of these allocations and returns -ENOMEM if either allocation fails. This performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all return paths — protects against: memory leak",
+        "reasoning": "The implementation frees the allocated memory for 'resp' in the 'out' label, which is used for all return paths. However, the 'req' buffer is only freed if the 'resp' allocation fails. If the 'smp_execute_task' call fails, 'req' is not freed. This is a memory leak on that path.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check phy pointer for NULL before use — protects against: NULL pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the phy pointer is NULL before using it. However, the function uses phy->dev.parent, which would cause a NULL pointer dereference if phy is NULL. Therefore, the implementation omits this check.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "allocate memory for request and response buffers — protects against: memory allocation failure",
+        "reasoning": "The implementation allocates memory for the request and response buffers using alloc_smp_req and alloc_smp_resp. If either allocation fails, the function returns -ENOMEM, which performs the defensive step of handling allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on all return paths — protects against: memory leak",
+        "reasoning": "The implementation uses a labeled goto (out) to ensure that both the request and response buffers are freed before returning. This ensures that all return paths (including error paths) free the allocated memory, performing the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

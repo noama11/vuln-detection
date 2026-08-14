@@ -1,0 +1,48 @@
+{
+  "case_id": "C_886__1",
+  "sample_id": "D/C/886",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "OISF/suricata",
+  "cve_id": "CVE-2019-1010251",
+  "cve_summary": "Open Information Security Foundation Suricata prior to version 4.1.2 is affected by: Denial of Service - DNS detection bypass. The impact is: An attacker can evade a signature detection with a specialy formed network packet. The component is: app-layer-detect-proto.c, decode.c, decode-teredo.c and decode-ipv6.c (https://github.com/OISF/suricata/pull/3590/commits/11f3659f64a4e42e90cb3c09fcef66894205aefe, https://github.com/OISF/suricata/pull/3590/commits/8357ef3f8ffc7d99ef6571350724160de356158b). The attack vector is: An attacker can trigger the vulnerability by sending a specifically crafted network request. The fixed version is: 4.1.2.",
+  "changed_file": "src/app-layer-detect-proto.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Detects the application layer protocol for a given flow based on various  \n * detection methods.  \n *  \n * Parameters:  \n * tctx (AppLayerProtoDetectThreadCtx *): Context for the protocol detection thread.  \n * f (Flow *): The flow object representing the data stream.  \n * buf (uint8_t *): Buffer containing the data to analyze.  \n * buflen (uint32_t): Length of the data buffer.  \n * ipproto (uint8_t): IP protocol type of the flow.  \n * direction (uint8_t): Direction of the flow (to server or to client).  \n *  \n * Returns:  \n * AppProto: The detected application protocol, or ALPROTO_UNKNOWN if not detected.  \n *  \n * Logic:\n * The function first checks if the flow has completed passive monitoring (PM). If not, it attempts\n * to detect the protocol using PM methods. It then checks other applicable detection methods. If PM\n * is complete, it checks for protocol detection using post-processing (PP) methods. Finally, it\n * checks against an expectation list if the protocol is still unknown. The function returns the\n * most specific protocol detected.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "AppProto AppLayerProtoDetectGetProto(AppLayerProtoDetectThreadCtx *tctx,\r\n                                     Flow *f,\r\n                                     uint8_t *buf, uint32_t buflen,\r\n                                     uint8_t ipproto, uint8_t direction)\r\n{\r\n    SCEnter();\r\n    SCLogDebug(\"buflen %u for %s direction\", buflen,\r\n            (direction & STREAM_TOSERVER) ? \"toserver\" : \"toclient\");\r\n\r\n    AppProto alproto = ALPROTO_UNKNOWN;\r\n    AppProto pm_alproto = ALPROTO_UNKNOWN;\r\n\r\n    if (!FLOW_IS_PM_DONE(f, direction)) {\r\n        AppProto pm_results[ALPROTO_MAX];\r\n        uint16_t pm_matches = AppLayerProtoDetectPMGetProto(tctx, f,\r\n                                                   buf, buflen,\r\n                                                   direction,\r\n                                                   ipproto,\r\n                                                   pm_results);\r\n        if (pm_matches > 0) {\r\n            alproto = pm_results[0];\r\n\r\n            /* HACK: if detected protocol is dcerpc/udp, we run PP as well\r\n             * to avoid misdetecting DNS as DCERPC. */\r\n            if (!(ipproto == IPPROTO_UDP && alproto == ALPROTO_DCERPC))\r\n                goto end;\r\n\r\n            pm_alproto = alproto;\r\n\r\n            /* fall through */\r\n        }\r\n    }\r\n\r\n    if (!FLOW_IS_PP_DONE(f, direction)) {\r\n        alproto = AppLayerProtoDetectPPGetProto(f, buf, buflen,\r\n                                                ipproto, direction);\r\n        if (alproto != ALPROTO_UNKNOWN)\r\n            goto end;\r\n    }\r\n\r\n    /* Look if flow can be found in expectation list */\r\n    if (!FLOW_IS_PE_DONE(f, direction)) {\r\n        alproto = AppLayerProtoDetectPEGetProto(f, ipproto, direction);\r\n    }\r\n\r\n end:\r\n    if (alproto == ALPROTO_UNKNOWN)\r\n        alproto = pm_alproto;\r\n\r\n    SCReturnUInt(alproto);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation includes a `pm_alproto` variable and a conditional check for DCERPC/UDP to avoid misclassification, which the reference implementation lacks. This introduces a behavioral difference where the candidate implementation may retain a previously detected protocol (e.g., DCERPC) and apply additional post-processing logic, while the reference implementation skips this step. This difference is reachable via attacker-influenced input (e.g., a crafted UDP flow) and could affect protocol detection accuracy, potentially impacting downstream processing or security decisions.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform protocol detection using the same steps: passive monitoring (PM), post-processing (PP), and expectation list (PE) checks. The return value and error handling are also the same. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

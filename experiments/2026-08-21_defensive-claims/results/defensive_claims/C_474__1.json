@@ -1,0 +1,98 @@
+{
+  "case_id": "C_474__1",
+  "sample_id": "D/C/474",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "aquynh/capstone",
+  "cve_id": "CVE-2017-6952",
+  "cve_summary": "Integer overflow in the cs_winkernel_malloc function in winkernel_mm.c in Capstone 3.0.4 and earlier allows attackers to cause a denial of service (heap-based buffer overflow in a kernel driver) or possibly have unspecified other impact via a large value.",
+  "changed_file": "windows/winkernel_mm.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates memory of a specified size from the NonPagedPool in a Windows kernel environment.  \n *  \n * Parameters:  \n * size (size_t): The number of bytes to allocate. Must be greater than zero.  \n *  \n * Returns:  \n * void*: A pointer to the allocated memory block on success, or NULL on failure.  \n *  \n * Logic:\n * The function first checks that the requested size is non-zero to prevent wasting memory. It then\n * calculates the total size needed for the allocation, including a header. Memory is allocated\n * using ExAllocatePoolWithTag, and if successful, the size is stored in the block header. Finally,\n * it returns a pointer to the data portion of the allocated block.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "void* allocate_non_paged_pool(size_t size) {\n    if (size == 0) {\n        return NULL;\n    }\n\n    // Add space for a header to store the size\n    size_t total_size = sizeof(size_t) + size;\n\n    // Check for overflow in the total size calculation\n    if (total_size < size) {\n        return NULL;\n    }\n\n    // Allocate memory with header\n    void* pool_block = ExAllocatePoolWithTag(NonPagedPool, total_size, 'POOL');\n\n    if (pool_block == NULL) {\n        return NULL;\n    }\n\n    // Store the size in the header\n    size_t* header = (size_t*)pool_block;\n    *header = size;\n\n    // Return pointer to the data portion (after the header)\n    return (void*)(header + 1);\n}",
+  "defensive_steps": [
+    {
+      "step": "check size is non-zero",
+      "protects_against": "allocation of zero-sized blocks which are unnecessary and could cause confusion"
+    },
+    {
+      "step": "check for overflow in total size calculation",
+      "protects_against": "integer overflow when adding header size to requested size"
+    },
+    {
+      "step": "validate pool allocation result",
+      "protects_against": "using a null pointer returned from allocation"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check size is non-zero — protects against: allocation of zero-sized blocks which are unnecessary and could cause confusion",
+        "reasoning": "The implementation uses `NT_ASSERT(size);` to ensure that the size is non-zero. This assertion will trigger if size is zero, effectively preventing the allocation of zero-sized blocks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for overflow in total size calculation — protects against: integer overflow when adding header size to requested size",
+        "reasoning": "The implementation directly passes `size + sizeof(CS_WINKERNEL_MEMBLOCK)` to `ExAllocatePoolWithTag`. There is no explicit check for integer overflow in this addition, which could lead to an incorrect allocation size if the sum overflows.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate pool allocation result — protects against: using a null pointer returned from allocation",
+        "reasoning": "The implementation checks if the result of `ExAllocatePoolWithTag` is null with `if (!block) { return NULL; }`. This ensures that the function does not proceed with a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check size is non-zero — protects against: allocation of zero-sized blocks which are unnecessary and could cause confusion",
+        "reasoning": "The implementation uses `NT_ASSERT(size);` to ensure that the size is non-zero. This assertion will trigger if size is zero, effectively preventing the allocation of zero-sized blocks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for overflow in total size calculation — protects against: integer overflow when adding header size to requested size",
+        "reasoning": "The implementation uses `RtlSizeTAdd` to safely add the size and the header size. If the addition overflows, `RtlSizeTAdd` returns an error, and the function returns NULL, preventing the overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate pool allocation result — protects against: using a null pointer returned from allocation",
+        "reasoning": "The implementation checks if `block` is NULL after the call to `ExAllocatePoolWithTag`. If it is NULL, the function returns NULL, ensuring that no further operations are performed on an invalid pointer.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

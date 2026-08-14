@@ -1,0 +1,49 @@
+{
+  "case_id": "C_889__0",
+  "sample_id": "D/C/889",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-14763",
+  "cve_summary": "In the Linux kernel before 4.16.4, a double-locking error in drivers/usb/dwc3/gadget.c may potentially cause a deadlock with f_hid.",
+  "changed_file": "drivers/usb/gadget/function/f_hid.c",
+  "docstring": "\"\"\"\nSummary: \nHandles writing data to a HID (Human Interface Device) gadget.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the device.\nbuffer (const char __user *): Pointer to the user buffer containing data to write.\ncount (size_t): Number of bytes to write from the buffer.\noffp (loff_t *): Pointer to the file offset.\n\nReturns: \nssize_t: The number of bytes written on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the user buffer is accessible. It then acquires a spinlock to manage concurrent access to the write queue. If a write is pending, it waits until the condition allows for a new write. It copies data from the user buffer to a request structure and queues it for transmission over USB. If the request cannot be queued, it logs an error and releases the write pending state. Finally, it wakes up any waiting processes on the write queue.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static ssize_t f_hidg_write(struct v2 *v2, const char __user *buffer,\n                size_t v1, loff_t *offp)\n{\n    struct f_hidg *v4  = v2->private_data;\n    struct usb_request *v6;\n    unsigned long v3;\n    ssize_t v7 = -ENOMEM;\n    if (!access_ok(buffer, v1))\n        return -EFAULT;\n    spin_lock_irqsave(&v4->write_spinlock, v3);\n#define WRITE_COND (!v4->write_pending)\nv8:\n    while (!WRITE_COND) {\n        spin_unlock_irqrestore(&v4->write_spinlock, v3);\n        if (v2->f_flags & O_NONBLOCK)\n            return -EAGAIN;\n        if (wait_event_interruptible_exclusive(\n                v4->write_queue, WRITE_COND))\n            return -ERESTARTSYS;\n        spin_lock_irqsave(&v4->write_spinlock, v3);\n    }\n    v4->write_pending = 1;\n    v6 = v4->v6;\n    v1  = min_t(unsigned, v1, v4->report_length);\n    spin_unlock_irqrestore(&v4->write_spinlock, v3);\n    v7 = copy_from_user(v6->buf, buffer, v1);\n    if (v7 != 0) {\n        ERROR(v4->func.config->cdev,\n            \"copy_from_user error\\n\");\n        v7 = -EINVAL;\n        goto v5;\n    }\n    spin_lock_irqsave(&v4->write_spinlock, v3);\n    if (!v4->v6) {\n        free_ep_req(v4->in_ep, v6);\n        goto v8;\n    }\n    v6->v7   = 0;\n    v6->zero     = 0;\n    v6->length   = v1;\n    v6->complete = f_hidg_req_complete;\n    v6->context  = v4;\n    spin_unlock_irqrestore(&v4->write_spinlock, v3);\n    v7 = usb_ep_queue(v4->in_ep, v6, GFP_ATOMIC);\n    if (v7 < 0) {\n        ERROR(v4->func.config->cdev,\n            \"usb_ep_queue error on int endpoint %zd\\n\", v7);\n        goto v5;\n    } else {\n        v7 = v1;\n    }\n    return v7;\nv5:\n    spin_lock_irqsave(&v4->write_spinlock, v3);\n    v4->write_pending = 0;\n    spin_unlock_irqrestore(&v4->write_spinlock, v3);\n    wake_up(&v4->write_queue);\n    return v7;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both perform the same checks for buffer accessibility, manage the write queue with a spinlock, handle non-blocking mode, and queue the USB request. The only differences are in variable names and code structure, which do not affect observable behavior or security. There is no evidence of a security-relevant or functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle writing data to a HID gadget by checking buffer accessibility, managing a spinlock for concurrency, waiting for write conditions, copying data from user space, and queuing the request for transmission. The only differences are in variable names and code formatting, which do not affect observable behavior or security.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "C_639__0",
+  "sample_id": "D/C/639",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "radareorg/radare2",
+  "cve_id": "CVE-2018-14017",
+  "cve_summary": "The r_bin_java_annotation_new function in shlr/java/class.c in radare2 2.7.0 allows remote attackers to cause a denial of service (heap-based buffer over-read and application crash) via a crafted .class file because of missing input validation in r_bin_java_line_number_table_attr_new.",
+  "commit_message": "Fix #10498 - Crash in fuzzed java file",
+  "changed_file": "shlr/java/class.c",
+  "docstring": "Summary: This function creates a new `RBinJavaAttrInfo` structure for a Java line number table attribute by parsing data from a given buffer.\n\nParameters: \n- buffer (ut8*): Pointer to the byte buffer containing the attribute data.\n- sz (ut64): Size of the buffer.\n- buf_offset (ut64): Offset in the buffer from where to start reading.\n\nReturns: \n- RBinJavaAttrInfo*: Pointer to the newly created `RBinJavaAttrInfo` structure, or NULL if an error occurs.\n\nLogic: The function initializes a new attribute structure and reads the line number table length from the buffer. It then allocates a list for the line number attributes and populates it by reading pairs of start_pc and line_number values from the buffer. If the buffer size is insufficient or memory allocation fails, it cleans up and returns NULL. Finally, it sets the size of the attribute and returns the populated structure.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    3764,
+    3805
+  ],
+  "vulnerable_line_range": [
+    3764,
+    3802
+  ],
+  "vulnerable_snippet": "R_API RBinJavaAttrInfo *r_bin_java_line_number_table_attr_new(ut8 *buffer, ut64 sz, ut64 buf_offset) {\r\n\tut32 i = 0;\r\n\tut64 curpos, offset = 0;\r\n\tRBinJavaLineNumberAttribute *lnattr;\r\n\tRBinJavaAttrInfo *attr = r_bin_java_default_attr_new (buffer, sz, buf_offset);\r\n\tif (!attr) {\r\n\t\treturn NULL;\r\n\t}\r\n\toffset += 6;\r\n\tattr->type = R_BIN_JAVA_ATTR_TYPE_LINE_NUMBER_TABLE_ATTR;\r\n\tattr->info.line_number_table_attr.line_number_table_length = R_BIN_JAVA_USHORT (buffer, offset);\r\n\toffset += 2;\r\n\tattr->info.line_number_table_attr.line_number_table = r_list_newf (free);\r\n\r\n\tut32 linenum_len = attr->info.line_number_table_attr.line_number_table_length;\r\n\tRList *linenum_list = attr->info.line_number_table_attr.line_number_table;\r\n\tif (linenum_len > sz) {\r\n\t\tfree (attr);\r\n\t\treturn NULL;\r\n\t}\r\n\tfor (i = 0; i < linenum_len; i++) {\r\n\t\tcurpos = buf_offset + offset;\r\n\t\t// printf (\"%llx %llx \\n\", curpos, sz);\r\n\t\t// XXX if (curpos + 8 >= sz) break;\r\n\t\tlnattr = R_NEW0 (RBinJavaLineNumberAttribute);\r\n\t\tif (!lnattr) {\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\tlnattr->start_pc = R_BIN_JAVA_USHORT (buffer, offset);\r\n\t\toffset += 2;\r\n\t\tlnattr->line_number = R_BIN_JAVA_USHORT (buffer, offset);\r\n\t\toffset += 2;\r\n\t\tlnattr->file_offset = curpos;\r\n\t\tlnattr->size = 4;\r\n\t\tr_list_append (linenum_list, lnattr);\r\n\t}\r\n\tattr->size = offset;\r\n\treturn attr;\r\n}",
+  "fixed_line_range": [
+    3764,
+    3805
+  ],
+  "fixed_snippet": "R_API RBinJavaAttrInfo *r_bin_java_line_number_table_attr_new(ut8 *buffer, ut64 sz, ut64 buf_offset) {\r\n\tut32 i = 0;\r\n\tut64 curpos, offset = 0;\r\n\tRBinJavaLineNumberAttribute *lnattr;\r\n\tRBinJavaAttrInfo *attr = r_bin_java_default_attr_new (buffer, sz, buf_offset);\r\n\tif (!attr) {\r\n\t\treturn NULL;\r\n\t}\r\n\toffset += 6;\r\n\tattr->type = R_BIN_JAVA_ATTR_TYPE_LINE_NUMBER_TABLE_ATTR;\r\n\tattr->info.line_number_table_attr.line_number_table_length = R_BIN_JAVA_USHORT (buffer, offset);\r\n\toffset += 2;\r\n\tattr->info.line_number_table_attr.line_number_table = r_list_newf (free);\r\n\r\n\tut32 linenum_len = attr->info.line_number_table_attr.line_number_table_length;\r\n\tRList *linenum_list = attr->info.line_number_table_attr.line_number_table;\r\n\tif (linenum_len > sz) {\r\n\t\tfree (attr);\r\n\t\treturn NULL;\r\n\t}\r\n\tfor (i = 0; i < linenum_len; i++) {\r\n\t\tcurpos = buf_offset + offset;\r\n\t\t// printf (\"%llx %llx \\n\", curpos, sz);\r\n\t\t// XXX if (curpos + 8 >= sz) break;\r\n\t\tlnattr = R_NEW0 (RBinJavaLineNumberAttribute);\r\n\t\tif (!lnattr) {\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\tif (offset + 8 >= sz) {\r\n\t\t\tbreak;\r\n\t\t}\r\n\t\tlnattr->start_pc = R_BIN_JAVA_USHORT (buffer, offset);\r\n\t\toffset += 2;\r\n\t\tlnattr->line_number = R_BIN_JAVA_USHORT (buffer, offset);\r\n\t\toffset += 2;\r\n\t\tlnattr->file_offset = curpos;\r\n\t\tlnattr->size = 4;\r\n\t\tr_list_append (linenum_list, lnattr);\r\n\t}\r\n\tattr->size = offset;\r\n\treturn attr;\r\n}",
+  "func_name": "r_bin_java_line_number_table_attr_new",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

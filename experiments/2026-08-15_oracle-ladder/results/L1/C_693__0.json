@@ -1,0 +1,49 @@
+{
+  "case_id": "C_693__0",
+  "sample_id": "D/C/693",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-5333",
+  "cve_summary": "In the Linux kernel through 4.14.13, the rds_cmsg_atomic function in net/rds/rdma.c mishandles cases where page pinning fails or an invalid address is supplied, leading to an rds_atomic_free_op NULL pointer dereference.",
+  "changed_file": "net/rds/rdma.c",
+  "docstring": "Summary:  \nProcesses an atomic message operation for a given RDS socket and message, handling different types of atomic operations based on control message data.\n\nParameters:  \nrs (struct rds_sock *): The RDS socket associated with the operation.  \nrm (struct rds_message *): The RDS message to be modified with atomic operation details.  \ncmsg (struct cmsghdr *): Control message header containing atomic operation parameters.\n\nReturns:  \nint: Returns 0 on success, or a negative error code indicating failure.\n\nLogic:  \nThe function first validates the control message length and checks if an atomic operation is already active. It then extracts the atomic operation arguments from the control message and sets the appropriate operation type and parameters based on the message type. Memory for the operation's scatter-gather list is allocated, and the local address is verified for alignment. If notifications are required, a notifier structure is allocated. Finally, it sets the remote address and key for the operation, returning any error encountered during the process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int rds_cmsg_atomic(struct rds_sock *v8, struct rds_message *v7,\n            struct cmsghdr *v2)\n{\n    struct v4 *v4 = NULL;\n    struct v5 *v1;\n    int v6 = 0;\n    if (v2->cmsg_len < CMSG_LEN(sizeof(struct v5))\n     || v7->atomic.op_active)\n        return -EINVAL;\n    v1 = CMSG_DATA(v2);\n    switch (v2->cmsg_type) {\n    case RDS_CMSG_ATOMIC_FADD:\n        v7->atomic.op_type = RDS_ATOMIC_TYPE_FADD;\n        v7->atomic.op_m_fadd.add = v1->fadd.add;\n        v7->atomic.op_m_fadd.nocarry_mask = 0;\n        break;\n    case RDS_CMSG_MASKED_ATOMIC_FADD:\n        v7->atomic.op_type = RDS_ATOMIC_TYPE_FADD;\n        v7->atomic.op_m_fadd.add = v1->m_fadd.add;\n        v7->atomic.op_m_fadd.nocarry_mask = v1->m_fadd.nocarry_mask;\n        break;\n    case RDS_CMSG_ATOMIC_CSWP:\n        v7->atomic.op_type = RDS_ATOMIC_TYPE_CSWP;\n        v7->atomic.op_m_cswp.compare = v1->cswp.compare;\n        v7->atomic.op_m_cswp.swap = v1->cswp.swap;\n        v7->atomic.op_m_cswp.compare_mask = ~0;\n        v7->atomic.op_m_cswp.swap_mask = ~0;\n        break;\n    case RDS_CMSG_MASKED_ATOMIC_CSWP:\n        v7->atomic.op_type = RDS_ATOMIC_TYPE_CSWP;\n        v7->atomic.op_m_cswp.compare = v1->m_cswp.compare;\n        v7->atomic.op_m_cswp.swap = v1->m_cswp.swap;\n        v7->atomic.op_m_cswp.compare_mask = v1->m_cswp.compare_mask;\n        v7->atomic.op_m_cswp.swap_mask = v1->m_cswp.swap_mask;\n        break;\n    default:\n        BUG();\n    }\n    v7->atomic.op_notify = !!(v1->flags & RDS_RDMA_NOTIFY_ME);\n    v7->atomic.op_silent = !!(v1->flags & RDS_RDMA_SILENT);\n    v7->atomic.op_active = 1;\n    v7->atomic.op_recverr = v8->rs_recverr;\n    v7->atomic.op_sg = rds_message_alloc_sgs(v7, 1);\n    if (!v7->atomic.op_sg) {\n        v6 = -ENOMEM;\n        goto v3;\n    }\n    if (v1->local_addr & 0x7) {\n        v6 = -EFAULT;\n        goto v3;\n    }\n    v6 = rds_pin_pages(v1->local_addr, 1, &v4, 1);\n    if (v6 != 1)\n        goto v3;\n    v6 = 0;\n    sg_set_page(v7->atomic.op_sg, v4, 8, offset_in_page(v1->local_addr));\n    if (v7->atomic.op_notify || v7->atomic.op_recverr) {\n        v7->atomic.op_notifier = kmalloc(sizeof(*v7->atomic.op_notifier), GFP_KERNEL);\n        if (!v7->atomic.op_notifier) {\n            v6 = -ENOMEM;\n            goto v3;\n        }\n        v7->atomic.op_notifier->n_user_token = v1->user_token;\n        v7->atomic.op_notifier->n_status = RDS_RDMA_SUCCESS;\n    }\n    v7->atomic.op_rkey = rds_rdma_cookie_key(v1->cookie);\n    v7->atomic.op_remote_addr = v1->remote_addr + rds_rdma_cookie_offset(v1->cookie);\n    return v6;\nv3:\n    if (v4)\n        put_page(v4);\n    v7->atomic.op_active = 0;\n    kfree(v7->atomic.op_notifier);\n    return v6;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both validate the control message length and check for an active atomic operation. They handle the same set of atomic operation types (FADD and CSWP, with and without masks) in the same way, setting the same fields in the atomic operation structure. Memory allocation, page pinning, scatter-gather list setup, and notifier allocation are also handled identically. The only differences are in variable names and struct names, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both validate the control message length and check for an active atomic operation. They handle the same set of atomic operation types (FADD and CSWP, with and without masks) in the same way, setting the same fields in the atomic operation structure. Memory allocation, error handling, and cleanup are also handled identically. The only differences are in variable names and struct names, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

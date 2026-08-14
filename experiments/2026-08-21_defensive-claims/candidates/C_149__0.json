@@ -1,0 +1,39 @@
+{
+  "case_id": "C_149__0",
+  "implementation": "int setsockopt_pppol2tp(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen) {\n    int ret = -EINVAL;\n    struct sock *sk = sock->sk;\n    struct pppol2tp_session *session;\n    void *val = NULL;\n    size_t val_len = 0;\n\n    if (level != SOL_PPPOL2TP)\n        return -EOPNOTSUPP;\n\n    if (!sock->sk->sk_bound_dev_if || !sock->sk->sk_type)\n        return -ENOTCONN;\n\n    session = pppol2tp_get_session(sk);\n    if (!session)\n        return -ENOENT;\n\n    if (optlen > 0) {\n        val = kmalloc(optlen, GFP_KERNEL);\n        if (!val)\n            return -ENOMEM;\n\n        if (copy_from_user(val, optval, optlen)) {\n            kfree(val);\n            return -EFAULT;\n        }\n        val_len = optlen;\n    }\n\n    switch (optname) {\n        case PPPOLOPT_TUNNEL_ID:\n            if (val_len < sizeof(u32)) {\n                kfree(val);\n                return -EINVAL;\n            }\n            session->tunnel_id = *(u32 *)val;\n            ret = 0;\n            break;\n        case PPPOLOPT_SESSION_ID:\n            if (val_len < sizeof(u32)) {\n                kfree(val);\n                return -EINVAL;\n            }\n            session->session_id = *(u32 *)val;\n            ret = 0;\n            break;\n        default:\n            ret = -EOPNOTSUPP;\n            break;\n    }\n\n    kfree(val);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check level against SOL_PPPOL2TP",
+      "protects_against": "invalid or unsupported level parameter"
+    },
+    {
+      "step": "verify socket is connected",
+      "protects_against": "calling setsockopt on an unconnected socket"
+    },
+    {
+      "step": "retrieve and validate session context",
+      "protects_against": "invalid session context or missing session"
+    },
+    {
+      "step": "allocate memory for option value",
+      "protects_against": "memory allocation failure when copying from user space"
+    },
+    {
+      "step": "copy from user space with bounds check",
+      "protects_against": "invalid user pointer or buffer overflow"
+    },
+    {
+      "step": "validate option value length",
+      "protects_against": "insufficient data for the requested option"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak after processing the option"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

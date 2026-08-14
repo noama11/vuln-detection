@@ -1,0 +1,98 @@
+{
+  "case_id": "C_265__0",
+  "sample_id": "D/C/265",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7911",
+  "cve_summary": "Race condition in the get_task_ioprio function in block/ioprio.c in the Linux kernel before 4.6.6 allows local users to gain privileges or cause a denial of service (use-after-free) via a crafted ioprio_get system call.",
+  "changed_file": "block/ioprio.c",
+  "docstring": "\"\"\"\nSummary: Retrieves the I/O priority of a given task.\n\nParameters:\np (struct task_struct *): Pointer to the task structure for which to get the I/O priority.\n\nReturns:\nint: The I/O priority of the task, or an error code if retrieval fails.\n\nLogic: The function first checks the security context for permission to get the I/O priority. If successful, it initializes the return value to a default priority. It then accesses the task's I/O context and retrieves the actual I/O priority if it exists. Finally, it returns the retrieved priority or an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/security.h>\n#include <linux/task_io_accounting.h>\n\nint get_task_io_priority(struct task_struct *p) {\n    int ret;\n    int default_priority = 0; // Default I/O priority\n\n    // Check security context for permission\n    ret = security_task_get_io_priority(p);\n    if (ret != 0) {\n        return ret; // Return error code if permission denied\n    }\n\n    // Initialize return value to default priority\n    ret = default_priority;\n\n    // Access the task's I/O context and retrieve the actual I/O priority\n    if (p->io_context) {\n        ret = p->io_context->ioprio;\n    } else {\n        ret = -ESRCH; // Error if I/O context does not exist\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check security context for permission",
+      "protects_against": "unauthorized access to task I/O priority"
+    },
+    {
+      "step": "validate existence of I/O context",
+      "protects_against": "dereferencing a null pointer when accessing I/O context"
+    },
+    {
+      "step": "return error code if I/O context does not exist",
+      "protects_against": "returning an invalid or undefined I/O priority"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check security context for permission — protects against: unauthorized access to task I/O priority",
+        "reasoning": "The implementation calls `security_task_getioprio(p)`, which checks the security context for permission. If it returns a non-zero value, the function exits, indicating failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate existence of I/O context — protects against: dereferencing a null pointer when accessing I/O context",
+        "reasoning": "The implementation checks `if (p->io_context)` before accessing `p->io_context->ioprio`, ensuring that the I/O context exists before attempting to dereference it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return error code if I/O context does not exist — protects against: returning an invalid or undefined I/O priority",
+        "reasoning": "If the I/O context does not exist, the function does not return an error code. Instead, it returns the default priority set earlier in the function, which may not be an error code.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check security context for permission — protects against: unauthorized access to task I/O priority",
+        "reasoning": "The implementation calls `security_task_getioprio(p)`, which checks the security context for permission. If it returns a non-zero value, the function skips further processing and returns the error code.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate existence of I/O context — protects against: dereferencing a null pointer when accessing I/O context",
+        "reasoning": "The implementation checks `p->io_context` before dereferencing it. If `p->io_context` is null, it skips the assignment and retains the default value.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return error code if I/O context does not exist — protects against: returning an invalid or undefined I/O priority",
+        "reasoning": "The implementation does not return an error code if the I/O context does not exist. Instead, it retains the default priority value and returns it, which may be invalid or undefined.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

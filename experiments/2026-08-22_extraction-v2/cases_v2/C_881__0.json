@@ -1,0 +1,36 @@
+{
+  "case_id": "C_881__0",
+  "sample_id": "D/C/881",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-18021",
+  "cve_summary": "arch/arm64/kvm/guest.c in KVM in the Linux kernel before 4.18.12 on the arm64 platform mishandles the KVM_SET_ON_REG ioctl. This is exploitable by attackers who can create virtual machines. An attacker can arbitrarily redirect the hypervisor flow of control (with full register control). An attacker can also cause a denial of service (hypervisor panic) via an illegal exception return. This occurs because of insufficient restrictions on userspace access to the core register file, and because PSTATE.M validation does not prevent unintended execution modes.",
+  "commit_message": "arm64: KVM: Sanitize PSTATE.M when being set from userspace\n\nNot all execution modes are valid for a guest, and some of them\ndepend on what the HW actually supports. Let's verify that what\nuserspace provides is compatible with both the VM settings and\nthe HW capabilities.\n\nCc: <stable@vger.kernel.org>\nFixes: 0d854a60b1d7 (\"arm64: KVM: enable initialization of a 32bit vcpu\")\nReviewed-by: Christoffer Dall <christoffer.dall@arm.com>\nReviewed-by: Mark Rutland <mark.rutland@arm.com>\nReviewed-by: Dave Martin <Dave.Martin@arm.com>\nSigned-off-by: Marc Zyngier <marc.zyngier@arm.com>\nSigned-off-by: Will Deacon <will.deacon@arm.com>",
+  "changed_file": "arch/arm64/kvm/guest.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Sets a core register for a given virtual CPU (vcpu) in a KVM (Kernel-based Virtual Machine) environment.  \n *  \n * Parameters:  \n * vcpu (struct kvm_vcpu *): Pointer to the virtual CPU structure.  \n * reg (const struct kvm_one_reg *): Pointer to the register structure containing the register ID and address.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure (e.g., -ENOENT, -EINVAL, -EFAULT).  \n *  \n * Logic:  \n * The function first calculates the offset of the core register based on the provided ID and checks for validity.  \n * It validates the core register offset and size, then copies the value from user space to a temporary variable.  \n * If the register being set is the processor state register, it checks the mode against system capabilities and the vCPU's state.  \n * Finally, it updates the corresponding register in the vCPU's register structure and returns any error encountered.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    127,
+    184
+  ],
+  "vulnerable_line_range": [
+    127,
+    176
+  ],
+  "vulnerable_snippet": "static int set_core_reg(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\r\n{\r\n\t__u32 __user *uaddr = (__u32 __user *)(unsigned long)reg->addr;\r\n\tstruct kvm_regs *regs = vcpu_gp_regs(vcpu);\r\n\tint nr_regs = sizeof(*regs) / sizeof(__u32);\r\n\t__uint128_t tmp;\r\n\tvoid *valp = &tmp;\r\n\tu64 off;\r\n\tint err = 0;\r\n\r\n\t/* Our ID is an index into the kvm_regs struct. */\r\n\toff = core_reg_offset_from_id(reg->id);\r\n\tif (off >= nr_regs ||\r\n\t    (off + (KVM_REG_SIZE(reg->id) / sizeof(__u32))) >= nr_regs)\r\n\t\treturn -ENOENT;\r\n\r\n\tif (validate_core_offset(reg))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (KVM_REG_SIZE(reg->id) > sizeof(tmp))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (copy_from_user(valp, uaddr, KVM_REG_SIZE(reg->id))) {\r\n\t\terr = -EFAULT;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tif (off == KVM_REG_ARM_CORE_REG(regs.pstate)) {\r\n\t\tu32 mode = (*(u32 *)valp) & PSR_AA32_MODE_MASK;\r\n\t\tswitch (mode) {\r\n\t\tcase PSR_AA32_MODE_USR:\r\n\t\tcase PSR_AA32_MODE_FIQ:\r\n\t\tcase PSR_AA32_MODE_IRQ:\r\n\t\tcase PSR_AA32_MODE_SVC:\r\n\t\tcase PSR_AA32_MODE_ABT:\r\n\t\tcase PSR_AA32_MODE_UND:\r\n\t\tcase PSR_MODE_EL0t:\r\n\t\tcase PSR_MODE_EL1t:\r\n\t\tcase PSR_MODE_EL1h:\r\n\t\t\tbreak;\r\n\t\tdefault:\r\n\t\t\terr = -EINVAL;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t}\r\n\r\n\tmemcpy((u32 *)regs + off, valp, KVM_REG_SIZE(reg->id));\r\nout:\r\n\treturn err;\r\n}",
+  "fixed_line_range": [
+    127,
+    184
+  ],
+  "fixed_snippet": "static int set_core_reg(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\r\n{\r\n\t__u32 __user *uaddr = (__u32 __user *)(unsigned long)reg->addr;\r\n\tstruct kvm_regs *regs = vcpu_gp_regs(vcpu);\r\n\tint nr_regs = sizeof(*regs) / sizeof(__u32);\r\n\t__uint128_t tmp;\r\n\tvoid *valp = &tmp;\r\n\tu64 off;\r\n\tint err = 0;\r\n\r\n\t/* Our ID is an index into the kvm_regs struct. */\r\n\toff = core_reg_offset_from_id(reg->id);\r\n\tif (off >= nr_regs ||\r\n\t    (off + (KVM_REG_SIZE(reg->id) / sizeof(__u32))) >= nr_regs)\r\n\t\treturn -ENOENT;\r\n\r\n\tif (validate_core_offset(reg))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (KVM_REG_SIZE(reg->id) > sizeof(tmp))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (copy_from_user(valp, uaddr, KVM_REG_SIZE(reg->id))) {\r\n\t\terr = -EFAULT;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tif (off == KVM_REG_ARM_CORE_REG(regs.pstate)) {\r\n\t\tu64 mode = (*(u64 *)valp) & PSR_AA32_MODE_MASK;\r\n\t\tswitch (mode) {\r\n\t\tcase PSR_AA32_MODE_USR:\r\n\t\t\tif (!system_supports_32bit_el0())\r\n\t\t\t\treturn -EINVAL;\r\n\t\t\tbreak;\r\n\t\tcase PSR_AA32_MODE_FIQ:\r\n\t\tcase PSR_AA32_MODE_IRQ:\r\n\t\tcase PSR_AA32_MODE_SVC:\r\n\t\tcase PSR_AA32_MODE_ABT:\r\n\t\tcase PSR_AA32_MODE_UND:\r\n\t\t\tif (!vcpu_el1_is_32bit(vcpu))\r\n\t\t\t\treturn -EINVAL;\r\n\t\t\tbreak;\r\n\t\tcase PSR_MODE_EL0t:\r\n\t\tcase PSR_MODE_EL1t:\r\n\t\tcase PSR_MODE_EL1h:\r\n\t\t\tif (vcpu_el1_is_32bit(vcpu))\r\n\t\t\t\treturn -EINVAL;\r\n\t\t\tbreak;\r\n\t\tdefault:\r\n\t\t\terr = -EINVAL;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t}\r\n\r\n\tmemcpy((u32 *)regs + off, valp, KVM_REG_SIZE(reg->id));\r\nout:\r\n\treturn err;\r\n}",
+  "func_name": "set_core_reg",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

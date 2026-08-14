@@ -1,0 +1,36 @@
+{
+  "case_id": "C_62__0",
+  "sample_id": "D/C/62",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4254",
+  "cve_summary": "The validate_event function in arch/arm/kernel/perf_event.c in the Linux kernel before 3.10.8 on the ARM platform allows local users to gain privileges or cause a denial of service (NULL pointer dereference and system crash) by adding a hardware event to an event group led by a software event.",
+  "commit_message": "ARM: 7809/1: perf: fix event validation for software group leaders\n\nIt is possible to construct an event group with a software event as a\ngroup leader and then subsequently add a hardware event to the group.\nThis results in the event group being validated by adding all members\nof the group to a fake PMU and attempting to allocate each event on\ntheir respective PMU.\n\nUnfortunately, for software events wthout a corresponding arm_pmu, this\nresults in a kernel crash attempting to dereference the ->get_event_idx\nfunction pointer.\n\nThis patch fixes the problem by checking explicitly for software events\nand ignoring those in event validation (since they can always be\nscheduled). We will probably want to revisit this for 3.12, since the\nvalidation checks don't appear to work correctly when dealing with\nmultiple hardware PMUs anyway.\n\nCc: <stable@vger.kernel.org>\nReported-by: Vince Weaver <vincent.weaver@maine.edu>\nTested-by: Vince Weaver <vincent.weaver@maine.edu>\nTested-by: Mark Rutland <mark.rutland@arm.com>\nSigned-off-by: Will Deacon <will.deacon@arm.com>\nSigned-off-by: Russell King <rmk+kernel@arm.linux.org.uk>",
+  "changed_file": "arch/arm/kernel/perf_event.c",
+  "docstring": "Summary: Validates a performance event for a given hardware event structure.\n\nParameters: \n- hw_events (struct pmu_hw_events*): Pointer to the hardware events structure to validate against.\n- event (struct perf_event*): Pointer to the performance event to be validated.\n\nReturns: \n- int: Returns 1 if the event is valid, otherwise returns 0.\n\nLogic: The function first checks if the event is a software event, returning 1 if true. It then verifies that the event's PMU matches the leader PMU and that the event's state is at least PERF_EVENT_STATE_OFF. If the event is off and not enabled on execution, it returns 1. Finally, it checks if the event index can be retrieved from the ARM PMU structure, returning 1 if valid and 0 otherwise.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    249,
+    266
+  ],
+  "vulnerable_line_range": [
+    249,
+    263
+  ],
+  "vulnerable_snippet": "static int\r\nvalidate_event(struct pmu_hw_events *hw_events,\r\n\t       struct perf_event *event)\r\n{\r\n\tstruct arm_pmu *armpmu = to_arm_pmu(event->pmu);\r\n\tstruct pmu *leader_pmu = event->group_leader->pmu;\r\n\r\n\tif (event->pmu != leader_pmu || event->state < PERF_EVENT_STATE_OFF)\r\n\t\treturn 1;\r\n\r\n\tif (event->state == PERF_EVENT_STATE_OFF && !event->attr.enable_on_exec)\r\n\t\treturn 1;\r\n\r\n\treturn armpmu->get_event_idx(hw_events, event) >= 0;\r\n}",
+  "fixed_line_range": [
+    249,
+    266
+  ],
+  "fixed_snippet": "static int\r\nvalidate_event(struct pmu_hw_events *hw_events,\r\n\t       struct perf_event *event)\r\n{\r\n\tstruct arm_pmu *armpmu = to_arm_pmu(event->pmu);\r\n\tstruct pmu *leader_pmu = event->group_leader->pmu;\r\n\r\n\tif (is_software_event(event))\r\n\t\treturn 1;\r\n\r\n\tif (event->pmu != leader_pmu || event->state < PERF_EVENT_STATE_OFF)\r\n\t\treturn 1;\r\n\r\n\tif (event->state == PERF_EVENT_STATE_OFF && !event->attr.enable_on_exec)\r\n\t\treturn 1;\r\n\r\n\treturn armpmu->get_event_idx(hw_events, event) >= 0;\r\n}",
+  "func_name": "validate_event",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

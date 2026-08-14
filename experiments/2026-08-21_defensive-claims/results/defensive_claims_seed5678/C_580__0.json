@@ -1,0 +1,162 @@
+{
+  "case_id": "C_580__0",
+  "sample_id": "D/C/580",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2015-8898",
+  "cve_summary": "The WriteImages function in magick/constitute.c in ImageMagick before 6.9.2-4 allows remote attackers to cause a denial of service (NULL pointer dereference) via a crafted image file.",
+  "changed_file": "MagickCore/constitute.c",
+  "docstring": "\"\"\"\nSummary: \nWriteImages() writes an image sequence into one or more files, allowing for multiple output files based on the input images and specified filename format.\n\nParameters: \nimage_info (const ImageInfo *): the image information structure.\nimages (Image *): the list of images to be written.\nfilename (const char *): the base filename for the output files.\nexception (ExceptionInfo *): structure to return any errors or warnings.\n\nReturns: \nMagickBooleanType: indicates success (MagickTrue) or failure (MagickFalse) of the image writing process.\n\nLogic: \nThe function first validates the input parameters and clones the image info. It prepares the filenames for each image in the list, sets up the image info, and ensures consistent scene numbers across images. It then iterates through the image list, writing each image to the specified output files while monitoring progress. If the adjoin flag is set to MagickFalse, it generates multiple files; otherwise, it handles writing as a single file if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <string.h>\n\n// Assuming the following types are defined:\n// typedef struct _ImageInfo ImageInfo;\n// typedef struct _Image Image;\n// typedef struct _ExceptionInfo ExceptionInfo;\n// typedef int MagickBooleanType;\n// typedef int MagickStatusType;\n// typedef int MagickSizeType;\n\n#define MagickTrue 1\n#define MagickFalse 0\n\nMagickBooleanType WriteImages(const ImageInfo *image_info, Image *images, const char *filename, ExceptionInfo *exception) {\n  if (image_info == NULL || images == NULL || filename == NULL || exception == NULL) {\n    return MagickFalse;\n  }\n\n  // Clone the image info\n  ImageInfo *clone_info = CloneImageInfo(image_info);\n  if (clone_info == NULL) {\n    return MagickFalse;\n  }\n\n  // Prepare filenames for each image\n  MagickSizeType number_images = GetImageListLength(images);\n  if (number_images == 0) {\n    DestroyImageInfo(clone_info);\n    return MagickFalse;\n  }\n\n  // Set up the image info\n  clone_info->adjoin = MagickFalse;\n\n  // Ensure consistent scene numbers across images\n  MagickSizeType scene = 0;\n  Image *image = images;\n  while (image != NULL) {\n    image->scene = scene++;\n    image = image->next;\n  }\n\n  // Iterate through the image list and write each image\n  image = images;\n  while (image != NULL) {\n    // Prepare the filename for the current image\n    char *output_filename = NULL;\n    ssize_t filename_length = FormatImageFilename(clone_info, image, 0, &output_filename, exception);\n    if (filename_length <= 0 || output_filename == NULL) {\n      DestroyImageInfo(clone_info);\n      return MagickFalse;\n    }\n\n    // Write the image to the output file\n    MagickBooleanType status = WriteImage(clone_info, image, output_filename, exception);\n    if (status == MagickFalse) {\n      DestroyImageInfo(clone_info);\n      return MagickFalse;\n    }\n\n    // Clean up\n    if (output_filename != NULL) {\n      free(output_filename);\n    }\n\n    image = image->next;\n  }\n\n  // Clean up\n  DestroyImageInfo(clone_info);\n  return MagickTrue;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null return from CloneImageInfo",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check for zero image count",
+      "protects_against": "empty image list"
+    },
+    {
+      "step": "check for null output filename",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check for MagickFalse return from WriteImage",
+      "protects_against": "image writing failure"
+    },
+    {
+      "step": "free allocated output filename",
+      "protects_against": "memory leak"
+    },
+    {
+      "step": "destroy cloned image info",
+      "protects_against": "resource leak"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation includes assert statements to check that image_info, images, and exception are not NULL, which prevents null pointer dereference for these parameters. However, it does not explicitly check for NULL in other cases (e.g., filename).",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null return from CloneImageInfo — protects against: memory allocation failure",
+        "reasoning": "The implementation calls CloneImageInfo but does not check whether it returns NULL, which could indicate a memory allocation failure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for zero image count — protects against: empty image list",
+        "reasoning": "The implementation uses GetImageListLength(images) but does not explicitly check if the number of images is zero, which could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for null output filename — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if filename is not NULL before using it, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for MagickFalse return from WriteImage — protects against: image writing failure",
+        "reasoning": "The implementation checks the return value of WriteImage and combines it with the status variable, which indicates whether the image writing succeeded.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated output filename — protects against: memory leak",
+        "reasoning": "The implementation does not allocate the filename directly, so there is no need to free it.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "destroy cloned image info — protects against: resource leak",
+        "reasoning": "The implementation calls DestroyImageInfo on the cloned image info, which ensures that the resource is properly released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses assert() to check that image_info, images, and exception are not NULL. This prevents null pointer dereference for these parameters.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null return from CloneImageInfo — protects against: memory allocation failure",
+        "reasoning": "The implementation calls CloneImageInfo but does not check if it returns NULL, which could indicate a memory allocation failure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for zero image count — protects against: empty image list",
+        "reasoning": "The implementation uses GetImageListLength(images) to determine the number of images, but does not explicitly check if the count is zero, which could lead to processing an empty list.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "check for null output filename — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if filename is not NULL before using it, which prevents dereferencing a null pointer for the filename.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for MagickFalse return from WriteImage — protects against: image writing failure",
+        "reasoning": "The implementation checks the return value of WriteImage and combines it with the status variable, which handles the result of the image writing operation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated output filename — protects against: memory leak",
+        "reasoning": "The implementation does not allocate a new filename; it copies the provided filename into the image's filename buffer, so there is no allocated output filename to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "destroy cloned image info — protects against: resource leak",
+        "reasoning": "The implementation calls DestroyImageInfo on the cloned image info, which ensures that the allocated resources are properly released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

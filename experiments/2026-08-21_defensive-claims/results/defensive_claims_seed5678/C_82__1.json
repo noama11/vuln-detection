@@ -1,0 +1,98 @@
+{
+  "case_id": "C_82__1",
+  "sample_id": "D/C/82",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-2234",
+  "cve_summary": "The (1) key_notify_sa_flush and (2) key_notify_policy_flush functions in net/key/af_key.c in the Linux kernel before 3.10 do not initialize certain structure members, which allows local users to obtain sensitive information from kernel heap memory by reading a broadcast message from the notify interface of an IPSec key_socket.",
+  "changed_file": "net/key/af_key.c",
+  "docstring": "Summary: This function flushes the key notification policy by broadcasting a message.\n\nParameters:\n- c (const struct km_event *): Pointer to the event structure containing sequence and port ID.\n\nReturns:\n- int: Returns 0 on success, or -ENOBUFS if memory allocation fails.\n\nLogic: The function allocates a socket buffer for a key management message, initializes its header with relevant information from the provided event structure, and broadcasts the message. If memory allocation fails, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/skbuff.h>\n#include <linux/netlink.h>\n#include <linux/errno.h>\n\nint flush_key_notification_policy(const struct km_event *c) {\n    struct sk_buff *skb;\n    int skb_size = NLMSG_SPACE(0);\n\n    skb = alloc_skb(skb_size, GFP_KERNEL);\n    if (!skb) {\n        return -ENOBUFS;\n    }\n\n    skb_put(skb, NLMSG_HDRLEN);\n    // Initialize header with information from c\n    // ...\n\n    // Broadcast the message\n    // ...\n\n    kfree_skb(skb);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of alloc_skb",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "use kernel GFP_KERNEL flag for memory allocation",
+      "protects_against": "out-of-memory conditions"
+    },
+    {
+      "step": "free skb buffer on all return paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check return value of alloc_skb — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the return value of alloc_skb and returns -ENOBUFS if it is NULL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kernel GFP_KERNEL flag for memory allocation — protects against: out-of-memory conditions",
+        "reasoning": "The implementation uses the GFP_ATOMIC flag for memory allocation, not the GFP_KERNEL flag.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free skb buffer on all return paths — protects against: memory leaks",
+        "reasoning": "The implementation does not free the skb buffer before returning. Instead, it passes it to pfkey_broadcast, which presumably takes ownership of it.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check return value of alloc_skb — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the return value of alloc_skb and returns -ENOBUFS if it is NULL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kernel GFP_KERNEL flag for memory allocation — protects against: out-of-memory conditions",
+        "reasoning": "The implementation uses the GFP_ATOMIC flag for memory allocation, not GFP_KERNEL.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "free skb buffer on all return paths — protects against: memory leaks",
+        "reasoning": "The implementation does not free the skb buffer before returning 0. The buffer is passed to pfkey_broadcast, which may take ownership, but it is not explicitly checked or documented that this function does not require the caller to free it.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

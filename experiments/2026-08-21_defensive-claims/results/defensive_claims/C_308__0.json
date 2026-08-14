@@ -1,0 +1,98 @@
+{
+  "case_id": "C_308__0",
+  "sample_id": "D/C/308",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2549",
+  "cve_summary": "sound/core/hrtimer.c in the Linux kernel before 4.4.1 does not prevent recursive callback access, which allows local users to cause a denial of service (deadlock) via a crafted ioctl call.",
+  "changed_file": "sound/core/hrtimer.c",
+  "docstring": "/**\n * Summary: Starts a high-resolution timer associated with a sound timer.\n * \n * Parameters:\n * t (struct snd_timer): Pointer to the sound timer structure.\n * \n * Returns:\n * int: Returns 0 on successful timer start.\n * \n * Logic: The function initializes the timer by handling any existing timer, setting the timer duration\n * based on the provided ticks and resolution, and marks the timer as running.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int start_sound_timer(struct snd_timer *t) {\n    if (!t) {\n        return -1;\n    }\n\n    if (t->running) {\n        stop_sound_timer(t);\n    }\n\n    if (t->resolution <= 0 || t->ticks <= 0) {\n        return -1;\n    }\n\n    t->duration = t->ticks * t->resolution;\n\n    t->start_time = get_high_resolution_time();\n    t->running = 1;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check that the timer pointer is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check that the timer is not already running",
+      "protects_against": "starting a timer that is already running"
+    },
+    {
+      "step": "validate timer resolution and ticks are positive",
+      "protects_against": "invalid or negative duration calculation"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check that the timer pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences the timer pointer `t` by accessing `t->private_data`. If `t` is null, this would cause a null pointer dereference. The implementation does not check if `t` is null before dereferencing it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check that the timer is not already running — protects against: starting a timer that is already running",
+        "reasoning": "The implementation calls `hrtimer_cancel(&stime->hrt)` before starting the timer. This ensures that any existing timer is canceled before starting a new one, effectively preventing the timer from being started while it is already running.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate timer resolution and ticks are positive — protects against: invalid or negative duration calculation",
+        "reasoning": "The implementation uses `t->sticks * resolution` to calculate the duration for the timer. If `t->sticks` or `resolution` is negative or zero, this could result in an invalid or incorrect duration. The implementation does not perform any checks to ensure these values are positive.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check that the timer pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences the timer pointer `t` by accessing `t->private_data`. If `t` is null, this would cause a null pointer dereference. The implementation does not check if `t` is null before dereferencing it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check that the timer is not already running — protects against: starting a timer that is already running",
+        "reasoning": "The implementation does not check whether the timer is already running before starting it. It directly calls `hrtimer_start`, which may overwrite an existing timer state.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate timer resolution and ticks are positive — protects against: invalid or negative duration calculation",
+        "reasoning": "The implementation uses `t->sticks * resolution` to calculate the timer duration. If `t->sticks` or `resolution` is negative or zero, this could result in an invalid or zero duration. The implementation does not validate that these values are positive.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

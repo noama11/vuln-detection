@@ -1,0 +1,31 @@
+{
+  "case_id": "C_168__1",
+  "implementation": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n#define MAX_WORD_SIZE 1024\n\nvoid process_file(FILE *file) {\n    int ch;\n    char word[MAX_WORD_SIZE];\n    int word_index = 0;\n    int in_quotes = 0;\n\n    while ((ch = fgetc(file)) != EOF) {\n        // Handle escape sequences\n        if (ch == '\\\\') {\n            if ((ch = fgetc(file)) != EOF) {\n                switch (ch) {\n                    case 'n':\n                        word[word_index++] = '\\n';\n                        break;\n                    case 't':\n                        word[word_index++] = '\\t';\n                        break;\n                    case '0':\n                    case '1':\n                    case '2':\n                    case '3':\n                    case '4':\n                    case '5':\n                    case '6':\n                    case '7': {\n                        // Handle octal escape sequence\n                        int octal_value = ch - '0';\n                        int digits_read = 1;\n                        \n                        while (digits_read < 3) {\n                            int next_digit = fgetc(file);\n                            if (next_digit == EOF || (next_digit < '0' || next_digit > '7')) {\n                                ungetc(next_digit, file);\n                                break;\n                            }\n                            octal_value = octal_value * 8 + (next_digit - '0');\n                            digits_read++;\n                        }\n                        word[word_index++] = (char)octal_value;\n                        break;\n                    }\n                    case 'x': {\n                        // Handle hexadecimal escape sequence\n                        int hex_value = 0;\n                        int next_digit = fgetc(file);\n                        \n                        if (next_digit == EOF) {\n                            break;\n                        }\n                        \n                        while (1) {\n                            if (next_digit >= '0' && next_digit <= '9') {\n                                hex_value = hex_value * 16 + (next_digit - '0');\n                            } else if (next_digit >= 'a' && next_digit <= 'f') {\n                                hex_value = hex_value * 16 + (next_digit - 'a' + 10);\n                            } else if (next_digit >= 'A' && next_digit <= 'F') {\n                                hex_value = hex_value * 16 + (next_digit - 'A' + 10);\n                            } else {\n                                ungetc(next_digit, file);\n                                break;\n                            }\n                            \n                            next_digit = fgetc(file);\n                            if (next_digit == EOF) {\n                                break;\n                            }\n                        }\n                        word[word_index++] = (char)hex_value;\n                        break;\n                    }\n                    default:\n                        // Unrecognized escape sequence, treat as literal backslash\n                        word[word_index++] = '\\\\';\n                        word[word_index++] = ch;\n                        break;\n                }\n            }\n        }\n        // Handle quotes\n        else if (ch == '\"') {\n            in_quotes = !in_quotes;\n            word[word_index++] = ch;\n        }\n        // Handle whitespace or comment characters\n        else if (ch == ' ' || ch == '\\t' || ch == '#') {\n            if (!in_quotes) {\n                break;\n            }\n        }\n        // Handle regular characters\n        else {\n            word[word_index++] = ch;\n            // Ensure we don't overflow the buffer\n            if (word_index >= MAX_WORD_SIZE - 1) {\n                break;\n            }\n        }\n    }\n\n    // Null-terminate the word\n    word[word_index] = '\\0';\n}",
+  "defensive_steps": [
+    {
+      "step": "bound buffer index to prevent overflow",
+      "protects_against": "writing beyond the bounds of the word buffer"
+    },
+    {
+      "step": "checked for EOF before using character",
+      "protects_against": "using invalid characters after EOF"
+    },
+    {
+      "step": "validated escape sequence characters",
+      "protects_against": "processing invalid or malformed escape sequences"
+    },
+    {
+      "step": "used ungetc to return invalid characters to input stream",
+      "protects_against": "consuming invalid characters that should be processed later"
+    },
+    {
+      "step": "null-terminated the word buffer",
+      "protects_against": "creating a string without a proper null terminator"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

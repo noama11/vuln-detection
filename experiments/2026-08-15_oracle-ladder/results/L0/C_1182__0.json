@@ -1,0 +1,48 @@
+{
+  "case_id": "C_1182__0",
+  "sample_id": "D/C/1182",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2014-1748",
+  "cve_summary": "The ScrollView::paint function in platform/scroll/ScrollView.cpp in Blink, as used in Google Chrome before 35.0.1916.114, allows remote attackers to spoof the UI by extending scrollbar painting into the parent frame.",
+  "changed_file": "content/browser/plugin_data_remover_impl.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Initializes the plugin on the IO thread based on the provided MIME type.  \n *  \n * Parameters:  \n * mime_type (const std::string&): The MIME type of the plugin to initialize.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:\n * Retrieves the plugin information for the specified MIME type. It obtains the plugin path when\n * plugin information is available. It then checks whether the plugin is a Pepper plugin or an NPAPI\n * plugin and opens the appropriate communication channel. The function ensures that it runs on the\n * IO thread and manages the reference count for the object until the channel is opened or an error\n * occurs.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "  void InitOnIOThread(const std::string& mime_type) {\r\n    PluginServiceImpl* plugin_service = PluginServiceImpl::GetInstance();\r\n\r\n    // Get the plugin file path.\r\n    std::vector<WebPluginInfo> plugins;\r\n    plugin_service->GetPluginInfoArray(\r\n        GURL(), mime_type, false, &plugins, NULL);\r\n\r\n    if (plugins.empty()) {\r\n      // May be empty for some tests and on the CrOS login OOBE screen.\r\n      event_->Signal();\r\n      return;\r\n    }\r\n\r\n    base::FilePath plugin_path = plugins[0].path;\r\n\r\n    DCHECK_CURRENTLY_ON(BrowserThread::IO);\r\n    remove_start_time_ = base::Time::Now();\r\n    is_removing_ = true;\r\n    // Balanced in On[Ppapi]ChannelOpened or OnError. Exactly one them will\r\n    // eventually be called, so we need to keep this object around until then.\r\n    AddRef();\r\n\r\n    PepperPluginInfo* pepper_info =\r\n        plugin_service->GetRegisteredPpapiPluginInfo(plugin_path);\r\n    if (pepper_info) {\r\n      plugin_name_ = pepper_info->name;\r\n      // Use the broker since we run this function outside the sandbox.\r\n      plugin_service->OpenChannelToPpapiBroker(0, plugin_path, this);\r\n    } else {\r\n      plugin_service->OpenChannelToNpapiPlugin(\r\n          0, 0, GURL(), GURL(), mime_type, this);\r\n    }\r\n  }",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation directly accesses `plugins[0].path` without checking if the `plugins` vector is non-empty, while the reference implementation first assigns `plugin_path` only if `plugins` is non-empty. This means the candidate implementation could dereference an empty vector, leading to undefined behavior or a crash if no plugins are found. This is a security-relevant issue as it could be triggered by adversarial input causing malformed or missing plugin data.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. Both retrieve plugin information for the given MIME type, handle the case where no plugins are found, and open the appropriate communication channel for Pepper or NPAPI plugins. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

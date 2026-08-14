@@ -1,0 +1,146 @@
+{
+  "case_id": "C_55__0",
+  "sample_id": "D/C/55",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4587",
+  "cve_summary": "Array index error in the kvm_vm_ioctl_create_vcpu function in virt/kvm/kvm_main.c in the KVM subsystem in the Linux kernel through 3.12.5 allows local users to gain privileges via a large id value.",
+  "changed_file": "virt/kvm/kvm_main.c",
+  "docstring": "\"\"\"\nSummary: \nCreates a virtual CPU (vCPU) for a given KVM instance.\n\nParameters: \nkvm (struct kvm *): Pointer to the KVM instance where the vCPU will be created. \nid (u32): Identifier for the vCPU being created.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function attempts to create a new vCPU and initializes its preemption notifier. If the setup fails at any point, it cleans up and returns an error. The function ensures that the maximum number of online vCPUs is not exceeded and that the vCPU ID does not already exist. If all checks pass, it registers the vCPU, increments the count of online vCPUs, and allows userspace to access the vCPU. Finally, it performs architecture-specific post-creation tasks before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int kvm_vcpu_create(struct kvm *kvm, u32 id)\n{\n    int ret = -EINVAL;\n\n    if (!kvm)\n        return ret;\n\n    if (id >= KVM_MAX_VCPUS)\n        return ret;\n\n    if (kvm->vcpus[id])\n        return -EEXIST;\n\n    struct kvm_vcpu *vcpu = kzalloc(sizeof(*vcpu), GFP_KERNEL);\n    if (!vcpu)\n        return -ENOMEM;\n\n    vcpu->kvm = kvm;\n    vcpu->vcpu_id = id;\n\n    ret = kvm_arch_vcpu_create(vcpu);\n    if (ret) {\n        kfree(vcpu);\n        return ret;\n    }\n\n    ret = kvm_init_vcpu(vcpu);\n    if (ret) {\n        kvm_arch_vcpu_free(vcpu);\n        kfree(vcpu);\n        return ret;\n    }\n\n    kvm->vcpus[id] = vcpu;\n    kvm->online_vcpus++;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check kvm pointer is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate vCPU ID is within bounds",
+      "protects_against": "out-of-bounds array access"
+    },
+    {
+      "step": "check if vCPU already exists",
+      "protects_against": "duplicate vCPU creation"
+    },
+    {
+      "step": "check kzalloc return value",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "clean up on architecture-specific creation failure",
+      "protects_against": "resource leak on error"
+    },
+    {
+      "step": "clean up on vCPU initialization failure",
+      "protects_against": "resource leak on error"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check kvm pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the kvm pointer is null. However, the function is likely called with a valid pointer as part of the KVM API, and the code assumes the pointer is valid (e.g., dereferences it).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate vCPU ID is within bounds — protects against: out-of-bounds array access",
+        "reasoning": "The implementation does not explicitly validate that the vCPU ID is within bounds. However, it checks for duplicate vCPU IDs and ensures the maximum number of online vCPUs is not exceeded, which indirectly prevents out-of-bounds access.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if vCPU already exists — protects against: duplicate vCPU creation",
+        "reasoning": "The implementation iterates through existing vCPUs and checks if a vCPU with the same ID already exists. If so, it returns -EEXIST, preventing duplicate creation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check kzalloc return value — protects against: memory allocation failure",
+        "reasoning": "The implementation does not use kzalloc directly. Instead, it uses kvm_arch_vcpu_create, which presumably handles allocation. The code checks if vcpu is an error pointer (IS_ERR), which covers allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up on architecture-specific creation failure — protects against: resource leak on error",
+        "reasoning": "The implementation calls kvm_arch_vcpu_create and checks if it returns an error. If it does, it returns the error code without further processing, which implies no additional resources are allocated at that point. Thus, no explicit cleanup is needed.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clean up on vCPU initialization failure — protects against: resource leak on error",
+        "reasoning": "The implementation calls kvm_arch_vcpu_setup and checks its return value. If it fails, it jumps to the vcpu_destroy label, which calls kvm_arch_vcpu_destroy to clean up the vCPU.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check kvm pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the kvm pointer is null. However, the function is called with a kvm pointer, and the code assumes it is valid. If the pointer is null, dereferencing it would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate vCPU ID is within bounds — protects against: out-of-bounds array access",
+        "reasoning": "The implementation checks if the vCPU ID is greater than or equal to KVM_MAX_VCPUS and returns -EINVAL if so. This ensures the ID is within the valid range.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if vCPU already exists — protects against: duplicate vCPU creation",
+        "reasoning": "The implementation iterates through existing vCPUs and checks if a vCPU with the same ID already exists. If it does, it returns -EEXIST, preventing duplicate creation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check kzalloc return value — protects against: memory allocation failure",
+        "reasoning": "The implementation does not use kzalloc directly. Instead, it calls kvm_arch_vcpu_create, which presumably handles allocation. The return value of this function is checked with IS_ERR, which handles error cases, including allocation failures.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up on architecture-specific creation failure — protects against: resource leak on error",
+        "reasoning": "If the architecture-specific creation (kvm_arch_vcpu_create) fails, the function returns an error code. However, there is no explicit cleanup for this failure path. The cleanup is only handled for later failures (e.g., vcpu_setup failure).",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "clean up on vCPU initialization failure — protects against: resource leak on error",
+        "reasoning": "If the vCPU initialization (kvm_arch_vcpu_setup) fails, the function jumps to the vcpu_destroy label, which calls kvm_arch_vcpu_destroy to clean up the vCPU. This ensures proper cleanup on initialization failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

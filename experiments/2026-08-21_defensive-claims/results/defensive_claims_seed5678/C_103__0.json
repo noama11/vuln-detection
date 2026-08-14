@@ -1,0 +1,130 @@
+{
+  "case_id": "C_103__0",
+  "sample_id": "D/C/103",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1763",
+  "cve_summary": "Array index error in the __sock_diag_rcv_msg function in net/core/sock_diag.c in the Linux kernel before 3.7.10 allows local users to gain privileges via a large family value in a Netlink message.",
+  "changed_file": "net/core/sock_diag.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a socket diagnostic message received via netlink.\n\nParameters: \nskb (struct sk_buff *): Pointer to the socket buffer containing the message.\nnlh (struct nlmsghdr *): Pointer to the netlink message header.\n\nReturns: \nint: Returns 0 on success, or a negative error code indicating the failure reason.\n\nLogic: The function first checks if the length of the netlink message is valid. It then obtains the socket diagnostic handler for the socket family specified in the request. If a handler is available, it locks the handler and attempts to call its dump function to process the message. After processing, it unlocks the handler and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_diag_message(struct sk_buff *skb, struct nlmsghdr *nlh) {\n    int ret = -EINVAL;\n    struct sock_diag_handler *handler = NULL;\n\n    if (!skb || !nlh) {\n        return -EINVAL;\n    }\n\n    if (nlh->nlmsg_len < sizeof(*nlh)) {\n        return -EINVAL;\n    }\n\n    handler = sock_diag_lock_handler(nlh->nlmsg_type);\n    if (!handler) {\n        return -ENOENT;\n    }\n\n    if (!try_module_get(handler->owner)) {\n        sock_diag_unlock_handler();\n        return -EINVAL;\n    }\n\n    if (handler->dump) {\n        ret = handler->dump(skb, nlh);\n    } else {\n        ret = -EOPNOTSUPP;\n    }\n\n    module_put(handler->owner);\n    sock_diag_unlock_handler();\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check skb and nlh for NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate nlmsg_len is at least the size of nlmsghdr",
+      "protects_against": "buffer underflow or invalid message length"
+    },
+    {
+      "step": "check if handler is not NULL before using it",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "call module_get and module_put to manage handler owner reference count",
+      "protects_against": "use-after-free or double-free of handler owner module"
+    },
+    {
+      "step": "unlock handler after processing",
+      "protects_against": "deadlock or resource leak"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check skb and nlh for NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if skb or nlh are NULL before using them. However, the function is likely called in a context where these pointers are already validated, and the code proceeds to use them directly.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate nlmsg_len is at least the size of nlmsghdr — protects against: buffer underflow or invalid message length",
+        "reasoning": "The implementation checks if the nlmsg_len is less than the size of the sock_diag_req structure, which is larger than the nlmsghdr. This ensures the message is long enough to contain the required data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if handler is not NULL before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if the handler is NULL after locking it and returns an error if it is. This prevents dereferencing a NULL pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "call module_get and module_put to manage handler owner reference count — protects against: use-after-free or double-free of handler owner module",
+        "reasoning": "The implementation does not explicitly call module_get or module_put to manage the reference count of the handler's owner module.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "unlock handler after processing — protects against: deadlock or resource leak",
+        "reasoning": "The implementation calls sock_diag_unlock_handler after processing, ensuring the handler is properly unlocked.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check skb and nlh for NULL — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if skb or nlh are NULL before using them. However, the function is likely called in a context where these pointers are guaranteed to be valid, and the code proceeds to dereference nlh (e.g., via nlmsg_data and nlmsg_len).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate nlmsg_len is at least the size of nlmsghdr — protects against: buffer underflow or invalid message length",
+        "reasoning": "The implementation checks if the nlmsg_len is less than the size of the sock_diag_req structure, which is larger than the nlmsghdr. This ensures that the message is long enough to contain the sock_diag_req data, which includes the nlmsghdr.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if handler is not NULL before using it — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if the handler is NULL after locking it. If it is NULL, it returns -ENOENT. This prevents dereferencing a NULL pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "call module_get and module_put to manage handler owner reference count — protects against: use-after-free or double-free of handler owner module",
+        "reasoning": "The implementation does not explicitly call module_get or module_put to manage the reference count of the handler's owner module. This could lead to a use-after-free if the module is unloaded while the handler is in use.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "unlock handler after processing — protects against: deadlock or resource leak",
+        "reasoning": "The implementation calls sock_diag_unlock_handler after processing the handler, which ensures that the lock is released regardless of whether the handler is NULL or not. This prevents deadlocks or resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

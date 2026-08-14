@@ -1,0 +1,48 @@
+{
+  "case_id": "C_1292__0",
+  "sample_id": "D/C/1292",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2016-5198",
+  "cve_summary": "V8 in Google Chrome prior to 54.0.2840.90 for Linux, and 54.0.2840.85 for Android, and 54.0.2840.87 for Windows and Mac included incorrect optimisation assumptions, which allowed a remote attacker to perform arbitrary read/write operations, leading to code execution, via a crafted HTML page.",
+  "changed_file": "third_party/blink/renderer/platform/graphics/image_frame_generator.h",
+  "docstring": "Summary: This code defines the `ImageFrameGenerator` class, which manages the decoding and scaling of image frames in a thread-safe manner.\n\nParameters: N/A\n\nReturns: N/A\n\nLogic: The `ImageFrameGenerator` class inherits from `ThreadSafeRefCounted` and provides methods for decoding images, including support for YUV formats. It has a constructor that initializes the full size, color behavior, and supported sizes of the images. The class maintains internal state for decoding status and alpha channel information, and uses mutexes to coordinate concurrent access from different clients. It includes methods to check if decoding has failed, retrieve the full size of the image, and get supported decode sizes. The internal state includes a map of client mutexes to handle concurrent access from different clients. The class also provides a factory method for creating instances and allows for testing through dependency injection of an image decoder factory.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "class PLATFORM_EXPORT ImageFrameGenerator final\r\n    : public ThreadSafeRefCounted<ImageFrameGenerator> {\r\n public:\r\n  static scoped_refptr<ImageFrameGenerator> Create(\r\n      const SkISize& full_size,\r\n      bool is_multi_frame,\r\n      const ColorBehavior& color_behavior,\r\n      std::vector<SkISize> supported_sizes) {\r\n    return base::AdoptRef(new ImageFrameGenerator(\r\n        full_size, is_multi_frame, color_behavior, std::move(supported_sizes)));\r\n  }\r\n\r\n  ~ImageFrameGenerator();\r\n\r\n  // Decodes and scales the specified frame at |index|. The dimensions and\r\n  // output format are given in SkImageInfo. Decoded pixels are written into\r\n  // |pixels| with a stride of |rowBytes|. Returns true if decoding was\r\n  // successful.\r\n  bool DecodeAndScale(SegmentReader*,\r\n                      bool all_data_received,\r\n                      size_t index,\r\n                      const SkImageInfo&,\r\n                      void* pixels,\r\n                      size_t row_bytes,\r\n                      ImageDecoder::AlphaOption,\r\n                      cc::PaintImage::GeneratorClientId);\r\n\r\n  // Decodes YUV components directly into the provided memory planes. Must not\r\n  // be called unless getYUVComponentSizes has been called and returned true.\r\n  // YUV decoding does not currently support progressive decoding. In order to\r\n  // support it, ImageDecoder needs something analagous to its ImageFrame cache\r\n  // to hold partial planes, and the GPU code needs to handle them.\r\n  bool DecodeToYUV(SegmentReader*,\r\n                   size_t index,\r\n                   const SkISize component_sizes[3],\r\n                   void* planes[3],\r\n                   const size_t row_bytes[3]);\r\n\r\n  const SkISize& GetFullSize() const { return full_size_; }\r\n\r\n  SkISize GetSupportedDecodeSize(const SkISize& requested_size) const;\r\n\r\n  bool IsMultiFrame() const { return is_multi_frame_; }\r\n  bool DecodeFailed() const {\r\n    MutexLocker lock(generator_mutex_);\r\n    return decode_failed_;\r\n  }\r\n\r\n  bool HasAlpha(size_t index);\r\n\r\n  // Must not be called unless the SkROBuffer has all the data. YUV decoding\r\n  // does not currently support progressive decoding. See comment above on\r\n  // decodeToYUV().\r\n  bool GetYUVComponentSizes(SegmentReader*, SkYUVASizeInfo*);\r\n\r\n private:\r\n  class ClientMutexLocker {\r\n    STACK_ALLOCATED();\r\n\r\n   public:\r\n    ClientMutexLocker(ImageFrameGenerator* generator,\r\n                      cc::PaintImage::GeneratorClientId client_id);\r\n    ~ClientMutexLocker();\r\n\r\n   private:\r\n    ImageFrameGenerator* generator_;\r\n    cc::PaintImage::GeneratorClientId client_id_;\r\n    Mutex* mutex_;\r\n  };\r\n\r\n  ImageFrameGenerator(const SkISize& full_size,\r\n                      bool is_multi_frame,\r\n                      const ColorBehavior&,\r\n                      std::vector<SkISize> supported_sizes);\r\n\r\n  friend class ImageFrameGeneratorTest;\r\n  friend class DeferredImageDecoderTest;\r\n  // For testing. |factory| will overwrite the default ImageDecoder creation\r\n  // logic if |factory->create()| returns non-zero.\r\n  void SetImageDecoderFactory(std::unique_ptr<ImageDecoderFactory> factory) {\r\n    image_decoder_factory_ = std::move(factory);\r\n  }\r\n\r\n  void SetHasAlpha(size_t index, bool has_alpha);\r\n\r\n  const SkISize full_size_;\r\n  // Parameters used to create internal ImageDecoder objects.\r\n  const ColorBehavior decoder_color_behavior_;\r\n  const bool is_multi_frame_;\r\n  const std::vector<SkISize> supported_sizes_;\r\n\r\n  // Prevents concurrent access to all variables below.\r\n  mutable Mutex generator_mutex_;\r\n\r\n  bool decode_failed_ = false;\r\n  bool yuv_decoding_failed_ = false;\r\n  size_t frame_count_ = 0u;\r\n  Vector<bool> has_alpha_;\r\n\r\n  struct ClientMutex {\r\n    int ref_count = 0;\r\n    Mutex mutex;\r\n  };\r\n  // Note that it is necessary to use unordered_map here to ensure that\r\n  // references to entries in the map, stored in ClientMutexLocker, remain valid\r\n  // across insertions into the map.\r\n  std::unordered_map<cc::PaintImage::GeneratorClientId, ClientMutex> mutex_map_;\r\n\r\n  std::unique_ptr<ImageDecoderFactory> image_decoder_factory_;\r\n\r\n  DISALLOW_COPY_AND_ASSIGN(ImageFrameGenerator);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are nearly identical, with the only difference being that the candidate implementation includes a `generator_mutex_` as a `mutable Mutex`, while the reference implementation uses a non-mutable `Mutex`. This difference affects how the mutex is treated in const methods, but since both implementations ensure thread-safety and mutual exclusion in the same way, there is no observable behavioral difference for any input. Therefore, the implementations are behaviorally equivalent.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code structure, method signatures, and logic. There are no observable differences in behavior for any input or scenario described in the specification. Both implementations provide the same thread-safe decoding and scaling functionality for image frames.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

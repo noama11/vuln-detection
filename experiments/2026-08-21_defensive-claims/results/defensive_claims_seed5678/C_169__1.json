@@ -1,0 +1,114 @@
+{
+  "case_id": "C_169__1",
+  "sample_id": "D/C/169",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the nested netlink attribute from a given socket buffer context.\n\nParameters: \nctx (u64): The context of the socket buffer.\nA (u64): The offset in the socket buffer where the netlink attribute starts.\nX (u64): The type of nested netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the nested netlink attribute from the start of the socket buffer, or 0 if not found or if any validation fails.\n\nLogic: The function first checks whether the socket buffer can be processed. It then performs validation of the specified offset A and the netlink attribute. If these checks pass, it attempts to find the nested attribute of type X and returns its offset; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "u64 get_nested_netlink_attr_offset(u64 ctx, u64 A, u64 X, u64 r4, u64 r5) {\n    // Assume that the socket buffer is represented as a byte array.\n    // For the sake of this example, we'll assume a helper function to get the buffer and its length.\n    void *skb_data = NULL;\n    size_t skb_len = 0;\n\n    // Assume a helper function to get the socket buffer data and length from the context.\n    if (!get_skb_data_and_length(ctx, &skb_data, &skb_len)) {\n        return 0;\n    }\n\n    // Validate that the offset A is within the bounds of the socket buffer.\n    if (A >= skb_len) {\n        return 0;\n    }\n\n    // Assume a helper function to get the length of the netlink attribute at offset A.\n    size_t attr_len = 0;\n    if (!get_netlink_attr_length(skb_data, A, &attr_len)) {\n        return 0;\n    }\n\n    // Validate that the attribute length is valid.\n    if (attr_len == 0 || attr_len > skb_len - A) {\n        return 0;\n    }\n\n    // Search for the nested attribute of type X within the attribute at offset A.\n    u64 nested_offset = 0;\n    if (!find_nested_netlink_attr(skb_data, A, attr_len, X, &nested_offset)) {\n        return 0;\n    }\n\n    // Return the offset of the nested attribute from the start of the socket buffer.\n    return nested_offset;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate socket buffer data and length",
+      "protects_against": "invalid or uninitialized socket buffer context"
+    },
+    {
+      "step": "check offset A is within socket buffer bounds",
+      "protects_against": "out-of-bounds memory access"
+    },
+    {
+      "step": "validate netlink attribute length",
+      "protects_against": "invalid or malicious attribute length"
+    },
+    {
+      "step": "check attribute length does not exceed remaining buffer size",
+      "protects_against": "buffer overflow"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate socket buffer data and length — protects against: invalid or uninitialized socket buffer context",
+        "reasoning": "The implementation checks if the socket buffer is nonlinear and returns 0 in that case, which is a form of validation for the socket buffer data and length.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check offset A is within socket buffer bounds — protects against: out-of-bounds memory access",
+        "reasoning": "The implementation checks if A is greater than skb->len minus the size of a netlink attribute and returns 0 if so, ensuring the offset is within the socket buffer bounds.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate netlink attribute length — protects against: invalid or malicious attribute length",
+        "reasoning": "The implementation does not explicitly validate the netlink attribute length. It only checks if the attribute length exceeds the remaining buffer size.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check attribute length does not exceed remaining buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation checks if the attribute length is greater than A minus skb->len and returns 0 if so, which ensures the attribute length does not exceed the remaining buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "validate socket buffer data and length — protects against: invalid or uninitialized socket buffer context",
+        "reasoning": "The implementation checks if the socket buffer is nonlinear and if its length is at least the size of a netlink attribute. This validates the buffer's data and length.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check offset A is within socket buffer bounds — protects against: out-of-bounds memory access",
+        "reasoning": "The implementation checks if A is within the bounds of the socket buffer by comparing it to skb->len minus the size of a netlink attribute.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate netlink attribute length — protects against: invalid or malicious attribute length",
+        "reasoning": "The implementation checks if the length of the netlink attribute at offset A is valid by comparing it to the remaining buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check attribute length does not exceed remaining buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation checks if the length of the netlink attribute at offset A does not exceed the remaining buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

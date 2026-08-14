@@ -1,0 +1,162 @@
+{
+  "case_id": "C_588__3",
+  "sample_id": "D/C/588",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2014-9907",
+  "cve_summary": "coders/dds.c in ImageMagick allows remote attackers to cause a denial of service via a crafted DDS file.",
+  "changed_file": "coders/dds.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads DXT3 compressed image data and decodes it into an Image structure.  \n *  \n * Parameters:  \n * image (Image*): Pointer to the Image structure where the decoded pixels will be stored.  \n * dds_info (DDSInfo*): Pointer to the DDSInfo structure containing image dimensions and metadata.  \n * exception (ExceptionInfo*): Pointer to an ExceptionInfo structure for error handling.  \n *  \n * Returns:  \n * MagickBooleanType: Returns MagickTrue on success, or MagickFalse on failure.  \n *  \n * Logic:  \n * The function processes the image in 4x4 pixel blocks, reading alpha values and color data from the compressed format.  \n * It calculates the colors using the provided color codes and sets the pixel values in the image.  \n * If any operation fails, it returns an error. Finally, it skips mipmaps and returns the result of that operation.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "MagickBooleanType DecodeDXT3Image(Image *image, DDSInfo *dds_info, ExceptionInfo *exception) {\n  if (!image || !dds_info || !exception) {\n    return MagickFalse;\n  }\n\n  if (image->columns < 4 || image->rows < 4) {\n    return MagickFalse;\n  }\n\n  if (dds_info->width < 4 || dds_info->height < 4) {\n    return MagickFalse;\n  }\n\n  if (dds_info->data == NULL) {\n    return MagickFalse;\n  }\n\n  const size_t block_width = 4;\n  const size_t block_height = 4;\n  const size_t block_count_width = (dds_info->width + block_width - 1) / block_width;\n  const size_t block_count_height = (dds_info->height + block_height - 1) / block_height;\n\n  const size_t alpha_block_size = 16;\n  const size_t color_block_size = 8;\n\n  const size_t total_blocks = block_count_width * block_count_height;\n  const size_t total_alpha_blocks = total_blocks * alpha_block_size;\n  const size_t total_color_blocks = total_blocks * color_block_size;\n\n  if (total_alpha_blocks > dds_info->size || total_color_blocks > dds_info->size) {\n    return MagickFalse;\n  }\n\n  const unsigned char *alpha_data = dds_info->data;\n  const unsigned char *color_data = alpha_data + total_alpha_blocks;\n\n  for (size_t y = 0; y < block_count_height; y++) {\n    for (size_t x = 0; x < block_count_width; x++) {\n      size_t alpha_offset = (y * block_count_width + x) * alpha_block_size;\n      size_t color_offset = (y * block_count_width + x) * color_block_size;\n\n      if (alpha_offset + alpha_block_size > dds_info->size || color_offset + color_block_size > dds_info->size) {\n        return MagickFalse;\n      }\n\n      for (size_t i = 0; i < alpha_block_size; i++) {\n        unsigned char alpha_value = alpha_data[alpha_offset + i];\n        // Process alpha value and assign to appropriate pixel in the image\n      }\n\n      unsigned short color_code_0 = (color_data[color_offset] << 8) | color_data[color_offset + 1];\n      unsigned short color_code_1 = (color_data[color_offset + 2] << 8) | color_data[color_offset + 3];\n\n      for (size_t i = 0; i < 8; i++) {\n        unsigned char index = color_data[color_offset + 4 + i];\n        // Calculate color based on color_code_0 and color_code_1 using index\n        // Assign calculated color to appropriate pixel in the image\n      }\n    }\n  }\n\n  // Skip mipmaps\n  size_t mipmap_size = total_alpha_blocks + total_color_blocks;\n  if (mipmap_size > dds_info->size) {\n    return MagickFalse;\n  }\n\n  dds_info->data += mipmap_size;\n  dds_info->size -= mipmap_size;\n\n  return MagickTrue;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate image dimensions",
+      "protects_against": "invalid or insufficient image dimensions"
+    },
+    {
+      "step": "validate dds_info dimensions",
+      "protects_against": "invalid or insufficient dds_info dimensions"
+    },
+    {
+      "step": "check for null data pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate block offsets and sizes",
+      "protects_against": "buffer overflow or invalid memory access"
+    },
+    {
+      "step": "validate alpha and color data offsets",
+      "protects_against": "buffer overflow or invalid memory access"
+    },
+    {
+      "step": "validate mipmap size",
+      "protects_against": "buffer overflow or invalid memory access"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 20,
+    "n_omits": 5,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (image, dds_info, exception). However, the function returns MagickFalse if QueueAuthenticPixels or SyncAuthenticPixels returns NULL, which may imply some level of null pointer protection via the underlying library.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate image dimensions — protects against: invalid or insufficient image dimensions",
+        "reasoning": "The implementation uses Min(4, ...) to ensure that the pixel block size does not exceed the image dimensions. This prevents out-of-bounds access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate dds_info dimensions — protects against: invalid or insufficient dds_info dimensions",
+        "reasoning": "The implementation uses dds_info->width and dds_info->height directly in the loop and in Min(4, ...) expressions. There is no explicit validation of dds_info dimensions.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null data pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for a null data pointer. However, the function returns MagickFalse if QueueAuthenticPixels or SyncAuthenticPixels returns NULL, which may imply some level of null pointer protection via the underlying library.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate block offsets and sizes — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation uses Min(4, ...) to ensure that the pixel block size does not exceed the image dimensions. This prevents out-of-bounds access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate alpha and color data offsets — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation reads alpha and color data using ReadBlobLSBShort and ReadBlobLSBLong, but there is no explicit validation of the offsets or sizes of these data.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate mipmap size — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation calls SkipDXTMipmaps, but there is no explicit validation of the mipmap size before skipping.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 34,
+    "n_omits": 6,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'image', 'dds_info', or 'exception' parameters before using them. Dereferencing these pointers without a check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate image dimensions — protects against: invalid or insufficient image dimensions",
+        "reasoning": "The implementation uses 'dds_info->width' and 'dds_info->height' to loop over the image in 4x4 blocks, but it does not validate that the image dimensions are valid or sufficient for the DXT3 format.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate dds_info dimensions — protects against: invalid or insufficient dds_info dimensions",
+        "reasoning": "The implementation uses 'dds_info->width' and 'dds_info->height' in loops but does not validate that these values are valid or sufficient for the DXT3 format.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for null data pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses 'ReadBlobLSBShort(image)' and 'ReadBlobLSBLong(image)' to read data from the input, but it does not check if the data pointer is null before dereferencing it.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate block offsets and sizes — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation reads data in 4x4 blocks and writes to the image, but it does not validate the block offsets or sizes to ensure they are within the bounds of the allocated memory.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate alpha and color data offsets — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation reads alpha and color data from the input but does not validate the offsets for these data to ensure they are within the bounds of the allocated memory.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate mipmap size — protects against: buffer overflow or invalid memory access",
+        "reasoning": "The implementation does not handle mipmap data explicitly, and there is no validation of mipmap size to ensure it is within the bounds of the allocated memory.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

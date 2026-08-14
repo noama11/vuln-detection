@@ -1,0 +1,36 @@
+{
+  "case_id": "C_8__1",
+  "sample_id": "D/C/8",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2744",
+  "cve_summary": "net/ipv6/netfilter/nf_conntrack_reasm.c in the Linux kernel before 2.6.34, when the nf_conntrack_ipv6 module is enabled, allows remote attackers to cause a denial of service (NULL pointer dereference and system crash) via certain types of fragmented IPv6 packets.",
+  "commit_message": "netfilter: nf_conntrack_reasm: properly handle packets fragmented into a single fragment\n\nWhen an ICMPV6_PKT_TOOBIG message is received with a MTU below 1280,\nall further packets include a fragment header.\n\nUnlike regular defragmentation, conntrack also needs to \"reassemble\"\nthose fragments in order to obtain a packet without the fragment\nheader for connection tracking. Currently nf_conntrack_reasm checks\nwhether a fragment has either IP6_MF set or an offset != 0, which\nmakes it ignore those fragments.\n\nRemove the invalid check and make reassembly handle fragment queues\ncontaining only a single fragment.\n\nReported-and-tested-by: Ulrich Weber <uweber@astaro.com>\nSigned-off-by: Patrick McHardy <kaber@trash.net>",
+  "changed_file": "net/ipv6/netfilter/nf_conntrack_reasm.c",
+  "docstring": "/**\n * Summary: \n * Gathers fragmented IPv6 packets into a single sk_buff structure.\n * \n * Parameters: \n * skb (struct sk_buff *): The original socket buffer containing the fragmented packet.\n * user (u32): User identifier for the fragment queue.\n * \n * Returns: \n * struct sk_buff *: A pointer to the reassembled sk_buff if successful, otherwise returns the original skb.\n * \n * Logic: \n * The function first checks if the payload length is zero, returning the original skb if true. It attempts to find the previous fragment header and clones the skb. If cloning fails or the cloned skb is too short, it returns the original skb. It sets the transport header and checks memory thresholds for fragment management. It finds or creates a fragment queue and attempts to queue the cloned skb. If all fragments are received, it attempts to reassemble them into a complete packet. Finally, it releases the fragment queue and returns the reassembled packet or the original skb if any step fails.\n */",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    561,
+    630
+  ],
+  "vulnerable_line_range": [
+    561,
+    636
+  ],
+  "vulnerable_snippet": "struct sk_buff *nf_ct_frag6_gather(struct sk_buff *skb, u32 user)\r\n{\r\n\tstruct sk_buff *clone;\r\n\tstruct net_device *dev = skb->dev;\r\n\tstruct frag_hdr *fhdr;\r\n\tstruct nf_ct_frag6_queue *fq;\r\n\tstruct ipv6hdr *hdr;\r\n\tint fhoff, nhoff;\r\n\tu8 prevhdr;\r\n\tstruct sk_buff *ret_skb = NULL;\r\n\r\n\t/* Jumbo payload inhibits frag. header */\r\n\tif (ipv6_hdr(skb)->payload_len == 0) {\r\n\t\tpr_debug(\"payload len = 0\\n\");\r\n\t\treturn skb;\r\n\t}\r\n\r\n\tif (find_prev_fhdr(skb, &prevhdr, &nhoff, &fhoff) < 0)\r\n\t\treturn skb;\r\n\r\n\tclone = skb_clone(skb, GFP_ATOMIC);\r\n\tif (clone == NULL) {\r\n\t\tpr_debug(\"Can't clone skb\\n\");\r\n\t\treturn skb;\r\n\t}\r\n\r\n\tNFCT_FRAG6_CB(clone)->orig = skb;\r\n\r\n\tif (!pskb_may_pull(clone, fhoff + sizeof(*fhdr))) {\r\n\t\tpr_debug(\"message is too short.\\n\");\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tskb_set_transport_header(clone, fhoff);\r\n\thdr = ipv6_hdr(clone);\r\n\tfhdr = (struct frag_hdr *)skb_transport_header(clone);\r\n\r\n\tif (!(fhdr->frag_off & htons(0xFFF9))) {\r\n\t\tpr_debug(\"Invalid fragment offset\\n\");\r\n\t\t/* It is not a fragmented frame */\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tif (atomic_read(&nf_init_frags.mem) > nf_init_frags.high_thresh)\r\n\t\tnf_ct_frag6_evictor();\r\n\r\n\tfq = fq_find(fhdr->identification, user, &hdr->saddr, &hdr->daddr);\r\n\tif (fq == NULL) {\r\n\t\tpr_debug(\"Can't find and can't create new queue\\n\");\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tspin_lock_bh(&fq->q.lock);\r\n\r\n\tif (nf_ct_frag6_queue(fq, clone, fhdr, nhoff) < 0) {\r\n\t\tspin_unlock_bh(&fq->q.lock);\r\n\t\tpr_debug(\"Can't insert skb to queue\\n\");\r\n\t\tfq_put(fq);\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tif (fq->q.last_in == (INET_FRAG_FIRST_IN | INET_FRAG_LAST_IN) &&\r\n\t    fq->q.meat == fq->q.len) {\r\n\t\tret_skb = nf_ct_frag6_reasm(fq, dev);\r\n\t\tif (ret_skb == NULL)\r\n\t\t\tpr_debug(\"Can't reassemble fragmented packets\\n\");\r\n\t}\r\n\tspin_unlock_bh(&fq->q.lock);\r\n\r\n\tfq_put(fq);\r\n\treturn ret_skb;\r\n\r\nret_orig:\r\n\tkfree_skb(clone);\r\n\treturn skb;\r\n}",
+  "fixed_line_range": [
+    561,
+    630
+  ],
+  "fixed_snippet": "struct sk_buff *nf_ct_frag6_gather(struct sk_buff *skb, u32 user)\r\n{\r\n\tstruct sk_buff *clone;\r\n\tstruct net_device *dev = skb->dev;\r\n\tstruct frag_hdr *fhdr;\r\n\tstruct nf_ct_frag6_queue *fq;\r\n\tstruct ipv6hdr *hdr;\r\n\tint fhoff, nhoff;\r\n\tu8 prevhdr;\r\n\tstruct sk_buff *ret_skb = NULL;\r\n\r\n\t/* Jumbo payload inhibits frag. header */\r\n\tif (ipv6_hdr(skb)->payload_len == 0) {\r\n\t\tpr_debug(\"payload len = 0\\n\");\r\n\t\treturn skb;\r\n\t}\r\n\r\n\tif (find_prev_fhdr(skb, &prevhdr, &nhoff, &fhoff) < 0)\r\n\t\treturn skb;\r\n\r\n\tclone = skb_clone(skb, GFP_ATOMIC);\r\n\tif (clone == NULL) {\r\n\t\tpr_debug(\"Can't clone skb\\n\");\r\n\t\treturn skb;\r\n\t}\r\n\r\n\tNFCT_FRAG6_CB(clone)->orig = skb;\r\n\r\n\tif (!pskb_may_pull(clone, fhoff + sizeof(*fhdr))) {\r\n\t\tpr_debug(\"message is too short.\\n\");\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tskb_set_transport_header(clone, fhoff);\r\n\thdr = ipv6_hdr(clone);\r\n\tfhdr = (struct frag_hdr *)skb_transport_header(clone);\r\n\r\n\tif (atomic_read(&nf_init_frags.mem) > nf_init_frags.high_thresh)\r\n\t\tnf_ct_frag6_evictor();\r\n\r\n\tfq = fq_find(fhdr->identification, user, &hdr->saddr, &hdr->daddr);\r\n\tif (fq == NULL) {\r\n\t\tpr_debug(\"Can't find and can't create new queue\\n\");\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tspin_lock_bh(&fq->q.lock);\r\n\r\n\tif (nf_ct_frag6_queue(fq, clone, fhdr, nhoff) < 0) {\r\n\t\tspin_unlock_bh(&fq->q.lock);\r\n\t\tpr_debug(\"Can't insert skb to queue\\n\");\r\n\t\tfq_put(fq);\r\n\t\tgoto ret_orig;\r\n\t}\r\n\r\n\tif (fq->q.last_in == (INET_FRAG_FIRST_IN | INET_FRAG_LAST_IN) &&\r\n\t    fq->q.meat == fq->q.len) {\r\n\t\tret_skb = nf_ct_frag6_reasm(fq, dev);\r\n\t\tif (ret_skb == NULL)\r\n\t\t\tpr_debug(\"Can't reassemble fragmented packets\\n\");\r\n\t}\r\n\tspin_unlock_bh(&fq->q.lock);\r\n\r\n\tfq_put(fq);\r\n\treturn ret_skb;\r\n\r\nret_orig:\r\n\tkfree_skb(clone);\r\n\treturn skb;\r\n}",
+  "func_name": "nf_ct_frag6_gather",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

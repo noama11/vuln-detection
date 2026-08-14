@@ -1,0 +1,34 @@
+{
+  "case_id": "C_137__2",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void syscall_trace_enter(void *ignore, struct pt_regs *regs, long id)\n{\n    int syscall_nr = (int)regs->orig_ax;\n    struct syscall_metadata *meta;\n    struct ftrace_event *event;\n    struct ftrace_raw *entry;\n    size_t entry_size;\n\n    if (syscall_nr < 0 || syscall_nr >= __NR_syscall_max)\n        return;\n\n    meta = find_syscall_metadata(syscall_nr);\n    if (!meta)\n        return;\n\n    event = find_event(\"syscalls\", meta->name);\n    if (!event || !event->enabled)\n        return;\n\n    entry_size = sizeof(struct ftrace_raw) + meta->arg_size;\n    entry_size = ALIGN(entry_size, __alignof__(struct ftrace_raw));\n\n    entry = ftrace_buffer_reserve(event, entry_size);\n    if (!entry)\n        return;\n\n    entry->id = event->id;\n    fill_raw_syscall_arguments(entry, regs, meta);\n    ftrace_buffer_submit(event, entry);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void syscall_enter_handler(void* ignore, struct pt_regs* regs, long id) {\n    int syscall_number = pt_regs_get_arg1(regs); // Assuming a helper function to get the syscall number\n    if (!is_valid_syscall(syscall_number) || !is_syscall_enabled(syscall_number)) {\n        return;\n    }\n\n    struct syscall_metadata* metadata = get_syscall_metadata(syscall_number);\n    if (!metadata || !(metadata->event_mask & PERF_EVENT_TRACE)) {\n        return;\n    }\n\n    size_t record_size = sizeof(struct syscall_trace_record) + metadata->arg_count * sizeof(uint64_t);\n    size_t aligned_size = ALIGN(record_size, 8); // Assuming ALIGN is a helper macro for alignment\n\n    struct syscall_trace_record* record = allocate_trace_record(aligned_size);\n    if (!record) {\n        return;\n    }\n\n    record->syscall_number = syscall_number;\n    for (int i = 0; i < metadata->arg_count; i++) {\n        record->args[i] = pt_regs_get_arg(regs, i + 1); // Assuming a helper to get specific register args\n    }\n\n    submit_to_trace_buffer((void*)record, aligned_size);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void syscall_enter_handler(void* ignore, struct pt_regs* regs, long id) {\n    int syscall_nr = (int)id;\n    struct syscall_metadata *meta;\n\n    if (syscall_nr < 0 || syscall_nr >= MAX_SYSCALL_NR)\n        return;\n\n    meta = get_syscall_metadata(syscall_nr);\n    if (!meta || !meta->events_enabled)\n        return;\n\n    int trace_size = calc_trace_record_size(meta->args, meta->arg_count);\n    trace_size = ALIGN(trace_size, 8);\n\n    struct trace_record *record = alloc_trace_record(trace_size);\n    if (!record)\n        return;\n\n    fill_trace_record(record, regs, id, meta->args, meta->arg_count);\n    submit_trace_record(record);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void handle_syscall_entry(void* ignore, struct pt_regs* regs, long id) {\n    int syscall_number = regs->orig_ax;\n    struct syscall_metadata *metadata = get_syscall_metadata(syscall_number);\n    if (!metadata || !(metadata->flags & EVENT_ENABLED))\n        return;\n\n    int nr_args = metadata->nr_args;\n    size_t size = sizeof(struct syscall_trace) + nr_args * sizeof(unsigned long);\n    size = ALIGN(size, 8);\n\n    struct syscall_trace *entry = (struct syscall_trace *)__get_tracedata();\n    if (!entry)\n        return;\n\n    entry->id = syscall_number;\n    for (int i = 0; i < nr_args; ++i) {\n        entry->args[i] = regs->ax; // Assuming register mapping is known and handled\n    }\n\n    trace_submit(entry, size, metadata->event_type);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void syscall_enter_handler(void *ignore, struct pt_regs *regs, long id)\n{\n    int syscall_nr = (int)regs->ax;\n\n    if (syscall_nr < 0 || syscall_nr >= NR_syscalls)\n        return;\n\n    struct syscall_metadata *meta = &syscall_metadata[syscall_nr];\n    if (!meta->enabled)\n        return;\n\n    if (!trace_event_enabled(meta->event))\n        return;\n\n    unsigned int size = sizeof(struct syscall_trace_enter) + meta->arg_info_size;\n    size = ALIGN(size, __alignof__(struct syscall_trace_enter));\n\n    struct syscall_trace_enter *entry = kmalloc(size, GFP_KERNEL | __GFP_NOWARN);\n    if (!entry)\n        return;\n\n    entry->nr = syscall_nr;\n    entry->clock = local_clock();\n    entry->ip = regs->ip;\n    entry->sp = regs->sp;\n\n    if (meta->prepare_enter)\n        meta->prepare_enter(entry, regs);\n\n    trace_buffer_submit(meta->event, entry, size);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "Cpp_711__0",
+  "sample_id": "D/C++/711",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "qpdf/qpdf",
+  "cve_id": "CVE-2017-18184",
+  "cve_summary": "An issue was discovered in QPDF before 7.0.0. There is a stack-based out-of-bounds read in the function iterate_rc4 in QPDF_encryption.cc.",
+  "changed_file": "libqpdf/QPDF_encryption.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Computes the O value used in PDF encryption based on the user and owner passwords.  \n *  \n * Parameters:  \n * user_password (std::string const&): The password provided by the user.  \n * owner_password (std::string const&): The password set by the document owner.  \n * data (QPDF::EncryptionData const&): Encryption data containing parameters for the operation.  \n *  \n * Returns:  \n * std::string: The computed O value as a string.  \n *  \n * Logic:  \n * The function derives an RC4 key from the user and owner passwords, pads or truncates the user password, and then iterates the RC4 algorithm to generate the O value, which is returned as a string.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string>\n#include <algorithm>\n#include <vector>\n\n// Function to compute the O value used in PDF encryption\nstd::string computeOValue(std::string const& user_password, std::string const& owner_password, QPDF::EncryptionData const& data) {\n    // Ensure data is valid\n    if (data.key_length <= 0) {\n        throw std::invalid_argument(\"Invalid key length in encryption data\");\n    }\n\n    // Pad or truncate the user password to 32 bytes\n    std::string padded_user_password = user_password;\n    if (padded_user_password.size() < 32) {\n        padded_user_password.resize(32, '\\0');\n    } else if (padded_user_password.size() > 32) {\n        padded_user_password.resize(32);\n    }\n\n    // Derive the RC4 key from the owner password and encryption data\n    std::string rc4_key = owner_password + data.encryption_salt;\n    if (rc4_key.size() > data.key_length) {\n        rc4_key.resize(data.key_length);\n    } else if (rc4_key.size() < data.key_length) {\n        rc4_key.resize(data.key_length, '\\0');\n    }\n\n    // Initialize RC4 state array\n    std::vector<unsigned char> state(256);\n    for (size_t i = 0; i < 256; ++i) {\n        state[i] = static_cast<unsigned char>(i);\n    }\n\n    // RC4 key scheduling algorithm\n    size_t j = 0;\n    for (size_t i = 0; i < 256; ++i) {\n        j = (j + state[i] + rc4_key[i % rc4_key.size()]) % 256;\n        std::swap(state[i], state[j]);\n    }\n\n    // RC4 pseudo-random generation algorithm\n    size_t i = 0;\n    j = 0;\n    std::string o_value;\n\n    for (size_t k = 0; k < data.key_length; ++k) {\n        i = (i + 1) % 256;\n        j = (j + state[i]) % 256;\n        std::swap(state[i], state[j]);\n        size_t idx = (state[i] + state[j]) % 256;\n        o_value.push_back(padded_user_password[k % padded_user_password.size()] ^ state[idx]);\n    }\n\n    return o_value;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate key length in encryption data",
+      "protects_against": "invalid or zero key length in encryption data"
+    },
+    {
+      "step": "bound user password size to 32 bytes",
+      "protects_against": "user password exceeding 32 bytes"
+    },
+    {
+      "step": "bound rc4_key size to key_length",
+      "protects_against": "rc4_key exceeding key_length"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate key length in encryption data — protects against: invalid or zero key length in encryption data",
+        "reasoning": "The implementation does not explicitly validate the key length in the encryption data. It uses data.getLengthBytes() directly in iterate_rc4, which could be invalid or zero if not checked.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound user password size to 32 bytes — protects against: user password exceeding 32 bytes",
+        "reasoning": "The implementation calls pad_or_truncate_password_V4, which likely bounds the password size to 32 bytes as described in the logic. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound rc4_key size to key_length — protects against: rc4_key exceeding key_length",
+        "reasoning": "The implementation uses a fixed-size array O_key of size OU_key_bytes_V4 and passes data.getLengthBytes() to iterate_rc4. There is no explicit check to ensure that the key length does not exceed the size of O_key, which could lead to buffer overflow if data.getLengthBytes() is larger than OU_key_bytes_V4.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate key length in encryption data — protects against: invalid or zero key length in encryption data",
+        "reasoning": "The implementation does not explicitly check or validate the key length in the encryption data. It uses data.getLengthBytes() directly in operations like padding and RC4 iteration, which could be problematic if the value is invalid or zero.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound user password size to 32 bytes — protects against: user password exceeding 32 bytes",
+        "reasoning": "The implementation calls pad_or_truncate_password_V4, which likely truncates or pads the user password to a fixed size (e.g., 32 bytes), as implied by the function name. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound rc4_key size to key_length — protects against: rc4_key exceeding key_length",
+        "reasoning": "The implementation uses data.getLengthBytes() to pad the key (k1) and pass it to RC4 iteration. However, it does not explicitly bound the rc4_key size to the key_length. The key is derived from the user and owner passwords, but there is no explicit check or truncation to ensure it does not exceed the key_length.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

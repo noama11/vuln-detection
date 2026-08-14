@@ -1,0 +1,98 @@
+{
+  "case_id": "C_424__3",
+  "sample_id": "D/C/424",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-11450",
+  "cve_summary": "coders/jpeg.c in ImageMagick before 7.0.6-1 allows remote attackers to cause a denial of service (application crash) or possibly have unspecified other impact via JPEG data that is too short.",
+  "changed_file": "coders/jpeg.c",
+  "docstring": "Summary: RegisterJPEGImage() adds JPEG image format properties to the supported formats list in the image processing library.\n\nParameters: N/A\n\nReturns: size_t: the size of the registered JPEG image format entry.\n\nLogic: The function initializes a version string and a description for the JPEG format. It creates multiple entries for different JPEG-related format identifiers (e.g., \"JPE\", \"JPEG\", \"JPG\", \"JPS\", \"PJPEG\") using the SetMagickInfo function. For each entry, it sets properties such as the decoder and encoder functions, thread support, and MIME type. The function checks the JPEG library version to determine thread support and assigns the appropriate handlers for reading and writing JPEG images. Each entry is registered using RegisterMagickInfo, ensuring that the library recognizes these formats for image processing tasks. The function handles the versioning and format specifics to maintain compatibility with different JPEG library versions.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <stdlib.h>\n\nsize_t RegisterJPEGImage() {\n    const char *version = \"JPEG-8.0\";\n    const char *description = \"Joint Photographic Experts Group JFIF format\";\n\n    size_t entry_size = 0;\n\n    // Register JPEG format identifiers\n    const char *identifiers[] = {\"JPE\", \"JPEG\", \"JPG\", \"JPS\", \"PJPEG\"};\n    const size_t num_identifiers = sizeof(identifiers) / sizeof(identifiers[0]);\n\n    for (size_t i = 0; i < num_identifiers; ++i) {\n        // Allocate memory for the magick info structure\n        MagickInfo *magick_info = (MagickInfo *) malloc(sizeof(MagickInfo));\n        if (!magick_info) {\n            // Handle memory allocation failure\n            continue;\n        }\n\n        // Initialize magick info structure\n        magick_info->decoder = &JPEGDecoder;\n        magick_info->encoder = &JPEGEncoder;\n        magick_info->thread_support = 1; // Assume thread support by default\n        magick_info->mime_type = \"image/jpeg\";\n        magick_info->description = description;\n        magick_info->version = version;\n\n        // Check JPEG library version for thread support\n        if (JPEGLibraryVersion() < 0x0800) {\n            magick_info->thread_support = 0;\n        }\n\n        // Register the magick info\n        if (RegisterMagickInfo(identifiers[i], magick_info)) {\n            entry_size += sizeof(MagickInfo);\n        }\n\n        // Free memory if registration failed\n        if (!RegisterMagickInfo(identifiers[i], magick_info)) {\n            free(magick_info);\n        }\n    }\n\n    return entry_size;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "free memory if registration fails",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "bound loop iteration to known array size",
+      "protects_against": "buffer overflow"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any dynamic memory allocation that requires a null pointer check. All allocations are handled by the `SetMagickInfo` function, and there is no explicit check for null pointers in the code provided.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free memory if registration fails — protects against: memory leaks",
+        "reasoning": "The implementation does not include any error handling or cleanup logic for failed registration. It assumes that the `SetMagickInfo` and `RegisterMagickInfo` functions succeed and does not attempt to free any memory if they fail.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound loop iteration to known array size — protects against: buffer overflow",
+        "reasoning": "The implementation does not use any loops that iterate over arrays or buffers. It directly creates and registers multiple `MagickInfo` entries for different JPEG-related format identifiers, but there is no loop construct that could overflow a buffer.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation uses `SetMagickInfo` to create `MagickInfo` entries, but there is no check for whether `entry` is NULL after these calls. If `SetMagickInfo` returns NULL due to allocation failure, the code proceeds to dereference `entry`, which would cause undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "free memory if registration fails — protects against: memory leaks",
+        "reasoning": "The implementation does not check whether `RegisterMagickInfo(entry)` succeeds or fails. If registration fails, there is no mechanism to free the memory allocated by `SetMagickInfo`, which could result in a memory leak.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "bound loop iteration to known array size — protects against: buffer overflow",
+        "reasoning": "The implementation does not involve any loop iteration over an array or buffer. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

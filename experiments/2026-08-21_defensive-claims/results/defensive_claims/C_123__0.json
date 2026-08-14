@@ -1,0 +1,114 @@
+{
+  "case_id": "C_123__0",
+  "sample_id": "D/C/123",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1182",
+  "cve_summary": "kernel/signal.c in the Linux kernel before 2.6.39 allows local users to spoof the uid and pid of a signal sender via a sigqueueinfo system call.",
+  "changed_file": "kernel/signal.c",
+  "docstring": "Summary: This function implements the system call `rt_sigqueueinfo`, which sends real-time signals to a specified process.\n\nParameters: \n- pid (pid_t): The process ID of the target process.\n- sig (int): The signal number to be sent.\n- uinfo (siginfo_t __user *): A pointer to user-space siginfo structure containing additional signal information.\n\nReturns: \n- int: Returns 0 on success, or a negative error code indicating the failure reason (e.g., -EFAULT for a bad user pointer, -EPERM for permission errors).\n\nLogic: The function first copies the siginfo structure from user space. It checks if the signal code is valid and ensures that the caller is not attempting to impersonate another process. If the checks pass, it sets the signal number in the siginfo structure and calls `kill_proc_info` to send the signal to the specified process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int rt_sigqueueinfo(pid_t pid, int sig, siginfo_t __user *uinfo) {\n    siginfo_t info;\n    int ret;\n\n    if (!uinfo) {\n        return -EFAULT;\n    }\n\n    if (copy_from_user(&info, uinfo, sizeof(siginfo_t))) {\n        return -EFAULT;\n    }\n\n    if (info.si_code >= 0 && info.si_code < 0) {\n        return -EINVAL;\n    }\n\n    if (pid <= 0) {\n        return -EPERM;\n    }\n\n    info.si_signo = sig;\n    ret = kill_proc_info(sig, &info, pid);\n\n    return ret < 0 ? ret : 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null user pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "copy_from_user with size check",
+      "protects_against": "invalid or malicious user-space data"
+    },
+    {
+      "step": "validate signal code range",
+      "protects_against": "invalid signal code values"
+    },
+    {
+      "step": "check for invalid or non-positive process ID",
+      "protects_against": "invalid target process"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null user pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `copy_from_user`, which implicitly checks for a null pointer and returns an error if the pointer is null or invalid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_from_user with size check — protects against: invalid or malicious user-space data",
+        "reasoning": "The implementation uses `copy_from_user` to copy the `siginfo_t` structure from user space, which includes a size check and error handling if the copy fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate signal code range — protects against: invalid signal code values",
+        "reasoning": "The implementation checks that `info.si_code` is not greater than or equal to 0, which implies a validation of the signal code range.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for invalid or non-positive process ID — protects against: invalid target process",
+        "reasoning": "The implementation passes `pid` to `kill_proc_info`, which is expected to handle invalid or non-positive process IDs. The implementation does not perform this check directly.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null user pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `copy_from_user`, which implicitly checks for a null pointer and returns an error if the pointer is null or invalid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy_from_user with size check — protects against: invalid or malicious user-space data",
+        "reasoning": "The implementation uses `copy_from_user` to copy the `siginfo_t` structure from user space, which includes a size check for the data being copied.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate signal code range — protects against: invalid signal code values",
+        "reasoning": "The implementation checks that `si_code` is `SI_QUEUE` and warns if it is negative, but does not explicitly validate the full range of valid signal codes.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for invalid or non-positive process ID — protects against: invalid target process",
+        "reasoning": "The implementation does not perform any explicit check on the `pid` value before passing it to `kill_proc_info`. The function `kill_proc_info` may handle some validation, but the implementation does not perform this check directly.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

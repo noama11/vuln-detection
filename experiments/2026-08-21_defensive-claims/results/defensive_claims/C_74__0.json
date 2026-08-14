@@ -1,0 +1,114 @@
+{
+  "case_id": "C_74__0",
+  "sample_id": "D/C/74",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3228",
+  "cve_summary": "The irda_recvmsg_dgram function in net/irda/af_irda.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/irda/af_irda.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a datagram message over an IrDA socket.\n\nParameters: \niocb (struct kiocb*): The I/O control block associated with the operation.\nsock (struct socket*): The socket from which the message is received.\nmsg (struct msghdr*): The message header that will be filled with the received data.\nsize (size_t): The maximum size of the message to be received.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header, or an error code if the operation fails.\n\nLogic: \nThe function retrieves a datagram from the socket's receive queue, copying the data into the provided message header. It checks for truncation and updates the message flags accordingly. If the IrTTP flow is stopped and there is sufficient space in the receive queue, it restarts the flow to allow further message delivery.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int irda_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    if (size > skb->len) {\n        size = skb->len;\n    }\n\n    copied = skb_copy_datagram_msg(skb, 0, msg, size);\n    if (copied < 0) {\n        err = copied;\n        goto out;\n    }\n\n    if (copied < skb->len) {\n        msg->msg_flags |= MSG_TRUNC;\n    }\n\n    if (sk->sk_stop_flow && skb_queue_len(&sk->sk_receive_queue) < IRDA_RECV_QUEUE_HIGH_WATER) {\n        sk->sk_stop_flow = 0;\n    }\n\n    out:\n    kfree_skb(skb);\n    return (err < 0) ? err : copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "bound copy length to the size of the received datagram",
+      "protects_against": "copying more data than is available in the datagram, which could cause buffer overflows or invalid memory access"
+    },
+    {
+      "step": "check for non-null skb before accessing it",
+      "protects_against": "dereferencing a null pointer when dequeuing a packet from the socket's receive queue"
+    },
+    {
+      "step": "check for negative return from skb_copy_datagram_msg",
+      "protects_against": "copying data into the message header when the copy operation fails"
+    },
+    {
+      "step": "ensure skb is freed on all return paths",
+      "protects_against": "memory leaks due to un-released socket buffer"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "bound copy length to the size of the received datagram — protects against: copying more data than is available in the datagram, which could cause buffer overflows or invalid memory access",
+        "reasoning": "The implementation checks if the copied length is greater than the requested size and truncates it to the size, setting the MSG_TRUNC flag. This bounds the copy length to the size of the received datagram.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for non-null skb before accessing it — protects against: dereferencing a null pointer when dequeuing a packet from the socket's receive queue",
+        "reasoning": "The implementation checks if skb is null after dequeuing and returns early if it is, preventing any further access to the null skb.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for negative return from skb_copy_datagram_msg — protects against: copying data into the message header when the copy operation fails",
+        "reasoning": "The implementation does not check for a negative return from skb_copy_datagram_msg. It assumes the copy is successful and proceeds without error handling.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "ensure skb is freed on all return paths — protects against: memory leaks due to un-released socket buffer",
+        "reasoning": "The implementation frees the skb with skb_free_datagram after the copy operation, which is before the return statement. There are no other return paths that bypass this free.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "bound copy length to the size of the received datagram — protects against: copying more data than is available in the datagram, which could cause buffer overflows or invalid memory access",
+        "reasoning": "The implementation checks if the copied length is greater than the requested size and truncates it to the size, setting the MSG_TRUNC flag. This bounds the copy length to the size of the received datagram.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for non-null skb before accessing it — protects against: dereferencing a null pointer when dequeuing a packet from the socket's receive queue",
+        "reasoning": "The implementation checks if skb is null after dequeuing and returns the error code if it is. This prevents dereferencing a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for negative return from skb_copy_datagram_msg — protects against: copying data into the message header when the copy operation fails",
+        "reasoning": "The implementation does not check for a negative return from skb_copy_datagram_iovec. If the copy operation fails, it will proceed without handling the error.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "ensure skb is freed on all return paths — protects against: memory leaks due to un-released socket buffer",
+        "reasoning": "The implementation frees the skb with skb_free_datagram after copying the data, regardless of the return path. This ensures the skb is always freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

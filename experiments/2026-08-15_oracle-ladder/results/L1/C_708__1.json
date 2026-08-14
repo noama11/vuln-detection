@@ -1,0 +1,49 @@
+{
+  "case_id": "C_708__1",
+  "sample_id": "D/C/708",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18202",
+  "cve_summary": "The __oom_reap_task_mm function in mm/oom_kill.c in the Linux kernel before 4.14.4 mishandles gather operations, which allows attackers to cause a denial of service (TLB entry leak or use-after-free) or possibly have unspecified other impact by triggering a copy_to_user call within a certain time window.",
+  "changed_file": "mm/oom_kill.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the reaping of a task's memory management structure in an out-of-memory (OOM) situation.\n\nParameters: \ntsk (struct task_struct *): Pointer to the task structure of the process to be reaped.\nmm (struct mm_struct *): Pointer to the memory management structure of the task.\n\nReturns: \nbool: Returns true if the reaping was successful, false otherwise.\n\nLogic: \nThe function first acquires a lock to prevent race conditions with the task's exit path. It attempts to acquire a read lock on the memory map semaphore. If successful, it checks for memory notifiers and the OOM skip flag. If neither condition is met, it marks the memory as unstable and iterates through the virtual memory areas (VMAs) to unmap anonymous or non-shared pages. Finally, it logs the reaping results and releases the locks before returning the success status.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "static bool __oom_reap_task_mm(struct task_struct *v4, struct mm_struct *v1)\n{\n    struct mmu_gather v3;\n    struct vm_area_struct *v6;\n    bool v2 = true;\n    mutex_lock(&oom_lock);\n    if (!down_read_trylock(&v1->mmap_sem)) {\n        v2 = false;\n        trace_skip_task_reaping(v4->pid);\n        goto v5;\n    }\n    if (mm_has_notifiers(v1)) {\n        up_read(&v1->mmap_sem);\n        schedule_timeout_idle(HZ);\n        goto v5;\n    }\n    if (test_bit(MMF_OOM_SKIP, &v1->flags)) {\n        up_read(&v1->mmap_sem);\n        trace_skip_task_reaping(v4->pid);\n        goto v5;\n    }\n    trace_start_task_reaping(v4->pid);\n    set_bit(MMF_UNSTABLE, &v1->flags);\n    for (v6 = v1->mmap ; v6; v6 = v6->vm_next) {\n        if (!can_madv_dontneed_vma(v6))\n            continue;\n        if (vma_is_anonymous(v6) || !(v6->vm_flags & VM_SHARED)) {\n            tlb_gather_mmu(&v3, v1, v6->vm_start, v6->vm_end);\n            unmap_page_range(&v3, v6, v6->vm_start, v6->vm_end,\n                     NULL);\n            tlb_finish_mmu(&v3, v6->vm_start, v6->vm_end);\n        }\n    }\n    pr_info(\"oom_reaper: reaped process %d (%s), now anon-rss:%lukB, file-rss:%lukB, shmem-rss:%lukB\\n\",\n            task_pid_nr(v4), v4->comm,\n            K(get_mm_counter(v1, MM_ANONPAGES)),\n            K(get_mm_counter(v1, MM_FILEPAGES)),\n            K(get_mm_counter(v1, MM_SHMEMPAGES)));\n    up_read(&v1->mmap_sem);\n    trace_finish_task_reaping(v4->pid);\nv5:\n    mutex_unlock(&oom_lock);\n    return v2;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 6
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the `tlb_gather_mmu` and `tlb_finish_mmu` calls. The candidate implementation calls these functions inside the loop over each VMA, while the reference implementation gathers all the ranges at once before the loop and finishes after the loop. This could lead to different behavior in terms of memory unmapping and TLB flushes, which may affect performance and correctness in edge cases. However, the core logic of acquiring locks, checking conditions, and unmapping anonymous or non-shared pages is the same. The difference is not directly security-relevant but could affect functional correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both acquire the oom_lock, attempt to read-lock the mmap_sem, check for memory notifiers and the MMF_OOM_SKIP flag, and proceed to unmap anonymous or non-shared pages. The logic flow, including the use of tracepoints, memory flags, and the VMA iteration, is the same in both. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

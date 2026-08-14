@@ -1,0 +1,98 @@
+{
+  "case_id": "C_167__1",
+  "sample_id": "D/C/167",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3181",
+  "cve_summary": "Multiple stack-based buffer overflows in the magicmouse_raw_event function in drivers/hid/hid-magicmouse.c in the Magic Mouse HID driver in the Linux kernel through 3.16.3 allow physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that provides a large amount of (1) EHCI or (2) XHCI data associated with an event.",
+  "changed_file": "drivers/hid/hid-magicmouse.c",
+  "docstring": "\"\"\"\nSummary: Processes raw input events from a Magic Mouse or Magic Trackpad device.\n\nParameters:\nhdev (struct hid_device *): Pointer to the HID device structure.\nreport (struct hid_report *): Pointer to the HID report structure.\ndata (u8 *): Pointer to the raw data buffer containing event information.\nsize (int): Size of the data buffer.\n\nReturns: int: Returns 1 if the event is processed successfully, otherwise returns 0.\n\nLogic: The function interprets different types of input reports (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, DOUBLE_REPORT_ID) and extracts touch data and click information. It handles the data according to the device type, updating the input device state accordingly. For trackpad reports, it processes touch points and clicks, while for mouse reports, it calculates relative movement and button clicks. If the report type is not recognized, it returns 0. The function ensures synchronization of the input device state before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/hid.h>\n#include <linux/input.h>\n\n#define TRACKPAD_REPORT_ID 0x1\n#define MOUSE_REPORT_ID 0x2\n#define DOUBLE_REPORT_ID 0x3\n\nint process_magic_input_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size)\n{\n    struct input_dev *input_dev = hidinput_input(hdev);\n    int i;\n\n    if (!input_dev)\n        return 0;\n\n    switch (data[0]) {\n        case TRACKPAD_REPORT_ID:\n            if (size < 4)\n                return 0;\n\n            /* Process trackpad touch points and clicks */\n            for (i = 0; i < 2; i++) {\n                input_report_abs(input_dev, ABS_MT_POSITION_X, data[1 + i * 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, data[2 + i * 2]);\n            }\n\n            if (data[5] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            if (data[5] & 0x02)\n                input_report_key(input_dev, BTN_RIGHT, 1);\n            else\n                input_report_key(input_dev, BTN_RIGHT, 0);\n\n            break;\n\n        case MOUSE_REPORT_ID:\n            if (size < 4)\n                return 0;\n\n            /* Process mouse relative movement and button clicks */\n            input_report_rel(input_dev, REL_X, data[1]);\n            input_report_rel(input_dev, REL_Y, data[2]);\n\n            if (data[3] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            if (data[3] & 0x02)\n                input_report_key(input_dev, BTN_RIGHT, 1);\n            else\n                input_report_key(input_dev, BTN_RIGHT, 0);\n\n            break;\n\n        case DOUBLE_REPORT_ID:\n            if (size < 8)\n                return 0;\n\n            /* Process combined trackpad and mouse data */\n            for (i = 0; i < 2; i++) {\n                input_report_abs(input_dev, ABS_MT_POSITION_X, data[1 + i * 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, data[2 + i * 2]);\n            }\n\n            input_report_rel(input_dev, REL_X, data[5]);\n            input_report_rel(input_dev, REL_Y, data[6]);\n\n            if (data[7] & 0x01)\n                input_report_key(input_dev, BTN_LEFT, 1);\n            else\n                input_report_key(input_dev, BTN_LEFT, 0);\n\n            if (data[7] & 0x02)\n                input_report_key(input_dev, BTN_RIGHT, 1);\n            else\n                input_report_key(input_dev, BTN_RIGHT, 0);\n\n            break;\n\n        default:\n            return 0;\n    }\n\n    input_sync(input_dev);\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check input_dev pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate data size for each report type",
+      "protects_against": "buffer overflow when accessing data"
+    },
+    {
+      "step": "return 0 for unrecognized report types",
+      "protects_against": "processing invalid or unexpected report data"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check input_dev pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `input` as a member of `magicmouse_sc`, which is obtained from `hid_get_drvdata(hdev)`. Since `msc->input` is assigned during setup and not directly passed as a parameter, the implementation assumes it is valid. There is no explicit check for a null `input` pointer in the function.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate data size for each report type — protects against: buffer overflow when accessing data",
+        "reasoning": "The implementation includes explicit size checks for `TRACKPAD_REPORT_ID` and `MOUSE_REPORT_ID` report types. For example, `if (size < 4 || ((size - 4) % 9) != 0)` ensures the data size is valid for the expected touch data format. These checks prevent buffer overflow by ensuring the data is of the correct size before accessing it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return 0 for unrecognized report types — protects against: processing invalid or unexpected report data",
+        "reasoning": "The implementation includes a `default` case in the `switch (data[0])` block that returns 0 for unrecognized report types. This ensures that only known report types are processed, and invalid or unexpected data is ignored.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check input_dev pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not reference an input_dev pointer or perform any operations that would cause a null pointer dereference on such a pointer. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate data size for each report type — protects against: buffer overflow when accessing data",
+        "reasoning": "The implementation validates the size of the data buffer for each report type (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID) by checking that the size is sufficient and that the remainder of the size after the prefix is divisible by the expected touch data size. If the size is invalid, it returns 0. For DOUBLE_REPORT_ID, the implementation calls another function, but the data size is not explicitly validated in this code. However, the function is not expected to process invalid data in this case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return 0 for unrecognized report types — protects against: processing invalid or unexpected report data",
+        "reasoning": "The implementation uses a switch statement on the report type (data[0]). If the report type is not recognized, the default case returns 0, which prevents processing of invalid or unexpected report data.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

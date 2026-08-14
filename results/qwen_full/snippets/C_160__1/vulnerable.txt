@@ -1,0 +1,56 @@
+	 * it is handled in a context of new task
+	 */
+	ret = __load_segment_descriptor(ctxt, tss->ldt, VCPU_SREG_LDTR, cpl, true);
+	if (ret != X86EMUL_CONTINUE)
+		return ret;
+	ret = __load_segment_descriptor(ctxt, tss->es, VCPU_SREG_ES, cpl, true);
+	if (ret != X86EMUL_CONTINUE)
+		return ret;
+	ret = __load_segment_descriptor(ctxt, tss->cs, VCPU_SREG_CS, cpl, true);
+	if (ret != X86EMUL_CONTINUE)
+		return ret;
+	ret = __load_segment_descriptor(ctxt, tss->ss, VCPU_SREG_SS, cpl, true);
+	if (ret != X86EMUL_CONTINUE)
+		return ret;
+	ret = __load_segment_descriptor(ctxt, tss->ds, VCPU_SREG_DS, cpl, true);
+	if (ret != X86EMUL_CONTINUE)
+		return ret;
+
+	return X86EMUL_CONTINUE;
+}
+
+static int task_switch_16(struct x86_emulate_ctxt *ctxt,
+			  u16 tss_selector, u16 old_tss_sel,
+			  ulong old_tss_base, struct desc_struct *new_desc)
+{
+	const struct x86_emulate_ops *ops = ctxt->ops;
+	struct tss_segment_16 tss_seg;
+	int ret;
+	u32 new_tss_base = get_desc_base(new_desc);
+
+	ret = ops->read_std(ctxt, old_tss_base, &tss_seg, sizeof tss_seg,
+			    &ctxt->exception);
+	if (ret != X86EMUL_CONTINUE)
+		/* FIXME: need to provide precise fault address */
+		return ret;
+
+	save_state_to_tss16(ctxt, &tss_seg);
+
+	ret = ops->write_std(ctxt, old_tss_base, &tss_seg, sizeof tss_seg,
+			     &ctxt->exception);
+	if (ret != X86EMUL_CONTINUE)
+		/* FIXME: need to provide precise fault address */
+		return ret;
+
+	ret = ops->read_std(ctxt, new_tss_base, &tss_seg, sizeof tss_seg,
+			    &ctxt->exception);
+	if (ret != X86EMUL_CONTINUE)
+		/* FIXME: need to provide precise fault address */
+		return ret;
+
+	if (old_tss_sel != 0xffff) {
+		tss_seg.prev_task_link = old_tss_sel;
+
+		ret = ops->write_std(ctxt, new_tss_base,
+				     &tss_seg.prev_task_link,
+				     sizeof tss_seg.prev_task_link,

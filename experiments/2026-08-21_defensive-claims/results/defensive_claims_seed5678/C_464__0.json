@@ -1,0 +1,162 @@
+{
+  "case_id": "C_464__0",
+  "sample_id": "D/C/464",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "jsummers/imageworsener",
+  "cve_id": "CVE-2017-7962",
+  "cve_summary": "The iwgif_read_image function in imagew-gif.c in libimageworsener.a in ImageWorsener 1.3.0 allows remote attackers to cause a denial of service (divide-by-zero error and application crash) via a crafted file.",
+  "changed_file": "src/imagew-gif.c",
+  "docstring": "\"\"\"\nSummary: \nReads an image from a GIF file and processes its header information, color table, and pixel data.\n\nParameters: \nrctx (struct iwgifrcontext*): A pointer to the context structure containing image data and state.\n\nReturns: \nint: Returns 1 on successful reading and processing of the image; otherwise, returns 0.\n\nLogic: The function begins by reading the image header to extract dimensions and interlacing information. It initializes color tables if a local color table is present. The function also handles transparency by modifying the color table accordingly. It reads the LZW code size and validates it against the GIF specification. The function initializes the screen context and prepares to read pixel data in subblocks, processing each subblock with LZW decoding until the end of the image is reached or an error occurs. The function returns a success indicator based on the outcome of these operations.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_gif_image(struct iwgifrcontext* rctx) {\n    if (!rctx) {\n        return 0;\n    }\n\n    // Read image header\n    if (fread(&rctx->image_descriptor, sizeof(rctx->image_descriptor), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Validate image dimensions\n    if (rctx->image_descriptor.width <= 0 || rctx->image_descriptor.height <= 0) {\n        return 0;\n    }\n\n    // Initialize color tables if present\n    if (rctx->image_descriptor.has_local_color_table) {\n        size_t color_table_size = (1U << (1 + rctx->image_descriptor.color_table_depth)) * sizeof(uint32_t);\n        if (color_table_size > SIZE_MAX) {\n            return 0;\n        }\n\n        rctx->local_color_table = malloc(color_table_size);\n        if (!rctx->local_color_table) {\n            return 0;\n        }\n\n        if (fread(rctx->local_color_table, sizeof(uint32_t), (1U << (1 + rctx->image_descriptor.color_table_depth)), rctx->file) != (1U << (1 + rctx->image_descriptor.color_table_depth))) {\n            free(rctx->local_color_table);\n            rctx->local_color_table = NULL;\n            return 0;\n        }\n    }\n\n    // Handle transparency\n    if (rctx->image_descriptor.is_transparent) {\n        if (rctx->image_descriptor.transparent_index >= (1U << (1 + rctx->image_descriptor.color_table_depth))) {\n            return 0;\n        }\n\n        // Modify the color table to mark the transparent index\n        if (rctx->local_color_table) {\n            ((uint32_t*)rctx->local_color_table)[rctx->image_descriptor.transparent_index] |= 0x10000000; // Mark as transparent\n        }\n    }\n\n    // Read LZW code size\n    if (fread(&rctx->lzw_code_size, sizeof(rctx->lzw_code_size), 1, rctx->file) != 1) {\n        return 0;\n    }\n\n    // Validate LZW code size\n    if (rctx->lzw_code_size < 2 || rctx->lzw_code_size > 12) {\n        return 0;\n    }\n\n    // Initialize screen context\n    rctx->current_line = 0;\n    rctx->pixels_remaining = rctx->image_descriptor.width * rctx->image_descriptor.height;\n\n    // Read pixel data in subblocks\n    while (rctx->pixels_remaining > 0) {\n        uint8_t subblock_size;\n        if (fread(&subblock_size, sizeof(subblock_size), 1, rctx->file) != 1) {\n            return 0;\n        }\n\n        if (subblock_size == 0) {\n            break;\n        }\n\n        if (subblock_size > 255) {\n            return 0;\n        }\n\n        uint8_t subblock[256];\n        if (fread(subblock, sizeof(uint8_t), subblock_size, rctx->file) != subblock_size) {\n            return 0;\n        }\n\n        // Process subblock with LZW decoding\n        if (!lzw_decode(rctx, subblock, subblock_size)) {\n            return 0;\n        }\n    }\n\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null context pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate image dimensions are positive",
+      "protects_against": "invalid or negative image dimensions"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "validate color table size",
+      "protects_against": "integer overflow in memory allocation"
+    },
+    {
+      "step": "check for successful file read operations",
+      "protects_against": "partial or failed file reads"
+    },
+    {
+      "step": "validate LZW code size",
+      "protects_against": "invalid LZW code size outside GIF specification"
+    },
+    {
+      "step": "validate subblock size",
+      "protects_against": "invalid or oversized subblock size"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 29,
+    "n_omits": 5,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null context pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check whether rctx is null before dereferencing it. This could lead to a null pointer dereference if rctx is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate image dimensions are positive — protects against: invalid or negative image dimensions",
+        "reasoning": "The implementation reads image dimensions from the GIF header but does not validate that they are positive. Negative or invalid values could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation calls functions like iwgif_init_screen and iwgif_make_row_pointers, which likely perform memory allocations. However, it does not explicitly check for memory allocation failures in these functions.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate color table size — protects against: integer overflow in memory allocation",
+        "reasoning": "The implementation reads the local color table size from the GIF header but does not validate it to prevent integer overflow or excessive memory allocation.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for successful file read operations — protects against: partial or failed file reads",
+        "reasoning": "The implementation uses iwgif_read to read data from the file, but it does not explicitly check for partial or failed reads beyond the return value of iwgif_read. It assumes the read was successful if the function returns true.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate LZW code size — protects against: invalid LZW code size outside GIF specification",
+        "reasoning": "The implementation checks that the LZW code size is between 2 and 11, which aligns with the GIF specification.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate subblock size — protects against: invalid or oversized subblock size",
+        "reasoning": "The implementation reads the subblock size from the GIF file but does not validate it against any constraints. Oversized subblock sizes could lead to buffer overflows or excessive memory usage.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 22,
+    "n_omits": 4,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null context pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `rctx` is null before dereferencing it. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate image dimensions are positive — protects against: invalid or negative image dimensions",
+        "reasoning": "The implementation checks if `rctx->image_width` and `rctx->image_height` are less than 1 and returns an error if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation calls `iwgif_init_screen(rctx)` and `iwgif_make_row_pointers(rctx)`, but does not explicitly check if these functions allocate memory or if they fail due to allocation issues. The `goto done` is used, but it does not distinguish between allocation failure and other errors.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate color table size — protects against: integer overflow in memory allocation",
+        "reasoning": "The implementation reads the local color table size from the GIF data and calculates the number of entries as `1 << (1 + local_ct_size)`. It does not validate that this value is within a safe range to prevent overflow.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for successful file read operations — protects against: partial or failed file reads",
+        "reasoning": "The implementation uses `iwgif_read(rctx, rbuf, size)` and checks its return value. If it returns false, the function jumps to `done` and returns 0, indicating failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate LZW code size — protects against: invalid LZW code size outside GIF specification",
+        "reasoning": "The implementation checks if `root_codesize` is between 2 and 11, inclusive, and returns an error if it is not.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate subblock size — protects against: invalid or oversized subblock size",
+        "reasoning": "The implementation reads the subblock size from the GIF data and uses it directly without validation. There is no check to ensure it is within a valid or safe range.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

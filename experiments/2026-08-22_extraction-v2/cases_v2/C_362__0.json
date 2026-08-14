@@ -1,0 +1,36 @@
+{
+  "case_id": "C_362__0",
+  "sample_id": "D/C/362",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-16645",
+  "cve_summary": "The ims_pcu_get_cdc_union_desc function in drivers/input/misc/ims-pcu.c in the Linux kernel through 4.13.11 allows local users to cause a denial of service (ims_pcu_parse_cdc_data out-of-bounds read and system crash) or possibly have unspecified other impact via a crafted USB device.",
+  "commit_message": "Input: ims-psu - check if CDC union descriptor is sane\n\nBefore trying to use CDC union descriptor, try to validate whether that it\nis sane by checking that intf->altsetting->extra is big enough and that\ndescriptor bLength is not too big and not too small.\n\nReported-by: Andrey Konovalov <andreyknvl@google.com>\nSigned-off-by: Dmitry Torokhov <dmitry.torokhov@gmail.com>",
+  "changed_file": "drivers/input/misc/ims-pcu.c",
+  "docstring": "Summary: Retrieves the CDC union descriptor from a USB interface.\n\nParameters:\nintf (struct usb_interface *): Pointer to the USB interface from which to extract the CDC union descriptor.\n\nReturns:\nstruct usb_cdc_union_desc *: Pointer to the found CDC union descriptor, or NULL if not found or an error occurs.\n\nLogic: The function checks if the extra descriptor data is present and has a non-zero length. It iterates through the extra data, looking for a valid CDC union descriptor. If found, it verifies the descriptor's length and type. If any checks fail, appropriate error messages are logged, and NULL is returned. If a valid descriptor is found, it is returned; otherwise, an error message is logged indicating the absence of the descriptor.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1621,
+    1665
+  ],
+  "vulnerable_line_range": [
+    1621,
+    1653
+  ],
+  "vulnerable_snippet": "static const struct usb_cdc_union_desc *\r\nims_pcu_get_cdc_union_desc(struct usb_interface *intf)\r\n{\r\n\tconst void *buf = intf->altsetting->extra;\r\n\tsize_t buflen = intf->altsetting->extralen;\r\n\tstruct usb_cdc_union_desc *union_desc;\r\n\r\n\tif (!buf) {\r\n\t\tdev_err(&intf->dev, \"Missing descriptor data\\n\");\r\n\t\treturn NULL;\r\n\t}\r\n\r\n\tif (!buflen) {\r\n\t\tdev_err(&intf->dev, \"Zero length descriptor\\n\");\r\n\t\treturn NULL;\r\n\t}\r\n\r\n\twhile (buflen > 0) {\r\n\t\tunion_desc = (struct usb_cdc_union_desc *)buf;\r\n\r\n\t\tif (union_desc->bDescriptorType == USB_DT_CS_INTERFACE &&\r\n\t\t    union_desc->bDescriptorSubType == USB_CDC_UNION_TYPE) {\r\n\t\t\tdev_dbg(&intf->dev, \"Found union header\\n\");\r\n\t\t\treturn union_desc;\r\n\t\t}\r\n\r\n\t\tbuflen -= union_desc->bLength;\r\n\t\tbuf += union_desc->bLength;\r\n\t}\r\n\r\n\tdev_err(&intf->dev, \"Missing CDC union descriptor\\n\");\r\n\treturn NULL;\r\n}",
+  "fixed_line_range": [
+    1621,
+    1665
+  ],
+  "fixed_snippet": "static const struct usb_cdc_union_desc *\r\nims_pcu_get_cdc_union_desc(struct usb_interface *intf)\r\n{\r\n\tconst void *buf = intf->altsetting->extra;\r\n\tsize_t buflen = intf->altsetting->extralen;\r\n\tstruct usb_cdc_union_desc *union_desc;\r\n\r\n\tif (!buf) {\r\n\t\tdev_err(&intf->dev, \"Missing descriptor data\\n\");\r\n\t\treturn NULL;\r\n\t}\r\n\r\n\tif (!buflen) {\r\n\t\tdev_err(&intf->dev, \"Zero length descriptor\\n\");\r\n\t\treturn NULL;\r\n\t}\r\n\r\n\twhile (buflen >= sizeof(*union_desc)) {\r\n\t\tunion_desc = (struct usb_cdc_union_desc *)buf;\r\n\r\n\t\tif (union_desc->bLength > buflen) {\r\n\t\t\tdev_err(&intf->dev, \"Too large descriptor\\n\");\r\n\t\t\treturn NULL;\r\n\t\t}\r\n\r\n\t\tif (union_desc->bDescriptorType == USB_DT_CS_INTERFACE &&\r\n\t\t    union_desc->bDescriptorSubType == USB_CDC_UNION_TYPE) {\r\n\t\t\tdev_dbg(&intf->dev, \"Found union header\\n\");\r\n\r\n\t\t\tif (union_desc->bLength >= sizeof(*union_desc))\r\n\t\t\t\treturn union_desc;\r\n\r\n\t\t\tdev_err(&intf->dev,\r\n\t\t\t\t\"Union descriptor to short (%d vs %zd\\n)\",\r\n\t\t\t\tunion_desc->bLength, sizeof(*union_desc));\r\n\t\t\treturn NULL;\r\n\t\t}\r\n\r\n\t\tbuflen -= union_desc->bLength;\r\n\t\tbuf += union_desc->bLength;\r\n\t}\r\n\r\n\tdev_err(&intf->dev, \"Missing CDC union descriptor\\n\");\r\n\treturn NULL;\r\n}",
+  "func_name": "ims_pcu_get_cdc_union_desc",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

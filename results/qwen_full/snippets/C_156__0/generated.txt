@@ -1,0 +1,54 @@
+OM_uint32 process_spnego_continuation(OM_uint32 *minstat, gss_buffer_t buf,
+                                      gss_ctx_id_t *ctx,
+                                      gss_buffer_t *responseToken,
+                                      gss_buffer_t *mechListMIC,
+                                      OM_uint33 *negState,
+                                      send_token_flag *return_token) {
+    OM_uint32 status = 0;
+    OM_uint32 major_status, minor_status;
+    gss_OID mech_type = GSS_C_NULL_OID;
+    gss_buffer_desc output_token = GSS_C_EMPTY_BUFFER;
+
+    /* Verify the token header and check for valid context */
+    if (!buf || buf->length <= 0) {
+        *minstat = GSS_S_BAD_BINDINGS;
+        return GSS_S_FAILURE;
+    }
+
+    /* Process the negotiation response and update the negotiation state */
+    major_status = gss_process_token(&minor_status, buf, &output_token);
+    if (major_status != GSS_S_COMPLETE) {
+        *minstat = minor_status;
+        return major_status;
+    }
+
+    /* Update the context and negotiation state */
+    major_status = gss_init_sec_context(&minor_status, GSS_C_NO_CREDENTIAL,
+                                        ctx, mech_type, GSS_C_MUTUAL_FLAG,
+                                        GSS_C_INDEFINITE, GSS_C_NO_CHANNEL_BINDINGS,
+                                        NULL, NULL, NULL, &output_token, NULL, negState);
+    if (major_status != GSS_S_CONTINUE_NEEDED && major_status != GSS_S_COMPLETE) {
+        *minstat = minor_status;
+        gss_release_buffer(&minor_status, &output_token);
+        return major_status;
+    }
+
+    /* Store the response token */
+    if (responseToken) {
+        responseToken->length = output_token.length;
+        responseToken->value = output_token.value;
+    }
+
+    /* Store the mechanism list MIC if needed */
+    if (mechListMIC) {
+        mechListMIC->length = 0;
+        mechListMIC->value = NULL;
+    }
+
+    /* Set the return token flag */
+    if (return_token)
+        *return_token = send_token;
+
+    *minstat = minor_status;
+    return status;
+}

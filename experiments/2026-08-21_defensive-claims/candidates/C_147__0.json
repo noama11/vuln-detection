@@ -1,0 +1,23 @@
+{
+  "case_id": "C_147__0",
+  "implementation": "void sctp_update_association(struct sctp_association *asoc, struct sctp_association *new) {\n    if (!asoc || !new) {\n        return;\n    }\n\n    // Copy new parameters from `new` to `asoc`\n    memcpy(&asoc->params, &new->params, sizeof(asoc->params));\n\n    // Remove peer addresses from `asoc` that are not in `new`\n    for (int i = 0; i < asoc->num_peer_addrs; ++i) {\n        int found = 0;\n        for (int j = 0; j < new->num_peer_addrs && !found; ++j) {\n            if (memcmp(&asoc->peer_addrs[i], &new->peer_addrs[j], sizeof(struct sockaddr)) == 0) {\n                found = 1;\n            }\n        }\n        if (!found) {\n            // Remove the address from `asoc`\n            memmove(&asoc->peer_addrs[i], &asoc->peer_addrs[i + 1], sizeof(struct sockaddr) * (asoc->num_peer_addrs - i - 1));\n            --asoc->num_peer_addrs;\n            --i;\n        }\n    }\n\n    // If the association is established, update next TSN and clear SSN map\n    if (asoc->state == SCTP_ESTABLISHED) {\n        asoc->next_tsn = new->next_tsn;\n        memset(asoc->ssn_map, 0, sizeof(asoc->ssn_map));\n        sctp_flush_ulp_reassembly(asoc);\n        asoc->error_count = 0;\n    } else {\n        // Add new peer addresses from `new`\n        for (int i = 0; i < new->num_peer_addrs; ++i) {\n            int already_exists = 0;\n            for (int j = 0; j < asoc->num_peer_addrs && !already_exists; ++j) {\n                if (memcmp(&new->peer_addrs[i], &asoc->peer_addrs[j], sizeof(struct sockaddr)) == 0) {\n                    already_exists = 1;\n                }\n            }\n            if (!already_exists && asoc->num_peer_addrs < SCTP_MAX_PEER_ADDRS) {\n                memcpy(&asoc->peer_addrs[asoc->num_peer_addrs], &new->peer_addrs[i], sizeof(struct sockaddr));\n                ++asoc->num_peer_addrs;\n            }\n        }\n\n        // Manage SSN map and association ID\n        if (asoc->ssn_map) {\n            free(asoc->ssn_map);\n        }\n        asoc->ssn_map = malloc(sizeof(uint16_t) * new->ssn_map_size);\n        if (asoc->ssn_map) {\n            memcpy(asoc->ssn_map, new->ssn_map, sizeof(uint16_t) * new->ssn_map_size);\n            asoc->ssn_map_size = new->ssn_map_size;\n        }\n        asoc->assoc_id = new->assoc_id;\n    }\n\n    // Update peer parameters related to SCTP-AUTH\n    if (asoc->auth_keys) {\n        free(asoc->auth_keys);\n    }\n    asoc->auth_keys = malloc(sizeof(struct sctp_auth_key) * new->num_auth_keys);\n    if (asoc->auth_keys) {\n        memcpy(asoc->auth_keys, new->auth_keys, sizeof(struct sctp_auth_key) * new->num_auth_keys);\n        asoc->num_auth_keys = new->num_auth_keys;\n    }\n    asoc->auth_hmac = new->auth_hmac;\n    asoc->auth_random = new->auth_random;\n    asoc->auth_keyid = new->auth_keyid;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound peer address copy to maximum allowed addresses",
+      "protects_against": "buffer overflow when adding new peer addresses"
+    },
+    {
+      "step": "check for memory allocation success before using it",
+      "protects_against": "use-after-free or null pointer dereference"
+    }
+  ],
+  "n_steps": 3,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

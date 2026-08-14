@@ -1,0 +1,37 @@
+int IMA::decodeBlockWAVE(const uint8_t *encoded, int16_t *decoded)
+{
+	int channelCount = m_track->f.channelCount;
+
+	for (int c=0; c<channelCount; c++)
+	{
+		m_adpcmState[c].previousValue = (encoded[1]<<8) | encoded[0];
+		if (encoded[1] & 0x80)
+			m_adpcmState[c].previousValue -= 0x10000;
+
+		m_adpcmState[c].index = encoded[2];
+
+		*decoded++ = m_adpcmState[c].previousValue;
+
+		encoded += 4;
+	}
+
+	for (int n=0; n<m_framesPerPacket - 1; n += 8)
+	{
+		for (int c=0; c<channelCount; c++)
+		{
+			int16_t *output = decoded + c;
+			for (int s=0; s<4; s++)
+			{
+				*output = decodeSample(m_adpcmState[c], *encoded & 0xf);
+				output += channelCount;
+				*output = decodeSample(m_adpcmState[c], *encoded >> 4);
+				output += channelCount;
+				encoded++;
+			}
+		}
+
+		decoded += channelCount * 8;
+	}
+
+	return m_framesPerPacket * channelCount * sizeof (int16_t);
+}

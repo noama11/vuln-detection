@@ -1,0 +1,114 @@
+{
+  "case_id": "C_193__0",
+  "sample_id": "D/C/193",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-7339",
+  "cve_summary": "The rds_ib_laddr_check function in net/rds/ib.c in the Linux kernel before 3.12.8 allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact via a bind system call for an RDS socket on a system that lacks RDS transports.",
+  "changed_file": "net/rds/ib.c",
+  "docstring": "\"\"\"\nSummary: \nChecks if a given IP address is valid for RDMA (Remote Direct Memory Access) by attempting to bind it to a CMA (Connection Manager API) ID.\n\nParameters: \naddr (__be32): The IP address to check for RDMA compatibility.\n\nReturns: \nint: Returns 0 if the address is valid for RDMA, or a negative error code if it is not.\n\nLogic: \nThe function creates a CMA ID and attempts to bind it to the provided IP address. It checks if the binding succeeds, which indicates that the address is valid for either InfiniBand (IB) or iWARP devices. If the binding fails or the device is not an IB device, it returns an error code indicating the address is not available. Finally, it cleans up by destroying the CMA ID before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <rdma/rdma_cma.h>\n#include <netinet/in.h>\n\nint is_rdma_address_valid(__be32 addr) {\n    struct rdma_id *id;\n    struct sockaddr_in sin;\n    int ret = -1;\n\n    id = rdma_create_id(NULL, NULL, RDMA_PS_TCP, IB_QPT_UD);\n    if (!id)\n        return -ENOMEM;\n\n    memset(&sin, 0, sizeof(sin));\n    sin.sin_family = AF_INET;\n    sin.sin_addr = addr;\n    sin.sin_port = htons(0);\n\n    ret = rdma_bind_addr(id, (struct sockaddr *)&sin);\n    if (ret) {\n        rdma_destroy_id(id);\n        return ret;\n    }\n\n    rdma_destroy_id(id);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of rdma_create_id",
+      "protects_against": "failure to allocate RDMA ID which could lead to null pointer dereference"
+    },
+    {
+      "step": "check return value of rdma_bind_addr",
+      "protects_against": "invalid address binding which could indicate invalid input or resource issues"
+    },
+    {
+      "step": "ensure rdma_destroy_id is called on all paths",
+      "protects_against": "resource leaks if the function exits without cleaning up the RDMA ID"
+    },
+    {
+      "step": "initialize sockaddr_in structure",
+      "protects_against": "uninitialized memory being used in socket address structure"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of rdma_create_id — protects against: failure to allocate RDMA ID which could lead to null pointer dereference",
+        "reasoning": "The implementation checks the return value of rdma_create_id using IS_ERR and returns PTR_ERR(cm_id) if it fails. This ensures that any failure to allocate the RDMA ID is handled properly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of rdma_bind_addr — protects against: invalid address binding which could indicate invalid input or resource issues",
+        "reasoning": "The implementation checks the return value of rdma_bind_addr and sets ret to -EADDRNOTAVAIL if the binding fails or if the device is not an IB device. This ensures that invalid address binding is handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure rdma_destroy_id is called on all paths — protects against: resource leaks if the function exits without cleaning up the RDMA ID",
+        "reasoning": "The implementation calls rdma_destroy_id(cm_id) before returning, regardless of the success or failure of the binding. This ensures that the RDMA ID is always destroyed, preventing resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize sockaddr_in structure — protects against: uninitialized memory being used in socket address structure",
+        "reasoning": "The implementation uses memset to zero out the sockaddr_in structure before setting its fields. This ensures that the structure is fully initialized, preventing the use of uninitialized memory.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of rdma_create_id — protects against: failure to allocate RDMA ID which could lead to null pointer dereference",
+        "reasoning": "The implementation checks the return value of rdma_create_id using IS_ERR and returns PTR_ERR(cm_id) if it fails. This ensures that any failure to allocate the RDMA ID is handled properly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of rdma_bind_addr — protects against: invalid address binding which could indicate invalid input or resource issues",
+        "reasoning": "The implementation checks the return value of rdma_bind_addr and sets ret to -EADDRNOTAVAIL if the binding fails or if the device is not an IB device. This ensures that invalid address binding is handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure rdma_destroy_id is called on all paths — protects against: resource leaks if the function exits without cleaning up the RDMA ID",
+        "reasoning": "The implementation calls rdma_destroy_id(cm_id) before returning, regardless of the success or failure of the binding. This ensures that the RDMA ID is always destroyed, preventing resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize sockaddr_in structure — protects against: uninitialized memory being used in socket address structure",
+        "reasoning": "The implementation uses memset to zero out the sockaddr_in structure before setting its fields. This ensures that the structure is fully initialized before use.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

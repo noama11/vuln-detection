@@ -1,0 +1,31 @@
+{
+  "case_id": "C_167__0",
+  "implementation": "#include <linux/hid.h>\n#include <linux/input.h>\n\nint process_magic_input_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size) {\n    void *drv_data = hid_get_drvdata(hdev);\n    struct input_dev *input_dev = NULL;\n\n    if (!drv_data) {\n        return 0;\n    }\n\n    input_dev = ((struct magic_drvdata *)drv_data)->input_dev;\n    if (!input_dev) {\n        return 0;\n    }\n\n    switch (data[0]) {\n        case TRACKPAD_REPORT_ID: {\n            if (size < 4) {\n                return 0;\n            }\n            int touch_count = data[1];\n            if (touch_count < 0 || touch_count > MAX_TOUCHES) {\n                return 0;\n            }\n            for (int i = 0; i < touch_count; i++) {\n                int x = get_unaligned_le16(&data[2 + i * 4]);\n                int y = get_unaligned_le16(&data[2 + i * 4 + 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_X, x);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, y);\n            }\n            break;\n        }\n        case MOUSE_REPORT_ID: {\n            if (size < 4) {\n                return 0;\n            }\n            int dx = data[1];\n            int dy = data[2];\n            input_report_rel(input_dev, REL_X, dx);\n            input_report_rel(input_dev, REL_Y, dy);\n            break;\n        }\n        case DOUBLE_REPORT_ID: {\n            if (size < 8) {\n                return 0;\n            }\n            int touch_count = data[1];\n            if (touch_count < 0 || touch_count > MAX_TOUCHES) {\n                return 0;\n            }\n            for (int i = 0; i < touch_count; i++) {\n                int x = get_unaligned_le16(&data[2 + i * 4]);\n                int y = get_unaligned_le16(&data[2 + i * 4 + 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_X, x);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, y);\n            }\n            int dx = data[6];\n            int dy = data[7];\n            input_report_rel(input_dev, REL_X, dx);\n            input_report_rel(input_dev, REL_Y, dy);\n            break;\n        }\n        default:\n            return 0;\n    }\n\n    input_sync(input_dev);\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null driver data",
+      "protects_against": "null pointer dereference when accessing driver data"
+    },
+    {
+      "step": "check for null input device",
+      "protects_against": "null pointer dereference when accessing input device"
+    },
+    {
+      "step": "validate report id",
+      "protects_against": "processing invalid or unknown report types"
+    },
+    {
+      "step": "validate data size for each report type",
+      "protects_against": "buffer overflow or invalid data access"
+    },
+    {
+      "step": "validate touch count",
+      "protects_against": "processing invalid or excessive touch points"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

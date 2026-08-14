@@ -1,0 +1,57 @@
+{
+  "case_id": "C_157__0",
+  "sample_id": "D/C/157",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2014-4343",
+  "cve_summary": "Double free vulnerability in the init_ctx_reselect function in the SPNEGO initiator in lib/gssapi/spnego/spnego_mech.c in MIT Kerberos 5 (aka krb5) 1.10.x through 1.12.x before 1.12.2 allows remote attackers to cause a denial of service (memory corruption) or possibly execute arbitrary code via network traffic that appears to come from an intended acceptor, but specifies a security mechanism different from the one proposed by the initiator.",
+  "changed_file": "src/lib/gssapi/spnego/spnego_mech.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Initializes context re-selection for SPNEGO GSS-API, handling mechanism  \n * negotiation and state management.  \n *  \n * Parameters:  \n * minor_status (OM_uint32*): Pointer to store minor status code.  \n * sc (spnego_gss_ctx_id_t): SPNEGO context identifier.  \n * acc_negState (OM_uint32): Accepted negotiation state.  \n * supportedMech (gss_OID): OID of the supported mechanism.  \n * responseToken (gss_buffer_t*): Pointer to the response token buffer.  \n * mechListMIC (gss_buffer_t*): Pointer to the mechanism list MIC buffer.  \n * negState (OM_uint32*): Pointer to store the negotiation state.  \n * tokflag (send_token_flag*): Pointer to the token send flag.  \n *  \n * Returns:  \n * OM_uint32: Status code indicating the result of the operation.  \n *  \n * Logic:  \n * The function deletes the current security context, checks if the  \n * supported mechanism is in the mechanism set, and validates the  \n * negotiation state. It sets the internal mechanism, updates the  \n * negotiation state and token flag, and returns the appropriate status.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "OM_uint32 spnego_gss_context_res_select(OM_uint32 *minor_status,\n                                        spnego_gss_ctx_id_t sc,\n                                        OM_uint32 acc_negState,\n                                        gss_OID supportedMech,\n                                        gss_buffer_t *responseToken,\n                                        gss_buffer_t *mechListMIC,\n                                        OM_uint32 *negState,\n                                        send_token_flag *tokflag) {\n    OM_uint32 major_status;\n    gss_OID_set mech_set = NULL;\n    int found = 0;\n\n    *minor_status = 0;\n\n    /* Delete the current security context */\n    if (sc != NULL) {\n        gss_delete_sec_context(&major_status, &sc, NULL);\n    }\n\n    /* Check if the supported mechanism is in the mechanism set */\n    if (sc != NULL && sc->mech_set != NULL) {\n        gss_test_oid_set_member(&major_status, supportedMech, sc->mech_set, &found);\n        if (major_status != GSS_S_COMPLETE || !found) {\n            return GSS_S_BAD_MECH;\n        }\n    }\n\n    /* Validate the negotiation state */\n    if (acc_negState != GSS_C_NO_CONTEXT &&\n        acc_negState != GSS_S_CONTINUE_NEEDED) {\n        return GSS_S_BAD_SIG;\n    }\n\n    /* Set the internal mechanism */\n    if (sc != NULL) {\n        sc->internal_mech = supportedMech;\n    }\n\n    /* Update the negotiation state */\n    if (negState != NULL) {\n        *negState = acc_negState;\n    }\n\n    /* Update the token send flag */\n    if (tokflag != NULL) {\n        *tokflag = SEND_TOKEN_RESPONSE;\n    }\n\n    return GSS_S_COMPLETE;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 3,
+    "candidate_exposure": 2,
+    "reference_missing_steps": [
+      "oid_set_member_status_check",
+      "negState_bounds_check"
+    ],
+    "candidate_missing_steps": [
+      "explicit_oid_search_validation"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 1,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a bounds check on the accepted negotiation state, ensuring it is either GSS_C_NO_CONTEXT or GSS_S_CONTINUE_NEEDED. It also checks for a valid major_status return from gss_test_oid_set_member. Implementation 2 performs a validation of the acc_negState by comparing it to a specific constant (REQUEST_MIC) and performs a loop to find the supportedMech in the mech_set, which is a form of input validation. However, it does not perform a bounds check on the acc_negState in the same way as implementation 1. Neither performs a defensive step the other does not, but the validation approaches differ.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 7,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null_check_before_dereference_sc",
+      "oid_set_member_status_check",
+      "acc_negState_validation"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a null check before dereferencing the 'sc' pointer and validates the 'acc_negState' against expected values. It also checks the return status of 'gss_test_oid_set_member'. Implementation 2 assumes 'sc' and 'sc->mech_set' are non-null and does not perform explicit validation of 'acc_negState' against expected values. It also directly dereferences 'sc->mech_set' without checking for null or bounds. These differences expose implementation 2 to potential null pointer dereference and invalid state handling.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

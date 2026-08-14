@@ -1,0 +1,49 @@
+{
+  "case_id": "C_349__0",
+  "sample_id": "D/C/349",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "Summary: This function manages the selection and initialization of a user-space sound timer.\n\nParameters:\n- file (struct file *): A pointer to the file structure associated with the timer.\n- _tselect (struct snd_timer_select __user *): A pointer to the user-space timer selection structure.\n\nReturns: int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function retrieves the private data from the file structure, closes any existing timer, and copies the user-specified timer selection data. It initializes a new timer based on the selection, allocating memory for the associated queues. If any memory allocation fails, it cleans up by closing the timer and returning an error code. If successful, it sets various callback functions for the timer and marks it as fast.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int snd_timer_user_tselect(struct v3 *v3,\n                  struct snd_timer_select __user *_tselect)\n{\n    struct snd_timer_user *v6;\n    struct snd_timer_select v5;\n    char v4[32];\n    int v2 = 0;\n    v6 = v3->private_data;\n    if (v6->timeri) {\n        snd_timer_close(v6->timeri);\n        v6->timeri = NULL;\n    }\n    if (copy_from_user(&v5, _tselect, sizeof(v5))) {\n        v2 = -EFAULT;\n        goto v1;\n    }\n    sprintf(v4, \"application %i\", current->pid);\n    if (v5.id.dev_class != SNDRV_TIMER_CLASS_SLAVE)\n        v5.id.dev_sclass = SNDRV_TIMER_SCLASS_APPLICATION;\n    v2 = snd_timer_open(&v6->timeri, v4, &v5.id, current->pid);\n    if (v2 < 0)\n        goto v1;\n    v6->qhead = v6->qtail = v6->qused = 0;\n    kfree(v6->queue);\n    v6->queue = NULL;\n    kfree(v6->tqueue);\n    v6->tqueue = NULL;\n    if (v6->tread) {\n        v6->tqueue = kmalloc(v6->queue_size * sizeof(struct snd_timer_tread),\n                     GFP_KERNEL);\n        if (v6->tqueue == NULL)\n            v2 = -ENOMEM;\n    } else {\n        v6->queue = kmalloc(v6->queue_size * sizeof(struct snd_timer_read),\n                    GFP_KERNEL);\n        if (v6->queue == NULL)\n            v2 = -ENOMEM;\n    }\n          if (v2 < 0) {\n        snd_timer_close(v6->timeri);\n              v6->timeri = NULL;\n          } else {\n        v6->timeri->flags |= SNDRV_TIMER_IFLG_FAST;\n        v6->timeri->callback = v6->tread\n            ? snd_timer_user_tinterrupt : snd_timer_user_interrupt;\n        v6->timeri->ccallback = snd_timer_user_ccallback;\n        v6->timeri->callback_data = (void *)v6;\n        v6->timeri->disconnect = snd_timer_user_disconnect;\n    }\n      v1:\n    return v2;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 6
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both handle the same logic: closing an existing timer, copying user data, opening a new timer, allocating memory for queues, and setting up callback functions. The only differences are in variable names (e.g., 'v6' vs. 'tu', 'v5' vs. 'tselect'), and the candidate implementation uses a struct v3 instead of a struct file pointer. These are surface-level differences and do not affect the observable behavior or security properties of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. They both perform the same steps: closing an existing timer, copying user data, initializing a new timer, allocating memory for queues, and setting up callback functions. The only differences are in variable names (e.g., 'v6' vs. 'tu', 'v5' vs. 'tselect') and minor formatting, which do not affect behavior. There are no observable differences in logic or error handling.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

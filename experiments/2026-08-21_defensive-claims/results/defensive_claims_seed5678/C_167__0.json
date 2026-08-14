@@ -1,0 +1,98 @@
+{
+  "case_id": "C_167__0",
+  "sample_id": "D/C/167",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3181",
+  "cve_summary": "Multiple stack-based buffer overflows in the magicmouse_raw_event function in drivers/hid/hid-magicmouse.c in the Magic Mouse HID driver in the Linux kernel through 3.16.3 allow physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that provides a large amount of (1) EHCI or (2) XHCI data associated with an event.",
+  "changed_file": "drivers/hid/hid-magicmouse.c",
+  "docstring": "\"\"\"\nSummary: Processes raw input events from a Magic Mouse or Magic Trackpad device.\n\nParameters:\nhdev (struct hid_device *): Pointer to the HID device structure.\nreport (struct hid_report *): Pointer to the HID report structure.\ndata (u8 *): Pointer to the raw data received from the device.\nsize (int): Size of the raw data.\n\nReturns: int: Returns 1 if the event is successfully processed, 0 otherwise.\n\nLogic: The function first retrieves the driver data associated with the HID device. It then checks the type of report received (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, or DOUBLE_REPORT_ID) and processes the corresponding touch data accordingly. For each report type, it validates the size of the data, extracts touch points, and emits touch events. It also handles button clicks and reports relative movement for the mouse or trackpad. Finally, it synchronizes the input state before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/hid.h>\n#include <linux/input.h>\n\nint process_magic_input_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size) {\n    void *driver_data = hid_get_drvdata(hdev);\n    int report_id = report->id;\n\n    if (!driver_data) {\n        return 0;\n    }\n\n    if (size < 1) {\n        return 0;\n    }\n\n    switch (report_id) {\n        case TRACKPAD_REPORT_ID: {\n            if (size < sizeof(struct trackpad_report)) {\n                return 0;\n            }\n            struct trackpad_report *tp_report = (struct trackpad_report *)data;\n            // Process trackpad touch data\n            break;\n        }\n        case MOUSE_REPORT_ID: {\n            if (size < sizeof(struct mouse_report)) {\n                return 0;\n            }\n            struct mouse_report *mouse_report = (struct mouse_report *)data;\n            // Process mouse touch data\n            break;\n        }\n        case DOUBLE_REPORT_ID: {\n            if (size < sizeof(struct double_report)) {\n                return 0;\n            }\n            struct double_report *double_report = (struct double_report *)data;\n            // Process double report touch data\n            break;\n        }\n        default:\n            return 0;\n    }\n\n    // Emit touch events\n    // Handle button clicks\n    // Report relative movement\n\n    input_sync(hdev->input);\n\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if driver data is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size is not less than 1",
+      "protects_against": "invalid or malformed data"
+    },
+    {
+      "step": "validate size for each report type",
+      "protects_against": "buffer overflow or invalid data access"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if driver data is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation retrieves the driver data using `hid_get_drvdata(hdev)` and assigns it to `msc`. There is no explicit check for null, but the function proceeds under the assumption that `msc` is valid. If `msc` is null, dereferencing `msc->input` would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate size is not less than 1 — protects against: invalid or malformed data",
+        "reasoning": "The implementation does not perform a general check for `size < 1`. Instead, it performs report-specific size checks (e.g., `size < 4` for `TRACKPAD_REPORT_ID`). Since the function only processes data when the report ID is recognized, and each report type has its own size validation, the general `size < 1` check is not needed and is not performed.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate size for each report type — protects against: buffer overflow or invalid data access",
+        "reasoning": "The implementation performs report-specific size checks for `TRACKPAD_REPORT_ID` and `MOUSE_REPORT_ID`. For example, it checks `size < 4` and `((size - 4) % 9) != 0` for `TRACKPAD_REPORT_ID`. These checks ensure the data is of the correct size for each report type. For `DOUBLE_REPORT_ID`, the function calls `magicmouse_raw_event` recursively with adjusted data and size, which implies the input is valid enough to process.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if driver data is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the driver data is not null. However, the code uses `msc` (presumably the driver data) only after the report type is determined and the data size is validated. If `msc` were null, this would result in a null pointer dereference. Since no check is performed, the implementation omits this step.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate size is not less than 1 — protects against: invalid or malformed data",
+        "reasoning": "The implementation performs more specific size checks for each report type (e.g., `size < 4` for `TRACKPAD_REPORT_ID`). Since the function returns early for invalid sizes, it implicitly ensures that the size is not less than 1 for the relevant report types. This step is not explicitly performed but is covered by the more specific checks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate size for each report type — protects against: buffer overflow or invalid data access",
+        "reasoning": "The implementation explicitly validates the size for each report type (e.g., `size < 4 || ((size - 4) % 9) != 0` for `TRACKPAD_REPORT_ID`). These checks ensure that the data is of the correct size for each report type before processing it, preventing buffer overflow or invalid data access.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

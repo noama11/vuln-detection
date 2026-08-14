@@ -1,0 +1,130 @@
+{
+  "case_id": "C_229__0",
+  "sample_id": "D/C/229",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-9728",
+  "cve_summary": "The UDF filesystem implementation in the Linux kernel before 3.18.2 does not validate certain lengths, which allows local users to cause a denial of service (buffer over-read and system crash) via a crafted filesystem image, related to fs/udf/inode.c and fs/udf/symlink.c.",
+  "changed_file": "fs/udf/symlink.c",
+  "docstring": "Summary: Converts a path component structure into a character string representation.\n\nParameters:\n- sb (struct super_block *): Pointer to the super block structure.\n- from (unsigned char *): Pointer to the input path component data.\n- fromlen (int): Length of the input data.\n- to (unsigned char *): Pointer to the output buffer for the character string.\n- tolen (int): Length of the output buffer.\n\nReturns: int - Returns 0 on success, or a negative error code indicating the type of failure.\n\nLogic: The function processes each path component from the input buffer, converting it into a string format. It handles different component types, including symlinks, parent directories, and current directories, while ensuring that the output buffer does not overflow. The function terminates the output string with a null character and returns appropriate error codes for failure conditions such as buffer overflow.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int path_component_to_string(struct super_block *sb, unsigned char *from, int fromlen, unsigned char *to, int tolen) {\n    int i = 0;\n    int j = 0;\n\n    if (!from || !to) {\n        return -EINVAL;\n    }\n\n    if (tolen < 1) {\n        return -ERANGE;\n    }\n\n    while (i < fromlen && j < tolen - 1) {\n        if (from[i] == 0) {\n            to[j++] = '.';\n            i++;\n        } else if (from[i] == 1) {\n            if (j + 2 <= tolen - 1) {\n                to[j++] = '.';\n                to[j++] = '.';\n            } else {\n                return -ERANGE;\n            }\n            i += 2;\n        } else {\n            int k = 0;\n            while (i + k < fromlen && from[i + k] != 0 && from[i + k] != 1) {\n                k++;\n            }\n\n            if (j + k <= tolen - 1) {\n                for (int l = 0; l < k; l++) {\n                    to[j++] = from[i + l];\n                }\n            } else {\n                return -ERANGE;\n            }\n            i += k;\n        }\n    }\n\n    to[j] = '\\0';\n\n    if (i < fromlen) {\n        return -ERANGE;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check output buffer size",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "bound copy operations to output buffer capacity",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "terminate output string with null character",
+      "protects_against": "invalid string representation"
+    },
+    {
+      "step": "return error code for incomplete processing",
+      "protects_against": "partial conversion with invalid input"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters (sb, from, to). Dereferencing these pointers without checks could lead to null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check output buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation reduces the tolen variable to account for the reserved null byte and checks tolen against zero before copying data into the buffer. This ensures that the buffer size is considered before writing.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy operations to output buffer capacity — protects against: buffer overflow",
+        "reasoning": "The implementation uses tolen to track remaining space and ensures that each copy operation (e.g., memcpy, udf_get_filename) does not exceed the available buffer space. After each copy, tolen is reduced accordingly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "terminate output string with null character — protects against: invalid string representation",
+        "reasoning": "The implementation reserves one byte for the null terminator at the start and ensures that the final character is set to '\\0' depending on the position of the pointer p.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return error code for incomplete processing — protects against: partial conversion with invalid input",
+        "reasoning": "The implementation returns -ENAMETOOLONG when the output buffer is exhausted and there is still input to process, indicating that the conversion was incomplete.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters (sb, from, to). Dereferencing any of these without a check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check output buffer size — protects against: buffer overflow",
+        "reasoning": "The implementation reduces tolen by 1 at the start to reserve space for the null terminator and checks tolen against 0 or minimum required sizes in various cases (e.g., tolen == 0, tolen < 3). These checks prevent buffer overflow by ensuring there is enough space before writing.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy operations to output buffer capacity — protects against: buffer overflow",
+        "reasoning": "The implementation uses tolen to track remaining space and ensures that each write operation (e.g., memcpy, adding characters) only occurs if there is enough space. For example, it checks tolen before writing 3 bytes for '../' or 2 bytes for './'.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "terminate output string with null character — protects against: invalid string representation",
+        "reasoning": "The implementation ensures the output string is null-terminated by checking if p > to + 1 and setting p[-1] to '\n', or p[0] to '\n' if the buffer is empty. This guarantees the output is a valid null-terminated string.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return error code for incomplete processing — protects against: partial conversion with invalid input",
+        "reasoning": "The implementation returns -ENAMETOOLONG when there is not enough space in the output buffer to complete the current operation. It also returns -EIO if the component length exceeds the remaining input data. These ensure incomplete processing is flagged with an error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_157__0",
+  "sample_id": "D/C/157",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2014-4343",
+  "cve_summary": "Double free vulnerability in the init_ctx_reselect function in the SPNEGO initiator in lib/gssapi/spnego/spnego_mech.c in MIT Kerberos 5 (aka krb5) 1.10.x through 1.12.x before 1.12.2 allows remote attackers to cause a denial of service (memory corruption) or possibly execute arbitrary code via network traffic that appears to come from an intended acceptor, but specifies a security mechanism different from the one proposed by the initiator.",
+  "changed_file": "src/lib/gssapi/spnego/spnego_mech.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Initializes context re-selection for SPNEGO GSS-API, handling mechanism  \n * negotiation and state management.  \n *  \n * Parameters:  \n * minor_status (OM_uint32*): Pointer to store minor status code.  \n * sc (spnego_gss_ctx_id_t): SPNEGO context identifier.  \n * acc_negState (OM_uint32): Accepted negotiation state.  \n * supportedMech (gss_OID): OID of the supported mechanism.  \n * responseToken (gss_buffer_t*): Pointer to the response token buffer.  \n * mechListMIC (gss_buffer_t*): Pointer to the mechanism list MIC buffer.  \n * negState (OM_uint32*): Pointer to store the negotiation state.  \n * tokflag (send_token_flag*): Pointer to the token send flag.  \n *  \n * Returns:  \n * OM_uint32: Status code indicating the result of the operation.  \n *  \n * Logic:  \n * The function deletes the current security context, checks if the  \n * supported mechanism is in the mechanism set, and validates the  \n * negotiation state. It sets the internal mechanism, updates the  \n * negotiation state and token flag, and returns the appropriate status.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static OM_uint32\r\ninit_ctx_reselect(OM_uint32 *minor_status, spnego_gss_ctx_id_t sc,\r\n\t\t  OM_uint32 acc_negState, gss_OID supportedMech,\r\n\t\t  gss_buffer_t *responseToken, gss_buffer_t *mechListMIC,\r\n\t\t  OM_uint32 *negState, send_token_flag *tokflag)\r\n{\r\n\tOM_uint32 tmpmin;\r\n\tsize_t i;\r\n\r\n\tgss_delete_sec_context(&tmpmin, &sc->ctx_handle,\r\n\t\t\t       GSS_C_NO_BUFFER);\r\n\r\n\t/* Find supportedMech in sc->mech_set. */\r\n\tfor (i = 0; i < sc->mech_set->count; i++) {\r\n\t\tif (g_OID_equal(supportedMech, &sc->mech_set->elements[i]))\r\n\t\t\tbreak;\r\n\t}\r\n\tif (i == sc->mech_set->count)\r\n\t\treturn GSS_S_DEFECTIVE_TOKEN;\r\n\tsc->internal_mech = &sc->mech_set->elements[i];\r\n\r\n\t/*\r\n\t * Windows 2003 and earlier don't correctly send a\r\n\t * negState of request-mic when counter-proposing a\r\n\t * mechanism.  They probably don't handle mechListMICs\r\n\t * properly either.\r\n\t */\r\n\tif (acc_negState != REQUEST_MIC)\r\n\t\treturn GSS_S_DEFECTIVE_TOKEN;\r\n\r\n\tsc->mech_complete = 0;\r\n\tsc->mic_reqd = 1;\r\n\t*negState = REQUEST_MIC;\r\n\t*tokflag = CONT_TOKEN_SEND;\r\n\treturn GSS_S_CONTINUE_NEEDED;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation lacks a call to `generic_gss_release_oid` to release the previous `internal_mech` before assigning a new one. This could lead to a memory leak or improper resource management if the old OID is not properly released. This is a real behavioral difference that affects resource handling and could be relevant for memory safety.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both delete the current security context, validate the supported mechanism, check the accepted negotiation state, and update the internal state and flags accordingly. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

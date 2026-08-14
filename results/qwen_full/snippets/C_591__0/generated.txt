@@ -1,0 +1,82 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+// Assuming RSFilter is a user-defined type
+typedef struct RSFilter RSFilter;
+
+// Assuming this function is defined elsewhere in the codebase
+char* generate_dot_representation(RSFilter *filter);
+
+void visualize_filter_graph(RSFilter *filter) {
+    if (!filter) {
+        fprintf(stderr, "Warning: Invalid filter provided.\n");
+        return;
+    }
+
+    char *dot_content = generate_dot_representation(filter);
+    if (!dot_content) {
+        fprintf(stderr, "Warning: Failed to generate DOT representation.\n");
+        return;
+    }
+
+    FILE *dot_file = tmpfile();
+    if (!dot_file) {
+        fprintf(stderr, "Warning: Failed to create temporary file.\n");
+        free(dot_content);
+        return;
+    }
+
+    fprintf(dot_file, "%s", dot_content);
+    rewind(dot_file);
+
+    char dot_filename[] = "/tmp/filter_graphXXXXXX";
+    int dot_fd = mkstemp(dot_filename);
+    if (dot_fd == -1) {
+        fprintf(stderr, "Warning: Failed to create temporary file.\n");
+        free(dot_content);
+        fclose(dot_file);
+        return;
+    }
+
+    char png_filename[] = "/tmp/filter_graphXXXXXX.png";
+    int png_fd = mkstemp(png_filename);
+    if (png_fd == -1) {
+        fprintf(stderr, "Warning: Failed to create temporary file.\n");
+        free(dot_content);
+        fclose(dot_file);
+        close(dot_fd);
+        return;
+    }
+
+    // Write DOT content to the file
+    char *dot_content_file = dot_filename;
+    fwrite(dot_content, sizeof(char), strlen(dot_content), dot_file);
+    fclose(dot_file);
+
+    // Convert DOT to PNG using Graphviz's dot command
+    char command[1024];
+    snprintf(command, sizeof(command), "dot -Tpng %s -o %s", dot_content_file, png_filename);
+
+    int status = system(command);
+    if (status != 0) {
+        fprintf(stderr, "Warning: Failed to convert DOT to PNG.\n");
+        free(dot_content);
+        close(dot_fd);
+        close(png_fd);
+        return;
+    }
+
+    // Open the PNG file using gnome-open
+    snprintf(command, sizeof(command), "gnome-open %s", png_filename);
+    status = system(command);
+    if (status != 0) {
+        fprintf(stderr, "Warning: Failed to open PNG file.\n");
+    }
+
+    free(dot_content);
+    close(dot_fd);
+    close(png_fd);
+}

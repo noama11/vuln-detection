@@ -1,0 +1,48 @@
+{
+  "case_id": "C_385__0",
+  "sample_id": "D/C/385",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-14106",
+  "cve_summary": "The tcp_disconnect function in net/ipv4/tcp.c in the Linux kernel before 4.12 allows local users to cause a denial of service (__tcp_select_window divide-by-zero error and system crash) by triggering a disconnect within a certain tcp_recvmsg code path.",
+  "changed_file": "net/ipv4/tcp.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the disconnection of a TCP socket, transitioning its state and cleaning up resources.\n\nParameters: \nsk (struct sock *): Pointer to the socket structure representing the TCP connection.\nflags (int): Flags that may influence the disconnection behavior.\n\nReturns: \nint: Returns an error code indicating the result of the disconnection process (0 on success).\n\nLogic: The function first checks the current state of the socket and sets it to TCP_CLOSE if it is not already closed. It handles various states according to RFC793, including stopping listening if in TCP_LISTEN state, and sending a reset if necessary. It purges the transmit and receive queues, resets various TCP parameters, and cleans up any fastopen-related fields before reporting any errors and returning the error code.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int tcp_disconnect(struct sock *sk, int flags)\r\n{\r\n\tstruct inet_sock *inet = inet_sk(sk);\r\n\tstruct inet_connection_sock *icsk = inet_csk(sk);\r\n\tstruct tcp_sock *tp = tcp_sk(sk);\r\n\tint err = 0;\r\n\tint old_state = sk->sk_state;\r\n\r\n\tif (old_state != TCP_CLOSE)\r\n\t\ttcp_set_state(sk, TCP_CLOSE);\r\n\r\n\t/* ABORT function of RFC793 */\r\n\tif (old_state == TCP_LISTEN) {\r\n\t\tinet_csk_listen_stop(sk);\r\n\t} else if (unlikely(tp->repair)) {\r\n\t\tsk->sk_err = ECONNABORTED;\r\n\t} else if (tcp_need_reset(old_state) ||\r\n\t\t   (tp->snd_nxt != tp->write_seq &&\r\n\t\t    (1 << old_state) & (TCPF_CLOSING | TCPF_LAST_ACK))) {\r\n\t\t/* The last check adjusts for discrepancy of Linux wrt. RFC\r\n\t\t * states\r\n\t\t */\r\n\t\ttcp_send_active_reset(sk, gfp_any());\r\n\t\tsk->sk_err = ECONNRESET;\r\n\t} else if (old_state == TCP_SYN_SENT)\r\n\t\tsk->sk_err = ECONNRESET;\r\n\r\n\ttcp_clear_xmit_timers(sk);\r\n\t__skb_queue_purge(&sk->sk_receive_queue);\r\n\ttcp_write_queue_purge(sk);\r\n\ttcp_fastopen_active_disable_ofo_check(sk);\r\n\tskb_rbtree_purge(&tp->out_of_order_queue);\r\n\r\n\tinet->inet_dport = 0;\r\n\r\n\tif (!(sk->sk_userlocks & SOCK_BINDADDR_LOCK))\r\n\t\tinet_reset_saddr(sk);\r\n\r\n\tsk->sk_shutdown = 0;\r\n\tsock_reset_flag(sk, SOCK_DONE);\r\n\ttp->srtt_us = 0;\r\n\ttp->write_seq += tp->max_window + 2;\r\n\tif (tp->write_seq == 0)\r\n\t\ttp->write_seq = 1;\r\n\ticsk->icsk_backoff = 0;\r\n\ttp->snd_cwnd = 2;\r\n\ticsk->icsk_probes_out = 0;\r\n\ttp->packets_out = 0;\r\n\ttp->snd_ssthresh = TCP_INFINITE_SSTHRESH;\r\n\ttp->snd_cwnd_cnt = 0;\r\n\ttp->window_clamp = 0;\r\n\ttcp_set_ca_state(sk, TCP_CA_Open);\r\n\ttcp_clear_retrans(tp);\r\n\tinet_csk_delack_init(sk);\r\n\t/* Initialize rcv_mss to TCP_MIN_MSS to avoid division by 0\r\n\t * issue in __tcp_select_window()\r\n\t */\r\n\ticsk->icsk_ack.rcv_mss = TCP_MIN_MSS;\r\n\ttcp_init_send_head(sk);\r\n\tmemset(&tp->rx_opt, 0, sizeof(tp->rx_opt));\r\n\t__sk_dst_reset(sk);\r\n\ttcp_saved_syn_free(tp);\r\n\r\n\t/* Clean up fastopen related fields */\r\n\ttcp_free_fastopen_req(tp);\r\n\tinet->defer_connect = 0;\r\n\r\n\tWARN_ON(inet->inet_num && !icsk->icsk_bind_hash);\r\n\r\n\tsk->sk_error_report(sk);\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional line `icsk->icsk_ack.rcv_mss = TCP_MIN_MSS;` which is not present in the reference implementation. This line initializes the receive MSS to a default value to avoid potential division by zero in certain TCP window calculations. This is a minor functional difference that does not affect security or correctness in adversarial scenarios, but could lead to slightly different behavior in edge cases involving TCP window sizing.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in all observable behaviors, including state transitions, error handling, queue purging, and resource cleanup. There are no differences in logic or code flow that would affect the outcome for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

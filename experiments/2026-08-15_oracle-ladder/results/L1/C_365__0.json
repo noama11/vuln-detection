@@ -1,0 +1,49 @@
+{
+  "case_id": "C_365__0",
+  "sample_id": "D/C/365",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-16525",
+  "cve_summary": "The usb_serial_console_disconnect function in drivers/usb/serial/console.c in the Linux kernel before 4.13.8 allows local users to cause a denial of service (use-after-free and system crash) or possibly have unspecified other impact via a crafted USB device, related to disconnection and failed setup.",
+  "changed_file": "drivers/usb/serial/console.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Configures the USB console settings based on provided options and initializes  \n * the associated USB serial port.  \n *  \n * Parameters:  \n * co (struct console *): Pointer to the console structure to be configured.  \n * options (char *): String containing configuration options for baud rate,  \n * parity, bits, and flow control.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function parses the options string to set the baud rate, data bits,  \n * parity, and flow control settings. It retrieves the USB serial port  \n * associated with the console index and attempts to open it. If the port  \n * is not connected, it logs an error and returns. If the port is opened  \n * successfully, it configures the terminal settings and marks the port as  \n * a system console. The function handles error cases by cleaning up resources  \n * and returning appropriate error codes.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int usb_console_setup(struct console *v4, char *v11)\n{\n    struct usbcons_info *v9 = &usbcons_info;\n    int v1 = 9600;\n    int v2 = 8;\n    int v12 = 'n';\n    int v5 = 0;\n    int v3 = CREAD | HUPCL | CLOCAL;\n    char *v16;\n    struct usb_serial *v17;\n    struct usb_serial_port *v13;\n    int v15;\n    struct tty_struct *v18 = NULL;\n    struct v10 v6;\n    if (v11) {\n        v1 = simple_strtoul(v11, NULL, 10);\n        v16 = v11;\n        while (*v16 >= '0' && *v16 <= '9')\n            v16++;\n        if (*v16)\n            v12 = *v16++;\n        if (*v16)\n            v2   = *v16++ - '0';\n        if (*v16)\n            v5 = (*v16++ == 'r');\n    }\n    if (v1 == 0)\n        v1 = 9600;\n    switch (v2) {\n    case 7:\n        v3 |= CS7;\n        break;\n    default:\n    case 8:\n        v3 |= CS8;\n        break;\n    }\n    switch (v12) {\n    case 'o': case 'O':\n        v3 |= PARODD;\n        break;\n    case 'e': case 'E':\n        v3 |= PARENB;\n        break;\n    }\n    v4->v3 = v3;\n    v13 = usb_serial_port_get_by_minor(v4->index);\n    if (v13 == NULL) {\n        pr_err(\"No USB device connected to ttyUSB%i\\n\", v4->index);\n        return -ENODEV;\n    }\n    v17 = v13->v17;\n    v15 = usb_autopm_get_interface(v17->interface);\n    if (v15)\n        goto v7;\n    tty_port_tty_set(&v13->v13, NULL);\n    v9->v13 = v13;\n    ++v13->v13.count;\n    if (!tty_port_initialized(&v13->v13)) {\n        if (v17->type->set_termios) {\n            v18 = kzalloc(sizeof(*v18), GFP_KERNEL);\n            if (!v18) {\n                v15 = -ENOMEM;\n                goto v14;\n            }\n            kref_init(&v18->kref);\n            v18->driver = usb_serial_tty_driver;\n            v18->index = v4->index;\n            init_ldsem(&v18->ldisc_sem);\n            spin_lock_init(&v18->files_lock);\n            INIT_LIST_HEAD(&v18->tty_files);\n            kref_get(&v18->driver->kref);\n            __module_get(v18->driver->owner);\n            v18->ops = &usb_console_fake_tty_ops;\n            tty_init_termios(v18);\n            tty_port_tty_set(&v13->v13, v18);\n        }\n        v15 = v17->type->open(NULL, v13);\n        if (v15) {\n            dev_err(&v13->dev, \"could not open USB console v13\\n\");\n            goto v8;\n        }\n        if (v17->type->set_termios) {\n            v18->termios.c_cflag = v3;\n            tty_termios_encode_baud_rate(&v18->termios, v1, v1);\n            memset(&v6, 0, sizeof(struct v10));\n            v17->type->set_termios(v18, v13, &v6);\n            tty_port_tty_set(&v13->v13, NULL);\n            tty_kref_put(v18);\n        }\n        tty_port_set_initialized(&v13->v13, 1);\n    }\n    --v13->v13.count;\n    v13->v13.console = 1;\n    mutex_unlock(&v17->disc_mutex);\n    return v15;\n v8:\n    tty_port_tty_set(&v13->v13, NULL);\n    tty_kref_put(v18);\n v14:\n    v13->v13.count = 0;\n    v9->v13 = NULL;\n    usb_autopm_put_interface(v17->interface);\n v7:\n    usb_serial_put(v17);\n    mutex_unlock(&v17->disc_mutex);\n    return v15;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 18
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of parsing the options string, setting up the USB console, and handling error conditions. Both implementations handle the same logic for parsing baud rate, parity, data bits, and flow control. The only differences are in variable names and code structure, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of parsing the options string, setting up the USB console, and handling error conditions. Both implementations handle the same logic for parsing baud rate, parity, data bits, and flow control. The only differences are in variable names and code structure, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_246__1",
+  "sample_id": "D/C/246",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function performs a netlink dump operation, allocating a socket buffer and invoking a callback to fill it with data, while managing mutex locks and error handling.\n\nParameters:  \nsk (struct sock *): The socket associated with the netlink communication.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks the mutex associated with the netlink socket and checks if a callback is running. It then verifies if there is sufficient memory allocated for receiving data. Depending on the conditions, it allocates a socket buffer of appropriate size. The buffer is filled by calling the dump function from the callback. If the dump is successful, the function checks for filters and sends the buffer or frees it accordingly. Finally, it handles cleanup, including unlocking the mutex and releasing resources, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int netlink_dump(struct sock *v10)\n{\n    struct netlink_sock *v9 = nlk_sk(v10);\n    struct netlink_callback *v3;\n    struct sk_buff *v11 = NULL;\n    struct nlmsghdr *v8;\n    struct v7 *v7;\n    int v6, v4 = -ENOBUFS;\n    int v1;\n    int v2;\n    mutex_lock(v9->cb_mutex);\n    if (!v9->cb_running) {\n        v4 = -EINVAL;\n        goto v5;\n    }\n    if (atomic_read(&v10->sk_rmem_alloc) >= v10->sk_rcvbuf)\n        goto v5;\n    v3 = &v9->v3;\n    v1 = max_t(int, v3->min_dump_alloc, NLMSG_GOODSIZE);\n    if (v1 < v9->max_recvmsg_len) {\n        v2 = v9->max_recvmsg_len;\n        v11 = alloc_skb(v2, GFP_KERNEL |\n                        __GFP_NOWARN | __GFP_NORETRY);\n    }\n    if (!v11) {\n        v2 = v1;\n        v11 = alloc_skb(v2, GFP_KERNEL);\n    }\n    if (!v11)\n        goto v5;\n    skb_reserve(v11, skb_tailroom(v11) - v2);\n    netlink_skb_set_owner_r(v11, v10);\n    v6 = v3->dump(v11, v3);\n    if (v6 > 0) {\n        mutex_unlock(v9->cb_mutex);\n        if (sk_filter(v10, v11))\n            kfree_skb(v11);\n        else\n            __netlink_sendskb(v10, v11);\n        return 0;\n    }\n    v8 = nlmsg_put_answer(v11, v3, NLMSG_DONE, sizeof(v6), NLM_F_MULTI);\n    if (!v8)\n        goto v5;\n    nl_dump_check_consistent(v3, v8);\n    memcpy(nlmsg_data(v8), &v6, sizeof(v6));\n    if (sk_filter(v10, v11))\n        kfree_skb(v11);\n    else\n        __netlink_sendskb(v10, v11);\n    if (v3->done)\n        v3->done(v3);\n    v9->cb_running = false;\n    v7 = v3->v7;\n    v11 = v3->v11;\n    mutex_unlock(v9->cb_mutex);\n    module_put(v7);\n    consume_skb(v11);\n    return 0;\nv5:\n    mutex_unlock(v9->cb_mutex);\n    kfree_skb(v11);\n    return v4;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 11
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform a netlink dump operation by allocating a socket buffer, invoking a callback to fill it, and managing mutex locks and error handling. The logic for buffer allocation, error handling, and cleanup is the same in both. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform a netlink dump operation, managing mutex locks, allocating socket buffers, and invoking a callback to fill the buffer. They handle error conditions similarly, including checking for available memory and unlocking the mutex before returning. The only differences are in variable names and code structure, which do not affect observable behavior. There are no differences in error handling, memory allocation logic, or callback invocation that would lead to different outcomes for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

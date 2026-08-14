@@ -1,0 +1,34 @@
+{
+  "case_id": "C_360__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int walk_huge_page_range(unsigned long addr, unsigned long end, struct mm_walk *walk) {\n    struct hstate *h;\n    unsigned long mask;\n    unsigned long start, next;\n    int ret = 0;\n\n    h = hstate_addr_to_hstate(addr);\n    mask = huge_page_mask(h);\n\n    for (start = addr; start < end; start = next) {\n        next = (start + HPAGE_SIZE(h)) & (mask);\n        if (next > end)\n            next = end;\n\n        if (walk->vma && walk->vma->vm_flags & VM_HUGETLB) {\n            ret = walk->pmd_entry(start, walk->vma, walk->private, walk);\n            if (ret < 0)\n                break;\n        } else {\n            ret = -EFAULT;\n            break;\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int walk_huge_page_range(unsigned long addr, unsigned long end, struct mm_walk *walk) {\n    struct hstate *h;\n    unsigned long mask;\n    unsigned long next;\n    int ret = 0;\n\n    h = hstate_file(walk->vma->vm_file->f_mapping);\n    if (!h)\n        return -EINVAL;\n\n    mask = huge_page_mask(h);\n    addr &= mask;\n    end = (end + mask) & mask;\n\n    for (; addr < end; addr = next) {\n        next = addr + (1UL << h->order);\n        if (walk->vma->vm_ops && walk->vma->vm_ops->hugepages) {\n            ret = walk->vma->vm_ops->hugepages(walk->vma, addr, walk);\n            if (ret)\n                break;\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int walk_huge_range(unsigned long addr, unsigned long end, struct mm_walk *walk) {\n    while (addr < end) {\n        unsigned long next;\n        struct hstate *h;\n        unsigned long mask;\n\n        h = hstate_addr(addr);\n        if (!h)\n            return -EFAULT;\n\n        mask = huge_page_mask(h);\n        next = (addr + (1UL << h->order)) & mask;\n        if (next <= addr)\n            next = addr + (1UL << h->order);\n\n        if (walk->vma && walk->vma->vm_flags & VM_HUGETLB) {\n            int ret = walk->pte_hole(walk, addr, next);\n            if (ret)\n                return ret;\n        }\n\n        addr = next;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int walk_huge_page_range(unsigned long addr, unsigned long end, struct mm_walk *walk) {\n    int ret = 0;\n    struct hstate *h;\n    unsigned long mask, next;\n    unsigned long sz = huge_page_size(h);\n    unsigned long boundary = ALIGN(end, sz);\n\n    for (; addr < boundary; addr = next) {\n        next = addr + sz;\n\n        if (addr >= end)\n            break;\n\n        mask = huge_page_mask(h);\n        if ((addr & mask) != (next & mask)) {\n            ret = walk->hfn(addr, next, walk);\n            if (ret)\n                break;\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int walk_huge_pages(unsigned long addr, unsigned long end, struct mm_walk *walk) {\n    struct hstate *h;\n    unsigned long mask;\n\n    for (h = hstate_alloc(); h; h = hstate_next(h)) {\n        mask = huge_page_mask(h);\n        if (mask == 0)\n            continue;\n\n        while (addr < end) {\n            unsigned long pfn = addr_to_pfn(addr);\n            int ret;\n\n            if ((addr & mask) != addr) {\n                addr = (addr & mask) + mask;\n                continue;\n            }\n\n            ret = walk->vma->ops->fault(walk->vma, addr, pfn);\n            if (ret < 0)\n                return ret;\n\n            addr += PAGE_SIZE;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+#include <linux/slab.h>
+#include <linux/uaccess.h>
+#include <linux/rfcomm.h>
+#include <linux/mutex.h>
+
+int rfcomm_get_dev_list(void __user *arg)
+{
+    int __user *n = arg;
+    int n_devs;
+    struct rfcomm_dev *dev;
+    struct rfcomm_dev_list *list;
+    int i = 0, err = 0;
+
+    if (get_user(n_devs, n))
+        return -EFAULT;
+
+    if (n_devs < 0)
+        return -EINVAL;
+
+    list = kmalloc(sizeof(*list) + n_devs * sizeof(list->devs[0]), GFP_KERNEL);
+    if (!list)
+        return -ENOMEM;
+
+    mutex_lock(&rfcomm_dev_lock);
+
+    list_for_each_entry(dev, &rfcomm_dev_list, list) {
+        if (i >= n_devs)
+            break;
+        if (dev->state == RFCOMM_DEV_RELEASED)
+            continue;
+        list->devs[i].id = dev->id;
+        list->devs[i].state = dev->state;
+        list->devs[i].flags = dev->flags;
+        i++;
+    }
+
+    mutex_unlock(&rfcomm_dev_lock);
+
+    list->count = i;
+
+    if (copy_to_user(arg, list, sizeof(*list) + i * sizeof(list->devs[0]))) {
+        err = -EFAULT;
+        goto out;
+    }
+
+out:
+    kfree(list);
+    return err;
+}

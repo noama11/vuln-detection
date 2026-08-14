@@ -1,0 +1,49 @@
+{
+  "case_id": "C_70__0",
+  "sample_id": "D/C/70",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3233",
+  "cve_summary": "The llcp_sock_recvmsg function in net/nfc/llcp/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable and a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/nfc/llcp/sock.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header structure to fill with received data.\nlen (size_t): The maximum length of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header or an error code.\n\nLogic: \nThe function first checks the socket state and whether the receive queue is empty. It handles non-blocking and out-of-band flags, retrieves a datagram from the socket, and copies the data into the provided message header. It also populates the address information if the socket type is datagram. Depending on the socket type, it manages the received data, either re-queuing or freeing the socket buffer. Finally, it returns the number of bytes received or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int llcp_sock_recvmsg(struct kiocb *iocb, struct socket *v10,\n                 struct msghdr *v6, size_t v5, int v4)\n{\n    int v7 = v4 & MSG_DONTWAIT;\n    struct v10 *v8 = v10->v8;\n    unsigned int v1, rlen;\n    struct sk_buff *v9, *cskb;\n    int v3 = 0;\n    pr_debug(\"%p %zu\\n\", v8, v5);\n    v6->msg_namelen = 0;\n    lock_sock(v8);\n    if (v8->sk_state == LLCP_CLOSED &&\n        skb_queue_empty(&v8->sk_receive_queue)) {\n        release_sock(v8);\n        return 0;\n    }\n    release_sock(v8);\n    if (v4 & (MSG_OOB))\n        return -EOPNOTSUPP;\n    v9 = skb_recv_datagram(v8, v4, v7, &v3);\n    if (!v9) {\n        pr_err(\"Recv datagram failed state %d %d %d\",\n               v8->sk_state, v3, sock_error(v8));\n        if (v8->sk_shutdown & RCV_SHUTDOWN)\n            return 0;\n        return v3;\n    }\n    rlen = v9->v5;\n    v1 = min_t(unsigned int, rlen, v5);\n    cskb = v9;\n    if (skb_copy_datagram_iovec(cskb, 0, v6->msg_iov, v1)) {\n        if (!(v4 & MSG_PEEK))\n            skb_queue_head(&v8->sk_receive_queue, v9);\n        return -EFAULT;\n    }\n    sock_recv_timestamp(v6, v8, v9);\n    if (v8->sk_type == SOCK_DGRAM && v6->msg_name) {\n        struct nfc_llcp_ui_cb *v13 = nfc_llcp_ui_skb_cb(v9);\n        struct v12 *v11 =\n            (struct v12 *) v6->msg_name;\n        v6->msg_namelen = sizeof(struct v12);\n        pr_debug(\"Datagram socket %d %d\\n\", v13->dsap, v13->ssap);\n        memset(v11, 0, sizeof(*v11));\n        v11->sa_family = AF_NFC;\n        v11->nfc_protocol = NFC_PROTO_NFC_DEP;\n        v11->dsap = v13->dsap;\n        v11->ssap = v13->ssap;\n    }\n    if (!(v4 & MSG_PEEK)) {\n        if (v8->sk_type == SOCK_STREAM ||\n            v8->sk_type == SOCK_DGRAM ||\n            v8->sk_type == SOCK_RAW) {\n            skb_pull(v9, v1);\n            if (v9->v5) {\n                skb_queue_head(&v8->sk_receive_queue, v9);\n                goto v2;\n            }\n        }\n        kfree_skb(v9);\n    }\nv2:\n    if (v8->sk_type == SOCK_SEQPACKET && (v4 & MSG_TRUNC))\n        v1 = rlen;\n    return v1;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 13
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both handle socket state checks, non-blocking flags, receive datagrams, copy data into the message header, and manage socket buffer re-queueing or freeing. The only differences are in variable names and struct member names, which do not affect behavior. No security-relevant or functional differences are present.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both handle socket state checks, non-blocking flags, receive datagrams, copy data into the message header, and manage socket buffer re-queueing or freeing. The only differences are in variable names and code formatting, which do not affect behavior. There are no security-relevant differences or functional mismatches.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

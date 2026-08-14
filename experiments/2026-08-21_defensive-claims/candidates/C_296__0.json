@@ -1,0 +1,31 @@
+{
+  "case_id": "C_296__0",
+  "implementation": "int reject_key_and_link(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    if (key->type->reject || key->type->instantiate) {\n        return -EINVAL;\n    }\n\n    if (key->state != KEY_STATE_REVOKED && key->state != KEY_STATE_INSTANTIATED) {\n        return -EINVAL;\n    }\n\n    key->state = KEY_STATE_NEGATIVE;\n\n    if (timeout) {\n        key->expiry = getnstime_monotonic() + timeout * NSEC_PER_SEC;\n        key->flags |= 1 << KEY_FLAG_EXPIRE;\n    }\n\n    if (keyring) {\n        if (key->dest_keyring) {\n            return -EINVAL;\n        }\n\n        key->dest_keyring = keyring_get(keyring);\n\n        if (!key->dest_keyring) {\n            return -ENOMEM;\n        }\n\n        keyring->usage++;\n    }\n\n    if (authkey) {\n        key_revoke(authkey);\n    }\n\n    key->error = error;\n\n    if (key->state == KEY_STATE_INSTANTIATED) {\n        key->state = KEY_STATE_NEGATIVE;\n        key->flags |= 1 << KEY_FLAG_NEGATIVE;\n    }\n\n    key->flags |= 1 << KEY_FLAG_TIMEOUT;\n\n    schedule_key_gc();\n\n    if (key->wait) {\n        wake_up(key->wait);\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check key and keyring pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate key and keyring states",
+      "protects_against": "invalid key or keyring state"
+    },
+    {
+      "step": "check for existing destination keyring",
+      "protects_against": "overwriting an existing keyring link"
+    },
+    {
+      "step": "validate keyring_get return value",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "increment keyring usage count",
+      "protects_against": "underflow or incorrect reference counting"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

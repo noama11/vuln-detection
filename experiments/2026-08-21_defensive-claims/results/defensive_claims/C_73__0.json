@@ -1,0 +1,178 @@
+{
+  "case_id": "C_73__0",
+  "sample_id": "D/C/73",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3229",
+  "cve_summary": "The iucv_sock_recvmsg function in net/iucv/af_iucv.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/iucv/af_iucv.c",
+  "docstring": "Summary: \nReceives a message from a socket and processes it according to the specified flags and socket type.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.  \nsock (struct socket *): The socket from which to receive the message.  \nmsg (struct msghdr *): The message header to fill with received data.  \nlen (size_t): The maximum length of data to receive.  \nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header, or an error code.\n\nLogic: \nThe function checks the socket state and flags, retrieves a datagram from the socket's receive queue, and copies data into the provided message header. It handles special cases for socket types and flags, including out-of-band data and message truncation. It manages the backlog of messages and updates the socket state as necessary, ensuring proper synchronization and error handling throughout the process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    int copied = 0;\n    int err = 0;\n\n    if (!sk || !msg || !sock) {\n        return -EINVAL;\n    }\n\n    if (len == 0) {\n        return 0;\n    }\n\n    if (flags & MSG_OOB) {\n        return -EOPNOTSUPP;\n    }\n\n    lock_sock(sk);\n\n    if (sk->sk_state == TCP_LISTEN) {\n        err = -EOPNOTSUPP;\n        goto out;\n    }\n\n    if (sk->sk_shutdown & RCV_SHUTDOWN) {\n        err = 0;\n        goto out;\n    }\n\n    if (sk->sk_type == SOCK_DGRAM) {\n        struct sk_buff *skb;\n        skb = skb_dequeue(&sk->sk_receive_queue);\n        if (!skb) {\n            err = -EAGAIN;\n            goto out;\n        }\n\n        if (skb->len > len) {\n            if (flags & MSG_TRUNC) {\n                copied = skb->len;\n            } else {\n                kfree_skb(skb);\n                err = -EMSGSIZE;\n                goto out;\n            }\n        } else {\n            copied = skb_copy_datagram_const_msg(msg, 0, skb, 0, skb->len);\n            if (copied < 0) {\n                kfree_skb(skb);\n                goto out;\n            }\n            kfree_skb(skb);\n        }\n    } else {\n        struct sk_buff *skb;\n        int copied_total = 0;\n\n        while (len > 0 && (skb = skb_peek(&sk->sk_receive_queue))) {\n            int copy = min(skb->len, len);\n\n            copied = skb_copy_datagram_const_msg(msg, 0, skb, 0, copy);\n            if (copied < 0) {\n                goto out;\n            }\n\n            copied_total += copied;\n            len -= copied;\n            skb_pull(skb, copied);\n\n            if (skb->len == 0) {\n                skb_dequeue(&sk->sk_receive_queue);\n                kfree_skb(skb);\n            }\n        }\n\n        if (copied_total == 0) {\n            err = -EAGAIN;\n        } else {\n            copied = copied_total;\n        }\n    }\n\n    err = copied;\n\nout:\n    release_sock(sk);\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate len is not zero",
+      "protects_against": "zero-length copy"
+    },
+    {
+      "step": "check for unsupported flags",
+      "protects_against": "invalid or unsupported flag usage"
+    },
+    {
+      "step": "check socket state before processing",
+      "protects_against": "invalid socket state for receive operation"
+    },
+    {
+      "step": "check for receive shutdown",
+      "protects_against": "receiving data on a closed socket"
+    },
+    {
+      "step": "bound copy length to skb length",
+      "protects_against": "copying more data than available in the buffer"
+    },
+    {
+      "step": "check for message truncation",
+      "protects_against": "copying data that exceeds the provided buffer size"
+    },
+    {
+      "step": "release socket lock on all paths",
+      "protects_against": "deadlock due to un-released lock"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters iocb, sock, or msg. However, the function is likely called in a context where these pointers are guaranteed to be non-null, and the code proceeds under that assumption.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate len is not zero — protects against: zero-length copy",
+        "reasoning": "The implementation does not explicitly check if len is zero. However, the code uses min_t to cap the copy length to the minimum of len and the skb length. If len is zero, this results in a zero-length copy, which is harmless.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for unsupported flags — protects against: invalid or unsupported flag usage",
+        "reasoning": "The implementation checks for the unsupported flag MSG_OOB and returns -EOPNOTSUPP. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket state before processing — protects against: invalid socket state for receive operation",
+        "reasoning": "The implementation checks the socket state (IUCV_DISCONN) and the contents of the receive queues before proceeding. If the socket is in a disconnected state and no data is available, it returns 0, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for receive shutdown — protects against: receiving data on a closed socket",
+        "reasoning": "The implementation checks if the socket is in a receive shutdown state (sk->sk_shutdown & RCV_SHUTDOWN) after attempting to receive a datagram. If so, it returns 0, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to skb length — protects against: copying more data than available in the buffer",
+        "reasoning": "The implementation uses min_t to cap the copy length to the minimum of len and the skb length. This ensures that the copy does not exceed the available data in the buffer, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for message truncation — protects against: copying data that exceeds the provided buffer size",
+        "reasoning": "The implementation sets the MSG_TRUNC flag if the copied data is less than the real length of the skb. This indicates that the message was truncated due to insufficient buffer size, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release socket lock on all paths — protects against: deadlock due to un-released lock",
+        "reasoning": "The implementation acquires a spinlock (message_q.lock) and releases it in all paths, including error paths. This ensures that the lock is always released, which satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters iocb, sock, msg, or sk. However, the code assumes that sock->sk is valid and that sock is non-null. If any of these were null, a dereference would occur.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate len is not zero — protects against: zero-length copy",
+        "reasoning": "The implementation does not explicitly check if len is zero. However, the code uses min_t to cap the copy length to the minimum of len and the skb length. If len is zero, this would result in a zero-length copy, which is harmless.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for unsupported flags — protects against: invalid or unsupported flag usage",
+        "reasoning": "The implementation checks for the unsupported flag MSG_OOB and returns -EOPNOTSUPP. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket state before processing — protects against: invalid socket state for receive operation",
+        "reasoning": "The implementation checks the socket state (IUCV_DISCONN) and returns 0 if the socket is in a disconnected state and no data is available. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for receive shutdown — protects against: receiving data on a closed socket",
+        "reasoning": "The implementation checks if the socket has the RCV_SHUTDOWN flag set and returns 0 if so. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to skb length — protects against: copying more data than available in the buffer",
+        "reasoning": "The implementation uses min_t to cap the copy length to the minimum of len and the skb length. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for message truncation — protects against: copying data that exceeds the provided buffer size",
+        "reasoning": "The implementation sets the MSG_TRUNC flag if the copied data is less than the real length of the skb. This indicates that the message was truncated. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release socket lock on all paths — protects against: deadlock due to un-released lock",
+        "reasoning": "The implementation acquires and releases the socket lock in the spin_lock_bh and spin_unlock_bh calls. The lock is released on all paths, including error paths. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_7__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int copy_creds(struct task_struct *p, unsigned long clone_flags)\n{\n    if ((clone_flags & CLONE_NEWUSER) == 0) {\n        get_cred(p->cred);\n        return 0;\n    }\n\n    struct cred *new = prepare_creds();\n    if (IS_ERR(new))\n        return PTR_ERR(new);\n\n    if (clone_flags & CLONE_THREAD) {\n        new->thread_keyring = NULL;\n    }\n\n    new->process_keyring = p->cred->process_keyring;\n    new->session_keyring = p->cred->session_keyring;\n\n    if (clone_flags & CLONE_NEWUSER) {\n        struct user_namespace *ns;\n        ns = create_user_namespace(new);\n        if (IS_ERR(ns))\n            return PTR_ERR(ns);\n\n        new->user_ns = ns;\n    }\n\n    return install_creds(p, new);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int copy_creds(struct task_struct *p, unsigned long clone_flags) {\n    struct cred *new;\n\n    if ((clone_flags & CLONE_NEWPID) && (clone_flags & CLONE_THREAD)) {\n        return 0; // Share credentials with parent\n    }\n\n    get_cred(p->cred); // Increment reference count of existing credentials\n\n    if ((clone_flags & CLONE_NEWUSER) ||\n        (clone_flags & CLONE_NEWPID) ||\n        (clone_flags & CLONE_NEWNET)) {\n        new = prepare_creds();\n        if (!new)\n            return -ENOMEM;\n\n        if ((clone_flags & CLONE_NEWUSER))\n            new->user_ns = create_user_ns(new);\n        if (!new->user_ns)\n            return -ENOMEM;\n\n        p->cred = new;\n    }\n\n    if ((clone_flags & CLONE_THREAD)) {\n        p->thread_keyring = NULL;\n        p->session_keyring = NULL;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int copy_creds(struct task_struct *p, unsigned long clone_flags) {\n    struct cred *new;\n\n    if ((clone_flags & CLONE_THREAD) && (p->cred->magic != 0)) {\n        if (!atomic_inc_not_zero(&p->cred->usage)) {\n            return -ENOMEM;\n        }\n        return 0;\n    }\n\n    new = prepare_creds();\n    if (new == NULL) {\n        return -ENOMEM;\n    }\n\n    if (clone_flags & CLONE_NEWUSER) {\n        struct user_namespace *ns;\n\n        ns = create_user_namespace(p->cred);\n        if (IS_ERR(ns)) {\n            abort_creds(new);\n            return PTR_ERR(ns);\n        }\n        new->user_ns = ns;\n    }\n\n    if (clone_flags & CLONE_THREAD) {\n        new->tgcred = get_tgcred(p->cred);\n        new->thread_keyring = p->thread_keyring;\n        if (new->thread_keyring) {\n            key_get(new->thread_keyring);\n        }\n    }\n\n    if (clone_flags & CLONE_NEWPID) {\n        new->pid_keyring = NULL;\n    }\n\n    if (clone_flags & CLONE_NEWSESSION) {\n        new->session_keyring = NULL;\n    }\n\n    if (copy_creds_pre(new, p->cred) < 0) {\n        abort_creds(new);\n        return -ENOMEM;\n    }\n\n    p->cred = new;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int copy_credentials(struct task_struct *p, unsigned long clone_flags)\n{\n    struct cred *new, *old;\n\n    old = p->cred;\n    if (clone_flags & CLONE_SHARE_CREDENTIALS) {\n        get_cred(old);\n        p->cred = old;\n        return 0;\n    }\n\n    new = prepare_creds();\n    if (!new)\n        return -ENOMEM;\n\n    if (clone_flags & CLONE_NEWUSER) {\n        int ret = create_user_ns(new);\n        if (ret < 0) {\n            abort_creds(new);\n            return ret;\n        }\n    }\n\n    if (clone_flags & CLONE_THREAD) {\n        new->thread_keyring = NULL;\n    } else {\n        if (old->process_keyring)\n            key_get(old->process_keyring);\n        if (old->session_keyring)\n            key_get(old->session_keyring);\n    }\n\n    p->cred = new;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/cred.h>\n#include <linux/key.h>\n#include <linux/slab.h>\n#include <linux/errno.h>\n\nint copy_creds_for_task(struct task_struct *p, unsigned long clone_flags)\n{\n    int ret = 0;\n\n    if (clone_flags & CLONE_NEWUSER) {\n        struct cred *new_cred = prepare_creds();\n        if (!new_cred)\n            return -ENOMEM;\n\n        /* Handle user namespace creation and cred setup if needed */\n        ret = setup_new_userns(p, new_cred, clone_flags);\n        if (ret)\n            return ret;\n\n        p->real_cred = p->cred = get_cred(new_cred);\n        return 0;\n    } else {\n        // Share credentials\n        get_cred(p->cred);\n        get_cred(p->real_cred);\n    }\n\n    // Manage keyrings according to thread sharing rules\n    if (clone_flags & CLONE_THREAD) {\n        key_get(p->thread_keyring);\n        key_get(p->session_keyring);\n    } else {\n        key_put(p->thread_keyring);\n        key_put(p->session_keyring);\n        p->thread_keyring = NULL;\n        p->session_keyring = NULL;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

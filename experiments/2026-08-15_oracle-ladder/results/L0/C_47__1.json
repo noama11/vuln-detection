@@ -1,0 +1,48 @@
+{
+  "case_id": "C_47__1",
+  "sample_id": "D/C/47",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-7027",
+  "cve_summary": "The ieee80211_radiotap_iterator_init function in net/wireless/radiotap.c in the Linux kernel before 3.11.7 does not check whether a frame contains any data outside of the header, which might allow attackers to cause a denial of service (buffer over-read) via a crafted header.",
+  "changed_file": "net/wireless/radiotap.c",
+  "docstring": "/**\n * Summary: Initializes an ieee80211_radiotap_iterator structure for iterating over a radiotap header.\n * \n * Parameters:\n * iterator (struct ieee80211_radiotap_iterator *): Pointer to the iterator to be initialized.\n * radiotap_header (struct ieee80211_radiotap_header *): Pointer to the radiotap header to iterate over.\n * max_length (int): Maximum length of the radiotap header.\n * vns (const struct ieee80211_radiotap_vendor_namespaces *): Pointer to vendor namespaces for the radiotap.\n * \n * Returns: int - Returns 0 on successful initialization, or -EINVAL if any validation checks fail.\n * \n * Logic: The function performs several validation checks on the radiotap header and its length, initializes the iterator's internal state, and prepares it for iteration over the radiotap fields. It handles extended bitmaps and ensures that the iterator does not exceed the specified maximum length during iteration.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ieee80211_radiotap_iterator_init(\r\n\tstruct ieee80211_radiotap_iterator *iterator,\r\n\tstruct ieee80211_radiotap_header *radiotap_header,\r\n\tint max_length, const struct ieee80211_radiotap_vendor_namespaces *vns)\r\n{\r\n\t/* check the radiotap header can actually be present */\r\n\tif (max_length < sizeof(struct ieee80211_radiotap_header))\r\n\t\treturn -EINVAL;\r\n\r\n\t/* Linux only supports version 0 radiotap format */\r\n\tif (radiotap_header->it_version)\r\n\t\treturn -EINVAL;\r\n\r\n\t/* sanity check for allowed length and radiotap length field */\r\n\tif (max_length < get_unaligned_le16(&radiotap_header->it_len))\r\n\t\treturn -EINVAL;\r\n\r\n\titerator->_rtheader = radiotap_header;\r\n\titerator->_max_length = get_unaligned_le16(&radiotap_header->it_len);\r\n\titerator->_arg_index = 0;\r\n\titerator->_bitmap_shifter = get_unaligned_le32(&radiotap_header->it_present);\r\n\titerator->_arg = (uint8_t *)radiotap_header + sizeof(*radiotap_header);\r\n\titerator->_reset_on_ext = 0;\r\n\titerator->_next_bitmap = &radiotap_header->it_present;\r\n\titerator->_next_bitmap++;\r\n\titerator->_vns = vns;\r\n\titerator->current_namespace = &radiotap_ns;\r\n\titerator->is_radiotap_ns = 1;\r\n\r\n\t/* find payload start allowing for extended bitmap(s) */\r\n\r\n\tif (iterator->_bitmap_shifter & (1<<IEEE80211_RADIOTAP_EXT)) {\r\n\t\twhile (get_unaligned_le32(iterator->_arg) &\r\n\t\t\t\t\t(1 << IEEE80211_RADIOTAP_EXT)) {\r\n\t\t\titerator->_arg += sizeof(uint32_t);\r\n\r\n\t\t\t/*\r\n\t\t\t * check for insanity where the present bitmaps\r\n\t\t\t * keep claiming to extend up to or even beyond the\r\n\t\t\t * stated radiotap header length\r\n\t\t\t */\r\n\r\n\t\t\tif ((unsigned long)iterator->_arg -\r\n\t\t\t    (unsigned long)iterator->_rtheader +\r\n\t\t\t    sizeof(uint32_t) >\r\n\t\t\t    (unsigned long)iterator->_max_length)\r\n\t\t\t\treturn -EINVAL;\r\n\t\t}\r\n\r\n\t\titerator->_arg += sizeof(uint32_t);\r\n\r\n\t\t/*\r\n\t\t * no need to check again for blowing past stated radiotap\r\n\t\t * header length, because ieee80211_radiotap_iterator_next\r\n\t\t * checks it before it is dereferenced\r\n\t\t */\r\n\t}\r\n\r\n\titerator->this_arg = iterator->_arg;\r\n\r\n\t/* we are all initialized happily */\r\n\r\n\treturn 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check at the beginning to ensure that the max_length is at least the size of the radiotap header. This check is not present in the reference implementation. This could lead to different behaviors when the max_length is smaller than the header size, potentially allowing the reference implementation to proceed with invalid input. This is a behavioral difference that could be exploited via attacker-controlled input, making it security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in their logic and behavior. Both perform the same validation checks, initialize the iterator's internal state in the same way, and handle extended bitmaps identically. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

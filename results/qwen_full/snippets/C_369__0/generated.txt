@@ -1,0 +1,110 @@
+Sdb* process_version_definitions(ELFOBJ* bin, Elf_(Shdr)* shdr, int sz) {
+    if (!bin || !shdr || sz <= 0) {
+        return NULL;
+    }
+
+    void* data = elf_getdata(bin, shdr);
+    if (!data) {
+        return NULL;
+    }
+
+    Sdb* sdb = sdb_new0();
+    if (!sdb) {
+        return NULL;
+    }
+
+    const char* strtab = elf_strptr(bin, shdr->sh_link, 0);
+    if (!strtab) {
+        sdb_free(sdb);
+        return NULL;
+    }
+
+    size_t offset = 0;
+    while (offset < sz) {
+        Elf_(Half) d_version = *(Elf_(Half)*)((uint8_t*)data + offset);
+        Elf_(Word) d_cnt = *(Elf_(Word)*)((uint8_t*)data + offset + sizeof(Elf_(Half)));
+        Elf_(Half) d_hash = *(Elf_(Half)*)((uint8_t*)data + offset + sizeof(Elf_(Half)) + sizeof(Elf_(Word)));
+        Elf_(Addr) d_ptr = *(Elf_(Addr)*)((uint8_t*)data + offset + sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Half)));
+        Elf_(Word) d_flags = *(Elf_(Word)*)((uint8_t*)data + offset + sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Half)) + sizeof(Elf_(Addr)));
+        Elf_(Word) d_other = *(Elf_(Word)*)((uint8_t*)data + offset + sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Half)) + sizeof(Elf_(Addr)) + sizeof(Elf_(Word)));
+
+        char key[256];
+        snprintf(key, sizeof(key), "version.%u", d_version);
+
+        if (sdb_num_put(sdb, key, d_version, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        if (sdb_num_put(sdb, "cnt", d_cnt, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        if (sdb_num_put(sdb, "hash", d_hash, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        if (sdb_num_put(sdb, "ptr", d_ptr, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        if (sdb_num_put(sdb, "flags", d_flags, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        if (sdb_num_put(sdb, "other", d_other, NULL) < 0) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        size_t aux_offset = offset + sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Half)) + sizeof(Elf_(Addr)) + sizeof(Elf_(Word)) + sizeof(Elf_(Word));
+        for (Elf_(Word) i = 0; i < d_cnt; i++) {
+            Elf_(Half) aux_type = *(Elf_(Half)*)((uint8_t*)data + aux_offset);
+            Elf_(Half) aux_other = *(Elf_(Half)*)((uint8_t*)data + aux_offset + sizeof(Elf_(Half)));
+            Elf_(Word) aux_name = *(Elf_(Word)*)((uint8_t*)data + aux_offset + sizeof(Elf_(Half)) + sizeof(Elf_(Half)));
+            Elf_(Word) aux_desc = *(Elf_(Word)*)((uint8_t*)data + aux_offset + sizeof(Elf_(Half)) + sizeof(Elf_(Half)) + sizeof(Elf_(Word)));
+            Elf_(Word) aux_version = *(Elf_(Word)*)((uint8_t*)data + aux_offset + sizeof(Elf_(Half)) + sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Word)));
+
+            char aux_key[256];
+            snprintf(aux_key, sizeof(aux_key), "aux.%u.type", i);
+            if (sdb_num_put(sdb, aux_key, aux_type, NULL) < 0) {
+                sdb_free(sdb);
+                return NULL;
+            }
+
+            snprintf(aux_key, sizeof(aux_key), "aux.%u.other", i);
+            if (sdb_num_put(sdb, aux_key, aux_other, NULL) < 0) {
+                sdb_free(sdb);
+                return NULL;
+            }
+
+            snprintf(aux_key, sizeof(aux_key), "aux.%u.name", i);
+            if (sdb_put(sdb, aux_key, strtab + aux_name, NULL) < 0) {
+                sdb_free(sdb);
+                return NULL;
+            }
+
+            snprintf(aux_key, sizeof(aux_key), "aux.%u.desc", i);
+            if (sdb_num_put(sdb, aux_key, aux_desc, NULL) < 0) {
+                sdb_free(sdb);
+                return NULL;
+            }
+
+            snprintf(aux_key, sizeof(aux_key), "aux.%u.version", i);
+            if (sdb_num_put(sdb, aux_key, aux_version, NULL) < 0) {
+                sdb_free(sdb);
+                return NULL;
+            }
+
+            aux_offset += sizeof(Elf_(Half)) * 2 + sizeof(Elf_(Word)) * 3;
+        }
+
+        offset += sizeof(Elf_(Half)) + sizeof(Elf_(Word)) + sizeof(Elf_(Half)) + sizeof(Elf_(Addr)) + sizeof(Elf_(Word)) * 2 + d_cnt * (sizeof(Elf_(Half)) * 2 + sizeof(Elf_(Word)) * 3);
+    }
+
+    return sdb;
+}

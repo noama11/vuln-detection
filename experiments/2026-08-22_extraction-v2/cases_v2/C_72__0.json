@@ -1,0 +1,36 @@
+{
+  "case_id": "C_72__0",
+  "sample_id": "D/C/72",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3230",
+  "cve_summary": "The l2tp_ip6_recvmsg function in net/l2tp/l2tp_ip6.c in the Linux kernel before 3.9-rc7 does not initialize a certain structure member, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "commit_message": "l2tp: fix info leak in l2tp_ip6_recvmsg()\n\nThe L2TP code for IPv6 fails to initialize the l2tp_conn_id member of\nstruct sockaddr_l2tpip6 and therefore leaks four bytes kernel stack\nin l2tp_ip6_recvmsg() in case msg_name is set.\n\nInitialize l2tp_conn_id with 0 to avoid the info leak.\n\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/l2tp/l2tp_ip6.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Receives a message over an L2TP over IPv6 socket and processes it.  \n *  \n * Parameters:  \n * iocb (struct kiocb *): The I/O control block for the operation.  \n * sk (struct sock *): The socket from which the message is received.  \n * msg (struct msghdr *): The message header containing the data.  \n * len (size_t): The length of the message to be received.  \n * noblock (int): Non-blocking flag for the operation.  \n * flags (int): Flags that modify the behavior of the receive operation.  \n * addr_len (int *): Pointer to store the length of the address.  \n *  \n * Returns:  \n * int: The number of bytes copied or an error code.  \n *  \n * Logic:  \n * The function checks for out-of-band data and error queue flags, retrieves  \n * a datagram from the socket, copies the data to the provided message header,  \n * and populates the address structure with relevant IPv6 information. It  \n * handles truncation and timestamps, and cleans up before returning the  \n * result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    651,
+    707
+  ],
+  "vulnerable_line_range": [
+    651,
+    706
+  ],
+  "vulnerable_snippet": "static int l2tp_ip6_recvmsg(struct kiocb *iocb, struct sock *sk,\r\n\t\t\t    struct msghdr *msg, size_t len, int noblock,\r\n\t\t\t    int flags, int *addr_len)\r\n{\r\n\tstruct ipv6_pinfo *np = inet6_sk(sk);\r\n\tstruct sockaddr_l2tpip6 *lsa = (struct sockaddr_l2tpip6 *)msg->msg_name;\r\n\tsize_t copied = 0;\r\n\tint err = -EOPNOTSUPP;\r\n\tstruct sk_buff *skb;\r\n\r\n\tif (flags & MSG_OOB)\r\n\t\tgoto out;\r\n\r\n\tif (addr_len)\r\n\t\t*addr_len = sizeof(*lsa);\r\n\r\n\tif (flags & MSG_ERRQUEUE)\r\n\t\treturn ipv6_recv_error(sk, msg, len);\r\n\r\n\tskb = skb_recv_datagram(sk, flags, noblock, &err);\r\n\tif (!skb)\r\n\t\tgoto out;\r\n\r\n\tcopied = skb->len;\r\n\tif (len < copied) {\r\n\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t\tcopied = len;\r\n\t}\r\n\r\n\terr = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);\r\n\tif (err)\r\n\t\tgoto done;\r\n\r\n\tsock_recv_timestamp(msg, sk, skb);\r\n\r\n\t/* Copy the address. */\r\n\tif (lsa) {\r\n\t\tlsa->l2tp_family = AF_INET6;\r\n\t\tlsa->l2tp_unused = 0;\r\n\t\tlsa->l2tp_addr = ipv6_hdr(skb)->saddr;\r\n\t\tlsa->l2tp_flowinfo = 0;\r\n\t\tlsa->l2tp_scope_id = 0;\r\n\t\tif (ipv6_addr_type(&lsa->l2tp_addr) & IPV6_ADDR_LINKLOCAL)\r\n\t\t\tlsa->l2tp_scope_id = IP6CB(skb)->iif;\r\n\t}\r\n\r\n\tif (np->rxopt.all)\r\n\t\tip6_datagram_recv_ctl(sk, msg, skb);\r\n\r\n\tif (flags & MSG_TRUNC)\r\n\t\tcopied = skb->len;\r\ndone:\r\n\tskb_free_datagram(sk, skb);\r\nout:\r\n\treturn err ? err : copied;\r\n}",
+  "fixed_line_range": [
+    651,
+    707
+  ],
+  "fixed_snippet": "static int l2tp_ip6_recvmsg(struct kiocb *iocb, struct sock *sk,\r\n\t\t\t    struct msghdr *msg, size_t len, int noblock,\r\n\t\t\t    int flags, int *addr_len)\r\n{\r\n\tstruct ipv6_pinfo *np = inet6_sk(sk);\r\n\tstruct sockaddr_l2tpip6 *lsa = (struct sockaddr_l2tpip6 *)msg->msg_name;\r\n\tsize_t copied = 0;\r\n\tint err = -EOPNOTSUPP;\r\n\tstruct sk_buff *skb;\r\n\r\n\tif (flags & MSG_OOB)\r\n\t\tgoto out;\r\n\r\n\tif (addr_len)\r\n\t\t*addr_len = sizeof(*lsa);\r\n\r\n\tif (flags & MSG_ERRQUEUE)\r\n\t\treturn ipv6_recv_error(sk, msg, len);\r\n\r\n\tskb = skb_recv_datagram(sk, flags, noblock, &err);\r\n\tif (!skb)\r\n\t\tgoto out;\r\n\r\n\tcopied = skb->len;\r\n\tif (len < copied) {\r\n\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t\tcopied = len;\r\n\t}\r\n\r\n\terr = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);\r\n\tif (err)\r\n\t\tgoto done;\r\n\r\n\tsock_recv_timestamp(msg, sk, skb);\r\n\r\n\t/* Copy the address. */\r\n\tif (lsa) {\r\n\t\tlsa->l2tp_family = AF_INET6;\r\n\t\tlsa->l2tp_unused = 0;\r\n\t\tlsa->l2tp_addr = ipv6_hdr(skb)->saddr;\r\n\t\tlsa->l2tp_flowinfo = 0;\r\n\t\tlsa->l2tp_scope_id = 0;\r\n\t\tlsa->l2tp_conn_id = 0;\r\n\t\tif (ipv6_addr_type(&lsa->l2tp_addr) & IPV6_ADDR_LINKLOCAL)\r\n\t\t\tlsa->l2tp_scope_id = IP6CB(skb)->iif;\r\n\t}\r\n\r\n\tif (np->rxopt.all)\r\n\t\tip6_datagram_recv_ctl(sk, msg, skb);\r\n\r\n\tif (flags & MSG_TRUNC)\r\n\t\tcopied = skb->len;\r\ndone:\r\n\tskb_free_datagram(sk, skb);\r\nout:\r\n\treturn err ? err : copied;\r\n}",
+  "func_name": "l2tp_ip6_recvmsg",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

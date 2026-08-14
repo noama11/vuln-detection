@@ -1,0 +1,114 @@
+{
+  "case_id": "C_250__0",
+  "sample_id": "D/C/250",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9576",
+  "cve_summary": "The blk_rq_map_user_iov function in block/blk-map.c in the Linux kernel before 4.8.14 does not properly restrict the type of iterator, which allows local users to read or write to arbitrary kernel memory locations or cause a denial of service (use-after-free) by leveraging access to a /dev/sg device.",
+  "changed_file": "block/blk-map.c",
+  "docstring": "\"\"\"\nSummary: \nMaps user I/O vectors to a request in a block request queue.\n\nParameters: \nq (struct request_queue *): The request queue to which the request belongs.\nrq (struct request *): The request to be mapped.\nmap_data (struct rq_map_data *): Data structure for mapping information.\niter (const struct iov_iter *): The I/O vector iterator containing user data.\ngfp_mask (gfp_t): Allocation flags for memory allocation.\n\nReturns: \nint: Returns 0 on success, or -EINVAL if mapping fails.\n\nLogic: The function determines if a copy of the data is necessary based on alignment and mapping data. It then iterates over the I/O vectors, mapping them to the request using a helper function. If successful, it sets the appropriate flags; otherwise, it cleans up and returns an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int map_user_iov(struct request_queue *q, struct request *rq, struct rq_map_data *map_data, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    size_t total_len = iov_iter_count(iter);\n    size_t offset = 0;\n    size_t len;\n    struct bio *bio = NULL;\n    struct bio *prev = NULL;\n    int ret = 0;\n\n    if (!q || !rq || !map_data || !iter || !iov_iter_count(iter))\n        return -EINVAL;\n\n    while (iov_iter_next_segment(iter, &offset, &len)) {\n        struct bio *new_bio;\n\n        if (len == 0)\n            continue;\n\n        new_bio = bio_kmalloc(gfp_mask, 1);\n        if (!new_bio) {\n            ret = -EINVAL;\n            goto cleanup;\n        }\n\n        new_bio->bi_iter = (struct bvec_iter) {\n            .bi_size = len,\n            .bi_bvec = 0,\n            .bi_idx = 0,\n        };\n\n        new_bio->bi_io_vec = kmalloc(sizeof(struct bio_vec), gfp_mask);\n        if (!new_bio->bi_io_vec) {\n            bio_put(new_bio);\n            ret = -EINVAL;\n            goto cleanup;\n        }\n\n        new_bio->bi_io_vec->bv_page = map_data->pages;\n        new_bio->bi_io_vec->bv_len = len;\n        new_bio->bi_io_vec->bv_offset = offset;\n\n        if (prev) {\n            prev->bi_next = new_bio;\n        } else {\n            rq->bio = new_bio;\n        }\n\n        prev = new_bio;\n    }\n\n    if (!rq->bio) {\n        ret = -EINVAL;\n        goto cleanup;\n    }\n\n    return 0;\n\n cleanup:\n    while (rq->bio) {\n        struct bio *next = rq->bio->bi_next;\n        bio_put(rq->bio);\n        rq->bio = next;\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero length",
+      "protects_against": "invalid or zero-length I/O operations"
+    },
+    {
+      "step": "validate memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "clean up allocated memory on error",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters `q`, `rq`, `map_data`, or `iter`. Dereferencing any of these without a check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for zero length — protects against: invalid or zero-length I/O operations",
+        "reasoning": "The implementation does not explicitly check for zero-length I/O operations. If the `iov_iter` has a zero-length, the function may proceed with no data to process, which could be considered invalid or unnecessary.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not explicitly validate the success of memory allocation. It calls `__blk_rq_map_user_iov`, which presumably handles allocation, but the implementation does not check for allocation failure before proceeding.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "clean up allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation includes a `goto unmap_rq` error path that calls `__blk_rq_unmap_user(bio)` to clean up allocated memory. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters q, rq, map_data, iter, or gfp_mask. Dereferencing any of these without a check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for zero length — protects against: invalid or zero-length I/O operations",
+        "reasoning": "The implementation does not explicitly check for zero-length I/O operations. If the iov_iter has a zero-length, the function may proceed without handling it properly, potentially leading to invalid operations.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not explicitly validate the success of memory allocation. It relies on the helper function __blk_rq_map_user_iov to handle allocation, but there is no explicit check for allocation failure in the code provided.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "clean up allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation does perform cleanup on error by calling __blk_rq_unmap_user(bio) in the unmap_rq label and setting rq->bio to NULL in the fail label. This indicates that it does clean up allocated memory on error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

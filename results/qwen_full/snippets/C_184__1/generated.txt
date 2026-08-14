@@ -1,0 +1,58 @@
+int unpack_summary_info(const cdf_stream_t *sst, const cdf_header_t *h,
+                        cdf_summary_info_header_t *ssi, cdf_property_info_t **info,
+                        size_t *count) {
+    if (!sst || !h || !ssi || !info || !count) {
+        return -1;
+    }
+
+    if (sst->size < h->summary_info_offset + sizeof(cdf_summary_info_header_t)) {
+        return -1;
+    }
+
+    if (fseek(sst->file, h->summary_info_offset, SEEK_SET) != 0) {
+        return -1;
+    }
+
+    if (fread(ssi, sizeof(cdf_summary_info_header_t), 1, sst->file) != 1) {
+        return -1;
+    }
+
+    if (h->byte_order == CDF_BYTE_ORDER_LITTLE_ENDIAN) {
+        ssi->os_version = le16toh(ssi->os_version);
+        ssi->os_type = le16toh(ssi->os_type);
+        ssi->class = le32toh(ssi->class);
+        ssi->property_count = le32toh(ssi->property_count);
+    } else {
+        ssi->os_version = be16toh(ssi->os_version);
+        ssi->os_type = be16toh(ssi->os_type);
+        ssi->class = be32toh(ssi->class);
+        ssi->property_count = be32toh(ssi->property_count);
+    }
+
+    *count = ssi->property_count;
+
+    *info = (cdf_property_info_t *)malloc(ssi->property_count * sizeof(cdf_property_info_t));
+    if (!*info) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < ssi->property_count; i++) {
+        if (fread(&(*info)[i], sizeof(cdf_property_info_t), 1, sst->file) != 1) {
+            free(*info);
+            *info = NULL;
+            return -1;
+        }
+
+        if (h->byte_order == CDF_BYTE_ORDER_LITTLE_ENDIAN) {
+            (*info)[i].id = le16toh((*info)[i].id);
+            (*info)[i].type = le16toh((*info)[i].type);
+            (*info)[i].size = le32toh((*info)[i].size);
+        } else {
+            (*info)[i].id = be16toh((*info)[i].id);
+            (*info)[i].type = be16toh((*info)[i].type);
+            (*info)[i].size = be32toh((*info)[i].size);
+        }
+    }
+
+    return 0;
+}

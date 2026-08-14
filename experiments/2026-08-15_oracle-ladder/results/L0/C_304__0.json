@@ -1,0 +1,48 @@
+{
+  "case_id": "C_304__0",
+  "sample_id": "D/C/304",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-3135",
+  "cve_summary": "Integer overflow in the xt_alloc_table_info function in net/netfilter/x_tables.c in the Linux kernel through 4.5.2 on 32-bit platforms allows local users to gain privileges or cause a denial of service (heap memory corruption) via an IPT_SO_SET_REPLACE setsockopt call.",
+  "changed_file": "net/netfilter/x_tables.c",
+  "docstring": "Summary: Allocates and initializes a new `xt_table_info` structure with a specified size.\n\nParameters: \n- size (unsigned int): The size of the table to allocate.\n\nReturns: \n- struct xt_table_info*: A pointer to the allocated and initialized `xt_table_info` structure, or NULL if allocation fails.\n\nLogic: The function calculates the total size required for the `xt_table_info` structure. It ensures that the requested size does not exceed available memory pages. If the size is manageable, it attempts to allocate memory using `kmalloc` first; if that fails, it falls back to `vmalloc`. The allocated memory is then zeroed out, and the size is set in the structure before returning the pointer.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct xt_table_info *xt_alloc_table_info(unsigned int size)\r\n{\r\n\tstruct xt_table_info *info = NULL;\r\n\tsize_t sz = sizeof(*info) + size;\r\n\r\n\tif (sz < sizeof(*info))\r\n\t\treturn NULL;\r\n\r\n\t/* Pedantry: prevent them from hitting BUG() in vmalloc.c --RR */\r\n\tif ((SMP_ALIGN(size) >> PAGE_SHIFT) + 2 > totalram_pages)\r\n\t\treturn NULL;\r\n\r\n\tif (sz <= (PAGE_SIZE << PAGE_ALLOC_COSTLY_ORDER))\r\n\t\tinfo = kmalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_NORETRY);\r\n\tif (!info) {\r\n\t\tinfo = vmalloc(sz);\r\n\t\tif (!info)\r\n\t\t\treturn NULL;\r\n\t}\r\n\tmemset(info, 0, sizeof(*info));\r\n\tinfo->size = size;\r\n\treturn info;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check `if (sz < sizeof(*info)) return NULL;` which the reference implementation does not have. This check prevents integer overflow by ensuring that the calculated size does not wrap around. The reference implementation lacks this check, which could lead to a potential integer overflow vulnerability if the size is large enough to cause an overflow. This is a security-relevant difference.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. Both perform the same checks, memory allocation, and initialization. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

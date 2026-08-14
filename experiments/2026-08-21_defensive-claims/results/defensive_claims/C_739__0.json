@@ -1,0 +1,162 @@
+{
+  "case_id": "C_739__0",
+  "sample_id": "D/C/739",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-15921",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.6. There is a memory leak issue when idr_alloc() fails in genl_register_family() in net/netlink/genetlink.c.",
+  "changed_file": "net/netlink/genetlink.c",
+  "docstring": "/**\n * Summary: Registers a new generic netlink family.\n * \n * Parameters:\n * family (struct genl_family *): Pointer to the generic netlink family structure to be registered.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function first validates the operations associated with the family. It then locks all generic\n * netlink families and checks if a family with the same name already exists, returning an error if\n * so. Special cases for certain families are handled to ensure proper ID allocation. Memory for\n * attributes is allocated if needed. The family is assigned an ID, and multicast group validation\n * is performed. Events are sent to notify about the new family and its multicast groups. If a step\n * fails, the function returns an error code after releasing the generic netlink family lock.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int register_genl_family(struct genl_family *family) {\n    int err = 0;\n\n    if (!family) {\n        return -EINVAL;\n    }\n\n    if (family->n_ops > GENL_MAX_OPS) {\n        return -EINVAL;\n    }\n\n    for (int i = 0; i < family->n_ops; i++) {\n        if (!family->ops[i].doit && !family->ops[i].dumpit) {\n            return -EINVAL;\n        }\n    }\n\n    if (family->n_attrs > GENL_MAX_ATTRS) {\n        return -EINVAL;\n    }\n\n    if (family->maxattr && family->n_attrs == 0) {\n        return -EINVAL;\n    }\n\n    if (family->name[GENL_NAMSZ - 1] != '\\0') {\n        return -EINVAL;\n    }\n\n    if (family->id != GENL_ID_GENERATE && family->id >= GENL_ID_MIN && family->id < GENL_ID_MAX) {\n        return -EINVAL;\n    }\n\n    if (family->id == GENL_ID_GENERATE) {\n        family->id = genl_get_unique_id();\n    }\n\n    if (family->id < 0) {\n        return family->id;\n    }\n\n    for (int i = 0; i < family->n_multicast_groups; i++) {\n        if (family->mcgrps[i].name[GENL_NAMSZ - 1] != '\\0') {\n            return -EINVAL;\n        }\n\n        if (family->mcgrps[i].id != GENL_ID_GENERATE && family->mcgrps[i].id >= GENL_ID_MIN && family->mcgrps[i].id < GENL_ID_MAX) {\n            return -EINVAL;\n        }\n\n        if (family->mcgrps[i].id == GENL_ID_GENERATE) {\n            family->mcgrps[i].id = genl_get_unique_id();\n        }\n\n        if (family->mcgrps[i].id < 0) {\n            return family->mcgrps[i].id;\n        }\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null family pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate number of operations",
+      "protects_against": "exceeding maximum allowed operations"
+    },
+    {
+      "step": "validate each operation",
+      "protects_against": "invalid operation structure with both doit and dumpit being null"
+    },
+    {
+      "step": "validate number of attributes",
+      "protects_against": "exceeding maximum allowed attributes"
+    },
+    {
+      "step": "validate family name",
+      "protects_against": "malformed family name with no null terminator"
+    },
+    {
+      "step": "validate family ID",
+      "protects_against": "invalid or already used family ID"
+    },
+    {
+      "step": "validate multicast groups",
+      "protects_against": "malformed multicast group names and invalid IDs"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 16,
+    "n_omits": 3,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null family pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the family pointer is null before dereferencing it. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate number of operations — protects against: exceeding maximum allowed operations",
+        "reasoning": "The implementation calls genl_validate_ops(family), which is expected to validate the number of operations. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate each operation — protects against: invalid operation structure with both doit and dumpit being null",
+        "reasoning": "The implementation calls genl_validate_ops(family), which is expected to validate each operation. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate number of attributes — protects against: exceeding maximum allowed attributes",
+        "reasoning": "The implementation does not explicitly validate the number of attributes. It only allocates memory for attributes if family->maxattr is non-zero. There is no check for exceeding a maximum allowed number of attributes.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate family name — protects against: malformed family name with no null terminator",
+        "reasoning": "The implementation uses family->name in a string comparison (e.g., strcmp), which assumes the name is null-terminated. There is no explicit validation that the family name is null-terminated.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate family ID — protects against: invalid or already used family ID",
+        "reasoning": "The implementation checks if a family with the same name already exists before assigning an ID. It also uses idr_alloc to assign an ID, which ensures uniqueness. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate multicast groups — protects against: malformed multicast group names and invalid IDs",
+        "reasoning": "The implementation calls genl_validate_assign_mc_groups(family), which is expected to validate multicast groups. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 18,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null family pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check if the family pointer is null before using it. This could lead to a null pointer dereference if family is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate number of operations — protects against: exceeding maximum allowed operations",
+        "reasoning": "The implementation calls genl_validate_ops(family), which is expected to validate the number of operations. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate each operation — protects against: invalid operation structure with both doit and dumpit being null",
+        "reasoning": "The implementation calls genl_validate_ops(family), which is expected to validate each operation. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate number of attributes — protects against: exceeding maximum allowed attributes",
+        "reasoning": "The implementation does not explicitly validate the number of attributes. It uses family->maxattr directly without bounds checking.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate family name — protects against: malformed family name with no null terminator",
+        "reasoning": "The implementation uses family->name directly in string operations (e.g., strcmp), which assumes it is null-terminated. There is no explicit validation of the family name.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate family ID — protects against: invalid or already used family ID",
+        "reasoning": "The implementation checks for an existing family with the same name before assigning an ID, but it does not explicitly validate the family ID itself. It uses idr_alloc to assign an ID, which should handle uniqueness.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate multicast groups — protects against: malformed multicast group names and invalid IDs",
+        "reasoning": "The implementation calls genl_validate_assign_mc_groups(family), which is expected to validate the multicast groups. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

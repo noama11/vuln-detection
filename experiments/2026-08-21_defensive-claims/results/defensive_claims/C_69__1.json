@@ -1,0 +1,130 @@
+{
+  "case_id": "C_69__1",
+  "sample_id": "D/C/69",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3235",
+  "cve_summary": "net/tipc/socket.c in the Linux kernel before 3.9-rc7 does not initialize a certain data structure and a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/tipc/socket.c",
+  "docstring": "Summary:  \nReceives a message from a socket, handling various states and conditions, including timeouts and message validity.\n\nParameters:  \niocb (struct kiocb*): The I/O control block associated with the operation.  \nsock (struct socket*): The socket from which to receive the message.  \nm (struct msghdr*): The message header to populate with received data.  \nbuf_len (size_t): The length of the buffer for the message data.  \nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns:  \nint: The number of bytes received, or a negative error code indicating failure.\n\nLogic:  \nThe function first checks for invalid requests and locks the socket. It handles various socket states, waits for messages if the receive queue is empty, and processes the first message in the queue. It captures the sender's address and ancillary data, then copies the message data to the provided buffer, adjusting for size constraints. If the message is empty or errored, it handles those cases accordingly. Finally, it updates the socket state and releases the lock before returning the result.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_message(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {\n    int result = 0;\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    size_t copied = 0;\n\n    if (!sk || !m) {\n        return -EINVAL;\n    }\n\n    if (sk->sk_state == TCP_CLOSE) {\n        return -ENOTCONN;\n    }\n\n    if (flags & MSG_DONTWAIT && skb_queue_empty(&sk->sk_receive_queue)) {\n        return -EAGAIN;\n    }\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    if (skb->len > 0) {\n        size_t copy_len = skb->len;\n        if (copy_len > buf_len) {\n            copy_len = buf_len;\n        }\n\n        if (copy_len > 0) {\n            result = skb_copy_datagram_msg(skb, 0, m, copy_len);\n            if (result < 0) {\n                skb_queue_head(&sk->sk_receive_queue, skb);\n                return result;\n            }\n            copied = copy_len;\n        }\n\n        if (skb->len > copy_len) {\n            skb_pull(skb, copy_len);\n            skb_queue_head(&sk->sk_receive_queue, skb);\n        } else {\n            kfree_skb(skb);\n        }\n    } else {\n        kfree_skb(skb);\n    }\n\n    return copied ? (int)copied : -ENODATA;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check socket state",
+      "protects_against": "attempting to receive on a closed socket"
+    },
+    {
+      "step": "bound copy length to buffer capacity",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "handle partial message copying",
+      "protects_against": "copying more data than the buffer can hold"
+    },
+    {
+      "step": "return appropriate error codes",
+      "protects_against": "incorrect assumptions about function success"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the parameters. However, the function is called with parameters passed from a higher-level context, and it is assumed that the caller ensures these are valid. There is no explicit null check for iocb, sock, m, or other pointers.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check socket state — protects against: attempting to receive on a closed socket",
+        "reasoning": "The implementation checks if the socket is in the SS_UNCONNECTED state and returns -ENOTCONN in that case. It also checks for SS_DISCONNECTING during the wait for a message. These checks ensure the socket is in a valid state for receiving.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to buffer capacity — protects against: buffer overflow",
+        "reasoning": "The implementation checks if the buffer length is less than the message size and truncates the copy to the buffer length, setting the MSG_TRUNC flag. This ensures the copy does not exceed the buffer capacity.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle partial message copying — protects against: copying more data than the buffer can hold",
+        "reasoning": "The implementation handles partial copying by truncating the message to the buffer length and setting the MSG_TRUNC flag. This ensures that only the available buffer space is used.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "return appropriate error codes — protects against: incorrect assumptions about function success",
+        "reasoning": "The implementation returns various error codes such as -EINVAL, -ENOTCONN, -EWOULDBLOCK, and -ECONNRESET depending on the situation. These codes correctly indicate the failure conditions.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 3,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform any null pointer checks for the parameters passed to the function.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check socket state — protects against: attempting to receive on a closed socket",
+        "reasoning": "The implementation checks if the socket is in the SS_UNCONNECTED state and returns -ENOTCONN in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to buffer capacity — protects against: buffer overflow",
+        "reasoning": "The implementation does not perform any copy operations or bounds checking on the buffer length.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "handle partial message copying — protects against: copying more data than the buffer can hold",
+        "reasoning": "The implementation does not perform any message copying or partial handling logic.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "return appropriate error codes — protects against: incorrect assumptions about function success",
+        "reasoning": "The implementation returns -ENOTCONN in the case of an unconnected socket, which is an appropriate error code for that condition.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

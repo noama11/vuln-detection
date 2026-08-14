@@ -1,0 +1,146 @@
+{
+  "case_id": "C_714__0",
+  "sample_id": "D/C/714",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "kohler/gifsicle",
+  "cve_id": "CVE-2017-18120",
+  "cve_summary": "A double-free bug in the read_gif function in gifread.c in gifsicle 1.90 allows a remote attacker to cause a denial-of-service attack or unspecified other impact via a maliciously crafted file, because last_name is mishandled, a different vulnerability than CVE-2017-1000421.",
+  "changed_file": "src/gifread.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads a GIF file stream and processes its contents, including images and  \n * extensions, while handling errors and managing memory.  \n *  \n * Parameters:  \n * grr (Gif_Reader*): Pointer to the GIF reader structure.  \n * read_flags (int): Flags controlling the reading behavior.  \n * landmark (const char*): A string representing a landmark for the GIF stream.  \n * handler (Gif_ReadErrorHandler): Function pointer for handling read errors.  \n *  \n * Returns:  \n * Gif_Stream*: Pointer to the created GIF stream structure or NULL on failure.  \n *  \n * Logic:  \n * The function begins by validating the GIF signature, then initializes  \n * necessary structures for reading the GIF data. It processes image blocks,  \n * extensions, and terminators while managing memory for images and error  \n * handling. Finally, it cleans up and returns the GIF stream or NULL if  \n * an error occurred during processing.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "Gif_Stream* read_gif_stream(Gif_Reader* grr, int read_flags, const char* landmark, Gif_ReadErrorHandler handler) {\n    if (!grr || !landmark || !handler) {\n        return NULL;\n    }\n\n    Gif_Stream* stream = (Gif_Stream*)malloc(sizeof(Gif_Stream));\n    if (!stream) {\n        handler(\"Memory allocation for GIF stream failed.\", landmark);\n        return NULL;\n    }\n\n    // Validate GIF signature\n    if (strncmp(grr->signature, \"GIF\", 3) != 0) {\n        handler(\"Invalid GIF signature.\", landmark);\n        free(stream);\n        return NULL;\n    }\n\n    // Initialize stream\n    stream->images = NULL;\n    stream->image_count = 0;\n    stream->extensions = NULL;\n    stream->extension_count = 0;\n\n    // Process image blocks\n    while (grr->position < grr->length) {\n        char block_type = grr->data[grr->position++];\n\n        if (block_type == 0x2C) {\n            // Image block\n            if (!process_gif_image(grr, stream, read_flags, handler)) {\n                cleanup_gif_stream(stream);\n                return NULL;\n            }\n        } else if (block_type == 0x21) {\n            // Extension block\n            if (!process_gif_extension(grr, stream, read_flags, handler)) {\n                cleanup_gif_stream(stream);\n                return NULL;\n            }\n        } else if (block_type == 0x3B) {\n            // GIF terminator\n            break;\n        } else {\n            handler(\"Unknown GIF block type.\", landmark);\n            cleanup_gif_stream(stream);\n            return NULL;\n        }\n    }\n\n    if (stream->image_count == 0) {\n        handler(\"No images found in GIF stream.\", landmark);\n        cleanup_gif_stream(stream);\n        return NULL;\n    }\n\n    return stream;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate gif signature",
+      "protects_against": "invalid or malformed gif file"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "clean up allocated memory on error",
+      "protects_against": "memory leak"
+    },
+    {
+      "step": "validate block type",
+      "protects_against": "invalid or unexpected block type"
+    },
+    {
+      "step": "check for at least one image in the stream",
+      "protects_against": "empty gif stream"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (e.g., `grr`, `handler`, `landmark`). However, the function uses `grr` immediately (via `gifgetc(grr)`), which would dereference a null pointer if `grr` is null. There is no explicit null check for `grr` or other parameters.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate gif signature — protects against: invalid or malformed gif file",
+        "reasoning": "The implementation checks the first three bytes of the GIF stream to ensure they are 'G', 'I', 'F'. This is a direct validation of the GIF signature.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks if `gfs`, `gfi`, `gfc.prefix`, `gfc.suffix`, and `gfc.length` are non-null after allocation. If any of these are null, the function jumps to the `done` cleanup label.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation performs cleanup of allocated memory (`Gif_DeleteImage`, `Gif_DeleteArray`) in the `done` label, regardless of whether an error occurred or not. This ensures that any allocated memory is freed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate block type — protects against: invalid or unexpected block type",
+        "reasoning": "The implementation handles different block types (e.g., image, extension, terminator) and logs an error for unknown block types. It uses a switch statement to handle known block types and logs an error for unknown ones.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for at least one image in the stream — protects against: empty gif stream",
+        "reasoning": "The implementation does not explicitly check whether at least one image was added to the stream. It processes the stream and adds images as they are encountered, but there is no check to ensure that at least one image was added before returning the stream.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters (e.g., `grr`, `handler`, `landmark`). However, the function uses these pointers directly (e.g., `grr` for `gifgetc`) without validation. If any of these were null, a null pointer dereference could occur.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate gif signature — protects against: invalid or malformed gif file",
+        "reasoning": "The implementation checks for the GIF signature by reading the first three bytes and comparing them to 'G', 'I', 'F'. If any of these bytes do not match, the function returns 0, which indicates the signature is invalid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks if `gfs`, `gfi`, `gfc.prefix`, `gfc.suffix`, and `gfc.length` are non-null after allocation. If any of these allocations fail, the function jumps to the `done` label for cleanup and returns `gfs`, which may be null.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated memory on error — protects against: memory leak",
+        "reasoning": "The implementation performs cleanup of allocated memory in the `done` label, including calling `Gif_DeleteImage`, `Gif_DeleteArray`, and setting pointers to 0. This ensures that any allocated memory is freed before returning.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate block type — protects against: invalid or unexpected block type",
+        "reasoning": "The implementation handles different block types (e.g., image, extension, terminator) in a switch statement. If an unknown block type is encountered, it logs an error and sets a flag to prevent further logging. This ensures that unexpected block types are not processed in an unsafe way.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for at least one image in the stream — protects against: empty gif stream",
+        "reasoning": "The implementation does not explicitly check for at least one image in the stream. It processes image blocks as they are encountered, but if no image blocks are present, the function will still return a `gfs` structure (possibly with no images).",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

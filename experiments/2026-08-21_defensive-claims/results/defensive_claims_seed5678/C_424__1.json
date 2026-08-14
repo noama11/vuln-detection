@@ -1,0 +1,114 @@
+{
+  "case_id": "C_424__1",
+  "sample_id": "D/C/424",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-11450",
+  "cve_summary": "coders/jpeg.c in ImageMagick before 7.0.6-1 allows remote attackers to cause a denial of service (application crash) or possibly have unspecified other impact via JPEG data that is too short.",
+  "changed_file": "coders/jpeg.c",
+  "docstring": "Summary: RegisterJPEGImage() adds support for the JPEG image format to the list of supported formats in the application.\n\nParameters: N/A\n\nReturns: size_t: the size of the registered JPEG image format.\n\nLogic: The function initializes a static description for the JPEG format and retrieves the JPEG library version. It sets up multiple entries for different JPEG-related identifiers (e.g., \"JPE\", \"JPEG\", \"JPG\", \"JPS\", \"PJPEG\") using the SetMagickInfo function. Each entry is configured with properties such as decoder and encoder functions, thread support, and MIME type. The function also ensures that the version information is included if available. Finally, it registers each entry with RegisterMagickInfo, allowing the application to recognize and handle JPEG images appropriately.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <stdlib.h>\n\n#include \"magick.h\"\n\nsize_t RegisterJPEGImage(void) {\n  static const char *jpeg_version = \"6b\";\n  static MagickInfo *magick_info = NULL;\n  static const char *jpeg_mime_type = \"image/jpeg\";\n  static const char *jpeg_extensions[] = {\"JPE\", \"JPEG\", \"JPG\", \"JPS\", \"PJPEG\"};\n  size_t count = sizeof(jpeg_extensions) / sizeof(jpeg_extensions[0]);\n\n  magick_info = (MagickInfo *) AcquireMagickMemory(sizeof(*magick_info));\n  if (!magick_info)\n    return 0;\n\n  (void) memset(magick_info, 0, sizeof(*magick_info));\n  magick_info->decoder = JPEGDecoder;\n  magick_info->encoder = JPEGEncoder;\n  magick_info->thread_support = MagickTrue;\n  magick_info->mime_type = (char *) AcquireString(jpeg_mime_type);\n\n  for (size_t i = 0; i < count; ++i) {\n    MagickInfo *entry = (MagickInfo *) AcquireMagickMemory(sizeof(*entry));\n    if (!entry) {\n      for (size_t j = 0; j < i; ++j)\n        RelinquishMagickMemory(entry);\n      RelinquishMagickMemory(magick_info);\n      return 0;\n    }\n\n    (void) memset(entry, 0, sizeof(*entry));\n    entry->decoder = magick_info->decoder;\n    entry->encoder = magick_info->encoder;\n    entry->thread_support = magick_info->thread_support;\n    entry->mime_type = (char *) AcquireString(magick_info->mime_type);\n\n    char *identifier = (char *) AcquireString(jpeg_extensions[i]);\n    if (!identifier) {\n      RelinquishMagickMemory(entry);\n      continue;\n    }\n\n    entry->name = identifier;\n\n    if (!SetMagickInfo(entry)) {\n      RelinquishMagickMemory(entry);\n      RelinquishMagickMemory(identifier);\n      continue;\n    }\n\n    if (!RegisterMagickInfo(entry)) {\n      RelinquishMagickMemory(entry);\n      RelinquishMagickMemory(identifier);\n      continue;\n    }\n  }\n\n  RelinquishMagickMemory(magick_info->mime_type);\n  RelinquishMagickMemory(magick_info);\n\n  return count;\n}",
+  "defensive_steps": [
+    {
+      "step": "check memory allocation result",
+      "protects_against": "memory allocation failure when acquiring memory for MagickInfo"
+    },
+    {
+      "step": "check memory allocation result for each entry",
+      "protects_against": "memory allocation failure when creating new MagickInfo entries"
+    },
+    {
+      "step": "clean up partially allocated resources on failure",
+      "protects_against": "memory leaks if any allocation or registration step fails"
+    },
+    {
+      "step": "check string allocation result",
+      "protects_against": "memory allocation failure when creating string identifiers"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 25,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure when acquiring memory for MagickInfo",
+        "reasoning": "The implementation uses `SetMagickInfo`, but there is no check for whether `entry` is NULL after this call. If `SetMagickInfo` fails and returns NULL, the code proceeds to dereference `entry`, which would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check memory allocation result for each entry — protects against: memory allocation failure when creating new MagickInfo entries",
+        "reasoning": "The implementation repeatedly calls `SetMagickInfo` to create new entries, but does not check whether each call succeeds. If any of these calls fail and return NULL, the code proceeds to dereference the NULL pointer, which would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "clean up partially allocated resources on failure — protects against: memory leaks if any allocation or registration step fails",
+        "reasoning": "The implementation does not perform any checks for allocation failures, so it is unclear whether any cleanup is needed. However, since the implementation does not check for allocation failures at all, there is no indication that it performs cleanup in the case of failure.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check string allocation result — protects against: memory allocation failure when creating string identifiers",
+        "reasoning": "The implementation uses `ConstantString` to create string identifiers, but there is no check for whether these calls succeed. If `ConstantString` fails and returns NULL, the code proceeds to assign these NULL pointers to fields of `entry`, which could lead to undefined behavior later.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 21,
+    "n_omits": 3,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check memory allocation result — protects against: memory allocation failure when acquiring memory for MagickInfo",
+        "reasoning": "The implementation uses `SetMagickInfo`, but there is no check for whether `entry` is NULL after the call. This means if `SetMagickInfo` fails, the code proceeds to dereference a NULL pointer, which is undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check memory allocation result for each entry — protects against: memory allocation failure when creating new MagickInfo entries",
+        "reasoning": "The implementation uses `SetMagickInfo` multiple times to create new entries, but there is no check for whether `entry` is NULL after each call. This means if any `SetMagickInfo` call fails, the code proceeds to dereference a NULL pointer, which is undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "clean up partially allocated resources on failure — protects against: memory leaks if any allocation or registration step fails",
+        "reasoning": "The implementation does not perform any checks for allocation failures, so it never reaches a failure path that would require cleanup. Without any checks, there is no opportunity to clean up partially allocated resources.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check string allocation result — protects against: memory allocation failure when creating string identifiers",
+        "reasoning": "The implementation uses `ConstantString` to create string identifiers, but there is no check for whether these calls return NULL. If `ConstantString` fails, the code proceeds to use the NULL pointer, which is undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

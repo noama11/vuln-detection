@@ -1,0 +1,91 @@
+bool stratum_subscribe(struct pool *pool) {
+    CURL *curl;
+    CURLcode res;
+    struct curl_slist *headers = NULL;
+    long http_code;
+    char *json_response = NULL;
+    bool success = false;
+
+    if (!pool || !pool->url)
+        return false;
+
+    curl = curl_easy_init();
+    if (!curl)
+        return false;
+
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    if (!headers) {
+        curl_easy_cleanup(curl);
+        return false;
+    }
+
+    json_t *json_request = json_object();
+    if (!json_request) {
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        return false;
+    }
+
+    json_object_set_new(json_request, "jsonrpc", json_string("2.0"));
+    json_object_set_new(json_request, "method", json_string("mining.subscribe"));
+    json_object_set_new(json_request, "params", json_array());
+    json_object_set_new(json_request, "id", json_integer(1));
+
+    char *request_str = json_dumps(json_request, JSON_COMPACT);
+    json_decref(json_request);
+
+    if (!request_str) {
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        return false;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, pool->url);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_str);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json_response);
+
+    res = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    if (res == CURLE_OK && http_code == 200 && json_response) {
+        json_t *response = json_loads(json_response, 0, NULL);
+        if (response) {
+            json_t *result = json_object_get(response, "result");
+            if (json_is_array(result) && json_array_size(result) >= 2) {
+                json_t *session_id = json_array_get(result, 0);
+                json_t *nonce = json_array_get(result, 1);
+
+                if (json_is_string(session_id) && json_is_string(nonce)) {
+                    const char *session_id_str = json_string_value(session_id);
+                    const char *nonce_str = json_string_value(nonce);
+
+                    pool->session_id = strdup(session_id_str);
+                    pool->nonce = strdup(nonce_str);
+
+                    success = true;
+                }
+            }
+            json_decref(response);
+        }
+    }
+
+    free(request_str);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (success) {
+        applog(LOG_INFO, "Stratum session initiated. Session ID: %s, Nonce: %s", pool->session_id, pool->nonce);
+    } else {
+        if (pool->session_id) {
+            applog(LOG_INFO, "Retrying Stratum subscription with existing session ID.");
+            success = stratum_subscribe(pool);
+        } else {
+            applog(LOG_ERR, "Failed to initiate Stratum session.");
+        }
+    }
+
+    return success;
+}

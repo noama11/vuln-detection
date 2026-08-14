@@ -1,0 +1,27 @@
+{
+  "case_id": "C_168__0",
+  "implementation": "#include <stdio.h>\n#include <ctype.h>\n\n#define MAX_WORD_SIZE 1024\n\nint process_escape_sequence(FILE *input, char *word, size_t *word_index) {\n    int c = fgetc(input);\n    int escape_active = 0;\n    int octal_value = 0;\n    int hex_value = 0;\n    int digits_read = 0;\n\n    if (c == EOF) {\n        return EOF;\n    }\n\n    if (c == '\\\\') {\n        escape_active = 1;\n        c = fgetc(input);\n        if (c == EOF) {\n            return EOF;\n        }\n    }\n\n    if (escape_active) {\n        if (c == '\\n') {\n            c = fgetc(input);\n            if (c == EOF) {\n                return EOF;\n            }\n        } else if (c == 'a') {\n            c = '\\a';\n        } else if (c == 'b') {\n            c = '\\b';\n        } else if (c == 'f') {\n            c = '\\f';\n        } else if (c == 'n') {\n            c = '\\n';\n        } else if (c == 'r') {\n            c = '\\r';\n        } else if (c == 't') {\n            c = '\\t';\n        } else if (c == 'v') {\n            c = '\\v';\n        } else if (c == '0' || c == '1' || c == '2' || c == '3') {\n            /* Octal escape sequence */\n            while (digits_read < 3 && isdigit(c)) {\n                octal_value = octal_value * 8 + (c - '0');\n                c = fgetc(input);\n                digits_read++;\n            }\n            c = octal_value;\n        } else if (c == 'x') {\n            /* Hexadecimal escape sequence */\n            c = fgetc(input);\n            if (c == EOF) {\n                return EOF;\n            }\n\n            while (isxdigit(c)) {\n                if (isdigit(c)) {\n                    hex_value = hex_value * 16 + (c - '0');\n                } else {\n                    char lower = tolower(c);\n                    hex_value = hex_value * 16 + (lower - 'a' + 10);\n                }\n                c = fgetc(input);\n            }\n\n            if (c != EOF) {\n                ungetc(c, input);\n            }\n            c = hex_value;\n        } else {\n            /* Unrecognized escape character, treat as literal */\n            /* Read next character without storing it */\n            c = fgetc(input);\n            if (c == EOF) {\n                return EOF;\n            }\n        }\n    }\n\n    if (*word_index < MAX_WORD_SIZE - 1) {\n        word[(*word_index)++] = c;\n    }\n\n    return c;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for EOF after each read",
+      "protects_against": "unexpected end of input stream"
+    },
+    {
+      "step": "bound word index to MAX_WORD_SIZE",
+      "protects_against": "buffer overflow when storing characters in the word array"
+    },
+    {
+      "step": "validate digit count in octal escape sequences",
+      "protects_against": "reading an excessive number of digits that could cause overflow"
+    },
+    {
+      "step": "use ungetc to return unused characters to input stream",
+      "protects_against": "losing characters that should be processed later"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

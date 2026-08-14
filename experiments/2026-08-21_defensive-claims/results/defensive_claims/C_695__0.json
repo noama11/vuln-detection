@@ -1,0 +1,98 @@
+{
+  "case_id": "C_695__0",
+  "sample_id": "D/C/695",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "curl/curl",
+  "cve_id": "CVE-2018-0500",
+  "cve_summary": "Curl_smtp_escape_eob in lib/smtp.c in curl 7.54.1 to and including curl 7.60.0 has a heap-based buffer overflow that might be exploitable by an attacker who can control the data that curl transmits over SMTP with certain settings (i.e., use of a nonstandard --limit-rate argument or CURLOPT_BUFFERSIZE value).",
+  "changed_file": "lib/smtp.c",
+  "docstring": "/**\n * Summary: \n * Escapes end-of-body (EOB) markers in an SMTP payload to prevent premature termination of data transmission.\n * \n * Parameters: \n * conn (struct connectdata *): Connection data structure containing SMTP session information.\n * nread (ssize_t): Number of bytes read from the upload buffer.\n * \n * Returns: \n * CURLcode: Returns CURLE_OK on success, or CURLE_OUT_OF_MEMORY if memory allocation fails.\n * \n * Logic: \n * The function checks for the presence of CRLF sequences in the payload and replaces them with the appropriate EOB markers as per RFC-5321. It manages memory for a scratch buffer to hold modified data and ensures that the correct amount of data is uploaded. If any replacements are made, it updates the upload buffer and frees any previously allocated memory. The function also tracks whether a trailing CRLF is present to handle the EOB correctly.\n */",
+  "heuristic_leakage_flag": true,
+  "generated_code": "CURLcode escape_eob_markers(struct connectdata *conn, ssize_t nread) {\n  char *scratch = NULL;\n  size_t scratch_len = 0;\n  size_t i = 0, j = 0;\n  bool trailing_crlf = FALSE;\n\n  if (nread <= 0) {\n    return CURLE_OK;\n  }\n\n  scratch = malloc(nread * 2 + 1);\n  if (!scratch) {\n    return CURLE_OUT_OF_MEMORY;\n  }\n\n  for (i = 0; i < (size_t)nread; i++) {\n    if (i + 1 < (size_t)nread && conn->uploadbuf[i] == '\\r' && conn->uploadbuf[i + 1] == '\\n') {\n      scratch[j++] = '\\r';\n      scratch[j++] = '\\n';\n      scratch[j++] = '.';\n      i++;\n      trailing_crlf = TRUE;\n    } else {\n      scratch[j++] = conn->uploadbuf[i];\n    }\n  }\n\n  if (trailing_crlf) {\n    scratch[j++] = '.';\n  }\n\n  if (conn->scratch_buffer) {\n    free(conn->scratch_buffer);\n  }\n\n  conn->scratch_buffer = scratch;\n  conn->scratch_len = j;\n\n  return CURLE_OK;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for non-positive nread",
+      "protects_against": "invalid or negative read size"
+    },
+    {
+      "step": "validate memory allocation for scratch buffer",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "bound index operations to nread",
+      "protects_against": "buffer overflow when accessing uploadbuf"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for non-positive nread — protects against: invalid or negative read size",
+        "reasoning": "The implementation uses `nread` in a loop (`for(i = 0, si = 0; i < nread; i++)`) but does not explicitly check if `nread` is non-positive. However, the loop will not execute if `nread <= 0`, which implicitly avoids processing invalid or negative read sizes. This is not a direct check, but the code avoids processing invalid values by loop logic.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate memory allocation for scratch buffer — protects against: out of memory condition",
+        "reasoning": "The implementation explicitly checks if `malloc` returns `NULL` for the scratch buffer (`if(!newscratch)`), and returns `CURLE_OUT_OF_MEMORY` in that case. This directly validates the memory allocation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound index operations to nread — protects against: buffer overflow when accessing uploadbuf",
+        "reasoning": "The implementation uses a loop that iterates over `i` from `0` to `nread - 1` (`for(i = 0, si = 0; i < nread; i++)`). This ensures that all index operations into `data->req.upload_fromhere` are bounded by `nread`, preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for non-positive nread — protects against: invalid or negative read size",
+        "reasoning": "The implementation does not explicitly check for non-positive nread. However, the code includes a DEBUGASSERT(UPLOAD_BUFSIZE >= nread) which may imply nread is expected to be non-negative, but this is not a runtime check and does not prevent invalid or negative values from being processed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate memory allocation for scratch buffer — protects against: out of memory condition",
+        "reasoning": "The implementation performs a check for the result of the malloc call. If the allocation fails, it logs an error and returns CURLE_OUT_OF_MEMORY, which is the correct defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound index operations to nread — protects against: buffer overflow when accessing uploadbuf",
+        "reasoning": "The implementation uses a loop that iterates from i = 0 to i < nread, ensuring that index operations are bounded by nread. This prevents buffer overflow when accessing data->req.upload_fromhere.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

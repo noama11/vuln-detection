@@ -1,0 +1,55 @@
+{
+  "case_id": "C_141__1",
+  "sample_id": "D/C/141",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Decrypts data using a specified cryptographic key and updates the output buffer.  \n *  \n * Parameters:  \n * secret (struct ceph_crypto_key *): Pointer to the cryptographic key used for decryption.  \n * p (void **): Pointer to the input data buffer to be decrypted.  \n * end (void *): Pointer to the end of the input data buffer.  \n * obuf (void **): Pointer to the output buffer where decrypted data will be stored.  \n * olen (size_t): Size of the output buffer.  \n *  \n * Returns:  \n * int: The size of the decrypted data on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function first decodes the length of the data to be decrypted and checks whether the data is\n * within bounds. It then performs the decryption and verifies the integrity of the decrypted data\n * by checking its version and magic number. Finally, it updates the input pointer and returns the\n * size of the decrypted data or an error code if any checks fail.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int decrypt_data(struct ceph_crypto_key *secret, void **p, void *end, void **obuf, size_t olen) {\n    size_t len;\n    char *data;\n    int ret;\n\n    if ((char *)*p + sizeof(len) > (char *)end) {\n        return -EINVAL;\n    }\n\n    memcpy(&len, *p, sizeof(len));\n    *p += sizeof(len);\n\n    if ((char *)*p + len > (char *)end) {\n        return -EINVAL;\n    }\n\n    data = (char *)malloc(len);\n    if (!data) {\n        return -ENOMEM;\n    }\n\n    memcpy(data, *p, len);\n    *p += len;\n\n    ret = ceph_decrypt(secret, data, len, *obuf, olen);\n    if (ret < 0) {\n        free(data);\n        return ret;\n    }\n\n    if (check_version_and_magic(*obuf)) {\n        free(data);\n        return -EINVAL;\n    }\n\n    *obuf += ret;\n    free(data);\n    return ret;\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "input length bounds check",
+      "input data bounds check",
+      "memory allocation with null check",
+      "memory deallocation"
+    ],
+    "candidate_missing_steps": [
+      "header version and magic check"
+    ],
+    "n_reference_missing": 4,
+    "n_candidate_missing": 1,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check before decrypting data and validates the header's version and magic number. It does not explicitly allocate or free memory. Implementation 2 performs two bounds checks, allocates memory with a null check, and frees it after use. It also validates the output buffer's version and magic number. Implementation 1 lacks explicit memory allocation and deallocation, while implementation 2 lacks a check for the decrypted header's size before using it.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check before decrypting and validates the header's version and magic number. It also checks for memory allocation failure. Implementation 2 performs bounds checks on the length field and data, validates the output buffer, and ensures memory is freed after use. Neither performs a defensive step the other does not, but the mechanisms differ. Both perform similar checks, but the specific constructs differ.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

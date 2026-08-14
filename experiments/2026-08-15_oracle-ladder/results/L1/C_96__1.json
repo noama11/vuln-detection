@@ -1,0 +1,49 @@
+{
+  "case_id": "C_96__1",
+  "sample_id": "D/C/96",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1819",
+  "cve_summary": "The _xfs_buf_find function in fs/xfs/xfs_buf.c in the Linux kernel before 3.7.6 does not validate block numbers, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by leveraging the ability to mount an XFS filesystem containing a metadata inode with an invalid extent map.",
+  "changed_file": "fs/xfs/xfs_buf.c",
+  "docstring": "/**\n * Summary: \n * Finds a buffer in the buffer cache based on the provided block mapping and flags.\n * \n * Parameters:\n * btp (struct xfs_buftarg*): The buffer target containing filesystem information.\n * map (struct xfs_buf_map*): An array of block mappings to search for.\n * nmaps (int): The number of mappings in the array.\n * flags (xfs_buf_flags_t): Flags that modify the behavior of the buffer search.\n * new_bp (xfs_buf_t*): A pointer to a new buffer to insert if no match is found.\n * \n * Returns:\n * xfs_buf_t*: A pointer to the found or newly created buffer, or NULL if not found.\n * \n * Logic:\n * The function calculates the total number of bytes to search for and checks for alignment and\n * corruption. It traverses a red-black tree of buffers to find a matching block number. If a match\n * is found, it handles stale buffers and locks the buffer. If no match is found, it may insert a\n * new buffer into the tree. The function manages reference counting for buffers.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "xfs_buf_t *\n_xfs_buf_find(\n    struct xfs_buftarg    *v3,\n    struct xfs_buf_map    *v8,\n    int            v10,\n    xfs_buf_flags_t        v5,\n    xfs_buf_t        *v9)\n{\n    size_t            v12;\n    struct xfs_perag    *v13;\n    struct rb_node        **v15;\n    struct rb_node        *v14;\n    xfs_buf_t        *v2;\n    xfs_daddr_t        v1 = v8[0].bm_bn;\n    xfs_daddr_t        v4;\n    int            v11 = 0;\n    int            v7;\n    for (v7 = 0; v7 < v10; v7++)\n        v11 += v8[v7].bm_len;\n    v12 = BBTOB(v11);\n    ASSERT(!(v12 < (1 << v3->bt_sshift)));\n    ASSERT(!(BBTOB(v1) & (xfs_off_t)v3->bt_smask));\n    v4 = XFS_FSB_TO_BB(v3->bt_mount, v3->bt_mount->m_sb.sb_dblocks);\n    if (v1 >= v4) {\n        xfs_alert(v3->bt_mount,\n              \"%s: Block out of range: block 0x%llx, EOFS 0x%llx \",\n              __func__, v1, v4);\n        return NULL;\n    }\n    v13 = xfs_perag_get(v3->bt_mount,\n                xfs_daddr_to_agno(v3->bt_mount, v1));\n    spin_lock(&v13->pag_buf_lock);\n    v15 = &v13->pag_buf_tree.rb_node;\n    v14 = NULL;\n    v2 = NULL;\n    while (*v15) {\n        v14 = *v15;\n        v2 = rb_entry(v14, struct xfs_buf, b_rbnode);\n        if (v1 < v2->b_bn)\n            v15 = &(*v15)->rb_left;\n        else if (v1 > v2->b_bn)\n            v15 = &(*v15)->rb_right;\n        else {\n            if (v2->b_length != v11) {\n                ASSERT(v2->b_flags & XBF_STALE);\n                v15 = &(*v15)->rb_right;\n                continue;\n            }\n            atomic_inc(&v2->b_hold);\n            goto v6;\n        }\n    }\n    if (v9) {\n        rb_link_node(&v9->b_rbnode, v14, v15);\n        rb_insert_color(&v9->b_rbnode, &v13->pag_buf_tree);\n        v9->b_pag = v13;\n        spin_unlock(&v13->pag_buf_lock);\n    } else {\n        XFS_STATS_INC(xb_miss_locked);\n        spin_unlock(&v13->pag_buf_lock);\n        xfs_perag_put(v13);\n    }\n    return v9;\nv6:\n    spin_unlock(&v13->pag_buf_lock);\n    xfs_perag_put(v13);\n    if (!xfs_buf_trylock(v2)) {\n        if (v5 & XBF_TRYLOCK) {\n            xfs_buf_rele(v2);\n            XFS_STATS_INC(xb_busy_locked);\n            return NULL;\n        }\n        xfs_buf_lock(v2);\n        XFS_STATS_INC(xb_get_locked_waited);\n    }\n    if (v2->b_flags & XBF_STALE) {\n        ASSERT((v2->b_flags & _XBF_DELWRI_Q) == 0);\n        ASSERT(v2->b_iodone == NULL);\n        v2->b_flags &= _XBF_KMEM | _XBF_PAGES;\n        v2->b_ops = NULL;\n    }\n    trace_xfs_buf_find(v2, v5, _RET_IP_);\n    XFS_STATS_INC(xb_get_locked);\n    return v2;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 15
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both implementations traverse a red-black tree to find a buffer matching the given block number. They handle stale buffers similarly, increment reference counts, and manage locking and unlocking of buffers. The logic for inserting a new buffer and handling the `XBF_TRYLOCK` flag is also the same. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform the same logic: calculating the total number of bytes, checking alignment and block range, traversing a red-black tree to find a matching buffer, handling stale buffers, and managing reference counting and locking. The only differences are in variable names and code formatting, which do not affect observable behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "case_id": "C_893__1",
+  "sample_id": "D/C/893",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2019-13300",
+  "cve_summary": "ImageMagick 7.0.8-50 Q16 has a heap-based buffer overflow at MagickCore/statistic.c in EvaluateImages because of mishandling columns.",
+  "changed_file": "MagickCore/statistic.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates and initializes a set of pixel channel arrays for multithreaded image processing.  \n *  \n * Parameters:  \n * images (const Image *): Pointer to the image structure containing image data.  \n *  \n * Returns:  \n * PixelChannels **: Pointer to an array of pixel channel arrays, or NULL on failure.  \n *  \n * Logic:\n * The function first retrieves the maximum number of threads allowed and allocates memory for an\n * array of pixel channel pointers. It then determines the number of columns to use for the pixel\n * channel arrays. For each thread, it allocates memory for the pixel channels and initializes them\n * to zero. If any allocation fails, it cleans up previously allocated memory and returns NULL.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming the Image structure is defined as:\n// typedef struct {\n//     size_t width;\n//     size_t height;\n//     size_t channels;\n//     unsigned char *data;\n// } Image;\n\n// Function to allocate and initialize pixel channel arrays\nPixelChannels **allocate_pixel_channels(const Image *images) {\n    // Determine the maximum number of threads (example value, can be adjusted)\n    size_t max_threads = 4; // Placeholder, can be dynamically determined\n\n    // Allocate memory for the array of pixel channel pointers\n    PixelChannels **pixel_channels = (PixelChannels **)malloc(max_threads * sizeof(PixelChannels *));\n    if (!pixel_channels) {\n        return NULL; // Allocation failed\n    }\n\n    // Determine the number of columns to use for the pixel channel arrays\n    size_t num_columns = images->width;\n\n    // Allocate memory for each pixel channel array\n    for (size_t i = 0; i < max_threads; ++i) {\n        pixel_channels[i] = (PixelChannels *)calloc(num_columns * images->height * images->channels, sizeof(unsigned char));\n        if (!pixel_channels[i]) {\n            // Clean up previously allocated memory\n            for (size_t j = 0; j < i; ++j) {\n                free(pixel_channels[j]);\n            }\n            free(pixel_channels);\n            return NULL; // Allocation failed\n        }\n    }\n\n    return pixel_channels;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null after memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "clean up previously allocated memory on failure",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if the result of AcquireQuantumMemory is NULL after each allocation and returns NULL if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up previously allocated memory on failure — protects against: memory leaks",
+        "reasoning": "If any allocation for pixels[i] fails, the implementation calls DestroyPixelThreadSet(pixels), which presumably cleans up all previously allocated memory.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if the memory allocation for 'pixels' and 'pixels[i]' returns NULL, and handles the failure by returning NULL or cleaning up with DestroyPixelThreadSet.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up previously allocated memory on failure — protects against: memory leaks",
+        "reasoning": "If any allocation for 'pixels[i]' fails, the implementation calls 'DestroyPixelThreadSet(pixels)', which presumably cleans up all previously allocated memory.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

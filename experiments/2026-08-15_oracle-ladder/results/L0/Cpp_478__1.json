@@ -1,0 +1,48 @@
+{
+  "case_id": "Cpp_478__1",
+  "sample_id": "D/C++/478",
+  "func_idx": 1,
+  "language": "cpp",
+  "repo": "antlarr/audiofile",
+  "cve_id": "CVE-2017-6829",
+  "cve_summary": "The decodeSample function in IMA.cpp in Audio File Library (aka audiofile) 0.3.6 allows remote attackers to cause a denial of service (crash) via a crafted file.",
+  "changed_file": "libaudiofile/modules/IMA.cpp",
+  "docstring": "Summary: This function decodes a block of audio data using the ADPCM algorithm.\n\nParameters: \n- encoded (const uint8_t*): Pointer to the encoded audio data.\n- decoded (int16_t*): Pointer to the buffer where decoded audio samples will be stored.\n\nReturns: \n- int: The total number of bytes written to the decoded buffer.\n\nLogic: The function first retrieves the number of audio channels from the track. It then iterates over each channel, initializing the ADPCM state and extracting the predictor and index from the encoded data. For each frame in the packet, it decodes two samples using the `decodeSample` function and stores them in the decoded buffer. Finally, it returns the total size of the decoded audio data in bytes.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tadpcmState state;\r\n\t\tint predictor = (encoded[0] << 8) | (encoded[1] & 0x80);\r\n\t\tif (predictor & 0x8000)\r\n\t\t\tpredictor -= 0x10000;\r\n\r\n\t\tstate.previousValue = clamp(predictor, MIN_INT16, MAX_INT16);\r\n\t\tstate.index = clamp(encoded[1] & 0x7f, 0, 88);\r\n\t\tencoded += 2;\r\n\r\n\t\tfor (int n=0; n<m_framesPerPacket; n+=2)\r\n\t\t{\r\n\t\t\tuint8_t e = *encoded;\r\n\t\t\tdecoded[n*channelCount + c] = decodeSample(state, e & 0xf);\r\n\t\t\tdecoded[(n+1)*channelCount + c] = decodeSample(state, e >> 4);\r\n\t\t\tencoded++;\r\n\t\t}\r\n\t}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation clamps the index value using `clamp(encoded[1] & 0x7f, 0, 88)`, while the reference implementation uses `encoded[1] & 0x7f` directly without clamping. This could lead to an out-of-bounds index in the candidate implementation if the value exceeds 88, potentially causing undefined behavior. However, the reference implementation assumes the index is always valid, which may be a security-relevant difference if the index is used in a way that affects memory access or control flow.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate and reference implementations are identical in terms of logic, variable usage, and behavior. They both correctly initialize the ADPCM state, extract the predictor and index, and decode the audio samples in the same manner. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

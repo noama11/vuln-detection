@@ -1,0 +1,58 @@
+{
+  "case_id": "C_795__0",
+  "sample_id": "D/C/795",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "domoticz/domoticz",
+  "cve_id": "CVE-2019-10664",
+  "cve_summary": "Domoticz before 4.10578 allows SQL Injection via the idx parameter in CWebServer::GetFloorplanImage in WebServer.cpp.",
+  "changed_file": "main/WebServer.cpp",
+  "docstring": "Summary: This function retrieves a floorplan image based on a request and sends it back in the reply.\n\nParameters: \n- session (WebEmSession&): The session object associated with the web request.\n- req (const request&): The incoming request containing parameters.\n- rep (reply&): The reply object to which the image will be sent.\n\nReturns: None\n\nLogic: The function first extracts the \"idx\" parameter from the request. If \"idx\" is empty, it exits early. It then queries the database for the image associated with the given ID. If no image is found, it exits. If an image is retrieved, it sets the content of the reply with the image data. The function determines the appropriate file extension based on the first byte of the image data and adds it as an attachment header to the reply.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void send_floorplan_image(WebEmSession& session, const request& req, reply& rep) {\n    const char* idx = request_get_param(req, \"idx\");\n    if (!idx || strlen(idx) == 0) {\n        return;\n    }\n\n    unsigned char* image_data = NULL;\n    size_t image_size = 0;\n\n    if (!db_query_image_by_id(idx, &image_data, &image_size)) {\n        return;\n    }\n\n    if (image_data == NULL || image_size == 0) {\n        free(image_data);\n        return;\n    }\n\n    rep.content = image_data;\n    rep.content_length = image_size;\n\n    char content_type[64] = {0};\n    if (image_data[0] == 0x47) { // 'G' for GIF\n        snprintf(content_type, sizeof(content_type), \"image/gif\");\n    } else if (image_data[0] == 0x89 && image_size > 2 && image_data[1] == 0x50 && image_data[2] == 0x4E && image_data[3] == 0x47) { // PNG signature\n        snprintf(content_type, sizeof(content_type), \"image/png\");\n    } else if (image_data[0] == 0xFF && image_size > 2 && image_data[1] == 0xD8 && image_data[2] == 0xFF) { // JPEG signature\n        snprintf(content_type, sizeof(content_type), \"image/jpeg\");\n    } else {\n        snprintf(content_type, sizeof(content_type), \"application/octet-stream\");\n    }\n\n    reply_set_header(rep, \"Content-Type\", content_type);\n    reply_set_header(rep, \"Content-Disposition\", \"attachment\");\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 4,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null and size check on image data",
+      "multi-byte signature checks for image types",
+      "setting Content-Type header based on signature"
+    ],
+    "candidate_missing_steps": [
+      "bounds check on image data size before accessing first byte"
+    ],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 1,
+    "confidence": "high",
+    "rationale": "Implementation 1 performs a bounds check on the image data size before attempting to access the first byte, which prevents out-of-bounds access. Implementation 2 performs more precise validation of image data using full file signatures (e.g., checking multiple bytes for PNG and JPEG) and sets a proper Content-Type header, which is more robust for MIME validation. Implementation 1 lacks the detailed signature checks and sets a less precise attachment header. Implementation 2 also includes a null check and a size check for the image data, ensuring memory safety when handling the result of the database query.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 7,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "null_check_for_idx",
+      "image_data_and_size_validation",
+      "image_signature_bounds_check"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 only performs a check for an empty 'idx' parameter. Implementation 2 performs additional defensive steps including null checks for 'idx', validation of the image data and size, and bounds checks for the image signature. Implementation 1 omits these steps, leaving it more exposed to invalid or malicious input.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

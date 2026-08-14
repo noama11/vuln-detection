@@ -1,0 +1,80 @@
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <grp.h>
+#include <systemd/sd-bus.h>
+
+enum nss_status {
+    NSS_STATUS_SUCCESS,
+    NSS_STATUS_NOTFOUND,
+    NSS_STATUS_UNAVAIL,
+    NSS_STATUS_TRYAGAIN
+};
+
+enum nss_status get_group_info(const char* name, struct group* gr, char* buffer, size_t buflen, int* errnop) {
+    if (!name || !gr || !buffer || buflen == 0 || !errnop) {
+        *errnop = EINVAL;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    sd_bus* bus = NULL;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* m = NULL;
+    char* machine_name = NULL;
+    char* group_id = NULL;
+    char* members[10];
+    int n_members = 0;
+    size_t offset = 0;
+    int r;
+
+    r = sd_bus_default_system(&bus);
+    if (r < 0) {
+        *errnop = -r;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    r = sd_bus_call_method(
+        bus,
+        "org.freedesktop.machine1",
+        "/org/freedesktop/machine1",
+        "org.freedesktop.machine1.Manager",
+        "MapGroup",
+        &error,
+        &m,
+        "s", name);
+
+    if (r < 0) {
+        *errnop = -r;
+        if (error.name && !strcmp(error.name, "org.freedesktop.machine1.NoSuchGroup")) {
+            return NSS_STATUS_NOTFOUND;
+        }
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    r = sd_bus_message_read(m, "(ssas)", &machine_name, &group_id, members, &n_members);
+    if (r < 0) {
+        *errnop = -r;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    gr->gr_name = buffer + offset;
+    offset += strlen(group_id) + 1;
+    if (offset > buflen) {
+        *errnop = ERANGE;
+        return NSS_STATUS_TRYAGAIN;
+    }
+
+    strcpy(buffer, group_id);
+
+    gr->gr_passwd = "*";
+    gr->gr_gid = atoi(group_id);
+    gr->gr_mem = members;
+    gr->gr_nmem = n_members;
+
+    sd_bus_unref(bus);
+    sd_bus_error_free(&error);
+    sd_bus_message_unref(m);
+
+    *errnop = 0;
+    return NSS_STATUS_SUCCESS;
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_171__0",
+  "sample_id": "D/C/171",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-2673",
+  "cve_summary": "The arch_dup_task_struct function in the Transactional Memory (TM) implementation in arch/powerpc/kernel/process.c in the Linux kernel before 3.13.7 on the powerpc platform does not properly interact with the clone and fork system calls, which allows local users to cause a denial of service (Program Check and system crash) via certain instructions that are executed with the processor in the Transactional state.",
+  "changed_file": "arch/powerpc/kernel/process.c",
+  "docstring": "Summary: This function duplicates a task structure by copying the state from a source task to a destination task while ensuring that various processor states are properly flushed and restored.\n\nParameters: \ndst (struct task_struct *): Pointer to the destination task structure to be populated.  \nsrc (struct task_struct *): Pointer to the source task structure to be duplicated.\n\nReturns: \nint: Returns 0 on successful duplication of the task structure.\n\nLogic: The function first flushes various processor states from the source task to ensure a clean copy. It then prepares the source task state for duplication. Finally, it copies the contents of the source task structure to the destination and clears any specific flags or states in the destination task before returning.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)\r\n{\r\n\tflush_fp_to_thread(src);\r\n\tflush_altivec_to_thread(src);\r\n\tflush_vsx_to_thread(src);\r\n\tflush_spe_to_thread(src);\r\n\t/*\r\n\t * Flush TM state out so we can copy it.  __switch_to_tm() does this\r\n\t * flush but it removes the checkpointed state from the current CPU and\r\n\t * transitions the CPU out of TM mode.  Hence we need to call\r\n\t * tm_recheckpoint_new_task() (on the same task) to restore the\r\n\t * checkpointed state back and the TM mode.\r\n\t */\r\n\t__switch_to_tm(src);\r\n\ttm_recheckpoint_new_task(src);\r\n\r\n\t*dst = *src;\r\n\r\n\tclear_task_ebb(dst);\r\n\r\n\treturn 0;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes two additional calls, __switch_to_tm(src) and tm_recheckpoint_new_task(src), which are not present in the reference implementation. These calls are related to handling the Transactional Memory (TM) state, ensuring that the TM state is flushed and recheckpointed before copying. This difference in behavior could affect the state of the destination task if the TM state is not properly handled, which may be relevant for correctness and security in systems using TM. Therefore, this is a behavioral difference that is security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform the same sequence of operations: they flush various processor states from the source task, handle the TM state, copy the source task structure to the destination, and clear the EBB flag in the destination. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

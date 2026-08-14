@@ -1,0 +1,146 @@
+{
+  "case_id": "C_250__0",
+  "sample_id": "D/C/250",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9576",
+  "cve_summary": "The blk_rq_map_user_iov function in block/blk-map.c in the Linux kernel before 4.8.14 does not properly restrict the type of iterator, which allows local users to read or write to arbitrary kernel memory locations or cause a denial of service (use-after-free) by leveraging access to a /dev/sg device.",
+  "changed_file": "block/blk-map.c",
+  "docstring": "\"\"\"\nSummary: \nMaps user I/O vectors to a request in a block request queue.\n\nParameters: \nq (struct request_queue *): The request queue to which the request belongs.\nrq (struct request *): The request to be mapped.\nmap_data (struct rq_map_data *): Data structure for mapping information.\niter (const struct iov_iter *): The I/O vector iterator containing user data.\ngfp_mask (gfp_t): Allocation flags for memory allocation.\n\nReturns: \nint: Returns 0 on success, or -EINVAL if mapping fails.\n\nLogic: The function determines if a copy of the data is necessary based on alignment and mapping data. It then iterates over the I/O vectors, mapping them to the request using a helper function. If successful, it sets the appropriate flags; otherwise, it cleans up and returns an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int map_user_iov(struct request_queue *q, struct request *rq, struct rq_map_data *map_data, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    size_t iov_len = iov_iter_count(iter);\n    size_t iov_offset = 0;\n    size_t iov_remaining = iov_len;\n    const struct iovec *iov = iter->iov;\n    unsigned long nr_segs = iter->nr_segs;\n    int i;\n\n    if (!q || !rq || !map_data || !iter || iov_len == 0)\n        return -EINVAL;\n\n    for (i = 0; i < nr_segs && iov_remaining > 0; i++) {\n        size_t len = iov->iov_len;\n        size_t copy_len = min(len, iov_remaining);\n        void *iov_base = iov->iov_base + (len - copy_len);\n\n        if (!iov_base) {\n            return -EINVAL;\n        }\n\n        int ret = map_data->map_bio(map_data, iov_base, copy_len, gfp_mask);\n        if (ret < 0) {\n            return ret;\n        }\n\n        iov_remaining -= copy_len;\n        iov_offset += copy_len;\n        iov = (void *)iov + sizeof(*iov);\n    }\n\n    if (iov_remaining != 0) {\n        return -EINVAL;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate all input pointers",
+      "protects_against": "null or invalid pointers passed as arguments"
+    },
+    {
+      "step": "check for zero-length I/O vector",
+      "protects_against": "attempting to process an empty I/O vector"
+    },
+    {
+      "step": "bound copy length to the current I/O vector segment",
+      "protects_against": "copying more data than the current I/O vector segment can hold"
+    },
+    {
+      "step": "bound copy length to the remaining I/O data",
+      "protects_against": "copying more data than is available in the I/O vector"
+    },
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "dereferencing a null pointer when accessing the I/O vector base"
+    },
+    {
+      "step": "validate that all I/O data is processed",
+      "protects_against": "incomplete mapping of I/O vector data"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate all input pointers — protects against: null or invalid pointers passed as arguments",
+        "reasoning": "The implementation does not explicitly check if the input pointers (q, rq, map_data, iter) are null or invalid. It assumes they are valid and proceeds with operations.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for zero-length I/O vector — protects against: attempting to process an empty I/O vector",
+        "reasoning": "The implementation does not explicitly check if the I/O vector is zero-length. It proceeds with the loop based on the result of iov_iter_count(&i), which may be zero.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "bound copy length to the current I/O vector segment — protects against: copying more data than the current I/O vector segment can hold",
+        "reasoning": "The implementation uses the iov_iter_count and the helper function __blk_rq_map_user_iov, which presumably handles the current I/O vector segment bounds. This suggests the step is performed by the helper.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to the remaining I/O data — protects against: copying more data than is available in the I/O vector",
+        "reasoning": "The implementation iterates over the I/O vector using iov_iter_count and the helper function __blk_rq_map_user_iov, which presumably handles the remaining I/O data bounds. This suggests the step is performed by the helper.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer before dereferencing — protects against: dereferencing a null pointer when accessing the I/O vector base",
+        "reasoning": "The implementation does not explicitly check for null pointers before dereferencing the I/O vector base. It assumes the pointer is valid.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate that all I/O data is processed — protects against: incomplete mapping of I/O vector data",
+        "reasoning": "The implementation uses a loop that continues until iov_iter_count(&i) is zero, which implies all I/O data is processed. This suggests the step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 27,
+    "n_omits": 6,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "validate all input pointers — protects against: null or invalid pointers passed as arguments",
+        "reasoning": "The implementation does not explicitly check if the input pointers (q, rq, map_data, iter) are null or valid. It assumes they are valid and proceeds with operations like dereferencing them.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for zero-length I/O vector — protects against: attempting to process an empty I/O vector",
+        "reasoning": "The implementation does not explicitly check if the I/O vector is zero-length. It proceeds with the mapping operation assuming the I/O vector is non-empty.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "bound copy length to the current I/O vector segment — protects against: copying more data than the current I/O vector segment can hold",
+        "reasoning": "The implementation uses the helper function `__blk_rq_map_user_iov`, which is expected to handle the mapping of each I/O vector segment. However, the implementation does not explicitly show a bound check on the current I/O vector segment length.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to the remaining I/O data — protects against: copying more data than is available in the I/O vector",
+        "reasoning": "The implementation iterates over the I/O vector using `iov_iter_count(&i)` and continues the loop until the count is zero. This suggests that the loop is processing all available data, but it does not explicitly bound the copy length to the remaining I/O data in the current iteration.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null pointer before dereferencing — protects against: dereferencing a null pointer when accessing the I/O vector base",
+        "reasoning": "The implementation does not explicitly check for null pointers before dereferencing them. It assumes the pointers are valid and proceeds with operations like `*iter` and `rq->bio`.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate that all I/O data is processed — protects against: incomplete mapping of I/O vector data",
+        "reasoning": "The implementation uses a loop that continues while `iov_iter_count(&i)` is non-zero, which suggests that it processes all I/O data. However, it does not explicitly validate that all I/O data was successfully mapped.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

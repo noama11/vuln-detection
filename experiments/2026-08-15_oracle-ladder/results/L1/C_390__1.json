@@ -1,0 +1,49 @@
+{
+  "case_id": "C_390__1",
+  "sample_id": "D/C/390",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "acpica/acpica",
+  "cve_id": "CVE-2017-13694",
+  "cve_summary": "The acpi_ps_complete_final_op() function in drivers/acpi/acpica/psobject.c in the Linux kernel through 4.12.9 does not flush the node and node_ext caches and causes a kernel stack dump, which allows local users to obtain sensitive information from kernel memory and bypass the KASLR protection mechanism (in the kernel through 4.9) via a crafted ACPI table.",
+  "changed_file": "source/components/parser/psobject.c",
+  "docstring": "\"\"\"\nSummary: \nCompletes the final operation in an ACPI parse state and clears the scope stack.\n\nParameters: \nWalkState (ACPI_WALK_STATE*): Pointer to the current walk state during parsing. \nOp (ACPI_PARSE_OBJECT*): Pointer to the parse object representing the current operation. \nStatus (ACPI_STATUS): The status of the current operation.\n\nReturns: \nACPI_STATUS: The status of the completion process, indicating success or failure.\n\nLogic: The function processes the last operation in an AML package and clears the scope stack. It checks if there are any ascending callbacks to execute and handles operation completion while managing the scope stack. If errors occur during operation completion, it returns an appropriate status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ACPI_STATUS\nAcpiPsCompleteFinalOp (\n    ACPI_WALK_STATE         *WalkState,\n    ACPI_PARSE_OBJECT       *Op,\n    ACPI_STATUS             Status)\n{\n    ACPI_STATUS             ReturnStatus = AE_OK;\n    BOOLEAN                 Ascending = TRUE;\n    ACPI_FUNCTION_TRACE_PTR (PsCompleteFinalOp, WalkState);\n    ACPI_DEBUG_PRINT ((ACPI_DB_PARSE, \"AML package complete at Op %p\\n\", Op));\n    do\n    {\n        if (Op)\n        {\n            if (Ascending && WalkState->AscendingCallback != NULL)\n            {\n                WalkState->Op = Op;\n                WalkState->OpInfo = AcpiPsGetOpcodeInfo (Op->Common.AmlOpcode);\n                WalkState->Opcode = Op->Common.AmlOpcode;\n                Status = WalkState->AscendingCallback (WalkState);\n                Status = AcpiPsNextParseState (WalkState, Op, Status);\n                if (Status == AE_CTRL_PENDING)\n                {\n                    Status = AcpiPsCompleteOp (WalkState, &Op, AE_OK);\n                    if (ACPI_FAILURE (Status))\n                    {\n                        return_ACPI_STATUS (Status);\n                    }\n                }\n                if (Status == AE_CTRL_TERMINATE)\n                {\n                    Ascending = FALSE;\n                    ReturnStatus = AE_CTRL_TERMINATE;\n                }\n                else if (ACPI_FAILURE (Status))\n                {\n                    Ascending = FALSE;\n                    ReturnStatus = Status;\n                }\n            }\n            Status = AcpiPsCompleteThisOp (WalkState, Op);\n            if (ACPI_FAILURE (Status))\n            {\n                Ascending = FALSE;\n                if (ACPI_SUCCESS (ReturnStatus) ||\n                    ReturnStatus == AE_CTRL_TERMINATE)\n                {\n                    ReturnStatus = Status;\n                }\n            }\n        }\n        AcpiPsPopScope (&(WalkState->ParserState), &Op, &WalkState->ArgTypes,\n            &WalkState->ArgCount);\n    } while (Op);\n    return_ACPI_STATUS (ReturnStatus);\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 0
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the AscendingCallback and error propagation. The candidate implementation continues processing and updating the ReturnStatus even after encountering an error, while the reference implementation immediately returns on the first error. This difference could affect how errors are handled during the parsing of AML packages, potentially impacting system stability or behavior under malformed input. However, it does not directly involve a security-relevant condition like memory safety or input validation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally identical in terms of behavior. Both handle the completion of the final operation in an ACPI parse state and manage the scope stack in the same way. The only differences are in whitespace and code formatting, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

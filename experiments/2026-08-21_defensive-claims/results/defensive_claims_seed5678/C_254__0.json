@@ -1,0 +1,130 @@
+{
+  "case_id": "C_254__0",
+  "sample_id": "D/C/254",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9191",
+  "cve_summary": "The cgroup offline implementation in the Linux kernel through 4.8.11 mishandles certain drain operations, which allows local users to cause a denial of service (system hang) by leveraging access to a container environment for executing a crafted application, as demonstrated by trinity.",
+  "changed_file": "fs/proc/proc_sysctl.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses directory read requests for a sysctl file.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sysctl file being read.\nctx (struct dir_context *): Pointer to the directory context used for emitting directory entries.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function retrieves the header for the sysctl directory associated with the given file. It checks for errors in obtaining the header and handles the standard '.' and '..' entries. It then iterates through the entries in the sysctl directory, calling a scan function for each entry to handle the actual reading process. If scanning fails, it finishes processing the current header and exits. Finally, it finishes header processing and returns 0.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/errno.h>\n#include <linux/fs.h>\n#include <linux/sysctl.h>\n\nint process_sysctl_dir_read(struct file *file, struct dir_context *ctx) {\n    struct sysctl_dir_header *header = NULL;\n    int ret = 0;\n\n    /* Retrieve the header for the sysctl directory */\n    header = sysctl_get_dir_header(file);\n    if (IS_ERR_OR_NULL(header)) {\n        return PTR_ERR(header);\n    }\n\n    /* Handle '.' and '..' entries */\n    ret = dir_emit_dot(ctx);\n    if (ret < 0) {\n        sysctl_put_dir_header(header);\n        return ret;\n    }\n\n    ret = dir_emit_dotdot(ctx);\n    if (ret < 0) {\n        sysctl_put_dir_header(header);\n        return ret;\n    }\n\n    /* Iterate through the entries in the sysctl directory */\n    while (1) {\n        struct sysctl_entry *entry = sysctl_get_next_entry(header);\n        if (IS_ERR(entry)) {\n            ret = PTR_ERR(entry);\n            break;\n        }\n\n        if (entry == NULL) {\n            break;\n        }\n\n        ret = sysctl_scan_entry(entry, ctx);\n        if (ret < 0) {\n            break;\n        }\n    }\n\n    sysctl_put_dir_header(header);\n    return ret >= 0 ? 0 : ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null or error pointer when retrieving directory header",
+      "protects_against": "invalid or uninitialized directory header pointer"
+    },
+    {
+      "step": "check return values from dir_emit_dot and dir_emit_dotdot",
+      "protects_against": "errors during '.' and '..' directory entry emission"
+    },
+    {
+      "step": "check for null or error pointer when retrieving next directory entry",
+      "protects_against": "invalid or uninitialized directory entry pointer"
+    },
+    {
+      "step": "check return value from sysctl_scan_entry",
+      "protects_against": "errors during directory entry scanning"
+    },
+    {
+      "step": "ensure directory header is released on all paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null or error pointer when retrieving directory header — protects against: invalid or uninitialized directory header pointer",
+        "reasoning": "The implementation checks if `head` is an error pointer using `IS_ERR(head)` and returns `PTR_ERR(head)` if so, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return values from dir_emit_dot and dir_emit_dotdot — protects against: errors during '.' and '..' directory entry emission",
+        "reasoning": "The implementation uses `dir_emit_dots(file, ctx)` to emit '.' and '..', but does not check its return value. If it returns 0, the function returns early without further processing.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check for null or error pointer when retrieving next directory entry — protects against: invalid or uninitialized directory entry pointer",
+        "reasoning": "The implementation iterates through directory entries using `first_entry` and `next_entry`, but does not explicitly check for null or error pointers when retrieving the next entry.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check return value from sysctl_scan_entry — protects against: errors during directory entry scanning",
+        "reasoning": "The implementation calls `scan(h, entry, &pos, file, ctx)` and checks its return value. If it returns 0, it calls `sysctl_head_finish(h)` and breaks the loop, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure directory header is released on all paths — protects against: resource leaks",
+        "reasoning": "The implementation calls `sysctl_head_finish(head)` before returning, ensuring the directory header is released regardless of the path taken.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null or error pointer when retrieving directory header — protects against: invalid or uninitialized directory header pointer",
+        "reasoning": "The implementation checks if 'head' is an error pointer using IS_ERR(head) and returns PTR_ERR(head) if so.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return values from dir_emit_dot and dir_emit_dotdot — protects against: errors during '.' and '..' directory entry emission",
+        "reasoning": "The implementation uses 'dir_emit_dots' and checks its return value, branching to 'out' if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null or error pointer when retrieving next directory entry — protects against: invalid or uninitialized directory entry pointer",
+        "reasoning": "The implementation iterates through directory entries using a loop, but does not explicitly check for null or error pointers when retrieving each entry.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check return value from sysctl_scan_entry — protects against: errors during directory entry scanning",
+        "reasoning": "The implementation calls 'scan' and checks its return value, breaking the loop and finishing the header if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure directory header is released on all paths — protects against: resource leaks",
+        "reasoning": "The implementation calls 'sysctl_head_finish' for the 'head' variable on all paths, including the error path and the loop exit path.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

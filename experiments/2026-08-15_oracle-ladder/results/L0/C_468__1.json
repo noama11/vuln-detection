@@ -1,0 +1,48 @@
+{
+  "case_id": "C_468__1",
+  "sample_id": "D/C/468",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for memory binding, allowing users to set memory policies based on node masks.\n\nParameters:\n- start (compat_ulong_t): The starting address of the memory region.\n- len (compat_ulong_t): The length of the memory region.\n- mode (compat_ulong_t): The memory policy mode to apply.\n- nmask (compat_ulong_t __user *): A pointer to the user-space node mask.\n- maxnode (compat_ulong_t): The maximum number of nodes.\n- flags (compat_ulong_t): Flags for additional options.\n\nReturns: int - Returns 0 on success or a negative error code on failure.\n\nLogic: The function calculates the number of bits required for the node mask and allocates user space for it. It checks for errors in retrieving the bitmap and copying data to user space. Finally, it calls `sys_set_mempolicy` to apply the specified memory policy.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "COMPAT_SYSCALL_DEFINE3(set_mempolicy, int, mode, compat_ulong_t __user *, nmask,\r\n\t\t       compat_ulong_t, maxnode)\r\n{\r\n\tunsigned long __user *nm = NULL;\r\n\tunsigned long nr_bits, alloc_size;\r\n\tDECLARE_BITMAP(bm, MAX_NUMNODES);\r\n\r\n\tnr_bits = min_t(unsigned long, maxnode-1, MAX_NUMNODES);\r\n\talloc_size = ALIGN(nr_bits, BITS_PER_LONG) / 8;\r\n\r\n\tif (nmask) {\r\n\t\tif (compat_get_bitmap(bm, nmask, nr_bits))\r\n\t\t\treturn -EFAULT;\r\n\t\tnm = compat_alloc_user_space(alloc_size);\r\n\t\tif (copy_to_user(nm, bm, alloc_size))\r\n\t\t\treturn -EFAULT;\r\n\t}\r\n\r\n\treturn sys_set_mempolicy(mode, nm, nr_bits+1);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate and reference implementations differ in how they handle error checking for the `compat_get_bitmap` and `copy_to_user` operations. The candidate implementation returns early on error from `compat_get_bitmap`, while the reference implementation combines the error flags and checks them after both operations. This could lead to different behaviors if `compat_get_bitmap` succeeds but `copy_to_user` fails, as the candidate implementation would not propagate the second error. However, this is not a security-relevant issue since it does not involve missing a critical guard or exposing sensitive information.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of logic, variable declarations, and function calls. They both calculate the number of bits required for the node mask, allocate user space, copy data, and call `sys_set_mempolicy` with the same parameters. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

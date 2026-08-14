@@ -1,0 +1,98 @@
+{
+  "case_id": "C_831__0",
+  "sample_id": "D/C/831",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6544",
+  "cve_summary": "The Bluetooth protocol stack in the Linux kernel before 3.6 does not properly initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application that targets the (1) L2CAP or (2) HCI implementation.",
+  "changed_file": "net/bluetooth/hci_sock.c",
+  "docstring": "Summary: Retrieves the name of a Bluetooth socket and fills the provided address structure with the socket's information.\n\nParameters:\nsock (struct socket *): Pointer to the socket whose name is being retrieved.\naddr (struct sockaddr *): Pointer to the sockaddr structure to be filled with the socket's address.\naddr_len (int *): Pointer to an integer that will hold the length of the address.\npeer (int): Indicates whether the address is for the local or remote peer.\n\nReturns: int - Returns 0 on success, or -EBADFD if the Bluetooth device is not available.\n\nLogic: The function first checks if the Bluetooth device associated with the socket is valid. If valid, it locks the socket, populates the sockaddr_hci structure with the socket address information, then releases the socket lock and returns success. If the device is invalid, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_bt_sock_name(struct socket *sock, struct sockaddr *addr, int *addr_len, int peer) {\n    struct sockaddr_hci *hci_addr = (struct sockaddr_hci *)addr;\n    struct sock *sk = sock->sk;\n\n    if (!sk || !hci_sk(sk)) {\n        return -EBADFD;\n    }\n\n    if (addr_len && *addr_len < sizeof(struct sockaddr_hci)) {\n        return -EINVAL;\n    }\n\n    if (peer) {\n        hci_addr->hci_dev = hci_sk(sk)->dev;\n        hci_addr->hci_channel = hci_sk(sk)->channel;\n    } else {\n        hci_addr->hci_dev = hci_sk(sk)->bound_dev;\n        hci_addr->hci_channel = hci_sk(sk)->bound_channel;\n    }\n\n    hci_addr->hci_family = AF_BLUETOOTH;\n\n    if (addr_len) {\n        *addr_len = sizeof(struct sockaddr_hci);\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if socket or hci_sk is null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate that the provided address buffer is large enough",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "initialize hci_addr fields",
+      "protects_against": "uninitialized memory access"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket or hci_sk is null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock` and `sk` (via `sock->sk`) without checking for null. If `sock` or `sk` is null, this would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate that the provided address buffer is large enough — protects against: buffer overflow",
+        "reasoning": "The implementation casts `addr` to a `struct sockaddr_hci *` and writes to its fields without checking if the buffer is large enough to hold a `struct sockaddr_hci`. This could lead to a buffer overflow if the buffer is smaller than expected.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "initialize hci_addr fields — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly initializes the `hci_family` and `hci_dev` fields of the `haddr` structure. All relevant fields are set, so there is no risk of uninitialized memory access.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket or hci_sk is null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock` and `sk` (from `sock->sk`) without checking if they are null. This could lead to a null pointer dereference if `sock` or `sk` is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate that the provided address buffer is large enough — protects against: buffer overflow",
+        "reasoning": "The implementation casts `addr` to a `struct sockaddr_hci *` and writes to its fields without checking if the buffer is large enough to hold a `struct sockaddr_hci`. This could lead to a buffer overflow if the buffer is too small.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "initialize hci_addr fields — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly initializes the `hci_family`, `hci_dev`, and `hci_channel` fields of the `haddr` structure, ensuring no uninitialized memory is accessed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

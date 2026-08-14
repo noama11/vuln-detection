@@ -1,0 +1,55 @@
+#include <linux/slab.h>
+#include <linux/err.h>
+#include <linux/workqueue.h>
+#include <linux/coresight.h>
+
+struct event_data {
+    struct work_struct free_work;
+    struct coresight_device *sink;
+    struct list_head paths;
+};
+
+void *setup_event_data(int event_cpu, void **pages, int nr_pages, bool overwrite)
+{
+    struct event_data *event_data;
+    struct coresight_device *sink;
+    struct coresight_path *path;
+    int cpu;
+
+    event_data = kzalloc(sizeof(*event_data), GFP_KERNEL);
+    if (!event_data)
+        return NULL;
+
+    INIT_WORK(&event_data->free_work, NULL);
+
+    sink = coresight_find_device_by_type(CORESIGHT_DEV_TYPE_SINK, NULL);
+    if (!sink) {
+        kfree(event_data);
+        return NULL;
+    }
+
+    if (!sink->alloc_buffer) {
+        kfree(event_data);
+        return NULL;
+    }
+
+    for_each_possible_cpu(cpu) {
+        path = kzalloc(sizeof(*path), GFP_KERNEL);
+        if (!path) {
+            /* Cleanup paths already allocated */
+            while (!list_empty(&event_data->paths)) {
+                path = list_first_entry(&event_data->paths, struct coresight_path, node);
+                list_del(&path->node);
+                kfree(path);
+            }
+            kfree(event_data);
+            return NULL;
+        }
+
+        path->cpu = cpu;
+        list_add_tail(&path->node, &event_data->paths);
+    }
+
+    event_data->sink = sink;
+    return event_data;
+}

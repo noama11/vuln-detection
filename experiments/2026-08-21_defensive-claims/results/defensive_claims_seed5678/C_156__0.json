@@ -1,0 +1,146 @@
+{
+  "case_id": "C_156__0",
+  "sample_id": "D/C/156",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2014-4344",
+  "cve_summary": "The acc_ctx_cont function in the SPNEGO acceptor in lib/gssapi/spnego/spnego_mech.c in MIT Kerberos 5 (aka krb5) 1.5.x through 1.12.x before 1.12.2 allows remote attackers to cause a denial of service (NULL pointer dereference and application crash) via an empty continuation token at a certain point during a SPNEGO negotiation.",
+  "changed_file": "src/lib/gssapi/spnego/spnego_mech.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a continuation context for the SPNEGO (Simple and Protected GSSAPI Negotiation Mechanism) protocol.\n\nParameters: \nminstat (OM_uint32*): Pointer to store the minimum status code.\nbuf (gss_buffer_t): Buffer containing the token to be processed.\nctx (gss_ctx_id_t*): Pointer to the context identifier.\nresponseToken (gss_buffer_t*): Pointer to store the response token.\nmechListMIC (gss_buffer_t*): Pointer to store the mechanism list MIC.\nnegState (OM_uint32*): Pointer to store the negotiation state.\nreturn_token (send_token_flag*): Pointer to indicate the token sending flag.\n\nReturns: \nOM_uint32: Status code indicating the result of the operation.\n\nLogic: \nThe function verifies the token header, checks for valid context, and processes the negotiation response. It updates the negotiation state and manages memory for the supported mechanism. If any checks fail, it returns an error status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\nOM_uint32 process_spnego_continuation(OM_uint32 *minstat, gss_buffer_t buf, gss_ctx_id_t *ctx, gss_buffer_t *responseToken, gss_buffer_t *mechListMIC, OM_uint32 *negState, send_token_flag *return_token) {\n    OM_uint32 status = 0;\n\n    if (minstat == NULL || buf == NULL || ctx == NULL || responseToken == NULL || mechListMIC == NULL || negState == NULL || return_token == NULL) {\n        return 1; // Invalid input\n    }\n\n    if (buf->length <= 0 || buf->value == NULL) {\n        return 1; // Invalid buffer\n    }\n\n    // Allocate memory for the response token\n    responseToken->length = 0;\n    responseToken->value = NULL;\n\n    // Allocate memory for the mechanism list MIC\n    mechListMIC->length = 0;\n    mechListMIC->value = NULL;\n\n    // Process the token header and validate the context\n    if (!validate_token_header(buf)) {\n        return 1; // Invalid token header\n    }\n\n    if (!validate_context(*ctx)) {\n        return 1; // Invalid context\n    }\n\n    // Process the negotiation response\n    if (!process_negotiation_response(buf, *ctx, responseToken, mechListMIC, negState, return_token)) {\n        return 1; // Failed to process negotiation response\n    }\n\n    // Update the minimum status code\n    *minstat = status;\n\n    return status;\n}\n\n// Helper functions (not implemented here for brevity)\n// int validate_token_header(gss_buffer_t buf);\n// int validate_context(gss_ctx_id_t ctx);\n// int process_negotiation_response(gss_buffer_t buf, gss_ctx_id_t ctx, gss_buffer_t *responseToken, gss_buffer_t *mechListMIC, OM_uint32 *negState, send_token_flag *return_token);",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate buffer length and value",
+      "protects_against": "invalid or empty buffer"
+    },
+    {
+      "step": "initialize output buffers",
+      "protects_against": "uninitialized memory"
+    },
+    {
+      "step": "validate token header",
+      "protects_against": "invalid token header"
+    },
+    {
+      "step": "validate context",
+      "protects_against": "invalid context"
+    },
+    {
+      "step": "process negotiation response",
+      "protects_against": "failed to process negotiation response"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 19,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the input parameters. For example, if `buf->value` is null, dereferencing it with `*ptr` would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate buffer length and value — protects against: invalid or empty buffer",
+        "reasoning": "The implementation checks if the remaining buffer length exceeds `INT_MAX`, which is a partial validation of the buffer length. However, it does not explicitly check if the buffer is empty or invalid (e.g., `buf->value` is null or `buf->length` is zero).",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "initialize output buffers — protects against: uninitialized memory",
+        "reasoning": "The implementation initializes `*responseToken` and `*mechListMIC` to `GSS_C_NO_BUFFER`, which is a valid sentinel value indicating no buffer. This ensures output buffers are initialized.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate token header — protects against: invalid token header",
+        "reasoning": "The implementation calls `g_verify_token_header` to validate the token header. If this function returns an error, the function returns `GSS_S_DEFECTIVE_TOKEN`. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate context — protects against: invalid context",
+        "reasoning": "The implementation casts `*ctx` to `spnego_gss_ctx_id_t` but does not explicitly check if the context is valid (e.g., not null or in a valid state). This step is omitted.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "process negotiation response — protects against: failed to process negotiation response",
+        "reasoning": "The implementation calls `get_negTokenResp` to process the negotiation response. If this function does not return `GSS_S_COMPLETE`, the function jumps to `cleanup`. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 18,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the input parameters. For example, if `buf->value` is null, the code will dereference it when assigning to `ptr`, leading to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate buffer length and value — protects against: invalid or empty buffer",
+        "reasoning": "The implementation checks if `REMAIN` is zero or exceeds `INT_MAX`, which helps prevent invalid buffer length issues. However, it does not check if `buf->value` is null or if the buffer is empty before dereferencing it.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "initialize output buffers — protects against: uninitialized memory",
+        "reasoning": "The implementation initializes `*responseToken` and `*mechListMIC` to `GSS_C_NO_BUFFER`, which is a valid sentinel value. This ensures output buffers are initialized before use.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate token header — protects against: invalid token header",
+        "reasoning": "The implementation calls `g_verify_token_header` to validate the token header. If it returns an error, the function returns `GSS_S_DEFECTIVE_TOKEN`, indicating the header is invalid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate context — protects against: invalid context",
+        "reasoning": "The implementation does not perform any explicit validation of the `ctx` pointer or the context it points to. It assumes the context is valid and proceeds with processing.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "process negotiation response — protects against: failed to process negotiation response",
+        "reasoning": "The implementation calls `get_negTokenResp` to process the negotiation response. If it returns anything other than `GSS_S_COMPLETE`, the function jumps to the cleanup section and returns an error. This ensures the negotiation response is processed correctly.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

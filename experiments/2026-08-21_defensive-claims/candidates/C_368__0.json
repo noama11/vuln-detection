@@ -1,0 +1,35 @@
+{
+  "case_id": "C_368__0",
+  "implementation": "#include <linux/netdevice.h>\n#include <linux/slab.h>\n#include <linux/err.h>\n\nint bnep_connadd(struct bnep_connadd_req *req, struct socket *sock) {\n    struct net_device *dev;\n    int ret = -ENOMEM;\n\n    if (!req || !sock) {\n        return -EINVAL;\n    }\n\n    dev = alloc_netdev(0, \"bnep%d\", NET_NAME_UNKNOWN, ether_setup);\n    if (!dev) {\n        return -ENOMEM;\n    }\n\n    /* Check if a session already exists for the destination address */\n    if (bnep_session_exists(req->dst_addr)) {\n        ret = -EEXIST;\n        goto error;\n    }\n\n    /* Initialize the session structure */\n    if (bnep_session_init(dev, req, sock)) {\n        goto error;\n    }\n\n    /* Set up multicast and protocol filters if configured */\n    if (req->flags & BNEP_CONNADD_FLAG_MULTICAST) {\n        dev->flags |= IFF_MULTICAST;\n    }\n\n    if (req->flags & BNEP_CONNADD_FLAG_PROTO_FILTER) {\n        dev->flags |= IFF_PROMISC;\n    }\n\n    /* Register the network device */\n    ret = register_netdev(dev);\n    if (ret) {\n        goto error;\n    }\n\n    /* Create a kernel thread to handle the session */\n    ret = kernel_thread(bnep_session_handler, dev, CLONE_KERNEL);\n    if (ret < 0) {\n        unregister_netdev(dev);\n        goto error;\n    }\n\n    /* Update the request structure with the device name */\n    snprintf(req->dev_name, IFNAMSIZ, \"%s\", dev->name);\n\n    return 0;\n\nerror:\n    if (dev) {\n        free_netdev(dev);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing req or sock"
+    },
+    {
+      "step": "check if session already exists",
+      "protects_against": "creating multiple sessions for the same destination address"
+    },
+    {
+      "step": "initialize session structure",
+      "protects_against": "uninitialized session data leading to undefined behavior"
+    },
+    {
+      "step": "register network device",
+      "protects_against": "memory leak if device allocation succeeds but registration fails"
+    },
+    {
+      "step": "create kernel thread",
+      "protects_against": "unhandled errors in thread creation leading to resource leaks"
+    },
+    {
+      "step": "clean up on error",
+      "protects_against": "resource leaks if any step fails during initialization"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

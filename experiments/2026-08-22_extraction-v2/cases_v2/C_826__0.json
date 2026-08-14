@@ -1,0 +1,36 @@
+{
+  "case_id": "C_826__0",
+  "sample_id": "D/C/826",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1959",
+  "cve_summary": "kernel/user_namespace.c in the Linux kernel before 3.8.9 does not have appropriate capability requirements for the uid_map and gid_map files, which allows local users to gain privileges by opening a file within an unprivileged process and then modifying the file within a privileged process.",
+  "commit_message": "userns: Check uid_map's opener's fsuid, not the current fsuid\n\nSigned-off-by: Andy Lutomirski <luto@amacapital.net>",
+  "changed_file": "kernel/user_namespace.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Checks if a new ID mapping is permitted based on the provided file, user  \n * namespace, capability, and new mapping.  \n *  \n * Parameters:  \n * file (const struct file *): The file associated with the ID mapping.  \n * ns (struct user_namespace *): The user namespace in which the mapping is checked.  \n * cap_setid (int): The capability being checked (CAP_SETUID or CAP_SETGID).  \n * new_map (struct uid_gid_map *): The new UID/GID mapping to be validated.  \n *  \n * Returns:  \n * bool: True if the new ID mapping is permitted, false otherwise.  \n *  \n * Logic:  \n * The function allows mapping to one's own filesystem IDs if the mapping  \n * consists of a single extent with a count of one. It also permits  \n * mappings that do not require privileges and checks for appropriate  \n * capabilities in the parent user namespace and the file's opener.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    791,
+    823
+  ],
+  "vulnerable_line_range": [
+    791,
+    823
+  ],
+  "vulnerable_snippet": "static bool new_idmap_permitted(const struct file *file, \r\n\t\t\t\tstruct user_namespace *ns, int cap_setid,\r\n\t\t\t\tstruct uid_gid_map *new_map)\r\n{\r\n\t/* Allow mapping to your own filesystem ids */\r\n\tif ((new_map->nr_extents == 1) && (new_map->extent[0].count == 1)) {\r\n\t\tu32 id = new_map->extent[0].lower_first;\r\n\t\tif (cap_setid == CAP_SETUID) {\r\n\t\t\tkuid_t uid = make_kuid(ns->parent, id);\r\n\t\t\tif (uid_eq(uid, current_fsuid()))\r\n\t\t\t\treturn true;\r\n\t\t}\r\n\t\telse if (cap_setid == CAP_SETGID) {\r\n\t\t\tkgid_t gid = make_kgid(ns->parent, id);\r\n\t\t\tif (gid_eq(gid, current_fsgid()))\r\n\t\t\t\treturn true;\r\n\t\t}\r\n\t}\r\n\r\n\t/* Allow anyone to set a mapping that doesn't require privilege */\r\n\tif (!cap_valid(cap_setid))\r\n\t\treturn true;\r\n\r\n\t/* Allow the specified ids if we have the appropriate capability\r\n\t * (CAP_SETUID or CAP_SETGID) over the parent user namespace.\r\n\t * And the opener of the id file also had the approprpiate capability.\r\n\t */\r\n\tif (ns_capable(ns->parent, cap_setid) &&\r\n\t    file_ns_capable(file, ns->parent, cap_setid))\r\n\t\treturn true;\r\n\r\n\treturn false;\r\n}",
+  "fixed_line_range": [
+    791,
+    823
+  ],
+  "fixed_snippet": "static bool new_idmap_permitted(const struct file *file, \r\n\t\t\t\tstruct user_namespace *ns, int cap_setid,\r\n\t\t\t\tstruct uid_gid_map *new_map)\r\n{\r\n\t/* Allow mapping to your own filesystem ids */\r\n\tif ((new_map->nr_extents == 1) && (new_map->extent[0].count == 1)) {\r\n\t\tu32 id = new_map->extent[0].lower_first;\r\n\t\tif (cap_setid == CAP_SETUID) {\r\n\t\t\tkuid_t uid = make_kuid(ns->parent, id);\r\n\t\t\tif (uid_eq(uid, file->f_cred->fsuid))\r\n\t\t\t\treturn true;\r\n\t\t}\r\n\t\telse if (cap_setid == CAP_SETGID) {\r\n\t\t\tkgid_t gid = make_kgid(ns->parent, id);\r\n\t\t\tif (gid_eq(gid, file->f_cred->fsgid))\r\n\t\t\t\treturn true;\r\n\t\t}\r\n\t}\r\n\r\n\t/* Allow anyone to set a mapping that doesn't require privilege */\r\n\tif (!cap_valid(cap_setid))\r\n\t\treturn true;\r\n\r\n\t/* Allow the specified ids if we have the appropriate capability\r\n\t * (CAP_SETUID or CAP_SETGID) over the parent user namespace.\r\n\t * And the opener of the id file also had the approprpiate capability.\r\n\t */\r\n\tif (ns_capable(ns->parent, cap_setid) &&\r\n\t    file_ns_capable(file, ns->parent, cap_setid))\r\n\t\treturn true;\r\n\r\n\treturn false;\r\n}",
+  "func_name": "new_idmap_permitted",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

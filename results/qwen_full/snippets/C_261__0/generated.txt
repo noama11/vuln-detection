@@ -1,0 +1,38 @@
+ssize_t read_env_vars(struct file *file, char __user *buf, size_t count, loff_t *ppos) {
+    struct mm_struct *mm = file->f_mapping->host->mm;
+    char *tmp_page;
+    ssize_t bytes_read = 0;
+    int ret = 0;
+
+    if (!mm || !mm->env_size)
+        return -EINVAL;
+
+    tmp_page = (char *)__get_free_page(GFP_KERNEL);
+    if (!tmp_page)
+        return -ENOMEM;
+
+    down_read(&mm->mmap_lock);
+
+    while (bytes_read < count && *ppos < mm->env_size) {
+        size_t chunk_size = min(count - bytes_read, (size_t)(PAGE_SIZE - (*ppos % PAGE_SIZE)));
+        void __user *dest = buf + bytes_read;
+
+        if (copy_from_user(tmp_page, (void __user *)((unsigned long)mm->env + *ppos), chunk_size)) {
+            ret = -EFAULT;
+            break;
+        }
+
+        if (copy_to_user(dest, tmp_page, chunk_size)) {
+            ret = -EFAULT;
+            break;
+        }
+
+        bytes_read += chunk_size;
+        *ppos += chunk_size;
+    }
+
+    up_read(&mm->mmap_lock);
+    free_page((unsigned long)tmp_page);
+
+    return ret ? ret : bytes_read;
+}

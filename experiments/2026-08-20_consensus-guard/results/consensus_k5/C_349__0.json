@@ -1,0 +1,62 @@
+{
+  "case_id": "C_349__0",
+  "sample_id": "D/C/349",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "Summary: This function manages the selection and initialization of a user-space sound timer.\n\nParameters:\n- file (struct file *): A pointer to the file structure associated with the timer.\n- _tselect (struct snd_timer_select __user *): A pointer to the user-space timer selection structure.\n\nReturns: int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function retrieves the private data from the file structure, closes any existing timer, and copies the user-specified timer selection data. It initializes a new timer based on the selection, allocating memory for the associated queues. If any memory allocation fails, it cleans up by closing the timer and returning an error code. If successful, it sets various callback functions for the timer and marks it as fast.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 1,
+    "net_exposure": 3,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Closing and freeing existing timer before reinitialization",
+        "performed_by_count": 4,
+        "why_it_matters": "If an existing timer is not properly closed and freed, it could lead to resource leaks or use-after-free vulnerabilities when a new timer is initialized."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key defensive step performed by a majority of the independent implementations: closing or freeing the existing timer before initializing a new one. While the target does close the timer, it does not consistently free or nullify associated memory (e.g., queues) in all error paths, which could lead to memory leaks or use-after-free conditions.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "Freeing or nullifying existing timer and associated memory",
+        "performed_by_count": 4,
+        "why_it_matters": "Failure to nullify or free the existing timer and its associated memory in error paths could lead to memory leaks or use-after-free conditions if the timer is reused without reinitialization."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key defensive step performed by a majority of the independent implementations: closing or freeing the existing timer before initializing a new one. While the target does close the existing timer, it does not properly free or nullify associated memory (e.g., `tu->queue` and `tu->tqueue`) in all error paths, potentially leading to memory leaks or use-after-free conditions. Additionally, it does not always nullify `tu->timeri` in error cases, which could lead to dangling pointer issues.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

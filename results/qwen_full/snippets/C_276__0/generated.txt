@@ -1,0 +1,44 @@
+int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
+               struct inode *new_dir, struct dentry *new_dentry,
+               struct inode **delegated_inode, unsigned int flags)
+{
+    int error;
+
+    if (old_dentry == new_dentry)
+        return 0;
+
+    error = -EACCES;
+    if (!inode_is_locked(old_dir) || !inode_is_locked(new_dir))
+        return error;
+
+    if (!old_dir->i_op->rename)
+        return -EINVAL;
+
+    if (S_ISDIR(old_dentry->d_inode->i_mode)) {
+        if (flags & RENAME_EXCHANGE) {
+            if (!new_dentry->d_inode || !S_ISDIR(new_dentry->d_inode->i_mode))
+                return -ENOTDIR;
+        } else {
+            if (new_dentry->d_inode && !S_ISDIR(new_dentry->d_inode->i_mode))
+                return -EEXIST;
+        }
+    }
+
+    if (old_dentry->d_inode && old_dentry->d_inode->i_nlink >=
+        old_dentry->d_inode->i_sb->s_max_links)
+        return -EMLINK;
+
+    error = security_inode_rename(old_dir, old_dentry, new_dir, new_dentry);
+    if (error)
+        return error;
+
+    error = old_dir->i_op->rename(old_dir, old_dentry, new_dir, new_dentry, flags);
+    if (!error) {
+        fsnotify_move(old_dir, new_dir, old_dentry, new_dentry);
+        dput(old_dentry);
+        if (new_dentry->d_inode)
+            new_dentry->d_inode->i_ctime = current_time(new_dentry->d_inode);
+    }
+
+    return error;
+}

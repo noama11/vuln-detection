@@ -1,0 +1,31 @@
+int journal_unmap_buffer(journal_t *journal, struct buffer_head *bh) {
+    struct journal_head *jh;
+    int ret = 0;
+
+    if (!buffer_journaled(bh))
+        return 0;
+
+    jh = get_journal_head(bh);
+
+    lock_journal(journal);
+
+    if (jh->b_transaction) {
+        if (jh->b_transaction->t_state == T_RUNNING) {
+            if (buffer_dirty(bh)) {
+                clear_buffer_dirty(bh);
+                jbd2_journal_forget(jh);
+            } else {
+                jbd2_journal_attach_clean(jh);
+            }
+        } else if (jh->b_transaction->t_state == T_COMMIT) {
+            jbd2_journal_zap_buffer(jh);
+        } else {
+            jbd2_journal_dispose_buffer(jh);
+        }
+    } else {
+        jbd2_journal_zap_buffer(jh);
+    }
+
+    unlock_journal(journal);
+    return ret;
+}

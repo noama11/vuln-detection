@@ -1,0 +1,49 @@
+{
+  "case_id": "C_73__0",
+  "sample_id": "D/C/73",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3229",
+  "cve_summary": "The iucv_sock_recvmsg function in net/iucv/af_iucv.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/iucv/af_iucv.c",
+  "docstring": "Summary: \nReceives a message from a socket and processes it according to the specified flags and socket type.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.  \nsock (struct socket *): The socket from which to receive the message.  \nmsg (struct msghdr *): The message header to fill with received data.  \nlen (size_t): The maximum length of data to receive.  \nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header, or an error code.\n\nLogic: \nThe function checks the socket state and flags, retrieves a datagram from the socket's receive queue, and copies data into the provided message header. It handles special cases for socket types and flags, including out-of-band data and message truncation. It manages the backlog of messages and updates the socket state as necessary, ensuring proper synchronization and error handling throughout the process.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int iucv_sock_recvmsg(struct kiocb *iocb, struct socket *v11,\n                 struct msghdr *v7, size_t v6, int v4)\n{\n    int v8 = v4 & MSG_DONTWAIT;\n    struct v11 *v9 = v11->v9;\n    struct iucv_sock *v5 = iucv_sk(v9);\n    unsigned int v1, rlen;\n    struct sk_buff *v10, *rskb, *cskb;\n    int v3 = 0;\n    v7->msg_namelen = 0;\n    if ((v9->sk_state == IUCV_DISCONN) &&\n        skb_queue_empty(&v5->backlog_skb_q) &&\n        skb_queue_empty(&v9->sk_receive_queue) &&\n        list_empty(&v5->message_q.list))\n        return 0;\n    if (v4 & (MSG_OOB))\n        return -EOPNOTSUPP;\n    v10 = skb_recv_datagram(v9, v4, v8, &v3);\n    if (!v10) {\n        if (v9->sk_shutdown & RCV_SHUTDOWN)\n            return 0;\n        return v3;\n    }\n    rlen   = v10->v6;\n    v1 = min_t(unsigned int, rlen, v6);\n    if (!rlen)\n        v9->sk_shutdown = v9->sk_shutdown | RCV_SHUTDOWN;\n    cskb = v10;\n    if (skb_copy_datagram_iovec(cskb, 0, v7->msg_iov, v1)) {\n        if (!(v4 & MSG_PEEK))\n            skb_queue_head(&v9->sk_receive_queue, v10);\n        return -EFAULT;\n    }\n    if (v9->sk_type == SOCK_SEQPACKET) {\n        if (v1 < rlen)\n            v7->msg_flags |= MSG_TRUNC;\n        v7->msg_flags |= MSG_EOR;\n    }\n    v3 = put_cmsg(v7, SOL_IUCV, SCM_IUCV_TRGCLS,\n            CB_TRGCLS_LEN, CB_TRGCLS(v10));\n    if (v3) {\n        if (!(v4 & MSG_PEEK))\n            skb_queue_head(&v9->sk_receive_queue, v10);\n        return v3;\n    }\n    if (!(v4 & MSG_PEEK)) {\n        if (v9->sk_type == SOCK_STREAM) {\n            skb_pull(v10, v1);\n            if (v10->v6) {\n                skb_queue_head(&v9->sk_receive_queue, v10);\n                goto v2;\n            }\n        }\n        kfree_skb(v10);\n        if (v5->transport == AF_IUCV_TRANS_HIPER) {\n            atomic_inc(&v5->msg_recv);\n            if (atomic_read(&v5->msg_recv) > v5->msglimit) {\n                WARN_ON(1);\n                iucv_sock_close(v9);\n                return -EFAULT;\n            }\n        }\n        spin_lock_bh(&v5->message_q.lock);\n        rskb = skb_dequeue(&v5->backlog_skb_q);\n        while (rskb) {\n            if (sock_queue_rcv_skb(v9, rskb)) {\n                skb_queue_head(&v5->backlog_skb_q,\n                        rskb);\n                break;\n            } else {\n                rskb = skb_dequeue(&v5->backlog_skb_q);\n            }\n        }\n        if (skb_queue_empty(&v5->backlog_skb_q)) {\n            if (!list_empty(&v5->message_q.list))\n                iucv_process_message_q(v9);\n            if (atomic_read(&v5->msg_recv) >=\n                            v5->msglimit / 2) {\n                v3 = iucv_send_ctrl(v9, AF_IUCV_FLAG_WIN);\n                if (v3) {\n                    v9->sk_state = IUCV_DISCONN;\n                    v9->sk_state_change(v9);\n                }\n            }\n        }\n        spin_unlock_bh(&v5->message_q.lock);\n    }\nv2:\n    if (v9->sk_type == SOCK_SEQPACKET && (v4 & MSG_TRUNC))\n        v1 = rlen;\n    return v1;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 11
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are structurally and behaviorally equivalent. Both handle socket state checks, out-of-band data, message truncation, and message queue processing in the same way. The only differences are in variable names and minor formatting, which do not affect observable behavior. There are no security-relevant differences or functional mismatches.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are structurally and behaviorally equivalent. Both handle socket state checks, receive data from the socket's receive queue, copy data into the message header, and manage message truncation and control messages. The only differences are in variable names and comments, which do not affect observable behavior. There are no differences in error handling, message processing, or security checks that would affect the outcome for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

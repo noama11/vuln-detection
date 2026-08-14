@@ -1,0 +1,37 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
+// Assume these types and functions are defined elsewhere in the codebase
+typedef unsigned int u32;
+typedef struct port port_t;
+
+// Assume these functions are defined elsewhere in the codebase
+int early_char_output(u32 vtermno, const char* buf, int count);
+port_t* get_port_by_vtermno(u32 vtermno);
+int port_send(port_t* port, const char* buf, int count);
+int init_scatter_gather_list(const char* buf, int count);
+
+int send_chars_to_vterm(u32 vtermno, const char* buf, int count) {
+    int result;
+
+    if (early_char_output) {
+        result = early_char_output(vtermno, buf, count);
+        if (result >= 0) {
+            return result;
+        }
+    }
+
+    port_t* port = get_port_by_vtermno(vtermno);
+    if (!port) {
+        return -EPIPE;
+    }
+
+    result = init_scatter_gather_list(buf, count);
+    if (result < 0) {
+        return result;
+    }
+
+    return port_send(port, buf, count);
+}

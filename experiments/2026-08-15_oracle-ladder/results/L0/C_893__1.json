@@ -1,0 +1,48 @@
+{
+  "case_id": "C_893__1",
+  "sample_id": "D/C/893",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2019-13300",
+  "cve_summary": "ImageMagick 7.0.8-50 Q16 has a heap-based buffer overflow at MagickCore/statistic.c in EvaluateImages because of mishandling columns.",
+  "changed_file": "MagickCore/statistic.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates and initializes a set of pixel channel arrays for multithreaded image processing.  \n *  \n * Parameters:  \n * images (const Image *): Pointer to the image structure containing image data.  \n *  \n * Returns:  \n * PixelChannels **: Pointer to an array of pixel channel arrays, or NULL on failure.  \n *  \n * Logic:\n * The function first retrieves the maximum number of threads allowed and allocates memory for an\n * array of pixel channel pointers. It then determines the number of columns to use for the pixel\n * channel arrays. For each thread, it allocates memory for the pixel channels and initializes them\n * to zero. If any allocation fails, it cleans up previously allocated memory and returns NULL.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static PixelChannels **AcquirePixelThreadSet(const Image *images)\r\n{\r\n  const Image\r\n    *next;\r\n\r\n  PixelChannels\r\n    **pixels;\r\n\r\n  register ssize_t\r\n    i;\r\n\r\n  size_t\r\n    columns,\r\n    number_threads;\r\n\r\n  number_threads=(size_t) GetMagickResourceLimit(ThreadResource);\r\n  pixels=(PixelChannels **) AcquireQuantumMemory(number_threads,\r\n    sizeof(*pixels));\r\n  if (pixels == (PixelChannels **) NULL)\r\n    return((PixelChannels **) NULL);\r\n  (void) memset(pixels,0,number_threads*sizeof(*pixels));\r\n  columns=images->columns;\r\n  for (next=images; next != (Image *) NULL; next=next->next)\r\n    columns=MagickMax(next->columns,columns);\r\n  for (i=0; i < (ssize_t) number_threads; i++)\r\n  {\r\n    register ssize_t\r\n      j;\r\n\r\n    pixels[i]=(PixelChannels *) AcquireQuantumMemory(columns,sizeof(**pixels));\r\n    if (pixels[i] == (PixelChannels *) NULL)\r\n      return(DestroyPixelThreadSet(pixels));\r\n    for (j=0; j < (ssize_t) columns; j++)\r\n    {\r\n      register ssize_t\r\n        k;\r\n\r\n      for (k=0; k < MaxPixelChannels; k++)\r\n        pixels[i][j].channel[k]=0.0;\r\n    }\r\n  }\r\n  return(pixels);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation iterates over a linked list of images to determine the maximum number of columns, while the reference implementation uses only the first image's column count. This leads to different behavior when the input is a list of images with varying widths. The candidate implementation ensures all pixel arrays are sized to the maximum width across all images, while the reference implementation uses only the first image's width. This is a functional mismatch that could affect multithreaded processing correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations are identical in terms of logic, memory allocation, and initialization. They allocate memory for pixel channel arrays, initialize them to zero, and handle allocation failures in the same way. There are no observable behavioral differences.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

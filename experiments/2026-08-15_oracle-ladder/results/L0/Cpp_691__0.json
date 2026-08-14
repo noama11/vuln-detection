@@ -1,0 +1,48 @@
+{
+  "case_id": "Cpp_691__0",
+  "sample_id": "D/C++/691",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "facebook/hhvm",
+  "cve_id": "CVE-2018-6340",
+  "cve_summary": "The Memcache::getextendedstats function can be used to trigger an out-of-bounds read. Exploiting this issue requires control over memcached server hostnames and/or ports. This affects all supported versions of HHVM (3.30 and 3.27.4 and below).",
+  "changed_file": "hphp/runtime/ext/memcache/ext_memcache.cpp",
+  "docstring": "Summary: Retrieves extended statistics from a Memcache server and returns them in an associative array.\n\nParameters: \n- type (const String&): The type of statistics to retrieve (default is null_string).\n- slabid (int): The slab ID for which to retrieve statistics (default is 0).\n- limit (int): The maximum number of statistics to return (default is 100).\n\nReturns: Array: An associative array containing the extended statistics for each Memcache server, or an empty array if the retrieval fails.\n\nLogic: The function first retrieves the Memcache data and checks for successful connection. It then iterates through each server, gathering statistics and constructing keys based on the server's hostname and port. If successful, it adds the server statistics to the return array. Finally, it frees the allocated statistics memory before returning the results.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static Array HHVM_METHOD(Memcache, getextendedstats,\r\n                         const String& /*type*/ /* = null_string */,\r\n                         int /*slabid*/ /* = 0 */, int /*limit*/ /* = 100 */) {\r\n  auto data = Native::data<MemcacheData>(this_);\r\n  memcached_return_t ret;\r\n  memcached_stat_st *stats;\r\n\r\n  stats = memcached_stat(&data->m_memcache, nullptr, &ret);\r\n  if (ret != MEMCACHED_SUCCESS) {\r\n    return Array();\r\n  }\r\n\r\n  int server_count = memcached_server_count(&data->m_memcache);\r\n\r\n  Array return_val;\r\n\r\n  for (int server_id = 0; server_id < server_count; server_id++) {\r\n    memcached_stat_st *stat;\r\n    LMCD_SERVER_POSITION_INSTANCE_TYPE instance =\r\n      memcached_server_instance_by_position(&data->m_memcache, server_id);\r\n    const char *hostname = LMCD_SERVER_HOSTNAME(instance);\r\n    in_port_t port = LMCD_SERVER_PORT(instance);\r\n\r\n    stat = stats + server_id;\r\n\r\n    Array server_stats = memcache_build_stats(&data->m_memcache, stat, &ret);\r\n    if (ret != MEMCACHED_SUCCESS) {\r\n      continue;\r\n    }\r\n\r\n    auto const port_str = folly::to<std::string>(port);\r\n    auto const key_len = strlen(hostname) + 1 + port_str.length();\r\n    auto key = String(key_len, ReserveString);\r\n    key += hostname;\r\n    key += \":\";\r\n    key += port_str;\r\n    return_val.set(key, server_stats);\r\n  }\r\n\r\n  free(stats);\r\n  return return_val;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations retrieve extended statistics from a Memcache server and construct keys using the server's hostname and port. The main difference lies in how the key is constructed. The candidate implementation uses `folly::to<std::string>` to convert the port to a string and dynamically constructs the key with a calculated length, while the reference implementation uses `snprintf` to format the key into a fixed-size buffer. These approaches are functionally equivalent for all realistic inputs, including edge cases like long hostnames or large port numbers. There is no observable difference in behavior or security implications.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. Both retrieve extended statistics from a Memcache server, handle errors, construct keys based on hostname and port, and return the results in an associative array. There are no observable behavioral differences.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

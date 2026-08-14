@@ -1,0 +1,98 @@
+{
+  "case_id": "C_827__0",
+  "sample_id": "D/C/827",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "net/atm/pvc.c",
+  "docstring": "Summary: This function retrieves the name associated with a given socket and fills a sockaddr structure with the appropriate address information.\n\nParameters: \n- sock (struct socket *): Pointer to the socket from which to retrieve the name.\n- sockaddr (struct sockaddr *): Pointer to the sockaddr structure to be filled with address information.\n- sockaddr_len (int *): Pointer to an integer that will hold the length of the sockaddr structure.\n- peer (int): Indicates whether the address is for a peer connection.\n\nReturns: int: Returns 0 on success, or -ENOTCONN if the socket is not connected.\n\nLogic: The function checks if the associated ATM virtual circuit (vcc) is valid and connected. If not, it returns an error. If valid, it initializes the sockaddr structure with the ATM PVC address details, including the interface number, VPI, and VCI, and sets the length of the sockaddr.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_sock_name(struct socket *sock, struct sockaddr *sockaddr, int *sockaddr_len, int peer) {\n    struct atm_vcc *vcc = NULL;\n\n    if (!sock || !sockaddr || !sockaddr_len) {\n        return -ENOTCONN;\n    }\n\n    if (peer) {\n        vcc = sock->file->private_data;\n    } else {\n        vcc = sock->sk->sk_user_data;\n    }\n\n    if (!vcc || !vcc->vcc_sk || !vcc->vcc_sk->sk_bound_dev_if || vcc->vcc_sk->sk_state != TCP_ESTABLISHED) {\n        return -ENOTCONN;\n    }\n\n    if (*sockaddr_len < sizeof(struct sockaddr)) {\n        return -ENOTCONN;\n    }\n\n    memset(sockaddr, 0, *sockaddr_len);\n    sockaddr->sa_family = AF_ATMPVC;\n\n    struct sockaddr_atmpvc *atmpvc = (struct sockaddr_atmpvc *)sockaddr;\n    atmpvc->sat_addr.addr_number = vcc->vcc_sk->sk_bound_dev_if;\n    atmpvc->sat_addr.addr_vpi = vcc->vcc_sk->sk_vpi;\n    atmpvc->sat_addr.addr_vci = vcc->vcc_sk->sk_vci;\n\n    *sockaddr_len = sizeof(struct sockaddr_atmpvc);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate sockaddr length",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "initialize sockaddr structure",
+      "protects_against": "uninitialized memory access"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters 'sock', 'sockaddr', or 'sockaddr_len'. Dereferencing these pointers without checks could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate sockaddr length — protects against: buffer overflow",
+        "reasoning": "The implementation sets the 'sockaddr_len' value to the size of 'struct sockaddr_atmpvc', but does not validate whether the provided 'sockaddr' buffer is large enough to hold this structure. This could lead to a buffer overflow if the buffer is too small.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "initialize sockaddr structure — protects against: uninitialized memory access",
+        "reasoning": "The implementation initializes the 'sap_family', 'sap_addr.itf', 'sap_addr.vpi', and 'sap_addr.vci' fields of the 'sockaddr' structure. However, it does not explicitly zero out or initialize the entire structure, which could leave some fields uninitialized.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the parameters 'sock', 'sockaddr', or 'sockaddr_len'. However, the function assumes these pointers are valid and dereferences them. If any of these pointers are null, a null pointer dereference could occur.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate sockaddr length — protects against: buffer overflow",
+        "reasoning": "The implementation sets the value of *sockaddr_len to the size of the sockaddr_atmpvc structure, but it does not validate whether the provided sockaddr buffer is large enough to hold this data. If the buffer is smaller than expected, a buffer overflow could occur.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "initialize sockaddr structure — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly initializes the sockaddr structure using 'memset(addr, 0, sizeof(*addr))', ensuring that all memory is initialized before being used.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

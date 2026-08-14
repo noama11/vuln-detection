@@ -1,0 +1,114 @@
+{
+  "case_id": "C_468__1",
+  "sample_id": "D/C/468",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for memory binding, allowing users to set memory policies based on node masks.\n\nParameters:\n- start (compat_ulong_t): The starting address of the memory region.\n- len (compat_ulong_t): The length of the memory region.\n- mode (compat_ulong_t): The memory policy mode to apply.\n- nmask (compat_ulong_t __user *): A pointer to the user-space node mask.\n- maxnode (compat_ulong_t): The maximum number of nodes.\n- flags (compat_ulong_t): Flags for additional options.\n\nReturns: int - Returns 0 on success or a negative error code on failure.\n\nLogic: The function calculates the number of bits required for the node mask and allocates user space for it. It checks for errors in retrieving the bitmap and copying data to user space. Finally, it calls `sys_set_mempolicy` to apply the specified memory policy.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int compat_sys_mbind(compat_ulong_t start, compat_ulong_t len, compat_ulong_t mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode, compat_ulong_t flags) {\n    int ret = -EFAULT;\n    compat_ulong_t *bitmap = NULL;\n    compat_ulong_t bits_needed = (maxnode + 1) / 8; /* Calculate number of bytes needed for the mask */\n\n    if (!nmask) {\n        return -EINVAL;\n    }\n\n    bitmap = kmalloc(bits_needed, GFP_KERNEL);\n    if (!bitmap) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(bitmap, nmask, bits_needed)) {\n        goto out;\n    }\n\n    ret = sys_set_mempolicy(mode, bitmap, maxnode, flags);\n\nout:\n    kfree(bitmap);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer",
+      "protects_against": "null pointer dereference when accessing nmask"
+    },
+    {
+      "step": "allocate memory for bitmap",
+      "protects_against": "out of memory condition when allocating memory for node mask"
+    },
+    {
+      "step": "copy data from user space",
+      "protects_against": "invalid or malicious user data access"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak after function execution"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference when accessing nmask",
+        "reasoning": "The implementation checks if nmask is not null before attempting to use it. If nmask is null, the code skips the operations that depend on it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for bitmap — protects against: out of memory condition when allocating memory for node mask",
+        "reasoning": "The implementation uses the compat_alloc_user_space function to allocate memory for the node mask. This function is designed to handle allocation in user space and is expected to return a valid pointer or fail gracefully.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy data from user space — protects against: invalid or malicious user data access",
+        "reasoning": "The implementation uses compat_get_bitmap to retrieve the node mask from user space. This function is expected to perform the necessary validation and copying of user data safely.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after function execution",
+        "reasoning": "The implementation does not explicitly free the allocated memory. The allocated memory is passed to sys_set_mempolicy, but there is no indication that it is freed after use.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference when accessing nmask",
+        "reasoning": "The implementation checks if `nmask` is not null before attempting to use it, thus preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for bitmap — protects against: out of memory condition when allocating memory for node mask",
+        "reasoning": "The implementation uses `compat_alloc_user_space` to allocate memory for the node mask, which handles the allocation in user space and implicitly handles out-of-memory conditions by returning an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "copy data from user space — protects against: invalid or malicious user data access",
+        "reasoning": "The implementation uses `compat_get_bitmap`, which is a helper function that safely copies data from user space into the kernel, and returns an error if the copy fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after function execution",
+        "reasoning": "The implementation does not explicitly free the allocated memory (`nm`) because it is allocated in user space and does not require explicit deallocation. The memory is not leaked as it is allocated in the user space context and managed by the system.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

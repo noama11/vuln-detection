@@ -1,0 +1,48 @@
+{
+  "case_id": "C_31__0",
+  "sample_id": "D/C/31",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-3191",
+  "cve_summary": "Integer signedness error in the CIFSFindNext function in fs/cifs/cifssmb.c in the Linux kernel before 3.1 allows remote CIFS servers to cause a denial of service (memory corruption) or possibly have unspecified other impact via a large length value in a response to a read request for a directory.",
+  "changed_file": "fs/cifs/cifssmb.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function performs a search operation in the CIFS (Common Internet File System) protocol, \n * retrieving the next set of search results based on a given search handle.  \n *  \n * Parameters:  \n * xid (int): Transaction ID for the request.  \n * tcon (struct cifs_tcon *): Pointer to the CIFS connection structure.  \n * searchHandle (__u16): Handle for the current search operation.  \n * psrch_inf (struct cifs_search_info *): Pointer to the structure containing search information.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function initializes a transaction request, sets up parameters for the search, \n * and sends the request to the server. It processes the server's response, updating the \n * search information structure accordingly. If the search reaches its end, it marks the \n * search as complete. Error handling is included for various failure scenarios.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int CIFSFindNext(const int xid, struct cifs_tcon *tcon,\r\n\t\t __u16 searchHandle, struct cifs_search_info *psrch_inf)\r\n{\r\n\tTRANSACTION2_FNEXT_REQ *pSMB = NULL;\r\n\tTRANSACTION2_FNEXT_RSP *pSMBr = NULL;\r\n\tT2_FNEXT_RSP_PARMS *parms;\r\n\tchar *response_data;\r\n\tint rc = 0;\r\n\tint bytes_returned;\r\n\tunsigned int name_len;\r\n\t__u16 params, byte_count;\r\n\r\n\tcFYI(1, \"In FindNext\");\r\n\r\n\tif (psrch_inf->endOfSearch)\r\n\t\treturn -ENOENT;\r\n\r\n\trc = smb_init(SMB_COM_TRANSACTION2, 15, tcon, (void **) &pSMB,\r\n\t\t(void **) &pSMBr);\r\n\tif (rc)\r\n\t\treturn rc;\r\n\r\n\tparams = 14; /* includes 2 bytes of null string, converted to LE below*/\r\n\tbyte_count = 0;\r\n\tpSMB->TotalDataCount = 0;       /* no EAs */\r\n\tpSMB->MaxParameterCount = cpu_to_le16(8);\r\n\tpSMB->MaxDataCount =\r\n\t\tcpu_to_le16((tcon->ses->server->maxBuf - MAX_CIFS_HDR_SIZE) &\r\n\t\t\t\t0xFFFFFF00);\r\n\tpSMB->MaxSetupCount = 0;\r\n\tpSMB->Reserved = 0;\r\n\tpSMB->Flags = 0;\r\n\tpSMB->Timeout = 0;\r\n\tpSMB->Reserved2 = 0;\r\n\tpSMB->ParameterOffset =  cpu_to_le16(\r\n\t      offsetof(struct smb_com_transaction2_fnext_req,SearchHandle) - 4);\r\n\tpSMB->DataCount = 0;\r\n\tpSMB->DataOffset = 0;\r\n\tpSMB->SetupCount = 1;\r\n\tpSMB->Reserved3 = 0;\r\n\tpSMB->SubCommand = cpu_to_le16(TRANS2_FIND_NEXT);\r\n\tpSMB->SearchHandle = searchHandle;      /* always kept as le */\r\n\tpSMB->SearchCount =\r\n\t\tcpu_to_le16(CIFSMaxBufSize / sizeof(FILE_UNIX_INFO));\r\n\tpSMB->InformationLevel = cpu_to_le16(psrch_inf->info_level);\r\n\tpSMB->ResumeKey = psrch_inf->resume_key;\r\n\tpSMB->SearchFlags =\r\n\t      cpu_to_le16(CIFS_SEARCH_CLOSE_AT_END | CIFS_SEARCH_RETURN_RESUME);\r\n\r\n\tname_len = psrch_inf->resume_name_len;\r\n\tparams += name_len;\r\n\tif (name_len < PATH_MAX) {\r\n\t\tmemcpy(pSMB->ResumeFileName, psrch_inf->presume_name, name_len);\r\n\t\tbyte_count += name_len;\r\n\t\t/* 14 byte parm len above enough for 2 byte null terminator */\r\n\t\tpSMB->ResumeFileName[name_len] = 0;\r\n\t\tpSMB->ResumeFileName[name_len+1] = 0;\r\n\t} else {\r\n\t\trc = -EINVAL;\r\n\t\tgoto FNext2_err_exit;\r\n\t}\r\n\tbyte_count = params + 1 /* pad */ ;\r\n\tpSMB->TotalParameterCount = cpu_to_le16(params);\r\n\tpSMB->ParameterCount = pSMB->TotalParameterCount;\r\n\tinc_rfc1001_len(pSMB, byte_count);\r\n\tpSMB->ByteCount = cpu_to_le16(byte_count);\r\n\r\n\trc = SendReceive(xid, tcon->ses, (struct smb_hdr *) pSMB,\r\n\t\t\t(struct smb_hdr *) pSMBr, &bytes_returned, 0);\r\n\tcifs_stats_inc(&tcon->num_fnext);\r\n\tif (rc) {\r\n\t\tif (rc == -EBADF) {\r\n\t\t\tpsrch_inf->endOfSearch = true;\r\n\t\t\tcifs_buf_release(pSMB);\r\n\t\t\trc = 0; /* search probably was closed at end of search*/\r\n\t\t} else\r\n\t\t\tcFYI(1, \"FindNext returned = %d\", rc);\r\n\t} else {                /* decode response */\r\n\t\trc = validate_t2((struct smb_t2_rsp *)pSMBr);\r\n\r\n\t\tif (rc == 0) {\r\n\t\t\tunsigned int lnoff;\r\n\r\n\t\t\t/* BB fixme add lock for file (srch_info) struct here */\r\n\t\t\tif (pSMBr->hdr.Flags2 & SMBFLG2_UNICODE)\r\n\t\t\t\tpsrch_inf->unicode = true;\r\n\t\t\telse\r\n\t\t\t\tpsrch_inf->unicode = false;\r\n\t\t\tresponse_data = (char *) &pSMBr->hdr.Protocol +\r\n\t\t\t       le16_to_cpu(pSMBr->t2.ParameterOffset);\r\n\t\t\tparms = (T2_FNEXT_RSP_PARMS *)response_data;\r\n\t\t\tresponse_data = (char *)&pSMBr->hdr.Protocol +\r\n\t\t\t\tle16_to_cpu(pSMBr->t2.DataOffset);\r\n\t\t\tif (psrch_inf->smallBuf)\r\n\t\t\t\tcifs_small_buf_release(\r\n\t\t\t\t\tpsrch_inf->ntwrk_buf_start);\r\n\t\t\telse\r\n\t\t\t\tcifs_buf_release(psrch_inf->ntwrk_buf_start);\r\n\t\t\tpsrch_inf->srch_entries_start = response_data;\r\n\t\t\tpsrch_inf->ntwrk_buf_start = (char *)pSMB;\r\n\t\t\tpsrch_inf->smallBuf = 0;\r\n\t\t\tif (parms->EndofSearch)\r\n\t\t\t\tpsrch_inf->endOfSearch = true;\r\n\t\t\telse\r\n\t\t\t\tpsrch_inf->endOfSearch = false;\r\n\t\t\tpsrch_inf->entries_in_buffer =\r\n\t\t\t\t\t\tle16_to_cpu(parms->SearchCount);\r\n\t\t\tpsrch_inf->index_of_last_entry +=\r\n\t\t\t\tpsrch_inf->entries_in_buffer;\r\n\t\t\tlnoff = le16_to_cpu(parms->LastNameOffset);\r\n\t\t\tif (tcon->ses->server->maxBuf - MAX_CIFS_HDR_SIZE <\r\n\t\t\t      lnoff) {\r\n\t\t\t\tcERROR(1, \"ignoring corrupt resume name\");\r\n\t\t\t\tpsrch_inf->last_entry = NULL;\r\n\t\t\t\treturn rc;\r\n\t\t\t} else\r\n\t\t\t\tpsrch_inf->last_entry =\r\n\t\t\t\t\tpsrch_inf->srch_entries_start + lnoff;\r\n\r\n/*  cFYI(1, \"fnxt2 entries in buf %d index_of_last %d\",\r\n\t    psrch_inf->entries_in_buffer, psrch_inf->index_of_last_entry); */\r\n\r\n\t\t\t/* BB fixme add unlock here */\r\n\t\t}\r\n\r\n\t}\r\n\r\n\t/* BB On error, should we leave previous search buf (and count and\r\n\tlast entry fields) intact or free the previous one? */\r\n\r\n\t/* Note: On -EAGAIN error only caller can retry on handle based calls\r\n\tsince file handle passed in no longer valid */\r\nFNext2_err_exit:\r\n\tif (rc != 0)\r\n\t\tcifs_buf_release(pSMB);\r\n\treturn rc;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of their logic, structure, and behavior. Both handle the same conditions, perform the same operations, and manage the same resources in the same way. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of structure, logic, and behavior. All variable names, function calls, and control flow match exactly. There are no observable differences in how the code behaves for any input, including edge cases.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

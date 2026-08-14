@@ -1,0 +1,114 @@
+{
+  "case_id": "C_349__0",
+  "sample_id": "D/C/349",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "Summary: This function manages the selection and initialization of a user-space sound timer.\n\nParameters:\n- file (struct file *): A pointer to the file structure associated with the timer.\n- _tselect (struct snd_timer_select __user *): A pointer to the user-space timer selection structure.\n\nReturns: int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function retrieves the private data from the file structure, closes any existing timer, and copies the user-specified timer selection data. It initializes a new timer based on the selection, allocating memory for the associated queues. If any memory allocation fails, it cleans up by closing the timer and returning an error code. If successful, it sets various callback functions for the timer and marks it as fast.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n\nint timer_init_and_select(struct file *file, struct snd_timer_select __user *user_select) {\n    struct snd_timer *timer = file->private_data;\n    struct snd_timer_select kernel_select = {0};\n    int ret = 0;\n\n    if (timer) {\n        timer_close(timer);\n    }\n\n    if (copy_from_user(&kernel_select, user_select, sizeof(kernel_select))) {\n        return -EFAULT;\n    }\n\n    timer = kzalloc(sizeof(*timer), GFP_KERNEL);\n    if (!timer) {\n        return -ENOMEM;\n    }\n\n    timer->queues = kcalloc(kernel_select.queues, sizeof(*timer->queues), GFP_KERNEL);\n    if (!timer->queues) {\n        kfree(timer);\n        return -ENOMEM;\n    }\n\n    file->private_data = timer;\n    timer->file = file;\n\n    timer->open = timer_open;\n    timer->close = timer_close;\n    timer->start = timer_start;\n    timer->stop = timer_stop;\n    timer->pointer = timer_pointer;\n\n    timer->fast = 1;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "null pointer dereference when accessing timer->queues"
+    },
+    {
+      "step": "validate copy_from_user return value",
+      "protects_against": "invalid user-space pointer access"
+    },
+    {
+      "step": "check memory allocation results",
+      "protects_against": "out-of-memory conditions"
+    },
+    {
+      "step": "clean up allocated memory on failure",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when accessing timer->queues",
+        "reasoning": "The implementation does not directly dereference a `timer->queues` pointer. It allocates and initializes `tu->queue` and `tu->tqueue`, which are local to the `snd_timer_user` structure, not the timer itself. There is no direct access to a `timer->queues` field that could be null.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate copy_from_user return value — protects against: invalid user-space pointer access",
+        "reasoning": "The implementation checks the return value of `copy_from_user` and sets `err = -EFAULT` if it fails, then jumps to the error handler. This ensures invalid user-space pointers are not processed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: out-of-memory conditions",
+        "reasoning": "The implementation checks the result of `kmalloc` for both `tu->tqueue` and `tu->queue`. If either allocation fails, it sets `err = -ENOMEM` and proceeds to the error handler.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated memory on failure — protects against: memory leaks",
+        "reasoning": "The implementation frees `tu->queue` and `tu->tqueue` at the start of the function before any allocations. On failure paths, it does not perform additional allocations that would require cleanup. Therefore, there is no allocated memory to clean up in the case of an error.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer before dereferencing — protects against: null pointer dereference when accessing timer->queues",
+        "reasoning": "The implementation does not directly dereference a `timer->queues` pointer. It checks and initializes `tu->tqueue` and `tu->queue` after freeing them, and only allocates them if needed. There is no direct dereference of a potentially null pointer in the context of `timer->queues`.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate copy_from_user return value — protects against: invalid user-space pointer access",
+        "reasoning": "The implementation checks the return value of `copy_from_user` and jumps to an error handler if it fails, returning `-EFAULT`. This directly validates the user-space pointer access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: out-of-memory conditions",
+        "reasoning": "The implementation checks the result of `kmalloc` for both `tu->tqueue` and `tu->queue`. If either allocation fails, it sets `err = -ENOMEM`, which is a direct check for out-of-memory conditions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated memory on failure — protects against: memory leaks",
+        "reasoning": "The implementation cleans up the timer (`snd_timer_close`) and sets the pointer to `NULL` on failure. However, it does not explicitly free any memory that might have been allocated before the failure. For example, if `tu->tqueue` or `tu->queue` were allocated before the failure, they are not freed in the error path. This could lead to memory leaks.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

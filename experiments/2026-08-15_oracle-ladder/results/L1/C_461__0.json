@@ -1,0 +1,49 @@
+{
+  "case_id": "C_461__0",
+  "sample_id": "D/C/461",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-8067",
+  "cve_summary": "drivers/char/virtio_console.c in the Linux kernel 4.9.x and 4.10.x before 4.10.12 interacts incorrectly with the CONFIG_VMAP_STACK option, which allows local users to cause a denial of service (system crash or memory corruption) or possibly have unspecified other impact by leveraging use of more than one virtual page for a DMA scatterlist.",
+  "changed_file": "drivers/char/virtio_console.c",
+  "docstring": "\"\"\"\nSummary: This function sends a specified number of characters to a virtual terminal.\n\nParameters:\nvtermno (u32): The virtual terminal number to which the characters will be sent.\nbuf (const char*): A pointer to the buffer containing the characters to send.\ncount (int): The number of characters to send from the buffer.\n\nReturns: \nint: The result of the operation, where a negative value indicates an error (e.g., -EPIPE for a missing port, -ENOMEM for memory allocation failure), and a non-negative value indicates success.\n\nLogic: The function first checks if an early character output function is defined and calls it if so. It then retrieves the port associated with the given virtual terminal number. If the port is not found, it returns an error. The function initializes a scatter-gather list for the character buffer before sending the data to the port. Finally, it returns the result of the send operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int put_chars(u32 v7, const char *v1, int v2)\n{\n    struct v4 *v4;\n    struct scatterlist v6[1];\n    void *v3;\n    int v5;\n    if (unlikely(early_put_chars))\n        return early_put_chars(v7, v1, v2);\n    v4 = find_port_by_vtermno(v7);\n    if (!v4)\n        return -EPIPE;\n    v3 = kmemdup(v1, v2, GFP_ATOMIC);\n    if (!v3)\n        return -ENOMEM;\n    sg_init_one(v6, v3, v2);\n    v5 = __send_to_port(v4, v6, 1, v2, v3, false);\n    kfree(v3);\n    return v5;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 7
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the buffer passed to `__send_to_port`. The candidate implementation allocates a new buffer using `kmemdup`, passes a pointer to this new buffer, and then frees it. The reference implementation directly uses the original buffer pointer. This difference could lead to different behaviors if the original buffer is modified or freed before `__send_to_port` completes. Since the buffer is attacker-influenced input and this could lead to use-after-free or memory safety issues, the difference is security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. They both check for an early character output function, retrieve the port, allocate memory for the buffer, initialize a scatter-gather list, send the data, and free the allocated memory. The only differences are in variable names and struct names, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

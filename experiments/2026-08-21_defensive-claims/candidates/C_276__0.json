@@ -1,0 +1,35 @@
+{
+  "case_id": "C_276__0",
+  "implementation": "int vfs_rename(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir, struct dentry *new_dentry, struct inode **delegated_inode, unsigned int flags)\n{\n    int error;\n\n    if (old_dir == NULL || old_dentry == NULL || new_dir == NULL || new_dentry == NULL)\n        return -EINVAL;\n\n    if (old_dentry->d_inode == NULL)\n        return -ENOENT;\n\n    if (old_dir == new_dir && old_dentry == new_dentry)\n        return 0;\n\n    error = inode_permission(old_dir, MAY_WRITE | MAY_EXEC);\n    if (error)\n        return error;\n\n    error = inode_permission(new_dir, MAY_WRITE | MAY_EXEC);\n    if (error)\n        return error;\n\n    if (S_ISDIR(old_dentry->d_inode->i_mode)) {\n        error = inode_permission(old_dentry->d_inode, MAY_EXEC);\n        if (error)\n            return error;\n    }\n\n    if (S_ISDIR(new_dentry->d_inode->i_mode)) {\n        error = inode_permission(new_dentry->d_inode, MAY_EXEC);\n        if (error)\n            return error;\n    }\n\n    if (flags & RENAME_EXCHANGE) {\n        struct inode *tmp_inode = old_dentry->d_inode;\n        old_dentry->d_inode = new_dentry->d_inode;\n        new_dentry->d_inode = tmp_inode;\n    }\n\n    error = old_dir->i_op->rename(old_dir, old_dentry, new_dir, new_dentry, flags);\n    if (error)\n        return error;\n\n    if (delegated_inode && *delegated_inode) {\n        iput(*delegated_inode);\n        *delegated_inode = NULL;\n    }\n\n    d_move(old_dentry, new_dentry);\n    fsnotify_move(old_dir, new_dir, old_dentry, new_dentry);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing old_dir, old_dentry, new_dir, or new_dentry"
+    },
+    {
+      "step": "check for null inode in old_dentry",
+      "protects_against": "attempting to rename a non-existent directory entry"
+    },
+    {
+      "step": "check if source and target are the same",
+      "protects_against": "unnecessary operation and potential infinite loops"
+    },
+    {
+      "step": "verify permissions for directory operations",
+      "protects_against": "unauthorized access to directory contents"
+    },
+    {
+      "step": "verify permissions for directory inodes",
+      "protects_against": "unauthorized access to directory execution rights"
+    },
+    {
+      "step": "safely handle delegated_inode",
+      "protects_against": "memory leaks and use-after-free vulnerabilities"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "C_236__0",
+  "sample_id": "D/C/236",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "openssl/openssl",
+  "cve_id": "CVE-2014-8275",
+  "cve_summary": "OpenSSL before 0.9.8zd, 1.0.0 before 1.0.0p, and 1.0.1 before 1.0.1k does not enforce certain constraints on certificate data, which allows remote attackers to defeat a fingerprint-based certificate-blacklist protection mechanism by including crafted data within a certificate's unsigned portion, related to crypto/asn1/a_verify.c, crypto/dsa/dsa_asn1.c, crypto/ecdsa/ecs_vrf.c, and crypto/x509/x_all.c.",
+  "changed_file": "crypto/asn1/a_verify.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Verifies an ASN.1 signature using the specified algorithm and public key.  \n *  \n * Parameters:  \n * it (const ASN1_ITEM *): The ASN.1 item structure to verify.  \n * a (X509_ALGOR *): The algorithm used for the signature.  \n * signature (ASN1_BIT_STRING *): The signature to verify.  \n * asn (void *): The data to be verified against the signature.  \n * pkey (EVP_PKEY *): The public key used for verification.  \n *  \n * Returns:  \n * int: Returns 1 if the signature is valid, 0 if invalid, and -1 on error.  \n *  \n * Logic:  \n * The function initializes a digest context, checks for null parameters, and validates  \n * the signature type. It retrieves the appropriate message digest and public key types,  \n * initializes the digest verification, and processes the input data. Finally, it  \n * verifies the signature and cleans up resources before returning the result.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int verify_asn1_signature(const ASN1_ITEM *it, X509_ALGOR *a, ASN1_BIT_STRING *signature, void *asn, EVP_PKEY *pkey) {\n    EVP_MD_CTX *ctx = NULL;\n    const EVP_MD *md = NULL;\n    int result = -1;\n\n    if (!it || !a || !signature || !asn || !pkey) {\n        return -1;\n    }\n\n    if (!a->parameter || !EVP_PKEY_type(pkey->type) || !EVP_PKEY_get_default_digest_nid(pkey, NULL)) {\n        return -1;\n    }\n\n    if (signature->length <= 0 || signature->data == NULL) {\n        return -1;\n    }\n\n    ctx = EVP_MD_CTX_new();\n    if (!ctx) {\n        return -1;\n    }\n\n    md = EVP_get_digestbyname(OBJ_nid2ln(a->algorithm));\n    if (!md) {\n        goto cleanup;\n    }\n\n    if (!EVP_VerifyInit_ex(ctx, md, NULL) || !EVP_VerifyUpdate(ctx, asn, it->it->size)) {\n        goto cleanup;\n    }\n\n    result = EVP_VerifyFinal(ctx, signature->data, signature->length, pkey);\n\n    if (result != 1 && result != 0) {\n        result = -1;\n    }\n\n    cleanup:\n    EVP_MD_CTX_free(ctx);\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null parameters",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate signature data and length",
+      "protects_against": "invalid or malformed signature data"
+    },
+    {
+      "step": "initialize and clean up digest context",
+      "protects_against": "resource leaks and invalid state"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null parameters — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `pkey` is null and returns an error, preventing a null pointer dereference. However, it does not check the other parameters (`it`, `a`, `signature`, `asn`) for null values.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate signature data and length — protects against: invalid or malformed signature data",
+        "reasoning": "The implementation checks if the signature is of type `V_ASN1_BIT_STRING` and if the `flags` field has invalid bits left. It does not perform additional validation of the signature data or length beyond this check.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "initialize and clean up digest context — protects against: resource leaks and invalid state",
+        "reasoning": "The implementation initializes the digest context with `EVP_MD_CTX_init` and cleans it up with `EVP_MD_CTX_cleanup`, ensuring no resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null parameters — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `pkey` is null and returns an error, preventing a null pointer dereference. However, it does not check the other parameters (`it`, `a`, `signature`, `asn`) for null values, which could lead to undefined behavior if they are null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate signature data and length — protects against: invalid or malformed signature data",
+        "reasoning": "The implementation checks if the signature is of type `V_ASN1_BIT_STRING` and if the `flags` field has invalid bits left (i.e., not 0 or 1). This helps prevent malformed signature data. However, it does not perform additional validation of the signature data or length beyond this check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize and clean up digest context — protects against: resource leaks and invalid state",
+        "reasoning": "The implementation initializes the digest context with `EVP_MD_CTX_init(&ctx)` and cleans it up with `EVP_MD_CTX_cleanup(&ctx)` before returning, ensuring no resource leaks occur.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

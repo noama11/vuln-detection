@@ -1,0 +1,35 @@
+{
+  "case_id": "C_19__0",
+  "implementation": "#include <string.h>\n#include <linux/unistd.h>\n#include <linux/personality.h>\n\nint format_uname(char __user *release, size_t len) {\n    int personality = personality(0);\n    \n    // Check if the process is in 26-character uname mode\n    if ((personality & 0xFF) != 0x26) {\n        // Not in 26-character mode, return 0 bytes copied\n        return 0;\n    }\n\n    // Construct the version string in 2.6.x format\n    char version[] = \"Linux 2.6.\\0\";\n    char buffer[128];\n    \n    // Ensure the buffer is initialized\n    memset(buffer, 0, sizeof(buffer));\n\n    // Copy the base string into the buffer\n    if (strlen(version) >= sizeof(buffer)) {\n        return -1; // Not enough space in buffer\n    }\n\n    strcpy(buffer, version);\n\n    // Calculate the x value based on the current version code\n    unsigned int version_code = LINUX_VERSION_CODE;\n    unsigned int major = (version_code >> 16) & 0xFF;\n    unsigned int minor = (version_code >> 8) & 0xFF;\n    unsigned int patch = version_code & 0xFF;\n\n    // Format the x value into the buffer\n    int bytes_written = snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), \"%u.%u.%u\", major, minor, patch);\n\n    if (bytes_written < 0) {\n        return -1; // Error in formatting\n    }\n\n    // Ensure the total length does not exceed the buffer size\n    size_t total_length = strlen(buffer);\n\n    if (total_length > len) {\n        return -1; // Not enough space in user buffer\n    }\n\n    // Copy the formatted string to the user buffer\n    if (copy_to_user(release, buffer, total_length)) {\n        return -1; // Error in copying to user space\n    }\n\n    return total_length;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if the process is in 26-character uname mode",
+      "protects_against": "unexpected or invalid personality flags"
+    },
+    {
+      "step": "ensure the buffer is initialized",
+      "protects_against": "uninitialized memory being accessed"
+    },
+    {
+      "step": "check if the base string fits in the buffer",
+      "protects_against": "buffer overflow when copying the base string"
+    },
+    {
+      "step": "check for errors in formatting the version string",
+      "protects_against": "invalid formatting operations"
+    },
+    {
+      "step": "ensure the total length does not exceed the user buffer size",
+      "protects_against": "buffer overflow when copying to user space"
+    },
+    {
+      "step": "check for errors in copying to user space",
+      "protects_against": "invalid user space pointers or copy failures"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

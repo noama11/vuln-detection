@@ -1,0 +1,29 @@
+#include <linux/uaccess.h>
+#include <linux/bitmap.h>
+
+int compat_sys_mempolicy_set(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode) {
+    int err = 0;
+    unsigned long *bitmap = NULL;
+    unsigned int nbits = maxnode;
+    unsigned int size = BITS_TO_LONGS(nbits) * sizeof(long);
+
+    if (nmask) {
+        bitmap = kmalloc(size, GFP_KERNEL);
+        if (!bitmap)
+            return -ENOMEM;
+
+        if (copy_from_user(bitmap, nmask, size)) {
+            err = -EFAULT;
+            goto out;
+        }
+    }
+
+    err = sys_mempolicy_set(mode, bitmap, nbits);
+
+    if (nmask && copy_to_user(nmask, bitmap, size))
+        err = -EFAULT;
+
+out:
+    kfree(bitmap);
+    return err;
+}

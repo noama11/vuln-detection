@@ -1,0 +1,27 @@
+{
+  "case_id": "C_74__0",
+  "implementation": "int irda_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int error = -EINVAL;\n\n    skb = skb_peek(&sk->sk_receive_queue);\n    if (!skb)\n        return -EAGAIN;\n\n    if (size > skb->len) {\n        size = skb->len;\n    }\n\n    if (memcpy_to_msg(msg, skb->data, size) != 0) {\n        return -EFAULT;\n    }\n\n    copied = size;\n\n    if (flags & MSG_TRUNC) {\n        msg->msg_flags |= MSG_TRUNC;\n    }\n\n    skb_unlink(skb, &sk->sk_receive_queue);\n    skb_free(skb);\n\n    if ((sk->sk_shutdown & RCV_SHUTDOWN) && skb_queue_empty(&sk->sk_receive_queue)) {\n        return 0;\n    }\n\n    if (sk->sk_flow_stop && !skb_queue_empty(&sk->sk_receive_queue)) {\n        sk->sk_flow_stop = 0;\n    }\n\n    return copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "bound copy length to minimum of requested size and available data",
+      "protects_against": "copying more data than is available in the socket buffer"
+    },
+    {
+      "step": "checked for null skb before dereferencing",
+      "protects_against": "null pointer dereference when there is no data in the receive queue"
+    },
+    {
+      "step": "checked for error from memcpy_to_msg",
+      "protects_against": "invalid memory access when copying data to the message"
+    },
+    {
+      "step": "cleared the socket buffer after successful data copy",
+      "protects_against": "memory leaks from unprocessed socket buffers"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

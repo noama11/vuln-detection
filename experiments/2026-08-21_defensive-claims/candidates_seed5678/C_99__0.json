@@ -1,0 +1,31 @@
+{
+  "case_id": "C_99__0",
+  "implementation": "#include <linux/tty.h>\n#include <linux/wait.h>\n#include <linux/spinlock.h>\n\nvoid edgeport_drain(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty = port->tty;\n    wait_queue_t wait;\n    unsigned long start_time = jiffies;\n    int data_remaining;\n\n    if (!tty)\n        return;\n\n    init_waitqueue_entry(&wait, current);\n\n    add_wait_queue(&tty->write_wait, &wait);\n\n    while (1) {\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        if (time_after(jiffies, start_time + timeout))\n            break;\n\n        data_remaining = tty_chars_in_buffer(tty);\n        if (data_remaining == 0)\n            break;\n\n        if (signal_pending(current))\n            break;\n\n        schedule();\n    }\n\n    set_current_state(TASK_RUNNING);\n    remove_wait_queue(&tty->write_wait, &wait);\n\n    if (flush)\n        tty_flush(tty, 0);\n\n    if (tty)\n        tty_wait_until_sent(tty, timeout);\n\n    spin_lock_irq(&port->lock);\n\n    if (port->disconnected) {\n        spin_unlock_irq(&port->lock);\n        return;\n    }\n\n    spin_unlock_irq(&port->lock);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null tty pointer",
+      "protects_against": "null pointer dereference when accessing port->tty"
+    },
+    {
+      "step": "check for signal pending",
+      "protects_against": "infinite wait due to unhandled signals"
+    },
+    {
+      "step": "bound wait time with timeout",
+      "protects_against": "infinite loop if data never drains"
+    },
+    {
+      "step": "use spinlock for synchronization",
+      "protects_against": "race conditions when accessing shared port state"
+    },
+    {
+      "step": "check for port disconnection",
+      "protects_against": "attempting to operate on a disconnected port"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

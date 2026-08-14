@@ -1,0 +1,130 @@
+{
+  "case_id": "C_300__1",
+  "sample_id": "D/C/300",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "jpirko/libndp",
+  "cve_id": "CVE-2016-3698",
+  "cve_summary": "libndp before 1.6, as used in NetworkManager, does not properly validate the origin of Neighbor Discovery Protocol (NDP) messages, which allows remote attackers to conduct man-in-the-middle attacks or cause a denial of service (network connectivity disruption) by advertising a node as a router from a non-local network.",
+  "changed_file": "libndp/libndp.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket using IPv6 and retrieves additional information such as the source address, interface index, and hop limit.\n\nParameters: \nsockfd (int): The socket file descriptor to receive data from.\nbuf (void*): A pointer to the buffer where the received data will be stored.\nbuflen (size_t*): A pointer to a variable that holds the size of the buffer; updated to the actual length of received data.\nflags (int): Flags for the receive operation.\naddr (struct in6_addr*): A pointer to a variable where the source IPv6 address will be stored.\nifindex (uint32_t*): A pointer to a variable where the interface index will be stored.\nhoplimit (int*): A pointer to a variable where the hop limit will be stored.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function initializes a message header and control message buffer, then calls `recvmsg` to receive data. It updates the buffer length and extracts the source address and interface index from the received message's control information.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <sys/socket.h>\n#include <netinet/in.h>\n#include <string.h>\n\nint receive_message(int sockfd, void* buf, size_t* buflen, int flags, struct in6_addr* addr, uint32_t* ifindex, int* hoplimit) {\n    if (!buf || !buflen || !addr || !ifindex || !hoplimit) {\n        return -1;\n    }\n\n    struct msghdr msg = {0};\n    struct iovec iov = {buf, *buflen};\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n\n    char cmsgbuf[CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int))];\n    memset(cmsgbuf, 0, sizeof(cmsgbuf));\n\n    msg.msg_control = cmsgbuf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n\n    ssize_t bytes_received = recvmsg(sockfd, &msg, flags);\n    if (bytes_received < 0) {\n        return -1;\n    }\n\n    *buflen = (size_t)bytes_received;\n\n    *addr = in6addr_any;\n    *ifindex = 0;\n    *hoplimit = -1;\n\n    struct cmsghdr* cmsg;\n    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo* pktinfo = (struct in6_pktinfo*)CMSG_DATA(cmsg);\n                *addr = pktinfo->ipi6_addr;\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int*)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "initialize buffers to zero",
+      "protects_against": "uninitialized memory reads"
+    },
+    {
+      "step": "validate return value of recvmsg",
+      "protects_against": "failure to receive message"
+    },
+    {
+      "step": "initialize output parameters to default values",
+      "protects_against": "uninitialized output values"
+    },
+    {
+      "step": "use CMSG_NXTHDR to safely iterate through control messages",
+      "protects_against": "buffer overflow when parsing control messages"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 14,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. Dereferencing parameters like `buf`, `buflen`, `addr`, and `ifindex` is done without null checks, which could lead to null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "initialize buffers to zero — protects against: uninitialized memory reads",
+        "reasoning": "The `msghdr` structure is initialized to zero using `memset`, and the `sin6` structure in `mysendto6` is also zeroed. However, the `cbuf` array is not explicitly initialized to zero, and the `buf` parameter is not initialized. This could lead to uninitialized memory reads if the buffer is not properly filled by `recvmsg`.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate return value of recvmsg — protects against: failure to receive message",
+        "reasoning": "The implementation checks if `recvmsg` returns -1 and returns `-errno` in that case. This is a valid validation of the return value.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize output parameters to default values — protects against: uninitialized output values",
+        "reasoning": "The implementation does not explicitly initialize the output parameters `addr` and `ifindex` to default values before assigning values from the received message. This could result in uninitialized output values if the message does not contain the expected control information.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "use CMSG_NXTHDR to safely iterate through control messages — protects against: buffer overflow when parsing control messages",
+        "reasoning": "The implementation uses `CMSG_NXTHDR` to iterate through the control messages, which is the correct and safe way to traverse the control message buffer.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. Dereferencing parameters like `buf`, `buflen`, `addr`, `ifindex`, and `hoplimit` could lead to null pointer dereference if any of these are null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "initialize buffers to zero — protects against: uninitialized memory reads",
+        "reasoning": "The implementation initializes the `msghdr` structure with `memset(&msghdr, 0, sizeof(msghdr));`, which ensures that the message header is zeroed. However, it does not zero out the `cbuf` control message buffer or the `sin6` structure. This could lead to uninitialized memory reads if the control message buffer or address structure is used without being properly initialized.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate return value of recvmsg — protects against: failure to receive message",
+        "reasoning": "The implementation checks if `recvmsg` returns -1 and returns `-errno` in that case. This is a valid check for failure to receive a message.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize output parameters to default values — protects against: uninitialized output values",
+        "reasoning": "The implementation does not explicitly initialize the output parameters (`*addr`, `*ifindex`, `*hoplimit`) to default values. These are assigned values during the processing of the message and control messages, but if no data is received or the control messages are not present, the output values may remain uninitialized.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "use CMSG_NXTHDR to safely iterate through control messages — protects against: buffer overflow when parsing control messages",
+        "reasoning": "The implementation uses `CMSG_NXTHDR` to iterate through the control messages, which is the correct and safe way to traverse the control message buffer. This prevents buffer overflow when parsing control messages.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_461__0",
+  "sample_id": "D/C/461",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-8067",
+  "cve_summary": "drivers/char/virtio_console.c in the Linux kernel 4.9.x and 4.10.x before 4.10.12 interacts incorrectly with the CONFIG_VMAP_STACK option, which allows local users to cause a denial of service (system crash or memory corruption) or possibly have unspecified other impact by leveraging use of more than one virtual page for a DMA scatterlist.",
+  "changed_file": "drivers/char/virtio_console.c",
+  "docstring": "\"\"\"\nSummary: This function sends a specified number of characters to a virtual terminal.\n\nParameters:\nvtermno (u32): The virtual terminal number to which the characters will be sent.\nbuf (const char*): A pointer to the buffer containing the characters to send.\ncount (int): The number of characters to send from the buffer.\n\nReturns: \nint: The result of the operation, where a negative value indicates an error (e.g., -EPIPE for a missing port, -ENOMEM for memory allocation failure), and a non-negative value indicates success.\n\nLogic: The function first checks if an early character output function is defined and calls it if so. It then retrieves the port associated with the given virtual terminal number. If the port is not found, it returns an error. The function initializes a scatter-gather list for the character buffer before sending the data to the port. Finally, it returns the result of the send operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int put_chars(u32 vtermno, const char *buf, int count)\r\n{\r\n\tstruct port *port;\r\n\tstruct scatterlist sg[1];\r\n\tvoid *data;\r\n\tint ret;\r\n\r\n\tif (unlikely(early_put_chars))\r\n\t\treturn early_put_chars(vtermno, buf, count);\r\n\r\n\tport = find_port_by_vtermno(vtermno);\r\n\tif (!port)\r\n\t\treturn -EPIPE;\r\n\r\n\tdata = kmemdup(buf, count, GFP_ATOMIC);\r\n\tif (!data)\r\n\t\treturn -ENOMEM;\r\n\r\n\tsg_init_one(sg, data, count);\r\n\tret = __send_to_port(port, sg, 1, count, data, false);\r\n\tkfree(data);\r\n\treturn ret;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the buffer data. The candidate implementation copies the buffer into a new memory allocation using kmemdup(), while the reference implementation uses the original buffer directly. This difference could affect behavior if the original buffer is modified or freed before the send operation completes. However, since the specification does not mention buffer lifetime or ownership, this difference is not security-relevant but could affect correctness in some edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and, therefore, in behavior. They both perform the same checks, memory allocations, and send operations, ensuring consistent results for all inputs.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "case_id": "C_702__0",
+  "sample_id": "D/C/702",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18257",
+  "cve_summary": "The __get_data_block function in fs/f2fs/data.c in the Linux kernel before 4.11 allows local users to cause a denial of service (integer overflow and loop) via crafted use of the open and fallocate system calls with an FS_IOC_FIEMAP ioctl.",
+  "changed_file": "fs/f2fs/data.c",
+  "docstring": "/**\n * Summary: Retrieves a data block for a given inode and updates the buffer head.\n * \n * Parameters:\n * inode (struct inode*): Pointer to the inode structure representing the file.\n * iblock (sector_t): The logical block index to retrieve.\n * bh (struct buffer_head*): Pointer to the buffer head to be updated.\n * create (int): Flag indicating whether to create a new block if it doesn't exist.\n * flag (int): Additional flags for block mapping.\n * next_pgofs (pgoff_t*): Pointer to store the next page offset.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function initializes a mapping structure, calls a block mapping function, and updates the buffer head with the retrieved block information if successful.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int get_data_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create, int flag, pgoff_t *next_pgofs) {\n    int ret = 0;\n    struct address_space *mapping = NULL;\n\n    if (!inode || !bh || !next_pgofs) {\n        return -EINVAL;\n    }\n\n    mapping = inode->i_mapping;\n    if (!mapping) {\n        return -EINVAL;\n    }\n\n    ret = mapping->a_ops->bmap(mapping, iblock, bh, create, flag, next_pgofs);\n    if (ret < 0) {\n        return ret;\n    }\n\n    if (!bh->b_blocknr) {\n        return -EIO;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check that all required pointers are non-null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate the presence of the address space operations",
+      "protects_against": "invalid or missing address space operations"
+    },
+    {
+      "step": "check for negative return values from bmap",
+      "protects_against": "propagating errors from the block mapping function"
+    },
+    {
+      "step": "verify that the block number is set",
+      "protects_against": "using an invalid or uninitialized block number"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check that all required pointers are non-null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check that the input pointers (inode, bh, next_pgofs) are non-null before dereferencing them. For example, `bh->b_size` and `bh->b_state` are accessed without a null check on `bh`.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate the presence of the address space operations — protects against: invalid or missing address space operations",
+        "reasoning": "The implementation does not perform any check for the presence of address space operations. The function assumes that the inode has the necessary operations available.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for negative return values from bmap — protects against: propagating errors from the block mapping function",
+        "reasoning": "The implementation calls `f2fs_map_blocks` and stores the result in `err`. It then checks if `err` is zero before proceeding to update the buffer head. This ensures that any negative return values are not propagated further.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify that the block number is set — protects against: using an invalid or uninitialized block number",
+        "reasoning": "The implementation does not explicitly verify that `map.m_pblk` is valid or non-zero before calling `map_bh`, which uses it to update the buffer head. This could lead to using an invalid block number if `map.m_pblk` is not properly set.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 15,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check that all required pointers are non-null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check that the input pointers (inode, bh, next_pgofs) are non-null before dereferencing them. For example, `bh->b_size` and `bh->b_state` are accessed without a null check on `bh`.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate the presence of the address space operations — protects against: invalid or missing address space operations",
+        "reasoning": "The implementation does not perform any check for the presence of address space operations. The function assumes that the inode has the necessary operations available.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for negative return values from bmap — protects against: propagating errors from the block mapping function",
+        "reasoning": "The implementation calls `f2fs_map_blocks` and stores the result in `err`. It then checks if `err` is zero before proceeding. This is equivalent to checking for negative return values and handling the error case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify that the block number is set — protects against: using an invalid or uninitialized block number",
+        "reasoning": "The implementation assumes that `map.m_pblk` is valid after a successful call to `f2fs_map_blocks`. There is no explicit check to ensure that `map.m_pblk` is non-zero or valid before it is used in `map_bh`.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

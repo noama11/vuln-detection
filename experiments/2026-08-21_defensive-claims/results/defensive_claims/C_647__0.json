@@ -1,0 +1,146 @@
+{
+  "case_id": "C_647__0",
+  "sample_id": "D/C/647",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "GNOME/gimp",
+  "cve_id": "CVE-2018-12713",
+  "cve_summary": "GIMP through 2.10.2 makes g_get_tmp_dir calls to establish temporary filenames, which may result in a filename that already exists, as demonstrated by the gimp_write_and_read_file function in app/tests/test-xcf.c. This might be leveraged by attackers to overwrite files or read file content that was intended to be private.",
+  "changed_file": "app/tests/test-xcf.c",
+  "docstring": "\"\"\"\nSummary: \nThis function writes a GIMP image to a temporary file and then reads it back to verify that the image can be saved and loaded without significant information loss.\n\nParameters: \ngimp (Gimp*): Pointer to the GIMP instance.\nwith_unusual_stuff (gboolean): Flag indicating whether to include unusual features in the image.\ncompat_paths (gboolean): Flag for compatibility with older paths.\nuse_gimp_2_8_features (gboolean): Flag to enable GIMP 2.8 specific features.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function creates a main image using the provided parameters, asserts its validity, writes it to a temporary file, and then loads it back. It checks that the loaded image is valid, ensuring that the save and load operations do not result in significant data loss. Finally, it cleans up by deleting the temporary file.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <glib.h>\n#include <gimp.h>\n#include <stdio.h>\n#include <stdlib.h>\n\nvoid verify_gimp_image_save_load(Gimp *gimp, gboolean with_unusual_stuff, gboolean compat_paths, gboolean use_gimp_2_8_features) {\n  gchar *temp_filename = NULL;\n  GimpImage *image = NULL;\n  GimpImage *loaded_image = NULL;\n\n  // Create a temporary file name\n  temp_filename = g_strdup_printf(\"/tmp/gimp-test-XXXXXX\");\n  int fd = g_mkstemp(temp_filename);\n  if (fd == -1) {\n    g_free(temp_filename);\n    return;\n  }\n  close(fd);\n\n  // Create the main image\n  image = gimp_image_new(100, 100, GIMP_RGB_IMAGE);\n  if (!image) {\n    g_free(temp_filename);\n    return;\n  }\n\n  // Save the image to the temporary file\n  if (!gimp_file_save(GIMP_RUN_NONINTERACTIVE, image, NULL, temp_filename, NULL)) {\n    gimp_image_delete(image);\n    g_unlink(temp_filename);\n    g_free(temp_filename);\n    return;\n  }\n\n  // Load the image back from the temporary file\n  loaded_image = gimp_file_load(GIMP_RUN_NONINTERACTIVE, temp_filename, NULL);\n  if (!loaded_image) {\n    gimp_image_delete(image);\n    g_unlink(temp_filename);\n    g_free(temp_filename);\n    return;\n  }\n\n  // Clean up\n  gimp_image_delete(image);\n  gimp_image_delete(loaded_image);\n  g_unlink(temp_filename);\n  g_free(temp_filename);\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of g_mkstemp",
+      "protects_against": "failure to create a temporary file"
+    },
+    {
+      "step": "check return value of gimp_image_new",
+      "protects_against": "failure to create a new image"
+    },
+    {
+      "step": "check return value of gimp_file_save",
+      "protects_against": "failure to save the image to the temporary file"
+    },
+    {
+      "step": "check return value of gimp_file_load",
+      "protects_against": "failure to load the image from the temporary file"
+    },
+    {
+      "step": "clean up resources on error paths",
+      "protects_against": "resource leaks in case of failures"
+    },
+    {
+      "step": "delete temporary file after use",
+      "protects_against": "leaving temporary files on the filesystem"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 2,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check return value of g_mkstemp — protects against: failure to create a temporary file",
+        "reasoning": "The implementation does not use g_mkstemp. Instead, it uses g_build_filename and g_file_new_for_path to create a temporary file path and file object. There is no explicit check for failure in creating the temporary file.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check return value of gimp_image_new — protects against: failure to create a new image",
+        "reasoning": "The implementation does not use gimp_image_new directly. Instead, it calls gimp_create_mainimage, which presumably creates the image. There is no explicit check for failure in creating the image.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check return value of gimp_file_save — protects against: failure to save the image to the temporary file",
+        "reasoning": "The implementation calls file_save, but does not check its return value or handle any potential errors that may occur during the save operation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check return value of gimp_file_load — protects against: failure to load the image from the temporary file",
+        "reasoning": "The implementation calls gimp_test_load_image, but does not check its return value or handle any potential errors that may occur during the load operation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "clean up resources on error paths — protects against: resource leaks in case of failures",
+        "reasoning": "The implementation does not include any error handling or cleanup logic for cases where the image creation, saving, or loading operations fail. It assumes all operations succeed and proceeds to clean up only after successful execution.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "delete temporary file after use — protects against: leaving temporary files on the filesystem",
+        "reasoning": "The implementation calls g_file_delete to delete the temporary file after use, ensuring that it does not remain on the filesystem.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 17,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check return value of g_mkstemp — protects against: failure to create a temporary file",
+        "reasoning": "The implementation uses `g_file_open_tmp` instead of `g_mkstemp`, and checks the return value of `g_file_open_tmp` via `g_assert (file_handle != -1)`. This is a valid check for failure to create a temporary file.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of gimp_image_new — protects against: failure to create a new image",
+        "reasoning": "The implementation does not directly call `gimp_image_new`, but instead calls `gimp_create_mainimage`, which presumably creates the image. However, there is no explicit check for the return value of this function or for the validity of the returned image beyond an assertion (`gimp_assert_mainimage`). This is not a direct return value check.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check return value of gimp_file_save — protects against: failure to save the image to the temporary file",
+        "reasoning": "The implementation calls `file_save`, but does not check its return value or any error condition. There is no error handling for the save operation.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check return value of gimp_file_load — protects against: failure to load the image from the temporary file",
+        "reasoning": "The implementation calls `gimp_test_load_image`, but does not check its return value or for any error condition. There is no error handling for the load operation.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "clean up resources on error paths — protects against: resource leaks in case of failures",
+        "reasoning": "The implementation does not handle any error paths explicitly. It assumes all operations succeed and proceeds to clean up only if all operations are successful. There is no error handling or cleanup in the case of failure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "delete temporary file after use — protects against: leaving temporary files on the filesystem",
+        "reasoning": "The implementation calls `g_file_delete` to delete the temporary file after use, which satisfies this defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

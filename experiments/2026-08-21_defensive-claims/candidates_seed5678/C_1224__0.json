@@ -1,0 +1,27 @@
+{
+  "case_id": "C_1224__0",
+  "implementation": "void GetNamedProperty(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info) {\n  v8::Isolate* isolate = info.GetIsolate();\n  v8::Local<v8::String> name_str = name->ToString(isolate->GetCurrentContext()).ToLocalChecked();\n  \n  // Retrieve the associated LocalDOMWindow\n  LocalDOMWindow* window = GetCurrentWindow();\n  if (!window)\n    return;\n\n  // Check if the window is attached to a frame\n  if (!window->IsAttachedToFrame())\n    return;\n\n  // Search for sub-frames and named items in the document\n  const Frame* frame = window->GetFrame();\n  if (!frame)\n    return;\n\n  const Document* document = frame->GetDocument();\n  if (!document)\n    return;\n\n  // Convert the v8 string to a UTF8 string for comparison\n  v8::String::Utf8Value utf8_name(isolate, name_str);\n  String name_string(*utf8_name);\n\n  // Search for named items in the document\n  Node* named_item = document->GetNamedItem(name_string);\n  if (named_item) {\n    v8::Local<v8::Value> v8_value = V8ObjectBuilder(isolate, named_item).Build();\n    info.GetReturnValue().Set(v8_value);\n    return;\n  }\n\n  // Search for sub-frames with the given name\n  Frame* sub_frame = document->FindFrameByName(name_string);\n  if (sub_frame) {\n    v8::Local<v8::Value> v8_value = V8ObjectBuilder(isolate, sub_frame->DomWindow()).Build();\n    info.GetReturnValue().Set(v8_value);\n    return;\n  }\n\n  // No matching item found\n  info.GetReturnValue().Set(v8::Null(isolate));\n}",
+  "defensive_steps": [
+    {
+      "step": "check if the window is attached to a frame",
+      "protects_against": "attempting to access sub-frames or named items on a window that is not attached to a frame"
+    },
+    {
+      "step": "check if the document exists",
+      "protects_against": "attempting to access named items or sub-frames on a frame that does not have a document"
+    },
+    {
+      "step": "convert v8 string to UTF8 string safely",
+      "protects_against": "invalid or malformed v8 strings causing issues during comparison"
+    },
+    {
+      "step": "return null if no matching item is found",
+      "protects_against": "returning undefined or invalid values when no matching item is found"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

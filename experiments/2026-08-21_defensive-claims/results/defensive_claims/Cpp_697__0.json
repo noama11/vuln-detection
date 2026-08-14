@@ -1,0 +1,98 @@
+{
+  "case_id": "Cpp_697__0",
+  "sample_id": "D/C++/697",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "bro/bro",
+  "cve_id": "CVE-2017-1000458",
+  "cve_summary": "Bro before Bro v2.5.2 is vulnerable to an out of bounds write in the ContentLine analyzer allowing remote attackers to cause a denial of service (crash) and possibly other exploitation.",
+  "changed_file": "src/analyzer/protocol/tcp/ContentLine.cc",
+  "docstring": "\"\"\"\nSummary: \nProcesses a data stream to deliver lines based on specific end-of-line characters.\n\nParameters: \nlen (int): The length of the data to process.\ndata (const u_char*): Pointer to the data stream to analyze.\n\nReturns: \nint: The number of bytes processed from the data stream.\n\nLogic: \nThe function checks if the length is non-positive and returns 0 if so. It iterates through the data, handling carriage return ('\\r') and line feed ('\\n') characters according to specific rules, including handling corner cases and emitting lines when appropriate. It manages a buffer to store characters and emits a line when a complete line is detected. The function also tracks the last character processed and handles special cases for null characters and single line feeds. Finally, it returns the number of bytes processed from the start of the data.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_data_stream(const u_char* data, int len) {\n    if (len <= 0 || data == nullptr) {\n        return 0;\n    }\n\n    int processed = 0;\n    u_char buffer[1024];\n    int buffer_index = 0;\n    u_char last_char = 0;\n\n    for (int i = 0; i < len; ++i) {\n        u_char current_char = data[i];\n        processed++;\n\n        if (current_char == '\\r') {\n            if (i + 1 < len && data[i + 1] == '\\n') {\n                // CRLF sequence, skip both and emit line\n                i++;\n                if (buffer_index > 0) {\n                    // Emit line from buffer\n                    buffer_index = 0;\n                }\n            } else {\n                // Standalone CR, emit line if buffer has content\n                if (buffer_index > 0) {\n                    buffer_index = 0;\n                }\n            }\n        } else if (current_char == '\\n') {\n            // LF, emit line if buffer has content\n            if (buffer_index > 0) {\n                buffer_index = 0;\n            }\n        } else {\n            // Regular character, add to buffer\n            if (buffer_index < sizeof(buffer) - 1) {\n                buffer[buffer_index++] = current_char;\n            }\n        }\n\n        last_char = current_char;\n    }\n\n    // Handle trailing line if needed\n    if ((last_char == '\\n' || last_char == '\\r') && buffer_index > 0) {\n        buffer_index = 0;\n    }\n\n    return processed;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer and non-positive length",
+      "protects_against": "null pointer dereference or invalid length leading to undefined behavior"
+    },
+    {
+      "step": "bound buffer index to buffer size",
+      "protects_against": "buffer overflow when adding characters to the buffer"
+    },
+    {
+      "step": "check for valid index before accessing next character in CRLF sequence",
+      "protects_against": "out-of-bounds access when checking for CRLF sequence"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer and non-positive length — protects against: null pointer dereference or invalid length leading to undefined behavior",
+        "reasoning": "The implementation checks if len <= 0 and returns 0 in that case. However, it does not check if data is null before using it. This could lead to a null pointer dereference if data is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "bound buffer index to buffer size — protects against: buffer overflow when adding characters to the buffer",
+        "reasoning": "The implementation checks if offset >= buf_len and calls InitBuffer(buf_len * 2) to expand the buffer when needed. This ensures that the buffer is expanded before writing to it, preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid index before accessing next character in CRLF sequence — protects against: out-of-bounds access when checking for CRLF sequence",
+        "reasoning": "The implementation checks if len > 1 before accessing data[1] when looking for a CRLF sequence. This prevents out-of-bounds access.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer and non-positive length — protects against: null pointer dereference or invalid length leading to undefined behavior",
+        "reasoning": "The implementation does not include a check for null pointer or non-positive length. The code assumes that the input is valid and does not perform any validation on the 'data' pointer or the 'len' parameter.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound buffer index to buffer size — protects against: buffer overflow when adding characters to the buffer",
+        "reasoning": "The implementation uses 'offset++' to add characters to the buffer, but there is no explicit check to ensure that 'offset' does not exceed the buffer size. This could lead to a buffer overflow if the buffer is not properly sized or if 'offset' is not bounded.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for valid index before accessing next character in CRLF sequence — protects against: out-of-bounds access when checking for CRLF sequence",
+        "reasoning": "The implementation includes a check 'if ( len > 1 && data[1] == '\\n' )' which ensures that there is a valid next character before accessing it. This prevents out-of-bounds access when checking for the CRLF sequence.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

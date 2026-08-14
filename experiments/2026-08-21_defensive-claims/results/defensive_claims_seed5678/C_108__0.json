@@ -1,0 +1,130 @@
+{
+  "case_id": "C_108__0",
+  "sample_id": "D/C/108",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-0349",
+  "cve_summary": "The hidp_setup_hid function in net/bluetooth/hidp/core.c in the Linux kernel before 3.7.6 does not properly copy a certain name field, which allows local users to obtain sensitive information from kernel memory by setting a long name and making an HIDPCONNADD ioctl call.",
+  "changed_file": "net/bluetooth/hidp/core.c",
+  "docstring": "/**\n * Summary: Initializes a HID (Human Interface Device) session by setting up the necessary parameters and allocating resources.\n * \n * Parameters:\n * session (struct hidp_session *): Pointer to the HID session to be set up.\n * req (struct hidp_connadd_req *): Pointer to the connection request containing device information.\n * \n * Returns: \n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function allocates memory for the session's read data, copies data from the user space, and initializes a HID device structure with parameters from the request. It sets various properties of the HID device, including vendor, product, and country codes. If the device is blacklisted, it cleans up and returns an error. In case of any errors during the setup process, it handles memory deallocation and returns the appropriate error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int hidp_setup_session(struct hidp_session *session, struct hidp_connadd_req *req) {\n    int err = -ENOMEM;\n\n    if (!session || !req) {\n        return -EINVAL;\n    }\n\n    session->hid_dev = hid_allocate_device();\n    if (!session->hid_dev) {\n        return -ENOMEM;\n    }\n\n    session->hid_dev->vendor = req->vendor;\n    session->hid_dev->product = req->product;\n    session->hid_dev->version = req->version;\n    session->hid_dev->country = req->country;\n\n    if (hid_is_blacklisted(session->hid_dev->vendor, session->hid_dev->product)) {\n        hid_free_device(session->hid_dev);\n        return -EPERM;\n    }\n\n    session->read_data = kmalloc(req->read_buffer_size, GFP_KERNEL);\n    if (!session->read_data) {\n        hid_free_device(session->hid_dev);\n        return -ENOMEM;\n    }\n\n    session->read_data_size = req->read_buffer_size;\n\n    if (copy_from_user(session->read_data, req->read_buffer, req->read_buffer_size)) {\n        kfree(session->read_data);\n        hid_free_device(session->hid_dev);\n        return -EFAULT;\n    }\n\n    err = hid_register_device(session->hid_dev);\n    if (err < 0) {\n        kfree(session->read_data);\n        hid_free_device(session->hid_dev);\n        return err;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check for successful device registration",
+      "protects_against": "device registration failure"
+    },
+    {
+      "step": "check for successful memory copy from user space",
+      "protects_against": "invalid user space pointer"
+    },
+    {
+      "step": "clean up allocated resources on failure",
+      "protects_against": "resource leak"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters 'session' or 'req'. Dereferencing these pointers without a check could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks if the memory allocation for 'session->rd_data' is successful by verifying if the pointer is not null. If it is null, it returns -ENOMEM, which performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful device registration — protects against: device registration failure",
+        "reasoning": "The implementation does not perform a check for successful device registration. It assumes that the device registration is successful after calling 'hid_allocate_device()', and does not handle any failure in registration.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for successful memory copy from user space — protects against: invalid user space pointer",
+        "reasoning": "The implementation checks the return value of 'copy_from_user()' and returns -EFAULT if it fails, which performs the required step of checking for invalid user space pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on failure — protects against: resource leak",
+        "reasoning": "The implementation includes a 'fault' label that frees the allocated memory for 'session->rd_data' and sets it to NULL in case of an error, which performs the required step of cleaning up allocated resources on failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters 'session' and 'req'. Dereferencing these pointers could lead to a null pointer dereference if they are null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for memory allocation failure — protects against: out of memory condition",
+        "reasoning": "The implementation checks if the memory allocation for session->rd_data fails and returns -ENOMEM in that case. This performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful device registration — protects against: device registration failure",
+        "reasoning": "The implementation does not perform an explicit check for successful device registration. It assumes that the registration will succeed after calling hid_allocate_device().",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for successful memory copy from user space — protects against: invalid user space pointer",
+        "reasoning": "The implementation checks if the copy_from_user call fails and returns -EFAULT in that case. This performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up allocated resources on failure — protects against: resource leak",
+        "reasoning": "The implementation includes a 'fault' label that frees the allocated memory (session->rd_data) and sets it to NULL in case of an error. This performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

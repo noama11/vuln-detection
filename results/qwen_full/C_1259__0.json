@@ -1,0 +1,53 @@
+{
+  "case_id": "C_1259__0",
+  "sample_id": "D/C/1259",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2016-1700",
+  "cve_summary": "extensions/renderer/runtime_custom_bindings.cc in Google Chrome before 51.0.2704.79 does not consider side effects during creation of an array of extension views, which allows remote attackers to cause a denial of service (use-after-free) or possibly have unspecified other impact via vectors related to extensions.",
+  "changed_file": "extensions/renderer/runtime_custom_bindings.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Retrieves the extension views based on the provided browser window ID and view type.  \n *  \n * Parameters:  \n * args (const v8::FunctionCallbackInfo<v8::Value>&): The arguments passed to the function,  \n * containing the browser window ID and the view type as a string.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function first checks if the correct number of arguments are provided and validates their types.  \n * It then determines the view type based on the input string and retrieves the extension ID.  \n * Using the extension ID, it fetches the relevant frames and filters out iframes, ensuring only main views  \n * are returned. Finally, it constructs a V8 array of the main views and sets it as the return value.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void GetExtensionViews(const v8::FunctionCallbackInfo<v8::Value>& args) {\n  v8::Isolate* isolate = args.GetIsolate();\n  v8::Local<v8::Context> context = isolate->GetCurrentContext();\n\n  if (args.Length() != 2 || !args[0]->IsNumber() || !args[1]->IsString()) {\n    isolate->ThrowException(v8::Exception::TypeError(\n        v8::String::NewFromUtf8(isolate, \"Invalid arguments\").ToLocalChecked()));\n    return;\n  }\n\n  int window_id = args[0].As<v8::Number>()->Value();\n  v8::String::Utf8Value view_type_str(isolate, args[1]);\n\n  std::string view_type(*view_type_str);\n\n  std::string extension_id = GetExtensionIDFromWindow(window_id);\n  if (extension_id.empty()) {\n    args.GetReturnValue().Set(v8::Array::New(isolate, 0));\n    return;\n  }\n\n  std::vector<int> frame_ids = GetRelevantFrames(window_id, extension_id);\n  std::vector<int> main_views;\n\n  for (int frame_id : frame_ids) {\n    if (!IsIframe(window_id, frame_id)) {\n      main_views.push_back(frame_id);\n    }\n  }\n\n  v8::Local<v8::Array> result = v8::Array::New(isolate, main_views.size());\n  for (size_t i = 0; i < main_views.size(); ++i) {\n    result->Set(context, i, v8::Integer::New(isolate, main_views[i])).Check();\n  }\n\n  args.GetReturnValue().Set(result);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the view type string and how they construct the result. The candidate implementation converts the view type string to a std::string and does not map it to a specific enum type, while the reference implementation maps the string to a ViewType enum and includes additional logic for handling invalid types. Additionally, the candidate implementation filters out iframes by checking frame IDs and stores the result as an array of integers, while the reference implementation checks the top frame directly and stores the global object of the context. These differences are functionally significant and could lead to different results for certain inputs, particularly in malformed or edge-case scenarios.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation filters out iframes by checking `IsIframe(window_id, frame_id)` and only includes main views in the result. The reference implementation filters out iframes by comparing `frame->GetWebFrame()->top()` with the current frame, ensuring only top-level frames are included. These are two different ways to achieve the same logic of excluding iframes and returning only main views. There is no observable behavioral difference for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

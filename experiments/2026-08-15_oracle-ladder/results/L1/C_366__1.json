@@ -1,0 +1,49 @@
+{
+  "case_id": "C_366__1",
+  "sample_id": "D/C/366",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "radareorg/radare2",
+  "cve_id": "CVE-2017-16357",
+  "cve_summary": "In radare 2.0.1, a memory corruption vulnerability exists in store_versioninfo_gnu_verdef() and store_versioninfo_gnu_verneed() in libr/bin/format/elf/elf.c, as demonstrated by an invalid free. This error is due to improper sh_size validation when allocating memory.",
+  "changed_file": "libr/bin/format/elf/elf.c",
+  "docstring": "\"\"\"\nSummary: \nStores version information from an ELF binary's Verneed section into an Sdb structure.\n\nParameters: \nbin (ELFOBJ*): Pointer to the ELF binary object.\nshdr (Elf_(Shdr)*): Pointer to the section header containing Verneed information.\nsz (int): Size of the section.\n\nReturns: \nSdb*: A pointer to the Sdb structure containing the version information, or NULL on failure.\n\nLogic: \nThe function first checks for valid input and allocates memory for storing version data. It retrieves section names and reads the Verneed section from the binary. It then iterates through the version entries, extracting relevant information and storing it in the Sdb structure. Each version entry may have auxiliary entries, which are also processed and stored. If any errors occur during processing, memory is freed, and NULL is returned. The function ultimately returns the populated Sdb structure containing version information.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static Sdb *store_versioninfo_gnu_verneed(ELFOBJ *v2, Elf_(Shdr) *shdr, int sz) {\n    ut8 *v3, *need = NULL;\n    const char *v14 = \"\";\n    Elf_(Shdr) *link_shdr = NULL;\n    const char *v8 = \"\";\n    Sdb *v12 = NULL;\n    Sdb *v13 = NULL;\n    Sdb *v11 = NULL;\n    int v4, cnt;\n    if (!v2 || !v2->dynstr) {\n        return NULL;\n    }\n    if (shdr->sh_link > v2->ehdr.e_shnum) {\n        return NULL;\n    }\n    if (shdr->sh_size < 1 || shdr->sh_size > SIZE_MAX) {\n        return NULL;\n    }\n    v11 = sdb_new0 ();\n    if (!v11) {\n        return NULL;\n    }\n    link_shdr = &v2->shdr[shdr->sh_link];\n    if (v2->shstrtab && shdr->sh_name < v2->shstrtab_size) {\n        v14 = &v2->shstrtab[shdr->sh_name];\n    }\n    if (v2->shstrtab && link_shdr->sh_name < v2->shstrtab_size) {\n        v8 = &v2->shstrtab[link_shdr->sh_name];\n    }\n    if (!(need = (ut8*) calloc (R_MAX (1, shdr->sh_size), sizeof (ut8)))) {\n        bprintf (\"Warning: Cannot allocate memory for Elf_(Verneed)\\n\");\n        goto v1;\n    }\n    v3 = need + shdr->sh_size;\n    sdb_set (v11, \"v14\", v14, 0);\n    sdb_num_set (v11, \"num_entries\", shdr->sh_info, 0);\n    sdb_num_set (v11, \"addr\", shdr->sh_addr, 0);\n    sdb_num_set (v11, \"offset\", shdr->sh_offset, 0);\n    sdb_num_set (v11, \"link\", shdr->sh_link, 0);\n    sdb_set (v11, \"v8\", v8, 0);\n    if (shdr->sh_offset > v2->size || shdr->sh_offset + shdr->sh_size > v2->size) {\n        goto v1;\n    }\n    if (shdr->sh_offset + shdr->sh_size < shdr->sh_size) {\n        goto v1;\n    }\n    v4 = r_buf_read_at (v2->b, shdr->sh_offset, need, shdr->sh_size);\n    if (v4 < 0)\n        goto v1;\n    for (v4 = 0, cnt = 0; cnt < shdr->sh_info; ++cnt) {\n        int v5, isum;\n        ut8 *v16 = need + v4;\n        Elf_(Verneed) vvn = {0};\n        if (v16 + sizeof (Elf_(Verneed)) > v3) {\n            goto v1;\n        }\n        Elf_(Verneed) *entry = &vvn;\n        char v7[32] = {0};\n        v13 = sdb_new0 ();\n        if (!v13) {\n            goto v1;\n        }\n        v5 = 0;\n        vvn.vn_version = READ16 (v16, v5)\n        vvn.vn_cnt = READ16 (v16, v5)\n        vvn.vn_file = READ32 (v16, v5)\n        vvn.vn_aux = READ32 (v16, v5)\n        vvn.vn_next = READ32 (v16, v5)\n        sdb_num_set (v13, \"vn_version\", entry->vn_version, 0);\n        sdb_num_set (v13, \"idx\", v4, 0);\n        if (entry->vn_file > v2->dynstr_size) {\n            goto v1;\n        }\n        {\n            char *v10 = r_str_ndup (&v2->dynstr[entry->vn_file], 16);\n            sdb_set (v13, \"file_name\", v10, 0);\n            free (v10);\n        }\n        sdb_num_set (v13, \"cnt\", entry->vn_cnt, 0);\n        st32 v15 = entry->vn_aux;\n        if (v15 < 1) {\n            goto v1;\n        }\n        v16 += v15;\n        for (v5 = 0, isum = v4 + entry->vn_aux; v5 < entry->vn_cnt && v16 + sizeof (Elf_(Vernaux)) <= v3; ++v5) {\n            int v6;\n            Elf_(Vernaux) * aux = NULL;\n            Elf_(Vernaux) vaux = {0};\n            v12 = sdb_new0 ();\n            if (!v12) {\n                goto v1;\n            }\n            aux = (Elf_(Vernaux)*)&vaux;\n            v6 = 0;\n            vaux.vna_hash = READ32 (v16, v6)\n            vaux.vna_flags = READ16 (v16, v6)\n            vaux.vna_other = READ16 (v16, v6)\n            vaux.vna_name = READ32 (v16, v6)\n            vaux.vna_next = READ32 (v16, v6)\n            if (aux->vna_name > v2->dynstr_size) {\n                goto v1;\n            }\n            sdb_num_set (v12, \"idx\", isum, 0);\n            if (aux->vna_name > 0 && aux->vna_name + 8 < v2->dynstr_size) {\n                char v9 [16];\n                strncpy (v9, &v2->dynstr[aux->vna_name], sizeof (v9)-1);\n                v9[sizeof(v9)-1] = 0;\n                sdb_set (v12, \"v9\", v9, 0);\n            }\n            sdb_set (v12, \"flags\", get_ver_flags (aux->vna_flags), 0);\n            sdb_num_set (v12, \"version\", aux->vna_other, 0);\n            isum += aux->vna_next;\n            v16 += aux->vna_next;\n            snprintf (v7, sizeof (v7), \"vernaux%d\", v5);\n            sdb_ns_set (v13, v7, v12);\n        }\n        if ((int)entry->vn_next < 0) {\n            bprintf (\"Invalid vn_next\\n\");\n            break;\n        }\n        v4 += entry->vn_next;\n        snprintf (v7, sizeof (v7), \"version%d\", cnt );\n        sdb_ns_set (v11, v7, v13);\n        if (!entry->vn_next) {\n            break;\n        }\n    }\n    free (need);\n    return v11;\nv1:\n    free (need);\n    sdb_free (v12);\n    sdb_free (v13);\n    sdb_free (v11);\n    return NULL;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 16
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of processing the Verneed section and storing the version information into an Sdb structure. Both perform similar input validation, memory allocation, and iteration over the version entries and their auxiliary data. The only differences are in variable names and code formatting, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of processing the Verneed section and storing the version information into an Sdb structure. Both perform the same input validation, memory allocation, and parsing logic. The only differences are in variable names and code formatting, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

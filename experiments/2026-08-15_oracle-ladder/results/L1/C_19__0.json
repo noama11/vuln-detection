@@ -1,0 +1,49 @@
+{
+  "case_id": "C_19__0",
+  "sample_id": "D/C/19",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0957",
+  "cve_summary": "The override_release function in kernel/sys.c in the Linux kernel before 3.4.16 allows local users to obtain sensitive information from kernel stack memory via a uname system call in conjunction with a UNAME26 personality.",
+  "changed_file": "kernel/sys.c",
+  "docstring": "\"\"\"\nSummary: \nThis function modifies the Linux version string for compatibility with programs that cannot handle versions starting from \"Linux 3.0\".\n\nParameters: \nrelease (char __user *): A pointer to the user space buffer where the modified version string will be copied.\nlen (size_t): The length of the user space buffer.\n\nReturns: \nint: The number of bytes copied to the user buffer, or an error code on failure.\n\nLogic: \nThe function checks if the current process's personality indicates it is running in a 26-character uname mode. If so, it constructs a version string that maps the current version to a 2.6.x format, where x is derived from the current version code. It then copies this string to the user-provided buffer, ensuring it does not exceed the specified length.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int override_release(char __user *release, size_t v3)\n{\n    int v6 = 0;\n    if (current->personality & UNAME26) {\n        const char *v5 = UTS_RELEASE;\n        char v1[65] = { 0 };\n        int v4 = 0;\n        unsigned v7;\n        size_t v2;\n        while (*v5) {\n            if (*v5 == '.' && ++v4 >= 3)\n                break;\n            if (!isdigit(*v5) && *v5 != '.')\n                break;\n            v5++;\n        }\n        v7 = ((LINUX_VERSION_CODE >> 8) & 0xff) + 40;\n        v2 = min(sizeof(v1), max_t(size_t, 1, v3));\n        v2 = scnprintf(v1, v2, \"2.6.%u%s\", v7, v5);\n        v6 = copy_to_user(release, v1, v2 + 1);\n    }\n    return v6;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 7
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the length of the user buffer. The candidate implementation uses `min(sizeof(v1), max_t(size_t, 1, v3))` and then calculates `v2` as the number of bytes written, and copies `v2 + 1` bytes (including the null terminator). The reference implementation uses `snprintf(buf, len, ...)` and copies `len` bytes, which may not account for the null terminator correctly if the buffer is too small. This difference could lead to different behavior when the buffer is at or near its limit, potentially causing truncation or missing null terminators, which is a security-relevant issue.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both check if the process is in UNAME26 mode, construct a version string in the format '2.6.x...', and copy it to the user buffer. Variable names differ, but the logic, buffer size handling, and error handling are identical. There are no observable differences in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

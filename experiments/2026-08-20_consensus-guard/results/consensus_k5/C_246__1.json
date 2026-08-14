@@ -1,0 +1,72 @@
+{
+  "case_id": "C_246__1",
+  "sample_id": "D/C/246",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function performs a netlink dump operation, allocating a socket buffer and invoking a callback to fill it with data, while managing mutex locks and error handling.\n\nParameters:  \nsk (struct sock *): The socket associated with the netlink communication.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks the mutex associated with the netlink socket and checks if a callback is running. It then verifies if there is sufficient memory allocated for receiving data. Depending on the conditions, it allocates a socket buffer of appropriate size. The buffer is filled by calling the dump function from the callback. If the dump is successful, the function checks for filters and sends the buffer or frees it accordingly. Finally, it handles cleanup, including unlocking the mutex and releasing resources, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "Check for running callback before proceeding",
+        "performed_by_count": 4,
+        "why_it_matters": "If the callback is not running, the dump operation is invalid and should fail early to avoid undefined behavior."
+      },
+      {
+        "step": "Check for socket buffer allocation failure",
+        "performed_by_count": 4,
+        "why_it_matters": "If the buffer allocation fails, the function should return an error instead of proceeding with a null buffer, which could lead to a use-after-free or null pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a check for a running callback before proceeding with the dump operation, which is a step performed by a majority of the independent implementations. It also lacks a check for socket buffer allocation failure before using the buffer, which is another step performed by most implementations. These omissions could lead to invalid operations or use-after-free conditions if the callback is not running or the buffer allocation fails.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "Check if a callback is already running",
+        "performed_by_count": 3,
+        "why_it_matters": "If a callback is already running, proceeding with a new dump could lead to race conditions or data corruption."
+      },
+      {
+        "step": "Check socket state is valid for dumping",
+        "performed_by_count": 3,
+        "why_it_matters": "If the socket is not in a valid state (e.g., not running), attempting to perform a dump could lead to undefined behavior or crashes."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority-consensus defensive step: checking if a callback is already running before proceeding. It also lacks a check for the socket's state being in a valid condition for dumping. These omissions could lead to race conditions or invalid operations if the socket is not in a valid state or if a callback is already active.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

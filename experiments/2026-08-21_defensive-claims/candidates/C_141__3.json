@@ -1,0 +1,39 @@
+{
+  "case_id": "C_141__3",
+  "implementation": "int process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int ret = -EINVAL;\n    struct ceph_auth_ticket_handler *handler = NULL;\n    struct ceph_ticket *ticket = NULL;\n    struct ceph_crypto_key *new_key = NULL;\n    void *decrypted = NULL;\n    size_t decrypted_len = 0;\n\n    if (!ac || !secret || !p || !*p || *p >= end) {\n        goto out;\n    }\n\n    if (end - *p < sizeof(*ticket)) {\n        goto out;\n    }\n\n    ticket = (struct ceph_ticket *)*p;\n    *p += sizeof(*ticket);\n\n    if (le32_to_cpu(ticket->magic) != CEPH_AUTH_TICKET_MAGIC) {\n        goto out;\n    }\n\n    handler = get_ticket_handler(ac, le32_to_cpu(ticket->type));\n    if (!handler) {\n        goto out;\n    }\n\n    if (le32_to_cpu(ticket->encrypted)) {\n        decrypted_len = le32_to_cpu(ticket->encrypted_len);\n        decrypted = malloc(decrypted_len);\n        if (!decrypted) {\n            ret = -ENOMEM;\n            goto out;\n        }\n\n        ret = decrypt_ticket(secret, *p, end - *p, decrypted, &decrypted_len);\n        if (ret < 0) {\n            goto out;\n        }\n\n        *p = decrypted;\n        end = *p + decrypted_len;\n    }\n\n    if (end - *p < sizeof(*new_key)) {\n        goto out;\n    }\n\n    new_key = (struct ceph_crypto_key *)*p;\n    *p += sizeof(*new_key);\n\n    if (new_key->len > CEPH_CRYPTO_MAX_KEY_LEN) {\n        goto out;\n    }\n\n    if (end - *p < new_key->len) {\n        goto out;\n    }\n\n    if (new_key->len > 0) {\n        new_key->data = *p;\n        *p += new_key->len;\n    }\n\n    handler->session_key = new_key;\n    handler->ticket_blob = *p;\n    handler->ticket_blob_len = end - *p;\n\n    ret = 0;\n\nout:\n    if (decrypted) {\n        free(decrypted);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify buffer bounds before accessing data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "validate ticket magic number",
+      "protects_against": "malformed or invalid ticket data"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "verify key length is within acceptable bounds",
+      "protects_against": "excessive memory allocation"
+    },
+    {
+      "step": "ensure buffer has sufficient space for key data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "free allocated memory on exit",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_568__0",
+  "sample_id": "D/C/568",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-7527",
+  "cve_summary": "coders/wpg.c in ImageMagick allows remote attackers to cause a denial of service (out-of-bounds read) via a crafted file.",
+  "changed_file": "coders/wpg.c",
+  "docstring": "```plaintext\nSummary: \nExtracts a Postscript image from a given image, processes it, and returns the modified image.\n\nParameters: \nimage (Image *): The input image from which to extract the Postscript.\nimage_info (const ImageInfo *): Information about the image.\nPS_Offset (MagickOffsetType): The offset in the image where the Postscript data begins.\nPS_Size (ssize_t): The size of the Postscript data to extract.\nexception (ExceptionInfo *): A structure to capture any exceptions that occur during processing.\n\nReturns: \nImage *: A pointer to the newly created image containing the extracted Postscript data, or the original image if extraction fails.\n\nLogic: \nThe function clones the image info, acquires a unique filename for temporary storage, and writes the Postscript data to this file. It then checks the file format using magic numbers, reads the nested image, and replaces the original image with the new one while preserving attributes. Finally, it cleans up resources and handles any exceptions that arise during the process.\n```",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\nImage *ExtractPostscriptImage(Image *image, const ImageInfo *image_info, MagickOffsetType PS_Offset, ssize_t PS_Size, ExceptionInfo *exception) {\n  ImageInfo *clone_info = CloneImageInfo(image_info);\n  char filename[MaxTextLength];\n  FILE *file = NULL;\n  Image *new_image = NULL;\n\n  if (clone_info == (ImageInfo *) NULL) {\n    return image;\n  }\n\n  GetPathComponent(image->filename, TailPath, filename);\n  (void) FormatLocaleString(filename, MaxTextLength, \"%.1024s\", filename);\n\n  file = fopen(filename, \"wb\");\n  if (file == (FILE *) NULL) {\n    CloneImageInfo(clone_info);\n    return image;\n  }\n\n  if (fwrite((void *) (image->pixels + PS_Offset), sizeof(PixelPacket), (size_t) PS_Size, file) != (size_t) PS_Size) {\n    fclose(file);\n    CloneImageInfo(clone_info);\n    return image;\n  }\n\n  fclose(file);\n\n  if (IsPostscriptFormat(filename) != MagickTrue) {\n    CloneImageInfo(clone_info);\n    return image;\n  }\n\n  new_image = ReadImage(clone_info, exception);\n  if (new_image == (Image *) NULL) {\n    CloneImageInfo(clone_info);\n    return image;\n  }\n\n  DestroyImageList(image);\n  image = new_image;\n\n  CloneImageInfo(clone_info);\n  return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null clone_info",
+      "protects_against": "null pointer dereference when cloning image info"
+    },
+    {
+      "step": "check for null file pointer",
+      "protects_against": "null pointer dereference when writing to file"
+    },
+    {
+      "step": "check for successful write to file",
+      "protects_against": "incomplete or failed write of postscript data"
+    },
+    {
+      "step": "check for null new_image",
+      "protects_against": "null pointer dereference when reading new image"
+    },
+    {
+      "step": "clean up resources on error paths",
+      "protects_against": "resource leaks in case of errors"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null clone_info — protects against: null pointer dereference when cloning image info",
+        "reasoning": "The implementation checks if clone_info is NULL after calling CloneImageInfo. If it is NULL, the function returns the original image, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null file pointer — protects against: null pointer dereference when writing to file",
+        "reasoning": "The implementation checks if ps_file is NULL after calling fopen_utf8. If it is NULL, the function jumps to the FINISH label, which cleans up resources and returns, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful write to file — protects against: incomplete or failed write of postscript data",
+        "reasoning": "The implementation does not check whether the write to the file was successful. It writes data using fputc in a loop but does not verify if the write operations succeed or fail.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null new_image — protects against: null pointer dereference when reading new image",
+        "reasoning": "The implementation checks if image2 is NULL after calling ReadImage. If it is NULL, the function jumps to the FINISH_UNL label, which cleans up resources and returns, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up resources on error paths — protects against: resource leaks in case of errors",
+        "reasoning": "The implementation includes cleanup steps on error paths, such as calling RelinquishUniqueFileResource and DestroyImageInfo, which helps prevent resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null clone_info — protects against: null pointer dereference when cloning image info",
+        "reasoning": "The implementation checks if `clone_info` is NULL after calling `CloneImageInfo`. If it is NULL, the function returns the original `image`, which avoids dereferencing a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null file pointer — protects against: null pointer dereference when writing to file",
+        "reasoning": "The implementation checks if `ps_file` is NULL after calling `fopen_utf8`. If it is NULL, the function jumps to the `FINISH` label, which cleans up resources and returns, thus avoiding dereferencing a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful write to file — protects against: incomplete or failed write of postscript data",
+        "reasoning": "The implementation does not check whether the write to the file was successful. It writes data using `fputc` in a loop but does not verify if the file write operations succeed.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for null new_image — protects against: null pointer dereference when reading new image",
+        "reasoning": "The implementation checks if `image2` is NULL after calling `ReadImage`. If it is NULL, the function jumps to the `FINISH_UNL` label, which cleans up resources and returns, thus avoiding dereferencing a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up resources on error paths — protects against: resource leaks in case of errors",
+        "reasoning": "The implementation includes cleanup steps on error paths, such as calling `RelinquishUniqueFileResource` and `DestroyImageInfo`, which helps prevent resource leaks.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

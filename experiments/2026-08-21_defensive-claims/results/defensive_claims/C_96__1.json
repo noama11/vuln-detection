@@ -1,0 +1,130 @@
+{
+  "case_id": "C_96__1",
+  "sample_id": "D/C/96",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1819",
+  "cve_summary": "The _xfs_buf_find function in fs/xfs/xfs_buf.c in the Linux kernel before 3.7.6 does not validate block numbers, which allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact by leveraging the ability to mount an XFS filesystem containing a metadata inode with an invalid extent map.",
+  "changed_file": "fs/xfs/xfs_buf.c",
+  "docstring": "/**\n * Summary: \n * Finds a buffer in the buffer cache based on the provided block mapping and flags.\n * \n * Parameters:\n * btp (struct xfs_buftarg*): The buffer target containing filesystem information.\n * map (struct xfs_buf_map*): An array of block mappings to search for.\n * nmaps (int): The number of mappings in the array.\n * flags (xfs_buf_flags_t): Flags that modify the behavior of the buffer search.\n * new_bp (xfs_buf_t*): A pointer to a new buffer to insert if no match is found.\n * \n * Returns:\n * xfs_buf_t*: A pointer to the found or newly created buffer, or NULL if not found.\n * \n * Logic:\n * The function calculates the total number of bytes to search for and checks for alignment and\n * corruption. It traverses a red-black tree of buffers to find a matching block number. If a match\n * is found, it handles stale buffers and locks the buffer. If no match is found, it may insert a\n * new buffer into the tree. The function manages reference counting for buffers.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "xfs_buf_t* find_or_insert_buffer(struct xfs_buftarg* btp, struct xfs_buf_map* map, int nmaps, xfs_buf_flags_t flags, xfs_buf_t* new_bp) {\n    xfs_buf_t* bp = NULL;\n    int total_bytes = 0;\n    int i;\n\n    if (!btp || !map || nmaps <= 0 || !new_bp) {\n        return NULL;\n    }\n\n    for (i = 0; i < nmaps; ++i) {\n        if (map[i].bm_bn < 0 || map[i].bm_len <= 0) {\n            return NULL;\n        }\n        total_bytes += map[i].bm_len;\n    }\n\n    if (total_bytes <= 0) {\n        return NULL;\n    }\n\n    bp = xfs_buf_find(btp, map, nmaps, flags);\n\n    if (bp) {\n        if (xfs_buf_is_stale(bp)) {\n            xfs_buf_stale(bp);\n        }\n        xfs_buf_lock(bp);\n        return bp;\n    }\n\n    if (flags & XBF_TRYLOCK) {\n        return NULL;\n    }\n\n    if (new_bp) {\n        new_bp->b_maps = map;\n        new_bp->b_num_maps = nmaps;\n        new_bp->b_flags = flags;\n        xfs_buf_insert(new_bp, btp);\n        xfs_buf_hold(new_bp);\n        xfs_buf_lock(new_bp);\n        return new_bp;\n    }\n\n    return NULL;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate nmaps and map entries",
+      "protects_against": "invalid or negative map indices or lengths"
+    },
+    {
+      "step": "validate total_bytes",
+      "protects_against": "invalid or negative total byte count"
+    },
+    {
+      "step": "check for stale buffer",
+      "protects_against": "using a stale buffer"
+    },
+    {
+      "step": "check for XBF_TRYLOCK flag",
+      "protects_against": "unexpected buffer locking behavior"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 20,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the use of `map[0].bm_bn` implies that `map` must not be null and that `nmaps` must be at least 1. If `map` is null or `nmaps` is 0, this would result in a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate nmaps and map entries — protects against: invalid or negative map indices or lengths",
+        "reasoning": "The implementation does not perform any validation of `nmaps` or the entries in `map`. It assumes that `nmaps` is valid and that the `map` entries are valid. If `nmaps` is negative or the `map` entries are invalid, this could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate total_bytes — protects against: invalid or negative total byte count",
+        "reasoning": "The implementation calculates `numbytes` based on the sum of `map[i].bm_len` and `BBTOB(numblks)`. It does not perform any validation of the resulting `numbytes` value. If the sum of `map[i].bm_len` is invalid or negative, this could lead to an incorrect or invalid `numbytes` value.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for stale buffer — protects against: using a stale buffer",
+        "reasoning": "The implementation checks if a buffer is stale when a match is found in the red-black tree. If the buffer is stale, it clears the external state associated with it. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for XBF_TRYLOCK flag — protects against: unexpected buffer locking behavior",
+        "reasoning": "The implementation checks if the `XBF_TRYLOCK` flag is set when attempting to lock a buffer. If the flag is set and the buffer cannot be locked, it returns `NULL`. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 19,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters. However, the use of `map[0].bm_bn` implies that `map` and `nmaps` must be valid and non-zero. If `map` is null or `nmaps` is zero, this would result in a null pointer dereference. There is no explicit check for null pointers.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate nmaps and map entries — protects against: invalid or negative map indices or lengths",
+        "reasoning": "The implementation iterates over `nmaps` and accesses `map[i].bm_len` and `map[i].bm_bn`. If `nmaps` is negative or `map` is invalid, this could lead to undefined behavior. There is no explicit validation of `nmaps` or the map entries.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate total_bytes — protects against: invalid or negative total byte count",
+        "reasoning": "The implementation calculates `numbytes` from `numblks` and `BBTOB`, but does not explicitly validate that the resulting value is valid or non-negative. If `numblks` is negative or invalid, this could lead to an invalid `numbytes` value.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check for stale buffer — protects against: using a stale buffer",
+        "reasoning": "The implementation checks if a buffer is stale by examining `bp->b_flags & XBF_STALE`. If a stale buffer is found, it skips it and continues searching. This is a direct check for a stale buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for XBF_TRYLOCK flag — protects against: unexpected buffer locking behavior",
+        "reasoning": "The implementation checks if the `XBF_TRYLOCK` flag is set and handles it by returning `NULL` if the buffer is busy. This is a direct check for the `XBF_TRYLOCK` flag.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

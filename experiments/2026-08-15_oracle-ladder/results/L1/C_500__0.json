@@ -1,0 +1,49 @@
+{
+  "case_id": "C_500__0",
+  "sample_id": "D/C/500",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-5510",
+  "cve_summary": "coders/psd.c in ImageMagick allows remote attackers to have unspecified impact via a crafted PSD file, which triggers an out-of-bounds write.",
+  "changed_file": "coders/psd.c",
+  "docstring": "```plaintext\nSummary: \nWrites the pixel data of a PSD channel to a blob, handling different compression methods.\n\nParameters: \npsd_info (const PSDInfo *): Information about the PSD file format.\nimage_info (const ImageInfo *): Metadata about the image being processed.\nimage (Image *): The current image object.\nnext_image (Image *): The next image object to be processed.\nquantum_type (QuantumType): The type of pixel data to be processed.\ncompact_pixels (unsigned char *): Buffer for storing compacted pixel data.\nsize_offset (MagickOffsetType): Offset for writing the PSD data.\nseparate (MagickBooleanType): Flag indicating whether to separate channels.\nexception (ExceptionInfo *): Structure for error handling.\n\nReturns: \nsize_t: The total number of bytes written to the blob.\n\nLogic: \nThe function initializes variables and checks for monochrome images. It handles compression using either RLE or Zip methods, writing pixel data to a blob while managing memory and error conditions. It iterates through each row of the next image, exporting pixel data and applying compression as specified, ultimately returning the total byte count written.\n```",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static size_t WritePSDChannel(const PSDInfo *v13,\n  const ImageInfo *v8,Image *v7,Image *v10,\n  const QuantumType v15, unsigned char *v1,\n  MagickOffsetType v17,const MagickBooleanType v16,\n  ExceptionInfo *v4)\n{\n  int\n    v19;\n  MagickBooleanType\n    v9;\n  QuantumInfo\n    *v14;\n  register const Quantum\n    *v11;\n  register ssize_t\n    v6;\n  size_t\n    v3,\n    length;\n  unsigned char\n    *v12;\n#ifdef MAGICKCORE_ZLIB_DELEGATE\n#define CHUNK 16384\n  int\n    v5,\n    level;\n  unsigned char\n    *v2;\n  z_stream\n    v18;\n  v2=(unsigned char *) NULL;\n  v5=Z_NO_FLUSH;\n#endif\n  v3=0;\n  if (v16 != MagickFalse)\n    {\n      v17=TellBlob(v7)+2;\n      v3+=WriteCompressionStart(v13,v7,v10,1);\n    }\n  if (v10->depth > 8)\n    v10->depth=16;\n  v9=IsImageMonochrome(v7) && (v7->depth == 1) ?\n    MagickTrue : MagickFalse;\n  v14=AcquireQuantumInfo(v8,v10);\n  if (v14 == (QuantumInfo *) NULL)\n    return(0);\n  v12=(unsigned char *) GetQuantumPixels(v14);\n#ifdef MAGICKCORE_ZLIB_DELEGATE\n  if (v10->compression == ZipCompression)\n    {\n      v2=(unsigned char *) AcquireQuantumMemory(CHUNK,\n        sizeof(*v2));\n      if (v2 == (unsigned char *) NULL)\n        {\n          v14=DestroyQuantumInfo(v14);\n          return(0);\n        }\n      ResetMagickMemory(&v18,0,sizeof(v18));\n      v18.data_type=Z_BINARY;\n      level=Z_DEFAULT_COMPRESSION;\n      if ((v8->quality > 0 && v8->quality < 10))\n        level=(int) v8->quality;\n      if (deflateInit(&v18,level) != Z_OK)\n        {\n          v14=DestroyQuantumInfo(v14);\n          return(0);\n        }\n    }\n#endif\n  for (v19=0; v19 < (ssize_t) v10->rows; v19++)\n  {\n    v11=GetVirtualPixels(v10,0,v19,v10->columns,1,v4);\n    if (v11 == (const Quantum *) NULL)\n      break;\n    length=ExportQuantumPixels(v10,(CacheView *) NULL,v14,\n      v15,v12,v4);\n    if (v9 != MagickFalse)\n      for (v6=0; v6 < (ssize_t) length; v6++)\n        v12[v6]=(~v12[v6]);\n    if (v10->compression == RLECompression)\n      {\n        length=PSDPackbitsEncodeImage(v7,length,v12,v1,\n          v4);\n        v3+=WriteBlob(v7,length,v1);\n        v17+=WritePSDOffset(v13,v7,length,v17);\n      }\n#ifdef MAGICKCORE_ZLIB_DELEGATE\n    else if (v10->compression == ZipCompression)\n      {\n        v18.avail_in=(uInt) length;\n        v18.next_in=(Bytef *) v12;\n        if (v19 == (ssize_t) v10->rows-1)\n          v5=Z_FINISH;\n        do {\n            v18.avail_out=(uInt) CHUNK;\n            v18.next_out=(Bytef *) v2;\n            if (deflate(&v18,v5) == Z_STREAM_ERROR)\n              break;\n            length=(size_t) CHUNK-v18.avail_out;\n            if (length > 0)\n              v3+=WriteBlob(v7,length,v2);\n        } while (v18.avail_out == 0);\n      }\n#endif\n    else\n      v3+=WriteBlob(v7,length,v12);\n  }\n#ifdef MAGICKCORE_ZLIB_DELEGATE\n  if (v10->compression == ZipCompression)\n    {\n      (void) deflateEnd(&v18);\n      v2=(unsigned char *) RelinquishMagickMemory(\n        v2);\n    }\n#endif\n  v14=DestroyQuantumInfo(v14);\n  return(v3);\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 19
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are structurally and behaviorally equivalent. Both handle the same logic for writing PSD channel data, including compression methods (RLE and Zip), monochrome inversion, and memory management. The only differences are in variable names and code formatting, which do not affect the observable behavior or security properties of the function.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are structurally and behaviorally equivalent. Both handle the same logic for writing PSD channel data, including compression methods (RLE and Zip), monochrome inversion, and memory management. The only differences are in variable names and code formatting, which do not affect the observable behavior or security properties of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

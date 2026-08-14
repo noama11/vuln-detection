@@ -1,0 +1,146 @@
+{
+  "case_id": "C_19__0",
+  "sample_id": "D/C/19",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0957",
+  "cve_summary": "The override_release function in kernel/sys.c in the Linux kernel before 3.4.16 allows local users to obtain sensitive information from kernel stack memory via a uname system call in conjunction with a UNAME26 personality.",
+  "changed_file": "kernel/sys.c",
+  "docstring": "\"\"\"\nSummary: \nThis function modifies the Linux version string for compatibility with programs that cannot handle versions starting from \"Linux 3.0\".\n\nParameters: \nrelease (char __user *): A pointer to the user space buffer where the modified version string will be copied.\nlen (size_t): The length of the user space buffer.\n\nReturns: \nint: The number of bytes copied to the user buffer, or an error code on failure.\n\nLogic: \nThe function checks if the current process's personality indicates it is running in a 26-character uname mode. If so, it constructs a version string that maps the current version to a 2.6.x format, where x is derived from the current version code. It then copies this string to the user-provided buffer, ensuring it does not exceed the specified length.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <linux/unistd.h>\n#include <linux/personality.h>\n\nint format_uname(char __user *release, size_t len) {\n    int personality = personality(0);\n    \n    // Check if the process is in 26-character uname mode\n    if ((personality & 0xFF) != 0x26) {\n        // Not in 26-character mode, return 0 bytes copied\n        return 0;\n    }\n\n    // Construct the version string in 2.6.x format\n    char version[] = \"Linux 2.6.\\0\";\n    char buffer[128];\n    \n    // Ensure the buffer is initialized\n    memset(buffer, 0, sizeof(buffer));\n\n    // Copy the base string into the buffer\n    if (strlen(version) >= sizeof(buffer)) {\n        return -1; // Not enough space in buffer\n    }\n\n    strcpy(buffer, version);\n\n    // Calculate the x value based on the current version code\n    unsigned int version_code = LINUX_VERSION_CODE;\n    unsigned int major = (version_code >> 16) & 0xFF;\n    unsigned int minor = (version_code >> 8) & 0xFF;\n    unsigned int patch = version_code & 0xFF;\n\n    // Format the x value into the buffer\n    int bytes_written = snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), \"%u.%u.%u\", major, minor, patch);\n\n    if (bytes_written < 0) {\n        return -1; // Error in formatting\n    }\n\n    // Ensure the total length does not exceed the buffer size\n    size_t total_length = strlen(buffer);\n\n    if (total_length > len) {\n        return -1; // Not enough space in user buffer\n    }\n\n    // Copy the formatted string to the user buffer\n    if (copy_to_user(release, buffer, total_length)) {\n        return -1; // Error in copying to user space\n    }\n\n    return total_length;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if the process is in 26-character uname mode",
+      "protects_against": "unexpected or invalid personality flags"
+    },
+    {
+      "step": "ensure the buffer is initialized",
+      "protects_against": "uninitialized memory being accessed"
+    },
+    {
+      "step": "check if the base string fits in the buffer",
+      "protects_against": "buffer overflow when copying the base string"
+    },
+    {
+      "step": "check for errors in formatting the version string",
+      "protects_against": "invalid formatting operations"
+    },
+    {
+      "step": "ensure the total length does not exceed the user buffer size",
+      "protects_against": "buffer overflow when copying to user space"
+    },
+    {
+      "step": "check for errors in copying to user space",
+      "protects_against": "invalid user space pointers or copy failures"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check if the process is in 26-character uname mode — protects against: unexpected or invalid personality flags",
+        "reasoning": "The implementation checks if the current process's personality includes the UNAME26 flag, which indicates the 26-character uname mode. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure the buffer is initialized — protects against: uninitialized memory being accessed",
+        "reasoning": "The implementation uses a local buffer `buf[65]` which is initialized to zero by the `snprintf` function. This ensures the buffer is initialized before use.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if the base string fits in the buffer — protects against: buffer overflow when copying the base string",
+        "reasoning": "The implementation uses `snprintf(buf, len, ...)` which ensures that the formatted string does not exceed the size of the buffer. This prevents buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors in formatting the version string — protects against: invalid formatting operations",
+        "reasoning": "The implementation uses `snprintf`, which is a safe function that does not return errors for invalid formatting in the same way as `sprintf`. However, it does not explicitly check for formatting errors or validate the format string. This step is not directly performed.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "ensure the total length does not exceed the user buffer size — protects against: buffer overflow when copying to user space",
+        "reasoning": "The implementation uses `copy_to_user(release, buf, len)` with the `len` parameter, which ensures that the number of bytes copied does not exceed the user buffer size. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors in copying to user space — protects against: invalid user space pointers or copy failures",
+        "reasoning": "The implementation uses `copy_to_user`, which returns the number of bytes not copied. However, it does not check the return value to detect errors or invalid pointers. This step is not performed.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if the process is in 26-character uname mode — protects against: unexpected or invalid personality flags",
+        "reasoning": "The implementation checks if the process's personality includes UNAME26 using `current->personality & UNAME26`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure the buffer is initialized — protects against: uninitialized memory being accessed",
+        "reasoning": "The implementation initializes the buffer `char buf[65] = { 0 };` with zeroes.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if the base string fits in the buffer — protects against: buffer overflow when copying the base string",
+        "reasoning": "The implementation constructs the string using `scnprintf`, which ensures the string does not exceed the buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors in formatting the version string — protects against: invalid formatting operations",
+        "reasoning": "The implementation uses `scnprintf`, which is a safe formatting function that returns the number of characters written. It does not explicitly check for formatting errors.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "ensure the total length does not exceed the user buffer size — protects against: buffer overflow when copying to user space",
+        "reasoning": "The implementation uses `min(sizeof(buf), max_t(size_t, 1, len))` to limit the length of the formatted string to the smaller of the buffer size and the user buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors in copying to user space — protects against: invalid user space pointers or copy failures",
+        "reasoning": "The implementation calls `copy_to_user`, but does not check the return value to determine if the copy was successful.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

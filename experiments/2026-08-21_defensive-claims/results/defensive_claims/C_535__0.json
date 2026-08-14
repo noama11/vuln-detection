@@ -1,0 +1,242 @@
+{
+  "case_id": "C_535__0",
+  "sample_id": "D/C/535",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-10061",
+  "cve_summary": "The ReadGROUP4Image function in coders/tiff.c in ImageMagick before 7.0.1-10 does not check the return value of the fputc function, which allows remote attackers to cause a denial of service (crash) via a crafted image file.",
+  "changed_file": "coders/tiff.c",
+  "docstring": "```plaintext\nSummary: \nReads a Group 4 image from a specified file and writes it as a TIFF image file.\n\nParameters: \nimage_info (const ImageInfo *): Information about the image to be read.\nexception (ExceptionInfo *): Structure to capture any exceptions that occur during processing.\n\nReturns: \nImage *: A pointer to the read Image structure, or NULL if an error occurs.\n\nLogic: \nThe function first validates the input parameters and opens the image file. It writes the necessary TIFF headers and image data to a temporary file. After writing, it reads the TIFF image back into memory and populates the filename and format fields of the Image structure. If any errors occur during file operations, appropriate exceptions are thrown, and resources are cleaned up before returning NULL. The function ensures that the image is correctly formatted and ready for further processing.\n```",
+  "heuristic_leakage_flag": false,
+  "generated_code": "Image *ReadGroup4Image(const ImageInfo *image_info, ExceptionInfo *exception) {\n  Image *image = NULL;\n  FILE *file = NULL;\n  FILE *temp_file = NULL;\n  size_t size = 0;\n  unsigned char *buffer = NULL;\n\n  if (!image_info || !exception) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      ResourceLimitError, \"InvalidArgument\", \"Invalid image_info or exception\");\n    return NULL;\n  }\n\n  file = fopen(image_info->filename, \"rb\");\n  if (!file) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToOpenFile\", \"\");\n    return NULL;\n  }\n\n  temp_file = tmpfile();\n  if (!temp_file) {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToCreateTemporaryFile\", \"\");\n    return NULL;\n  }\n\n  if (fseek(file, 0, SEEK_END) != 0) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToSeekInFile\", \"\");\n    return NULL;\n  }\n\n  size = ftell(file);\n  if (size == (size_t) -1) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToGetFileSize\", \"\");\n    return NULL;\n  }\n\n  if (fseek(file, 0, SEEK_SET) != 0) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToResetFilePointer\", \"\");\n    return NULL;\n  }\n\n  buffer = (unsigned char *) AcquireMemory(size);\n  if (!buffer) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      ResourceLimitError, \"UnableToAllocateMemory\", \"\");\n    return NULL;\n  }\n\n  if (fread(buffer, sizeof(*buffer), size, file) != size) {\n    (void) fclose(file);\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileReadError, \"UnableToReadImage\", \"\");\n    return NULL;\n  }\n\n  if (fclose(file) != 0) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileCloseError, \"UnableToCloseFile\", \"\");\n    return NULL;\n  }\n\n  if (WriteTIFFImage(temp_file, buffer, size, exception) != MagickTrue) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileWriteError, \"UnableToWriteTIFFImage\", \"\");\n    return NULL;\n  }\n\n  if (fseek(temp_file, 0, SEEK_SET) != 0) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileSeekError, \"UnableToResetTemporaryFilePointer\", \"\");\n    return NULL;\n  }\n\n  image = ReadImage(temp_file, exception);\n  if (!image) {\n    (void) fclose(temp_file);\n    (void) RelinquishMemory(buffer);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileReadError, \"UnableToReadTIFFImage\", \"\");\n    return NULL;\n  }\n\n  if (fclose(temp_file) != 0) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileCloseError, \"UnableToCloseTemporaryFile\", \"\");\n  }\n\n  RelinquishMemory(buffer);\n  return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers",
+      "protects_against": "null or invalid image_info or exception pointers"
+    },
+    {
+      "step": "check file open operations",
+      "protects_against": "failure to open the source file or create a temporary file"
+    },
+    {
+      "step": "check file seek operations",
+      "protects_against": "failure to seek to the end or beginning of the file"
+    },
+    {
+      "step": "check file size retrieval",
+      "protects_against": "failure to get the file size or invalid size values"
+    },
+    {
+      "step": "allocate memory for buffer",
+      "protects_against": "insufficient memory to read the file contents"
+    },
+    {
+      "step": "check file read operation",
+      "protects_against": "failure to read the entire file contents"
+    },
+    {
+      "step": "check file close operations",
+      "protects_against": "failure to close the source or temporary files"
+    },
+    {
+      "step": "check TIFF writing operation",
+      "protects_against": "failure to write the TIFF image to the temporary file"
+    },
+    {
+      "step": "check temporary file seek operation",
+      "protects_against": "failure to reset the temporary file pointer before reading"
+    },
+    {
+      "step": "check TIFF reading operation",
+      "protects_against": "failure to read the TIFF image from the temporary file"
+    },
+    {
+      "step": "check temporary file close operation",
+      "protects_against": "failure to close the temporary file after reading"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leaks from the buffer allocation"
+    }
+  ],
+  "n_claims": 12,
+  "judge_vs_vulnerable": {
+    "score": 26,
+    "n_omits": 7,
+    "n_performs": 2,
+    "n_na": 3,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null or invalid image_info or exception pointers",
+        "reasoning": "The implementation uses assert statements to check that image_info and exception are not NULL and have the correct signature. This is a form of input validation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file open operations — protects against: failure to open the source file or create a temporary file",
+        "reasoning": "The implementation opens the source file via OpenBlob and creates a temporary file via AcquireUniqueFileResource and fdopen. It checks if the unique_file is -1 or if file is NULL and throws an exception if either is true.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file seek operations — protects against: failure to seek to the end or beginning of the file",
+        "reasoning": "The implementation uses fseek to reset the file pointer in the temporary file. It does not check the return value of fseek, which could indicate a failure.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check file size retrieval — protects against: failure to get the file size or invalid size values",
+        "reasoning": "The implementation does not explicitly retrieve the file size. It writes data directly to the temporary file and reads from the source file byte by byte. There is no check for invalid size values.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for buffer — protects against: insufficient memory to read the file contents",
+        "reasoning": "The implementation does not use a buffer to read the file contents. It reads the source file byte by byte using ReadBlobByte and writes directly to the temporary file. There is no memory allocation for a buffer.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check file read operation — protects against: failure to read the entire file contents",
+        "reasoning": "The implementation reads the source file byte by byte using ReadBlobByte and writes to the temporary file. It does not check if the read operation fails or if it reads fewer bytes than expected.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check file close operations — protects against: failure to close the source or temporary files",
+        "reasoning": "The implementation calls fclose on the temporary file and CloseBlob on the source file. It does not check the return values of these functions to ensure the files are closed successfully.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check TIFF writing operation — protects against: failure to write the TIFF image to the temporary file",
+        "reasoning": "The implementation writes the TIFF header and image data to the temporary file using fwrite and WriteLSBLong. It does not check the return values of these functions to ensure the write operations succeed.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check temporary file seek operation — protects against: failure to reset the temporary file pointer before reading",
+        "reasoning": "The implementation uses fseek to reset the file pointer in the temporary file before reading. It does not check the return value of fseek, which could indicate a failure.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check TIFF reading operation — protects against: failure to read the TIFF image from the temporary file",
+        "reasoning": "The implementation calls ReadTIFFImage to read the TIFF image from the temporary file. It does not check if this function returns NULL, which could indicate a failure.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check temporary file close operation — protects against: failure to close the temporary file after reading",
+        "reasoning": "The implementation calls RelinquishUniqueFileResource to close the temporary file after reading. It does not check if this function fails.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory — protects against: memory leaks from the buffer allocation",
+        "reasoning": "The implementation does not allocate memory for a buffer. It reads the source file byte by byte and writes directly to the temporary file. There is no memory to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 4,
+    "n_performs": 4,
+    "n_na": 4,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null or invalid image_info or exception pointers",
+        "reasoning": "The implementation uses assert statements to check that image_info and exception are not NULL and have the correct signature. This is a form of input validation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file open operations — protects against: failure to open the source file or create a temporary file",
+        "reasoning": "The implementation opens the source file via OpenBlob and creates a temporary file via AcquireUniqueFileResource and fdopen. It checks the return values of these operations and handles failure by destroying the image and returning NULL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check file seek operations — protects against: failure to seek to the end or beginning of the file",
+        "reasoning": "The implementation does not perform any file seek operations, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check file size retrieval — protects against: failure to get the file size or invalid size values",
+        "reasoning": "The implementation does not explicitly retrieve the file size, so this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for buffer — protects against: insufficient memory to read the file contents",
+        "reasoning": "The implementation does not use a separate buffer for reading the file; it reads and writes data directly. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check file read operation — protects against: failure to read the entire file contents",
+        "reasoning": "The implementation reads the file byte by byte using ReadBlobByte and writes it to the temporary file. It checks for EOF but does not verify that the entire file was read successfully.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check file close operations — protects against: failure to close the source or temporary files",
+        "reasoning": "The implementation calls fclose on the temporary file and CloseBlob on the source file. These are checked for success, and the implementation proceeds accordingly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check TIFF writing operation — protects against: failure to write the TIFF image to the temporary file",
+        "reasoning": "The implementation writes the TIFF header and image data to the temporary file. However, it does not check the return values of the fwrite calls, so it does not verify that the writing was successful.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check temporary file seek operation — protects against: failure to reset the temporary file pointer before reading",
+        "reasoning": "The implementation uses fseek to reset the file pointer before reading the TIFF image. It does not check the return value of fseek, so it does not verify that the seek was successful.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check TIFF reading operation — protects against: failure to read the TIFF image from the temporary file",
+        "reasoning": "The implementation calls ReadTIFFImage to read the TIFF image from the temporary file. It does not check the return value of this function to verify that the reading was successful.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check temporary file close operation — protects against: failure to close the temporary file after reading",
+        "reasoning": "The implementation calls fclose on the temporary file and CloseBlob on the source file. These are checked for success, and the implementation proceeds accordingly.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leaks from the buffer allocation",
+        "reasoning": "The implementation does not allocate any separate buffer for reading the file, so there is no memory to free. This step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "case_id": "C_115__0",
+  "sample_id": "D/C/115",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "commit_message": "atm: fix info leak in getsockopt(SO_ATMPVC)\n\nThe ATM code fails to initialize the two padding bytes of struct\nsockaddr_atmpvc inserted for alignment. Add an explicit memset(0)\nbefore filling the structure to avoid the info leak.\n\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nRetrieves socket options for a given socket in an ATM (Asynchronous Transfer Mode) context.\n\nParameters:  \nsock (struct socket *): Pointer to the socket from which options are retrieved.  \nlevel (int): The level at which the option resides (e.g., SOL_SOCKET).  \noptname (int): The specific option to retrieve (e.g., SO_ATMQOS).  \noptval (char __user *): Pointer to user space where the option value will be stored.  \noptlen (int __user *): Pointer to user space where the length of the option value is provided.\n\nReturns:  \nint: Returns 0 on success, or a negative error code indicating the type of failure (e.g., -EFAULT, -EINVAL, -ENOTCONN).\n\nLogic:  \nThe function first checks the validity of the provided length and option name. It then retrieves the ATM virtual circuit control structure associated with the socket. Depending on the requested option, it either copies the relevant data to user space or calls the device's specific `getsockopt` function if the option is not handled directly.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    788,
+    830
+  ],
+  "vulnerable_line_range": [
+    788,
+    829
+  ],
+  "vulnerable_snippet": "int vcc_getsockopt(struct socket *sock, int level, int optname,\r\n\t\t   char __user *optval, int __user *optlen)\r\n{\r\n\tstruct atm_vcc *vcc;\r\n\tint len;\r\n\r\n\tif (get_user(len, optlen))\r\n\t\treturn -EFAULT;\r\n\tif (__SO_LEVEL_MATCH(optname, level) && len != __SO_SIZE(optname))\r\n\t\treturn -EINVAL;\r\n\r\n\tvcc = ATM_SD(sock);\r\n\tswitch (optname) {\r\n\tcase SO_ATMQOS:\r\n\t\tif (!test_bit(ATM_VF_HASQOS, &vcc->flags))\r\n\t\t\treturn -EINVAL;\r\n\t\treturn copy_to_user(optval, &vcc->qos, sizeof(vcc->qos))\r\n\t\t\t? -EFAULT : 0;\r\n\tcase SO_SETCLP:\r\n\t\treturn put_user(vcc->atm_options & ATM_ATMOPT_CLP ? 1 : 0,\r\n\t\t\t\t(unsigned long __user *)optval) ? -EFAULT : 0;\r\n\tcase SO_ATMPVC:\r\n\t{\r\n\t\tstruct sockaddr_atmpvc pvc;\r\n\r\n\t\tif (!vcc->dev || !test_bit(ATM_VF_ADDR, &vcc->flags))\r\n\t\t\treturn -ENOTCONN;\r\n\t\tpvc.sap_family = AF_ATMPVC;\r\n\t\tpvc.sap_addr.itf = vcc->dev->number;\r\n\t\tpvc.sap_addr.vpi = vcc->vpi;\r\n\t\tpvc.sap_addr.vci = vcc->vci;\r\n\t\treturn copy_to_user(optval, &pvc, sizeof(pvc)) ? -EFAULT : 0;\r\n\t}\r\n\tdefault:\r\n\t\tif (level == SOL_SOCKET)\r\n\t\t\treturn -EINVAL;\r\n\t\tbreak;\r\n\t}\r\n\tif (!vcc->dev || !vcc->dev->ops->getsockopt)\r\n\t\treturn -EINVAL;\r\n\treturn vcc->dev->ops->getsockopt(vcc, level, optname, optval, len);\r\n}",
+  "fixed_line_range": [
+    788,
+    830
+  ],
+  "fixed_snippet": "int vcc_getsockopt(struct socket *sock, int level, int optname,\r\n\t\t   char __user *optval, int __user *optlen)\r\n{\r\n\tstruct atm_vcc *vcc;\r\n\tint len;\r\n\r\n\tif (get_user(len, optlen))\r\n\t\treturn -EFAULT;\r\n\tif (__SO_LEVEL_MATCH(optname, level) && len != __SO_SIZE(optname))\r\n\t\treturn -EINVAL;\r\n\r\n\tvcc = ATM_SD(sock);\r\n\tswitch (optname) {\r\n\tcase SO_ATMQOS:\r\n\t\tif (!test_bit(ATM_VF_HASQOS, &vcc->flags))\r\n\t\t\treturn -EINVAL;\r\n\t\treturn copy_to_user(optval, &vcc->qos, sizeof(vcc->qos))\r\n\t\t\t? -EFAULT : 0;\r\n\tcase SO_SETCLP:\r\n\t\treturn put_user(vcc->atm_options & ATM_ATMOPT_CLP ? 1 : 0,\r\n\t\t\t\t(unsigned long __user *)optval) ? -EFAULT : 0;\r\n\tcase SO_ATMPVC:\r\n\t{\r\n\t\tstruct sockaddr_atmpvc pvc;\r\n\r\n\t\tif (!vcc->dev || !test_bit(ATM_VF_ADDR, &vcc->flags))\r\n\t\t\treturn -ENOTCONN;\r\n\t\tmemset(&pvc, 0, sizeof(pvc));\r\n\t\tpvc.sap_family = AF_ATMPVC;\r\n\t\tpvc.sap_addr.itf = vcc->dev->number;\r\n\t\tpvc.sap_addr.vpi = vcc->vpi;\r\n\t\tpvc.sap_addr.vci = vcc->vci;\r\n\t\treturn copy_to_user(optval, &pvc, sizeof(pvc)) ? -EFAULT : 0;\r\n\t}\r\n\tdefault:\r\n\t\tif (level == SOL_SOCKET)\r\n\t\t\treturn -EINVAL;\r\n\t\tbreak;\r\n\t}\r\n\tif (!vcc->dev || !vcc->dev->ops->getsockopt)\r\n\t\treturn -EINVAL;\r\n\treturn vcc->dev->ops->getsockopt(vcc, level, optname, optval, len);\r\n}",
+  "func_name": "vcc_getsockopt",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

@@ -1,0 +1,62 @@
+{
+  "case_id": "C_495__0",
+  "sample_id": "D/C/495",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-5551",
+  "cve_summary": "The simple_set_acl function in fs/posix_acl.c in the Linux kernel before 4.9.6 preserves the setgid bit during a setxattr call involving a tmpfs filesystem, which allows local users to gain group privileges by leveraging the existence of a setgid program with restrictions on execute permissions.  NOTE: this vulnerability exists because of an incomplete fix for CVE-2016-7097.",
+  "changed_file": "fs/posix_acl.c",
+  "docstring": "\"\"\"\nSummary: Updates the Access Control List (ACL) for a given inode.\n\nParameters:\ninode (struct inode *): Pointer to the inode whose ACL is being set.\nacl (struct posix_acl *): Pointer to the ACL to be applied.\ntype (int): The type of ACL being set (e.g., access or default).\n\nReturns:\nint: Returns 0 on success, or an error code on failure.\n\nLogic: For access ACLs, it performs ACL-related mode handling for the inode. On successful completion, it updates the inode's change time to the current time and sets the cached ACL for the inode. If mode handling cannot complete, it returns without updating the cached ACL.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "calling posix_acl_update_mode for ACL_TYPE_ACCESS and checking its return value",
+        "performed_by_count": 5,
+        "why_it_matters": "If the ACL is invalid or cannot be applied, the function should return an error. Omitting this check could allow invalid ACLs to be applied or mask errors in mode handling."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: calling `posix_acl_update_mode` for ACL_TYPE_ACCESS. Instead, it uses `posix_acl_equiv_mode`, which does not return an error code in the same way and lacks the same validation logic. This omission could lead to incorrect mode handling and failure to propagate errors properly.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "passing NULL to posix_acl_update_mode's third argument",
+        "performed_by_count": 5,
+        "why_it_matters": "If the third argument is used to modify or validate the ACL, passing the untrusted 'acl' pointer could allow hostile input to affect the mode update process."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation passes the 'acl' pointer to 'posix_acl_update_mode', which the majority of independent implementations do not do. This could lead to unexpected behavior or use of an unvalidated ACL if the function relies on it. The majority implementations pass NULL as the third argument, suggesting a safer approach.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

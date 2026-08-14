@@ -1,0 +1,41 @@
+#include <linux/futex.h>
+#include <linux/sched.h>
+#include <linux/ktime.h>
+#include <linux/errno.h>
+
+int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags, u32 val,
+                          ktime_t *abs_time, u32 bitset, u32 __user *uaddr2)
+{
+    int ret = 0;
+    struct hrtimer sht;
+    struct futex_q q = {};
+    int timeout_set = 0;
+
+    if (abs_time) {
+        hrtimer_init(&sht, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+        sht.function = futex_hrtimer_callback;
+        hrtimer_set_expires(&sht, ktime_get());
+        timeout_set = 1;
+    }
+
+    q.pi_state = NULL;
+    q.bitset = bitset;
+    q.key = futex_key_init(uaddr, flags & FLAGS_SHARED);
+
+    ret = futex_wait(uaddr, flags, val, &sht, &q);
+    if (ret < 0)
+        goto out;
+
+    ret = futex_requeue(uaddr, flags, val, uaddr2, 1, &q);
+    if (ret < 0)
+        goto out;
+
+    if (timeout_set)
+        hrtimer_cancel(&sht);
+
+out:
+    if (timeout_set)
+        hrtimer_cancel(&sht);
+
+    return ret;
+}

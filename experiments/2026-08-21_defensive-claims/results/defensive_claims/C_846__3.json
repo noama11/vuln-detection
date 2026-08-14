@@ -1,0 +1,162 @@
+{
+  "case_id": "C_846__3",
+  "sample_id": "D/C/846",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a sound timer device into a user-provided buffer.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sound timer device.\nbuffer (char __user *): Pointer to the user buffer where data will be copied.\ncount (size_t): The maximum number of bytes to read from the device.\noffset (loff_t *): Pointer to the offset in the file from which to read.\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: \nThe function locks the device's mutex and spinlock to ensure thread safety while reading data. It checks if there is data available to read and waits if the queue is empty, handling non-blocking and interruptible conditions. Data is copied from the device's queue to the user buffer, and the function updates the read position accordingly. It handles errors during the read process and returns the number of bytes successfully read or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/fs.h>\n#include <linux/uaccess.h>\n#include <linux/mutex.h>\n#include <linux/wait.h>\n\nssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    struct sound_timer_dev *dev = file->private_data;\n    ssize_t bytes_read = 0;\n\n    if (!dev || !buffer || !offset)\n        return -EINVAL;\n\n    mutex_lock(&dev->mutex);\n\n    while (1) {\n        unsigned int available = kfifo_len(&dev->queue);\n\n        if (available > 0) {\n            size_t to_read = min(count, available);\n\n            if (to_read > 0) {\n                if (kfifo_out_to_user(&dev->queue, buffer, to_read, &bytes_read)) {\n                    bytes_read = -EFAULT;\n                    goto out;\n                }\n                buffer += bytes_read;\n                count -= bytes_read;\n                *offset += bytes_read;\n            }\n            break;\n        }\n\n        if (file->f_flags & O_NONBLOCK) {\n            bytes_read = -EAGAIN;\n            goto out;\n        }\n\n        if (wait_event_interruptible(dev->wait_queue, kfifo_len(&dev->queue) > 0)) {\n            bytes_read = -ERESTARTSYS;\n            goto out;\n        }\n    }\n\n    bytes_read = count - count;\n\nout:\n    mutex_unlock(&dev->mutex);\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "use mutex lock",
+      "protects_against": "race conditions during concurrent access"
+    },
+    {
+      "step": "check for available data before reading",
+      "protects_against": "reading from an empty queue"
+    },
+    {
+      "step": "handle non-blocking flag",
+      "protects_against": "blocking on a non-blocking file descriptor"
+    },
+    {
+      "step": "use wait queue for empty queue",
+      "protects_against": "busy waiting when no data is available"
+    },
+    {
+      "step": "check for user space copy errors",
+      "protects_against": "invalid user space pointer access"
+    },
+    {
+      "step": "ensure mutex is unlocked on all exit paths",
+      "protects_against": "deadlock from un-released mutex"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `file->private_data` and assumes it is valid, but does not explicitly check for null pointers. However, the function is likely called only when the file is properly opened and initialized, so a null pointer may not be reachable under normal usage. Still, the code does not explicitly check for null pointers.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "use mutex lock — protects against: race conditions during concurrent access",
+        "reasoning": "The implementation uses `mutex_lock(&tu->ioctl_lock)` and `mutex_unlock(&tu->ioctl_lock)` around the copy to user operation, ensuring that concurrent access is properly synchronized.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for available data before reading — protects against: reading from an empty queue",
+        "reasoning": "The implementation checks `tu->qused` before attempting to read data. If the queue is empty, it enters a wait loop until data is available or an error occurs.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle non-blocking flag — protects against: blocking on a non-blocking file descriptor",
+        "reasoning": "The implementation checks the `O_NONBLOCK` flag and returns `-EAGAIN` if the queue is empty and the file is opened in non-blocking mode.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use wait queue for empty queue — protects against: busy waiting when no data is available",
+        "reasoning": "The implementation uses a wait queue (`add_wait_queue`, `schedule`, `remove_wait_queue`) when the queue is empty, ensuring the process sleeps until data is available rather than busy-waiting.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for user space copy errors — protects against: invalid user space pointer access",
+        "reasoning": "The implementation uses `copy_to_user` and checks its return value, setting `err = -EFAULT` if the copy fails. This guards against invalid user space pointer access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure mutex is unlocked on all exit paths — protects against: deadlock from un-released mutex",
+        "reasoning": "The implementation unlocks the `qlock` spinlock in the `_error` label and at the end of the function. However, the `ioctl_lock` mutex is only unlocked after the copy operation and before relocking the `qlock`. There is no explicit check for whether the `ioctl_lock` is always unlocked in all error paths. For example, if `copy_to_user` fails, the mutex is unlocked before returning. However, if an error occurs before the `mutex_lock`, the lock is not acquired in the first place. The code appears to handle all paths correctly.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the 'file' or 'buffer' parameters. Dereferencing 'file->private_data' and 'buffer' could lead to null pointer dereference if 'file' or 'buffer' is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "use mutex lock — protects against: race conditions during concurrent access",
+        "reasoning": "The implementation uses 'mutex_lock(&tu->ioctl_lock)' to lock the device's mutex, ensuring thread safety during the read operation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for available data before reading — protects against: reading from an empty queue",
+        "reasoning": "The implementation checks if 'tu->qused' is zero before attempting to read data from the queue. If the queue is empty, it waits for data to become available.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "handle non-blocking flag — protects against: blocking on a non-blocking file descriptor",
+        "reasoning": "The implementation checks the 'O_NONBLOCK' flag and returns '-EAGAIN' if the file is in non-blocking mode and no data is available.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use wait queue for empty queue — protects against: busy waiting when no data is available",
+        "reasoning": "The implementation uses a wait queue ('wait_queue_t') to put the current process to sleep when the queue is empty, rather than busy waiting.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for user space copy errors — protects against: invalid user space pointer access",
+        "reasoning": "The implementation uses 'copy_to_user' and checks its return value. If the copy fails, it sets 'err' to '-EFAULT' to indicate an error in user space pointer access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure mutex is unlocked on all exit paths — protects against: deadlock from un-released mutex",
+        "reasoning": "The implementation unlocks the mutex ('mutex_unlock(&tu->ioctl_lock)') on all exit paths, including the '_error' label, ensuring the mutex is always released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

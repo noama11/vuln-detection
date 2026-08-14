@@ -1,0 +1,48 @@
+{
+  "case_id": "C_1146__0",
+  "sample_id": "D/C/1146",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-2906",
+  "cve_summary": "Multiple race conditions in the Web Audio implementation in Blink, as used in Google Chrome before 30.0.1599.66, allow remote attackers to cause a denial of service or possibly have unspecified other impact via vectors related to threading in core/html/HTMLMediaElement.cpp, core/platform/audio/AudioDSPKernelProcessor.cpp, core/platform/audio/HRTFElevation.cpp, and modules/webaudio/ConvolverNode.cpp.",
+  "changed_file": "third_party/WebKit/Source/modules/webaudio/ConvolverNode.cpp",
+  "docstring": "Summary: This code defines the `ConvolverNode` class, which processes audio signals using convolution with an impulse response in a web audio context.\n\nParameters: \nN/A\n\nReturns: \nN/A\n\nLogic: The `ConvolverNode` class inherits from `AudioNode` and initializes with a specified audio context and sample rate. It manages audio processing through a reverb engine, which is created from an audio buffer containing the impulse response. The `process` method handles audio frames, ensuring synchronization with potential changes to the impulse response using a mutex. If the node is not initialized or the reverb is not set, it outputs silence. The `setBuffer` method validates the audio buffer and wraps it in an `AudioBus`, which is then used to create the reverb. The class also provides methods to retrieve the audio buffer and calculate tail and latency times.",
+  "heuristic_leakage_flag": true,
+  "generated_code": "namespace WebCore {\r\n\r\nConvolverNode::ConvolverNode(AudioContext* context, float sampleRate)\r\n    : AudioNode(context, sampleRate)\r\n    , m_normalize(true)\r\n{\r\n    ScriptWrappable::init(this);\r\n    addInput(adoptPtr(new AudioNodeInput(this)));\r\n    addOutput(adoptPtr(new AudioNodeOutput(this, 2)));\r\n\r\n    // Node-specific default mixing rules.\r\n    m_channelCount = 2;\r\n    m_channelCountMode = ClampedMax;\r\n    m_channelInterpretation = AudioBus::Speakers;\r\n\r\n    setNodeType(NodeTypeConvolver);\r\n    initialize();\r\n}\r\n\r\nConvolverNode::~ConvolverNode()\r\n{\r\n    uninitialize();\r\n}\r\n\r\nvoid ConvolverNode::process(size_t framesToProcess)\r\n{\r\n    AudioBus* outputBus = output(0)->bus();\r\n    ASSERT(outputBus);\r\n\r\n    // Synchronize with possible dynamic changes to the impulse response.\r\n    MutexTryLocker tryLocker(m_processLock);\r\n    if (tryLocker.locked()) {\r\n        if (!isInitialized() || !m_reverb.get())\r\n            outputBus->zero();\r\n        else {\r\n            // Process using the convolution engine.\r\n            // Note that we can handle the case where nothing is connected to the input, in which case we'll just feed silence into the convolver.\r\n            // FIXME:  If we wanted to get fancy we could try to factor in the 'tail time' and stop processing once the tail dies down if\r\n            // we keep getting fed silence.\r\n            m_reverb->process(input(0)->bus(), outputBus, framesToProcess);\r\n        }\r\n    } else {\r\n        // Too bad - the tryLock() failed.  We must be in the middle of setting a new impulse response.\r\n        outputBus->zero();\r\n    }\r\n}\r\n\r\nvoid ConvolverNode::reset()\r\n{\r\n    MutexLocker locker(m_processLock);\r\n    if (m_reverb.get())\r\n        m_reverb->reset();\r\n}\r\n\r\nvoid ConvolverNode::initialize()\r\n{\r\n    if (isInitialized())\r\n        return;\r\n\r\n    AudioNode::initialize();\r\n}\r\n\r\nvoid ConvolverNode::uninitialize()\r\n{\r\n    if (!isInitialized())\r\n        return;\r\n\r\n    m_reverb.clear();\r\n    AudioNode::uninitialize();\r\n}\r\n\r\nvoid ConvolverNode::setBuffer(AudioBuffer* buffer)\r\n{\r\n    ASSERT(isMainThread());\r\n\r\n    if (!buffer)\r\n        return;\r\n\r\n    unsigned numberOfChannels = buffer->numberOfChannels();\r\n    size_t bufferLength = buffer->length();\r\n\r\n    // The current implementation supports up to four channel impulse responses, which are interpreted as true-stereo (see Reverb class).\r\n    bool isBufferGood = numberOfChannels > 0 && numberOfChannels <= 4 && bufferLength;\r\n    ASSERT(isBufferGood);\r\n    if (!isBufferGood)\r\n        return;\r\n\r\n    // Wrap the AudioBuffer by an AudioBus. It's an efficient pointer set and not a memcpy().\r\n    // This memory is simply used in the Reverb constructor and no reference to it is kept for later use in that class.\r\n    RefPtr<AudioBus> bufferBus = AudioBus::create(numberOfChannels, bufferLength, false);\r\n    for (unsigned i = 0; i < numberOfChannels; ++i)\r\n        bufferBus->setChannelMemory(i, buffer->getChannelData(i)->data(), bufferLength);\r\n\r\n    bufferBus->setSampleRate(buffer->sampleRate());\r\n\r\n    // Create the reverb with the given impulse response.\r\n    bool useBackgroundThreads = !context()->isOfflineContext();\r\n    OwnPtr<Reverb> reverb = adoptPtr(new Reverb(bufferBus.get(), AudioNode::ProcessingSizeInFrames, MaxFFTSize, 2, useBackgroundThreads, m_normalize));\r\n\r\n    {\r\n        // Synchronize with process().\r\n        MutexLocker locker(m_processLock);\r\n        m_reverb = reverb.release();\r\n        m_buffer = buffer;\r\n    }\r\n}\r\n\r\nAudioBuffer* ConvolverNode::buffer()\r\n{\r\n    ASSERT(isMainThread());\r\n    return m_buffer.get();\r\n}\r\n\r\ndouble ConvolverNode::tailTime() const\r\n{\r\n    MutexTryLocker tryLocker(m_processLock);\r\n    if (tryLocker.locked())\r\n        return m_reverb ? m_reverb->impulseResponseLength() / static_cast<double>(sampleRate()) : 0;\r\n    // Since we don't want to block the Audio Device thread, we return a large value\r\n    // instead of trying to acquire the lock.\r\n    return std::numeric_limits<double>::infinity();\r\n}\r\n\r\ndouble ConvolverNode::latencyTime() const\r\n{\r\n    MutexTryLocker tryLocker(m_processLock);\r\n    if (tryLocker.locked())\r\n        return m_reverb ? m_reverb->latencyFrames() / static_cast<double>(sampleRate()) : 0;\r\n    // Since we don't want to block the Audio Device thread, we return a large value\r\n    // instead of trying to acquire the lock.\r\n    return std::numeric_limits<double>::infinity();\r\n}\r\n\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations are nearly identical, with the only difference being in the `latencyTime()` method. The candidate implementation includes a `MutexTryLocker` block that returns a large value if the lock cannot be acquired, similar to the `tailTime()` method. However, the reference implementation omits the `MutexTryLocker` and simply returns the latency time directly. This difference could lead to inconsistent behavior when the lock is not available, potentially affecting real-time audio processing. The difference is not security-relevant but could affect functional correctness in edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in all aspects, including logic, structure, and behavior. There are no observable differences in how they handle audio processing, buffer validation, or synchronization with the impulse response. Therefore, they are behaviorally equivalent.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

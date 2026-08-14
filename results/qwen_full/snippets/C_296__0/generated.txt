@@ -1,0 +1,35 @@
+int key_reject_and_link(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {
+    int ret;
+
+    if (!key || !keyring) {
+        return -EINVAL;
+    }
+
+    if (key->type->vlimit && keyring->type != keyring_type) {
+        return -EINVAL;
+    }
+
+    if (key->instace) {
+        return -EEXIST;
+    }
+
+    key->flags |= 1 << 1; // Mark as negatively instantiated
+    key->expiry = getnstime_monotonic() + timeout;
+    key->error = error;
+
+    if (keyring) {
+        ret = key->type->link(key, keyring);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+
+    if (authkey) {
+        key_revoke(authkey);
+    }
+
+    key_schedule_gc(key);
+    wake_up_bit(&key->construct_wait, 0);
+
+    return 0;
+}

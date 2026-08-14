@@ -1,0 +1,35 @@
+{
+  "case_id": "C_468__0",
+  "implementation": "int compat_sys_mbind(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode) {\n    int ret = -EFAULT;\n    compat_ulong_t bits = maxnode;\n    unsigned long *bitmap = NULL;\n    size_t size = 0;\n\n    if (bits == 0) {\n        return -EINVAL;\n    }\n\n    if (nmask != NULL) {\n        size = (bits + 7) / 8;\n        bitmap = kmalloc(size, GFP_KERNEL);\n        if (!bitmap) {\n            return -ENOMEM;\n        }\n\n        if (copy_from_user(bitmap, nmask, size)) {\n            kfree(bitmap);\n            return -EFAULT;\n        }\n    }\n\n    ret = sys_mbind(mode, nmask, maxnode, bitmap, size, 0);\n\n    if (nmask != NULL) {\n        if (copy_to_user(nmask, bitmap, size)) {\n            ret = -EFAULT;\n        }\n        kfree(bitmap);\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate bits is non-zero",
+      "protects_against": "invalid or zero maxnode value"
+    },
+    {
+      "step": "check for null pointer before dereferencing",
+      "protects_against": "null pointer dereference when nmask is NULL"
+    },
+    {
+      "step": "allocate memory for bitmap with kmalloc",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check for successful copy_from_user",
+      "protects_against": "invalid user-space pointer or memory access violation"
+    },
+    {
+      "step": "check for successful copy_to_user",
+      "protects_against": "invalid user-space pointer or memory access violation"
+    },
+    {
+      "step": "free allocated memory on all return paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,27 @@
+{
+  "case_id": "C_95__0",
+  "implementation": "#include <linux/uaccess.h>\n#include <linux/sctp.h>\n\nint sctp_get_assoc_stats(struct sock *sk, int len, char __user *optval, int __user *optlen)\n{\n    struct sctp_assoc_stats stats = {0};\n    struct sctp_association *asoc;\n    int assoc_id;\n    int ret = 0;\n\n    /* Check if the provided length is sufficient for the association ID. */\n    if (len < sizeof(assoc_id))\n        return -EINVAL;\n\n    /* Copy the association ID from user space. */\n    if (copy_from_user(&assoc_id, optval, sizeof(assoc_id)))\n        return -EFAULT;\n\n    /* Retrieve the association based on the ID. */\n    asoc = sctp_id2assoc(sk, assoc_id);\n    if (!asoc)\n        return -ENOENT;\n\n    /* Populate the statistics structure with various metrics. */\n    stats.assoc_id = assoc_id;\n    stats.cumu_flight = asoc->c.sack.cumu_flight;\n    stats.rto = asoc->rto;\n    stats.max_rto = asoc->rto_max;\n    stats.min_rto = asoc->rto_min;\n\n    /* Update the maximum observed RTO. */\n    if (asoc->rto > stats.max_rto)\n        stats.max_rto = asoc->rto;\n\n    /* Prepare the statistics for return to the user. */\n    if (copy_to_user(optval, &stats, sizeof(stats))) {\n        ret = -EFAULT;\n    } else {\n        if (put_user(sizeof(stats), optlen))\n            ret = -EFAULT;\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check provided length for association ID",
+      "protects_against": "buffer overflow due to insufficient buffer size"
+    },
+    {
+      "step": "copy_from_user for association ID",
+      "protects_against": "invalid or malicious user input causing access violations"
+    },
+    {
+      "step": "copy_to_user for statistics structure",
+      "protects_against": "invalid or malicious user buffer causing access violations"
+    },
+    {
+      "step": "put_user for optlen",
+      "protects_against": "invalid or malicious user buffer causing access violations"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,48 @@
+CURLcode Curl_auth_create_plain_message(struct Curl_easy *data,
+                                        const char *userp,
+                                        const char *passwdp,
+                                        char **outptr,
+                                        size_t *outlen)
+{
+  size_t userlen = strlen(userp);
+  size_t passlen = strlen(passwdp);
+  size_t plainlen = userlen + 1 + passlen;
+  size_t base64len;
+  char *plain = NULL;
+  char *base64 = NULL;
+  CURLcode result = CURLE_OUT_OF_MEMORY;
+
+  /* Compute the Base64 encoded length */
+  base64len = Curl_base64_encode_len(plainlen);
+
+  /* Allocate memory for the PLAIN message */
+  plain = (char *)malloc(plainlen);
+  if (!plain)
+    goto out;
+
+  /* Construct the PLAIN message */
+  memcpy(plain, userp, userlen);
+  plain[userlen] = '\0';
+  memcpy(plain + userlen + 1, passwdp, passlen);
+
+  /* Encode the PLAIN message in Base64 */
+  base64 = (char *)malloc(base64len);
+  if (!base64)
+    goto out;
+
+  if(Curl_base64_encode(data, plain, plainlen, &base64, outlen)) {
+    goto out;
+  }
+
+  /* Set the output pointer and length */
+  *outptr = base64;
+  result = CURLE_OK;
+
+out:
+  if (plain)
+    free(plain);
+  if (result != CURLE_OK && base64)
+    free(base64);
+
+  return result;
+}

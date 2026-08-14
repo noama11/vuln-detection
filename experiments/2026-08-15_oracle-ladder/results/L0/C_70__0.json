@@ -1,0 +1,48 @@
+{
+  "case_id": "C_70__0",
+  "sample_id": "D/C/70",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3233",
+  "cve_summary": "The llcp_sock_recvmsg function in net/nfc/llcp/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable and a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/nfc/llcp/sock.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header structure to fill with received data.\nlen (size_t): The maximum length of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header or an error code.\n\nLogic: \nThe function first checks the socket state and whether the receive queue is empty. It handles non-blocking and out-of-band flags, retrieves a datagram from the socket, and copies the data into the provided message header. It also populates the address information if the socket type is datagram. Depending on the socket type, it manages the received data, either re-queuing or freeing the socket buffer. Finally, it returns the number of bytes received or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int llcp_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t     struct msghdr *msg, size_t len, int flags)\r\n{\r\n\tint noblock = flags & MSG_DONTWAIT;\r\n\tstruct sock *sk = sock->sk;\r\n\tunsigned int copied, rlen;\r\n\tstruct sk_buff *skb, *cskb;\r\n\tint err = 0;\r\n\r\n\tpr_debug(\"%p %zu\\n\", sk, len);\r\n\r\n\tmsg->msg_namelen = 0;\r\n\r\n\tlock_sock(sk);\r\n\r\n\tif (sk->sk_state == LLCP_CLOSED &&\r\n\t    skb_queue_empty(&sk->sk_receive_queue)) {\r\n\t\trelease_sock(sk);\r\n\t\treturn 0;\r\n\t}\r\n\r\n\trelease_sock(sk);\r\n\r\n\tif (flags & (MSG_OOB))\r\n\t\treturn -EOPNOTSUPP;\r\n\r\n\tskb = skb_recv_datagram(sk, flags, noblock, &err);\r\n\tif (!skb) {\r\n\t\tpr_err(\"Recv datagram failed state %d %d %d\",\r\n\t\t       sk->sk_state, err, sock_error(sk));\r\n\r\n\t\tif (sk->sk_shutdown & RCV_SHUTDOWN)\r\n\t\t\treturn 0;\r\n\r\n\t\treturn err;\r\n\t}\r\n\r\n\trlen = skb->len;\t\t/* real length of skb */\r\n\tcopied = min_t(unsigned int, rlen, len);\r\n\r\n\tcskb = skb;\r\n\tif (skb_copy_datagram_iovec(cskb, 0, msg->msg_iov, copied)) {\r\n\t\tif (!(flags & MSG_PEEK))\r\n\t\t\tskb_queue_head(&sk->sk_receive_queue, skb);\r\n\t\treturn -EFAULT;\r\n\t}\r\n\r\n\tsock_recv_timestamp(msg, sk, skb);\r\n\r\n\tif (sk->sk_type == SOCK_DGRAM && msg->msg_name) {\r\n\t\tstruct nfc_llcp_ui_cb *ui_cb = nfc_llcp_ui_skb_cb(skb);\r\n\t\tstruct sockaddr_nfc_llcp *sockaddr =\r\n\t\t\t(struct sockaddr_nfc_llcp *) msg->msg_name;\r\n\r\n\t\tmsg->msg_namelen = sizeof(struct sockaddr_nfc_llcp);\r\n\r\n\t\tpr_debug(\"Datagram socket %d %d\\n\", ui_cb->dsap, ui_cb->ssap);\r\n\r\n\t\tmemset(sockaddr, 0, sizeof(*sockaddr));\r\n\t\tsockaddr->sa_family = AF_NFC;\r\n\t\tsockaddr->nfc_protocol = NFC_PROTO_NFC_DEP;\r\n\t\tsockaddr->dsap = ui_cb->dsap;\r\n\t\tsockaddr->ssap = ui_cb->ssap;\r\n\t}\r\n\r\n\t/* Mark read part of skb as used */\r\n\tif (!(flags & MSG_PEEK)) {\r\n\r\n\t\t/* SOCK_STREAM: re-queue skb if it contains unreceived data */\r\n\t\tif (sk->sk_type == SOCK_STREAM ||\r\n\t\t    sk->sk_type == SOCK_DGRAM ||\r\n\t\t    sk->sk_type == SOCK_RAW) {\r\n\t\t\tskb_pull(skb, copied);\r\n\t\t\tif (skb->len) {\r\n\t\t\t\tskb_queue_head(&sk->sk_receive_queue, skb);\r\n\t\t\t\tgoto done;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\tkfree_skb(skb);\r\n\t}\r\n\r\n\t/* XXX Queue backlogged skbs */\r\n\r\ndone:\r\n\t/* SOCK_SEQPACKET: return real length if MSG_TRUNC is set */\r\n\tif (sk->sk_type == SOCK_SEQPACKET && (flags & MSG_TRUNC))\r\n\t\tcopied = rlen;\r\n\r\n\treturn copied;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional line `msg->msg_namelen = 0;` at the beginning, which the reference implementation lacks. This could affect the behavior of the `msg` structure when the socket type is datagram and `msg_name` is provided, as the reference implementation assumes `msg_namelen` is already initialized. However, this difference is unlikely to be security-relevant or cause functional issues in normal operation, as `msg_namelen` is later set in the datagram handling block. The rest of the logic is identical.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in behavior. Both perform the same checks, handle the same flags, and manage the socket buffer in the same way. There are no observable differences in how they process input or produce output for any realistic or edge-case input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

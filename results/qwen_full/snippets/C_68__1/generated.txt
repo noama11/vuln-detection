@@ -1,0 +1,56 @@
+int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst)
+{
+	int ret = 0;
+	int total_sent = 0;
+	struct kvec *iov;
+	size_t iov_count;
+	size_t i;
+
+	iov = rqst->rq_iov;
+	iov_count = rqst->rq_nvec;
+
+	/* Cork the socket to optimize send operations */
+	if (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){1}, sizeof(int)) < 0) {
+		ret = -errno;
+		goto out;
+	}
+
+	/* Send the initial SMB request */
+	total_sent = smb_send_kvec(server, iov, iov_count);
+	if (total_sent < 0) {
+		ret = total_sent;
+		goto uncork;
+	}
+
+	/* Send additional pages if present */
+	for (i = 0; i < rqst->rq_npages; i++) {
+		size_t len = rqst->rq_pages[i].length;
+		void *page = rqst->rq_pages[i].page;
+
+		ssize_t sent = send(server->sock, page, len, 0);
+		if (sent < 0) {
+			ret = -errno;
+			goto uncork;
+		}
+		total_sent += sent;
+	}
+
+uncork:
+	/* Uncork the socket */
+	if (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int)) < 0) {
+		/* Ignore error on uncork */
+	}
+
+	/* Check if the total bytes sent match the expected length */
+	if (total_sent != rqst->rq_length) {
+		server->tcp_status = TCP_STATUS_RECONNECT;
+	}
+
+out:
+	if (ret < 0) {
+		/* Log the error */
+		printk(KERN_ERR "Failed to send SMB request: %d\n", ret);
+	}
+
+	return ret;
+}

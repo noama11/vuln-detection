@@ -1,0 +1,37 @@
+int create_graphics_buffer_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {
+    struct drm_mode_create_dumb *args = data;
+    struct drm_gem_object *obj;
+    struct drm_plane *plane;
+    int ret;
+
+    if (!args) {
+        return -EINVAL;
+    }
+
+    obj = drm_gem_object_create(dev, args->size);
+    if (IS_ERR(obj)) {
+        return PTR_ERR(obj);
+    }
+
+    plane = drm_plane_create(dev, DRM_PLANE_TYPE_PRIMARY, 0, NULL, NULL, NULL, NULL, 0);
+    if (!plane) {
+        ret = -ENOMEM;
+        goto free_gem;
+    }
+
+    ret = drm_plane_init(dev, plane, 0, NULL, NULL, NULL, NULL, DRM_PLANE_HELPER_NO_STATUS);
+    if (ret < 0) {
+        goto put_plane;
+    }
+
+    args->handle = obj->handle;
+    args->pitch = obj->width << 2;
+
+    return 0;
+
+put_plane:
+    drm_plane_cleanup(plane);
+free_gem:
+    drm_gem_object_put(obj);
+    return ret;
+}

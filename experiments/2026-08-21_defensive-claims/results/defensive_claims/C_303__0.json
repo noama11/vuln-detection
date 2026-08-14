@@ -1,0 +1,130 @@
+{
+  "case_id": "C_303__0",
+  "sample_id": "D/C/303",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-3137",
+  "cve_summary": "drivers/usb/serial/cypress_m8.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a USB device without both an interrupt-in and an interrupt-out endpoint descriptor, related to the cypress_generic_port_probe and cypress_open functions.",
+  "changed_file": "drivers/usb/serial/cypress_m8.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Probes a Cypress USB serial port to initialize its private data structure  \n * and configure the necessary settings for communication.  \n *  \n * Parameters:  \n * port (struct usb_serial_port*): Pointer to the USB serial port to be probed.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function allocates memory for the private data structure, initializes locks and FIFO buffers,\n * and configures packet format based on the interrupt output size. It also handles special cases\n * for certain devices and sets the read/write intervals based on provided values or defaults.\n * Finally, it associates the private data with the port and sets a drain delay before returning the\n * success status.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *priv;\n    int ret = -ENOMEM;\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        goto error;\n\n    spin_lock_init(&priv->lock);\n\n    priv->in_buffer = kmalloc(CYPRESS_IN_BUFFER_SIZE, GFP_KERNEL);\n    if (!priv->in_buffer)\n        goto error_free_priv;\n\n    priv->out_buffer = kmalloc(CYPRESS_OUT_BUFFER_SIZE, GFP_KERNEL);\n    if (!priv->out_buffer)\n        goto error_free_in_buffer;\n\n    priv->in_size = CYPRESS_IN_BUFFER_SIZE;\n    priv->out_size = CYPRESS_OUT_BUFFER_SIZE;\n\n    if (port->serial->dev->descriptor.idVendor == 0x0403 && \n        port->serial->dev->descriptor.idProduct == 0x6001) {\n        priv->packet_format = CYPRESS_PACKET_FORMAT_A;\n    } else {\n        priv->packet_format = CYPRESS_PACKET_FORMAT_B;\n    }\n\n    priv->read_interval = port->serial->dev->descriptor.bcdDevice & 0xff;\n    priv->write_interval = (port->serial->dev->descriptor.bcdDevice >> 8) & 0xff;\n\n    if (!priv->read_interval)\n        priv->read_interval = CYPRESS_DEFAULT_READ_INTERVAL;\n    if (!priv->write_interval)\n        priv->write_interval = CYPRESS_DEFAULT_WRITE_INTERVAL;\n\n    priv->drain_delay = CYPRESS_DEFAULT_DRAIN_DELAY;\n\n    usb_set_serial_port_data(port, priv);\n\n    return 0;\n\nerror_free_in_buffer:\n    kfree(priv->in_buffer);\nerror_free_priv:\n    kfree(priv);\nerror:\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null after kzalloc",
+      "protects_against": "memory allocation failure for private data structure"
+    },
+    {
+      "step": "check for null after kmalloc for in_buffer",
+      "protects_against": "memory allocation failure for input buffer"
+    },
+    {
+      "step": "check for null after kmalloc for out_buffer",
+      "protects_against": "memory allocation failure for output buffer"
+    },
+    {
+      "step": "use kzalloc to zero-initialize memory",
+      "protects_against": "uninitialized memory contents"
+    },
+    {
+      "step": "proper error handling and resource cleanup",
+      "protects_against": "memory leaks on error paths"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after kzalloc — protects against: memory allocation failure for private data structure",
+        "reasoning": "The implementation checks if `priv` is null after calling `kzalloc`, and returns `-ENOMEM` if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after kmalloc for in_buffer — protects against: memory allocation failure for input buffer",
+        "reasoning": "The implementation does not use `kmalloc` for an input buffer. It uses `kfifo_alloc` for the write FIFO, which is a different construct.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null after kmalloc for out_buffer — protects against: memory allocation failure for output buffer",
+        "reasoning": "The implementation does not use `kmalloc` for an output buffer. It uses `kfifo_alloc` for the write FIFO, which is a different construct.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use kzalloc to zero-initialize memory — protects against: uninitialized memory contents",
+        "reasoning": "The implementation uses `kzalloc` to allocate the `priv` structure, which ensures that the memory is zero-initialized.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "proper error handling and resource cleanup — protects against: memory leaks on error paths",
+        "reasoning": "The implementation checks the return value of `kfifo_alloc`. If it fails, it frees the `priv` structure and returns `-ENOMEM`, which prevents a memory leak.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null after kzalloc — protects against: memory allocation failure for private data structure",
+        "reasoning": "The implementation checks if 'priv' is null after kzalloc and returns -ENOMEM if it is, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null after kmalloc for in_buffer — protects against: memory allocation failure for input buffer",
+        "reasoning": "The implementation uses kfifo_alloc for the write_fifo, but there is no explicit kmalloc for an in_buffer or equivalent. There is no check for an in_buffer allocation failure.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null after kmalloc for out_buffer — protects against: memory allocation failure for output buffer",
+        "reasoning": "The implementation uses kfifo_alloc for the write_fifo, but there is no explicit kmalloc for an out_buffer or equivalent. There is no check for an out_buffer allocation failure.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use kzalloc to zero-initialize memory — protects against: uninitialized memory contents",
+        "reasoning": "The implementation uses kzalloc to allocate the 'priv' structure, which zero-initializes the memory, performing the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "proper error handling and resource cleanup — protects against: memory leaks on error paths",
+        "reasoning": "The implementation checks the return of kfifo_alloc and frees 'priv' if it fails, preventing a memory leak. There are no other allocations that require cleanup.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

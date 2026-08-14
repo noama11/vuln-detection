@@ -1,0 +1,62 @@
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <dirent.h>
+#include <errno.h>
+#include <string.h>
+
+int create_or_update_file(const char *path, bool parents, usec_t stamp, uid_t uid, gid_t gid, mode_t mode) {
+    struct stat st;
+    int fd;
+
+    if (path == NULL || *path == '\0') {
+        return -EINVAL;
+    }
+
+    if (parents) {
+        char *p, *copy = strdup(path);
+        if (!copy)
+            return -ENOMEM;
+
+        for (p = copy + 1; *p; p++) {
+            if (*p == '/') {
+                *p = '\0';
+                if (mkdir(copy, 0755) == -1 && errno != EEXIST) {
+                    free(copy);
+                    return -errno;
+                }
+                *p = '/';
+            }
+        }
+        free(copy);
+    }
+
+    mode_t final_mode = mode;
+    if (mode == 0) {
+        final_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // 0644
+    }
+
+    fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, final_mode);
+    if (fd == -1) {
+        return -errno;
+    }
+
+    if (fchown(fd, uid, gid) == -1) {
+        close(fd);
+        return -errno;
+    }
+
+    struct timespec times[2];
+    times[0].tv_sec = stamp / 1000000;
+    times[0].tv_nsec = (stamp % 1000000) * 1000;
+    times[1] = times[0];
+
+    if (futimens(fd, times) == -1) {
+        close(fd);
+        return -errno;
+    }
+
+    close(fd);
+    return 0;
+}

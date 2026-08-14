@@ -1,0 +1,47 @@
+{
+  "case_id": "C_833__0",
+  "implementation": "#include <stdbool.h>\n#include <string.h>\n#include <curl/curl.h>\n#include <jansson.h>\n\n// Function to initiate a Stratum mining session\nbool initiate_stratum_session(struct pool* pool) {\n    if (!pool) {\n        return false;\n    }\n\n    CURL* curl = curl_easy_init();\n    if (!curl) {\n        return false;\n    }\n\n    // Set up the CURL connection\n    curl_easy_setopt(curl, CURLOPT_URL, pool->url);\n    curl_easy_setopt(curl, CURLOPT_POST, 1L);\n\n    // Construct the JSON-RPC request\n    json_t* request = json_object();\n    if (!request) {\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    json_object_set_new(request, \"jsonrpc\", json_string(\"2.0\"));\n    json_object_set_new(request, \"method\", json_string(\"mining.subscribe\"));\n    json_object_set_new(request, \"params\", json_array());\n\n    char* request_str = json_dumps(request, JSON_COMPACT);\n    if (!request_str) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_str);\n\n    // Set up response handling\n    struct curl_slist* headers = NULL;\n    headers = curl_slist_append(headers, \"Content-Type: application/json\");\n    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);\n\n    // Buffer for the response\n    char response[4096] = {0};\n    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);\n    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);\n    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, \n        [](void* contents, size_t size, size_t nmemb, void* userp) {\n            size_t realsize = size * nmemb;\n            size_t copy_len = sizeof(response) - 1 - strlen((char*)userp);\n            if (copy_len < realsize) {\n                realsize = copy_len;\n            }\n            memcpy(userp, contents, realsize);\n            ((char*)userp)[realsize] = '\\0';\n            return realsize;\n        });\n\n    // Perform the request\n    CURLcode res = curl_easy_perform(curl);\n    if (res != CURLE_OK) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Parse the JSON response\n    json_error_t error;\n    json_t* response_json = json_loads(response, 0, &error);\n    if (!response_json) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    json_t* result = json_object_get(response_json, \"result\");\n    if (!result || !json_is_array(result)) {\n        json_decref(request);\n        json_decref(response_json);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Extract session ID and nonce\n    json_t* session_id = json_array_get(result, 0);\n    json_t* nonce = json_array_get(result, 1);\n\n    if (!session_id || !json_is_string(session_id) || !nonce || !json_is_string(nonce)) {\n        json_decref(request);\n        json_decref(response_json);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Update the pool's state\n    if (pool->session_id) {\n        free(pool->session_id);\n    }\n    pool->session_id = strdup(json_string_value(session_id));\n    if (pool->nonce) {\n        free(pool->nonce);\n    }\n    pool->nonce = strdup(json_string_value(nonce));\n\n    // Log the session details\n    // (Logging implementation omitted for brevity)\n\n    // Clean up\n    json_decref(request);\n    json_decref(response_json);\n    curl_easy_cleanup(curl);\n    curl_slist_free_all(headers);\n    free(request_str);\n\n    return true;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pool pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null curl_easy_init return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null json_object return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null json_dumps return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for curl_easy_perform success",
+      "protects_against": "unsuccessful HTTP request"
+    },
+    {
+      "step": "check for json_loads success",
+      "protects_against": "malformed JSON response"
+    },
+    {
+      "step": "check for valid result array in JSON response",
+      "protects_against": "invalid JSON structure"
+    },
+    {
+      "step": "check for valid session_id and nonce in JSON response",
+      "protects_against": "invalid JSON structure"
+    },
+    {
+      "step": "free allocated memory before return",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 9,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

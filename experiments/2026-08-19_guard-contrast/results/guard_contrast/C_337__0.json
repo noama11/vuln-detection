@@ -1,0 +1,53 @@
+{
+  "case_id": "C_337__0",
+  "sample_id": "D/C/337",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7513",
+  "cve_summary": "arch/x86/kvm/x86.c in the Linux kernel before 4.4 does not reset the PIT counter values during state restoration, which allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via a zero value, related to the kvm_vm_ioctl_set_pit and kvm_vm_ioctl_set_pit2 functions.",
+  "changed_file": "arch/x86/kvm/x86.c",
+  "docstring": "\"\"\"\nSummary: Updates the PIT (Programmable Interval Timer) state in a KVM (Kernel-based Virtual Machine) instance.\n\nParameters:\nkvm (struct kvm*): Pointer to the KVM instance whose PIT state is being updated.\nps (struct kvm_pit_state2*): Pointer to the new PIT state information to be applied.\n\nReturns:\nint: Always returns 0, indicating success.\n\nLogic: Logic: The function locks the PIT state mutex, checks and updates the legacy HPET (High Precision Event Timer) flag, copies the new channel states from the provided structure, updates the PIT flags, and loads PIT channel count state. Finally, it unlocks the mutex before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int kvm_pit_set_state(struct kvm *kvm, struct kvm_pit_state2 *ps)\n{\n    int i;\n\n    mutex_lock(&kvm->pit_state->mutex);\n    kvm->pit_state->hpet = ps->hpet;\n    for (i = 0; i < 3; i++) {\n        kvm->pit_state->channels[i].count = ps->channels[i].count;\n        kvm->pit_state->channels[i].init_count = ps->channels[i].init_count;\n        kvm->pit_state->channels[i].mode = ps->channels[i].mode;\n        kvm->pit_state->channels[i].latched_count = ps->channels[i].latched_count;\n        kvm->pit_state->channels[i].latched_flag = ps->channels[i].latched_flag;\n        kvm->pit_state->channels[i].count_load_time = ps->channels[i].count_load_time;\n        kvm->pit_state->channels[i].count_incr = ps->channels[i].count_incr;\n        kvm->pit_state->channels[i].count_incr_time = ps->channels[i].count_incr_time;\n        kvm->pit_state->channels[i].count_incr_period = ps->channels[i].count_incr_period;\n    }\n    mutex_unlock(&kvm->pit_state->mutex);\n\n    return 0;\n}",
+  "candidate_slot": 1,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 0,
+    "candidate_exposure": 3,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "HPET legacy flag validation",
+      "fixed-size memcpy of channels array"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 2,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a bounds-implicit loop over 3 channels, copying data directly without validating the input structure. Implementation 2 performs a fixed-size memcpy of the channels array and validates the HPET legacy flag before taking action. Implementation 2 includes a validation step for the HPET legacy flag and uses memcpy with a fixed size, which is more defensive than the loop in implementation 1. Implementation 1 lacks explicit validation of the input structure's flags and uses a loop that could be less robust if the structure is malformed.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 2,
+    "reference_missing_steps": [],
+    "candidate_missing_steps": [
+      "legacy HPET flag validation"
+    ],
+    "n_reference_missing": 0,
+    "n_candidate_missing": 1,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a direct field-by-field copy of the PIT channel data, while implementation 2 uses a memcpy for the channels and includes a check for a legacy HPET flag change. Implementation 2 includes a validation of the legacy HPET flag change and uses a memcpy, which may include bounds checks depending on the compiler and structure definitions. Implementation 1 lacks the flag validation and uses explicit loops, which may be more error-prone if the structure changes. Implementation 1 is missing a validation step that 2 performs, but it is unclear if this omission leaves it exposed to hostile input.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

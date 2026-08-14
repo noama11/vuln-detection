@@ -1,0 +1,49 @@
+{
+  "case_id": "C_149__0",
+  "sample_id": "D/C/149",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "/**\n * Summary: \n * Sets socket options for a PPPoL2TP socket.\n * \n * Parameters:\n * sock (struct socket *): Pointer to the socket for which options are being set.\n * level (int): Level at which the option resides (should be SOL_PPPOL2TP).\n * optname (int): Name of the option to set.\n * optval (char __user *): Pointer to the value to set for the option.\n * optlen (unsigned int): Length of the option value.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function handles PPPoL2TP socket option requests and checks whether the option length is\n * sufficient. It retrieves the option value from user space and checks if the socket is connected.\n * It then retrieves the session context associated with the socket. Depending on the session ID, it\n * either sets options for the tunnel or the session. Finally, it cleans up and returns the\n * appropriate error code or success indicator.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int pppol2tp_setsockopt(struct socket *v10, int v4, int v6,\n                   char __user *optval, unsigned int v5)\n{\n    struct v10 *v9 = v10->v9;\n    struct l2tp_session *v8;\n    struct l2tp_tunnel *v11;\n    struct pppol2tp_session *v7;\n    int v12;\n    int v3;\n    if (v4 != SOL_PPPOL2TP)\n        return -EINVAL;\n    if (v5 < sizeof(int))\n        return -EINVAL;\n    if (get_user(v12, (int __user *)optval))\n        return -EFAULT;\n    v3 = -ENOTCONN;\n    if (v9->sk_user_data == NULL)\n        goto v1;\n    v3 = -EBADF;\n    v8 = pppol2tp_sock_to_session(v9);\n    if (v8 == NULL)\n        goto v1;\n    v7 = l2tp_session_priv(v8);\n    if ((v8->session_id == 0) &&\n        (v8->peer_session_id == 0)) {\n        v3 = -EBADF;\n        v11 = l2tp_sock_to_tunnel(v7->tunnel_sock);\n        if (v11 == NULL)\n            goto v2;\n        v3 = pppol2tp_tunnel_setsockopt(v9, v11, v6, v12);\n        sock_put(v7->tunnel_sock);\n    } else\n        v3 = pppol2tp_session_setsockopt(v9, v8, v6, v12);\n    v3 = 0;\nv2:\n    sock_put(v9);\nv1:\n    return v3;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 12
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation calls `udp_prot.setsockopt` when the level is not `SOL_PPPOL2TP`, while the reference implementation does not. This is a behavioral difference that could affect how options are handled at non-PPPoL2TP levels. However, since the specification explicitly states that the level should be `SOL_PPPOL2TP`, this difference is unlikely to be reachable under normal or expected usage. It is a minor deviation that does not impact security or correctness for valid inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the socket context and error paths. The candidate implementation uses a variable named 'v9' instead of 'sk' and has a different error handling flow with labels 'v1' and 'v2'. However, these are syntactic and naming differences. The core logic—validating the level, option length, retrieving the option value, checking connection status, and handling tunnel or session options—remains the same. There is no observable behavioral difference for any input, including edge cases.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,38 @@
+#include <sys/socket.h>
+#include <linux/uaccess.h>
+#include <linux/socket.h>
+
+int receive_socket_data(int fd, void __user *ubuf, size_t size, unsigned int flags,
+                        struct sockaddr __user *addr, int __user *addr_len) {
+    struct socket *sock;
+    struct msghdr msg;
+    struct iovec iov;
+    int ret;
+
+    ret = sockfd_lookup(fd, &sock);
+    if (ret < 0)
+        return ret;
+
+    iov.iov_base = ubuf;
+    iov.iov_len = size;
+
+    msg.msg_name = addr;
+    msg.msg_namelen = sizeof(struct sockaddr);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = NULL;
+    msg.msg_controllen = 0;
+    msg.msg_flags = flags;
+
+    ret = sock->ops->recvmsg(sock, &msg, size, flags);
+
+    if (addr && msg.msg_namelen) {
+        if (copy_to_user(addr_len, &msg.msg_namelen, sizeof(int))) {
+            sockfd_put(sock);
+            return -EFAULT;
+        }
+    }
+
+    sockfd_put(sock);
+    return ret;
+}

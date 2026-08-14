@@ -1,0 +1,36 @@
+{
+  "case_id": "C_74__0",
+  "sample_id": "D/C/74",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3228",
+  "cve_summary": "The irda_recvmsg_dgram function in net/irda/af_irda.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "commit_message": "irda: Fix missing msg_namelen update in irda_recvmsg_dgram()\n\nThe current code does not fill the msg_name member in case it is set.\nIt also does not set the msg_namelen member to 0 and therefore makes\nnet/socket.c leak the local, uninitialized sockaddr_storage variable\nto userland -- 128 bytes of kernel stack memory.\n\nFix that by simply setting msg_namelen to 0 as obviously nobody cared\nabout irda_recvmsg_dgram() not filling the msg_name in case it was\nset.\n\nCc: Samuel Ortiz <samuel@sortiz.org>\nSigned-off-by: Mathias Krause <minipli@googlemail.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/irda/af_irda.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a datagram message over an IrDA socket.\n\nParameters: \niocb (struct kiocb*): The I/O control block associated with the operation.\nsock (struct socket*): The socket from which the message is received.\nmsg (struct msghdr*): The message header that will be filled with the received data.\nsize (size_t): The maximum size of the message to be received.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header, or an error code if the operation fails.\n\nLogic: \nThe function retrieves a datagram from the socket's receive queue, copying the data into the provided message header. It checks for truncation and updates the message flags accordingly. If the IrTTP flow is stopped and there is sufficient space in the receive queue, it restarts the flow to allow further message delivery.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    1378,
+    1424
+  ],
+  "vulnerable_line_range": [
+    1378,
+    1422
+  ],
+  "vulnerable_snippet": "static int irda_recvmsg_dgram(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t      struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct irda_sock *self = irda_sk(sk);\r\n\tstruct sk_buff *skb;\r\n\tsize_t copied;\r\n\tint err;\r\n\r\n\tIRDA_DEBUG(4, \"%s()\\n\", __func__);\r\n\r\n\tskb = skb_recv_datagram(sk, flags & ~MSG_DONTWAIT,\r\n\t\t\t\tflags & MSG_DONTWAIT, &err);\r\n\tif (!skb)\r\n\t\treturn err;\r\n\r\n\tskb_reset_transport_header(skb);\r\n\tcopied = skb->len;\r\n\r\n\tif (copied > size) {\r\n\t\tIRDA_DEBUG(2, \"%s(), Received truncated frame (%zd < %zd)!\\n\",\r\n\t\t\t   __func__, copied, size);\r\n\t\tcopied = size;\r\n\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t}\r\n\tskb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);\r\n\r\n\tskb_free_datagram(sk, skb);\r\n\r\n\t/*\r\n\t *  Check if we have previously stopped IrTTP and we know\r\n\t *  have more free space in our rx_queue. If so tell IrTTP\r\n\t *  to start delivering frames again before our rx_queue gets\r\n\t *  empty\r\n\t */\r\n\tif (self->rx_flow == FLOW_STOP) {\r\n\t\tif ((atomic_read(&sk->sk_rmem_alloc) << 2) <= sk->sk_rcvbuf) {\r\n\t\t\tIRDA_DEBUG(2, \"%s(), Starting IrTTP\\n\", __func__);\r\n\t\t\tself->rx_flow = FLOW_START;\r\n\t\t\tirttp_flow_request(self->tsap, FLOW_START);\r\n\t\t}\r\n\t}\r\n\r\n\treturn copied;\r\n}",
+  "fixed_line_range": [
+    1378,
+    1424
+  ],
+  "fixed_snippet": "static int irda_recvmsg_dgram(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t      struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct irda_sock *self = irda_sk(sk);\r\n\tstruct sk_buff *skb;\r\n\tsize_t copied;\r\n\tint err;\r\n\r\n\tIRDA_DEBUG(4, \"%s()\\n\", __func__);\r\n\r\n\tmsg->msg_namelen = 0;\r\n\r\n\tskb = skb_recv_datagram(sk, flags & ~MSG_DONTWAIT,\r\n\t\t\t\tflags & MSG_DONTWAIT, &err);\r\n\tif (!skb)\r\n\t\treturn err;\r\n\r\n\tskb_reset_transport_header(skb);\r\n\tcopied = skb->len;\r\n\r\n\tif (copied > size) {\r\n\t\tIRDA_DEBUG(2, \"%s(), Received truncated frame (%zd < %zd)!\\n\",\r\n\t\t\t   __func__, copied, size);\r\n\t\tcopied = size;\r\n\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t}\r\n\tskb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);\r\n\r\n\tskb_free_datagram(sk, skb);\r\n\r\n\t/*\r\n\t *  Check if we have previously stopped IrTTP and we know\r\n\t *  have more free space in our rx_queue. If so tell IrTTP\r\n\t *  to start delivering frames again before our rx_queue gets\r\n\t *  empty\r\n\t */\r\n\tif (self->rx_flow == FLOW_STOP) {\r\n\t\tif ((atomic_read(&sk->sk_rmem_alloc) << 2) <= sk->sk_rcvbuf) {\r\n\t\t\tIRDA_DEBUG(2, \"%s(), Starting IrTTP\\n\", __func__);\r\n\t\t\tself->rx_flow = FLOW_START;\r\n\t\t\tirttp_flow_request(self->tsap, FLOW_START);\r\n\t\t}\r\n\t}\r\n\r\n\treturn copied;\r\n}",
+  "func_name": "irda_recvmsg_dgram",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

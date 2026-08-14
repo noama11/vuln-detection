@@ -1,0 +1,98 @@
+{
+  "case_id": "C_137__1",
+  "sample_id": "D/C/137",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-7826",
+  "cve_summary": "kernel/trace/trace_syscalls.c in the Linux kernel through 3.17.2 does not properly handle private syscall numbers during use of the ftrace subsystem, which allows local users to gain privileges or cause a denial of service (invalid pointer dereference) via a crafted application.",
+  "changed_file": "kernel/trace/trace_syscalls.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function handles the exit of a syscall, tracing the exit event and  \n * storing relevant data in a ring buffer for further analysis.  \n *  \n * Parameters:  \n * data (void*): Pointer to the trace array containing tracing information.  \n * regs (struct pt_regs*): Pointer to the register state at the time of syscall exit.  \n * ret (long): The return value of the syscall being traced.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function retrieves the syscall number and checks its validity. It then  \n * accesses the corresponding ftrace file and verifies if tracing is enabled.  \n * If valid, it prepares to log the exit event by reserving space in the  \n * trace buffer, populating the entry with syscall number and return value,  \n * and finally commits the event to the buffer.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stddef.h>\n#include <stdint.h>\n\n// Assuming the following structures and functions are defined:\n// struct pt_regs;\n// struct ftrace_file;\n// struct trace_entry;\n// struct ring_buffer;\n// struct ftrace_file *ftrace_get_file(int syscall_num);\n// int ring_buffer_reserve(struct ring_buffer *buffer, size_t size);\n// void ring_buffer_commit(struct ring_buffer *buffer);\n// void ring_buffer_discard(struct ring_buffer *buffer);\n\nvoid handle_syscall_exit(void *data, struct pt_regs *regs, long ret) {\n    // Cast data to ring buffer pointer\n    struct ring_buffer *buffer = (struct ring_buffer *)data;\n\n    // Retrieve the syscall number from the register state\n    int syscall_num = (int)regs->orig_ax;\n\n    // Check if the syscall number is valid\n    if (syscall_num < 0 || syscall_num >= MAX_SYSCALLS) {\n        return;\n    }\n\n    // Get the corresponding ftrace file\n    struct ftrace_file *file = ftrace_get_file(syscall_num);\n\n    // Check if tracing is enabled for this syscall\n    if (!file || !file->tracing_enabled) {\n        return;\n    }\n\n    // Reserve space in the trace buffer for the event\n    struct trace_entry *entry = (struct trace_entry *)ring_buffer_reserve(buffer, sizeof(struct trace_entry));\n\n    // Check if reservation was successful\n    if (!entry) {\n        return;\n    }\n\n    // Populate the trace entry with syscall number and return value\n    entry->syscall_num = syscall_num;\n    entry->return_value = ret;\n\n    // Commit the event to the buffer\n    ring_buffer_commit(buffer);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if syscall number is valid",
+      "protects_against": "invalid or out-of-bounds syscall numbers"
+    },
+    {
+      "step": "check if tracing is enabled for the syscall",
+      "protects_against": "attempting to log events when tracing is disabled"
+    },
+    {
+      "step": "check if ring buffer reservation was successful",
+      "protects_against": "attempting to write to an unreserved buffer space"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if syscall number is valid — protects against: invalid or out-of-bounds syscall numbers",
+        "reasoning": "The implementation checks if `syscall_nr < 0`, which indicates an invalid syscall number. If so, it returns early, thus performing the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if tracing is enabled for the syscall — protects against: attempting to log events when tracing is disabled",
+        "reasoning": "The implementation calls `ftrace_trigger_soft_disabled(ftrace_file)`, which checks if tracing is disabled for the given file. If so, it returns early, performing the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if ring buffer reservation was successful — protects against: attempting to write to an unreserved buffer space",
+        "reasoning": "The implementation calls `trace_buffer_lock_reserve(...)`, which returns `NULL` if the reservation fails. It then checks if `event` is `NULL` and returns early if so, performing the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if syscall number is valid — protects against: invalid or out-of-bounds syscall numbers",
+        "reasoning": "The implementation checks if the syscall number is less than 0 or greater than or equal to NR_syscalls, and returns early if so. This directly guards against invalid or out-of-bounds syscall numbers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if tracing is enabled for the syscall — protects against: attempting to log events when tracing is disabled",
+        "reasoning": "The implementation checks if the ftrace_file is NULL (indicating no file is registered for this syscall) and returns early if so. It also checks if tracing is soft-disabled via ftrace_trigger_soft_disabled and returns early if so. These checks ensure that logging is only attempted when tracing is enabled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if ring buffer reservation was successful — protects against: attempting to write to an unreserved buffer space",
+        "reasoning": "The implementation calls trace_buffer_lock_reserve and checks if the returned event is NULL. If it is, it returns early, thus avoiding writing to an unreserved buffer space.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

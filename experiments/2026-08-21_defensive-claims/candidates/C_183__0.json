@@ -1,0 +1,39 @@
+{
+  "case_id": "C_183__0",
+  "implementation": "BOOL ReadLicenseScopes(wStream* s, SCOPE_LIST* scopeList)\n{\n    UINT32 scopeCount;\n\n    if (Stream_GetRemainingLength(s) < 4)\n        return FALSE;\n\n    Stream_Read_UINT32(s, scopeCount);\n\n    if (scopeCount > 0xFFFFFFFF / sizeof(LICENSE_BLOB))\n        return FALSE;\n\n    scopeList->count = scopeCount;\n    scopeList->scopes = (LICENSE_BLOB*)malloc(scopeCount * sizeof(LICENSE_BLOB));\n\n    if (!scopeList->scopes)\n        return FALSE;\n\n    for (UINT32 i = 0; i < scopeCount; i++)\n    {\n        LICENSE_BLOB* scope = &scopeList->scopes[i];\n        \n        if (Stream_GetRemainingLength(s) < sizeof(UINT32))\n        {\n            free(scopeList->scopes);\n            scopeList->scopes = NULL;\n            return FALSE;\n        }\n\n        Stream_Read_UINT32(s, scope->size);\n\n        if (scope->size > Stream_GetRemainingLength(s))\n        {\n            free(scopeList->scopes);\n            scopeList->scopes = NULL;\n            return FALSE;\n        }\n\n        scope->data = (BYTE*)malloc(scope->size);\n\n        if (!scope->data)\n        {\n            free(scopeList->scopes);\n            scopeList->scopes = NULL;\n            return FALSE;\n        }\n\n        Stream_Read(s, scope->data, scope->size);\n    }\n\n    return TRUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check stream has at least 4 bytes remaining before reading scope count",
+      "protects_against": "insufficient stream data to read the scope count"
+    },
+    {
+      "step": "validate scope count to prevent integer overflow during memory allocation",
+      "protects_against": "malformed or excessively large scope count causing memory allocation failure or overflow"
+    },
+    {
+      "step": "check memory allocation for scopes array",
+      "protects_against": "memory allocation failure when allocating the scopes array"
+    },
+    {
+      "step": "check stream has at least 4 bytes remaining before reading each scope size",
+      "protects_against": "insufficient stream data to read the size of a scope"
+    },
+    {
+      "step": "validate scope size does not exceed remaining stream data",
+      "protects_against": "malformed or excessively large scope size causing buffer overflow or invalid memory access"
+    },
+    {
+      "step": "check memory allocation for each scope data",
+      "protects_against": "memory allocation failure when allocating memory for a scope's data"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks in case of failure during scope reading"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

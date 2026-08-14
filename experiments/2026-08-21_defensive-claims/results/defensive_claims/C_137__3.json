@@ -1,0 +1,130 @@
+{
+  "case_id": "C_137__3",
+  "sample_id": "D/C/137",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-7826",
+  "cve_summary": "kernel/trace/trace_syscalls.c in the Linux kernel through 3.17.2 does not properly handle private syscall numbers during use of the ftrace subsystem, which allows local users to gain privileges or cause a denial of service (invalid pointer dereference) via a crafted application.",
+  "changed_file": "kernel/trace/trace_syscalls.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the exit of a system call by tracing its metadata and recording the exit event.\n\nParameters: \nignore (void*): Unused parameter for compatibility with the function signature.\nregs (struct pt_regs*): Pointer to the register state at the time of the syscall exit.\nret (long): The return value of the syscall.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function retrieves the syscall number and checks if it is valid and enabled for performance tracing. It then obtains the corresponding syscall metadata and checks if there are any exit events to record. If valid, it prepares a buffer for the trace record, populates it with the syscall number and return value, and submits the trace buffer for processing. The function ensures that all operations are performed only if the necessary conditions are met, preventing unnecessary processing.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stddef.h>\n#include <stdint.h>\n\n// Assuming the following types are defined elsewhere:\n// struct pt_regs;\n// struct syscall_metadata;\n// struct trace_buffer;\n\n// Forward declarations\nstruct syscall_metadata {\n    int enabled;\n    int has_exit_event;\n    size_t exit_event_size;\n};\n\nstruct trace_buffer {\n    size_t capacity;\n    size_t length;\n    uint8_t data[];\n};\n\n// Function to get the syscall number from registers\nint get_syscall_number(const struct pt_regs *regs);\n\n// Function to get the metadata for a syscall number\nconst struct syscall_metadata* get_syscall_metadata(int syscall_number);\n\n// Function to submit a trace buffer for processing\nvoid submit_trace_buffer(struct trace_buffer *buffer);\n\n// Function to prepare a trace buffer\nstruct trace_buffer* prepare_trace_buffer(size_t size);\n\n// Function to free a trace buffer\nvoid free_trace_buffer(struct trace_buffer *buffer);\n\nvoid syscall_exit_handler(void *ignore, struct pt_regs *regs, long ret) {\n    // Validate the registers pointer\n    if (!regs) {\n        return;\n    }\n\n    // Get the syscall number\n    int syscall_number = get_syscall_number(regs);\n\n    // Check if the syscall number is valid\n    if (syscall_number < 0) {\n        return;\n    }\n\n    // Get the syscall metadata\n    const struct syscall_metadata *metadata = get_syscall_metadata(syscall_number);\n\n    // Check if the metadata is valid and exit events are enabled\n    if (!metadata || !metadata->enabled || !metadata->has_exit_event) {\n        return;\n    }\n\n    // Prepare the trace buffer\n    struct trace_buffer *buffer = prepare_trace_buffer(metadata->exit_event_size);\n    if (!buffer) {\n        return;\n    }\n\n    // Check if the buffer has sufficient capacity\n    if (buffer->capacity < sizeof(syscall_number) + sizeof(ret)) {\n        free_trace_buffer(buffer);\n        return;\n    }\n\n    // Populate the buffer with the syscall number and return value\n    size_t offset = 0;\n    if (offset + sizeof(syscall_number) <= buffer->capacity) {\n        memcpy(&buffer->data[offset], &syscall_number, sizeof(syscall_number));\n        offset += sizeof(syscall_number);\n    }\n\n    if (offset + sizeof(ret) <= buffer->capacity) {\n        memcpy(&buffer->data[offset], &ret, sizeof(ret));\n        offset += sizeof(ret);\n    }\n\n    // Update the buffer length\n    buffer->length = offset;\n\n    // Submit the trace buffer for processing\n    submit_trace_buffer(buffer);\n}",
+  "defensive_steps": [
+    {
+      "step": "validate registers pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check syscall number validity",
+      "protects_against": "invalid or negative syscall numbers"
+    },
+    {
+      "step": "validate metadata pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check buffer capacity before copying data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "free trace buffer on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate registers pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the 'regs' pointer directly without checking if it is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check syscall number validity — protects against: invalid or negative syscall numbers",
+        "reasoning": "The implementation checks if 'syscall_nr < 0' and returns early, which ensures that only valid syscall numbers are processed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate metadata pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if 'sys_data' is null and returns early, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check buffer capacity before copying data — protects against: buffer overflow",
+        "reasoning": "The implementation calculates the required size for the buffer and passes it to 'perf_trace_buf_prepare', which presumably ensures the buffer is large enough. There is no explicit check for buffer overflow in the code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free trace buffer on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not appear to allocate the trace buffer directly. Instead, it uses 'perf_trace_buf_prepare' and 'perf_trace_buf_submit', which likely manage the buffer's lifetime. There is no explicit allocation or freeing of the buffer in the code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate registers pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the 'regs' pointer is null before using it. Dereferencing a null pointer would cause a crash if 'regs' is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check syscall number validity — protects against: invalid or negative syscall numbers",
+        "reasoning": "The implementation checks if 'syscall_nr' is less than 0 or greater than or equal to NR_syscalls, which ensures the syscall number is valid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate metadata pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if 'sys_data' is null after calling 'syscall_nr_to_meta' and returns early if it is, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check buffer capacity before copying data — protects against: buffer overflow",
+        "reasoning": "The implementation calculates the required size for the trace record and passes it to 'perf_trace_buf_prepare', which presumably allocates a buffer of the correct size. There is no explicit check for buffer overflow in the code provided.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free trace buffer on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not show any error paths where the trace buffer is allocated but not freed. The buffer is allocated via 'perf_trace_buf_prepare', and the submission function 'perf_trace_buf_submit' presumably handles the buffer's lifetime.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

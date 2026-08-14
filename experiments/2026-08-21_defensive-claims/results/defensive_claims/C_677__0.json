@@ -1,0 +1,130 @@
+{
+  "case_id": "C_677__0",
+  "sample_id": "D/C/677",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-8043",
+  "cve_summary": "The unimac_mdio_probe function in drivers/net/phy/mdio-bcm-unimac.c in the Linux kernel through 4.15.8 does not validate certain resource availability, which allows local users to cause a denial of service (NULL pointer dereference).",
+  "changed_file": "drivers/net/phy/mdio-bcm-unimac.c",
+  "docstring": "/**\n * Summary: \n * Probes the UniMAC MDIO device and initializes the associated MII bus.\n * \n * Parameters:\n * pdev (struct platform_device *): Pointer to the platform device structure representing the MDIO device.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function allocates memory for the private data structure, retrieves the memory resource, and maps the device registers. It initializes the MII bus, setting its properties based on platform data if available. The bus is registered with the device tree, and the driver data is set for the platform device. If any step fails, appropriate cleanup is performed, and an error code is returned. Successful completion logs the base address of the MDIO bus.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/platform_device.h>\n#include <linux/io.h>\n#include <linux/mii.h>\n#include <linux/slab.h>\n#include <linux/err.h>\n#include <linux/device.h>\n#include <linux/of.h>\n\nstruct unimac_mdio_priv {\n    void __iomem *regs;\n    struct mii_bus *bus;\n};\n\nint unimac_mdio_probe(struct platform_device *pdev)\n{\n    struct unimac_mdio_priv *priv;\n    struct mii_bus *bus;\n    struct resource *res;\n    int ret;\n\n    priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    res = platform_get_resource(pdev, IORESOURCE_MEM, 0);\n    if (!res)\n        return -ENODEV;\n\n    priv->regs = devm_ioremap_resource(&pdev->dev, res);\n    if (IS_ERR(priv->regs))\n        return PTR_ERR(priv->regs);\n\n    bus = devm_mdiobus_alloc(&pdev->dev);\n    if (!bus)\n        return -ENOMEM;\n\n    priv->bus = bus;\n    bus->priv = priv;\n\n    bus->name = \"UniMAC MDIO Bus\";\n    bus->read = NULL; /* Placeholder for actual read function */\n    bus->write = NULL; /* Placeholder for actual write function */\n    bus->parent = &pdev->dev;\n\n    ret = of_mdiobus_register(pdev->dev.of_node, bus);\n    if (ret) {\n        dev_err(&pdev->dev, \"Failed to register MDIO bus\\n\");\n        return ret;\n    }\n\n    platform_set_drvdata(pdev, priv);\n\n    dev_info(&pdev->dev, \"MDIO bus initialized at %pR\\n\", res);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check for null pointer after resource retrieval",
+      "protects_against": "missing or invalid memory resource"
+    },
+    {
+      "step": "check for error pointer after ioremap",
+      "protects_against": "failed memory mapping"
+    },
+    {
+      "step": "check for null pointer after mdiobus allocation",
+      "protects_against": "memory allocation failure for MII bus"
+    },
+    {
+      "step": "check for error code after MDIO bus registration",
+      "protects_against": "failed bus registration"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the return value of `devm_kzalloc` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer after resource retrieval — protects against: missing or invalid memory resource",
+        "reasoning": "The implementation does not check the return value of `platform_get_resource`. If this function returns NULL, the code proceeds to use `r->start` and `resource_size(r)`, which could cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for error pointer after ioremap — protects against: failed memory mapping",
+        "reasoning": "The implementation checks the return value of `devm_ioremap` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer after mdiobus allocation — protects against: memory allocation failure for MII bus",
+        "reasoning": "The implementation checks the return value of `mdiobus_alloc` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for error code after MDIO bus registration — protects against: failed bus registration",
+        "reasoning": "The implementation checks the return value of `of_mdiobus_register` and returns the error code if it is non-zero, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation checks the return value of `devm_kzalloc` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer after resource retrieval — protects against: missing or invalid memory resource",
+        "reasoning": "The implementation checks the return value of `platform_get_resource` and returns `-EINVAL` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for error pointer after ioremap — protects against: failed memory mapping",
+        "reasoning": "The implementation checks the return value of `devm_ioremap` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer after mdiobus allocation — protects against: memory allocation failure for MII bus",
+        "reasoning": "The implementation checks the return value of `mdiobus_alloc` and returns `-ENOMEM` if it is null, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for error code after MDIO bus registration — protects against: failed bus registration",
+        "reasoning": "The implementation checks the return value of `of_mdiobus_register` and jumps to an error handler if it is non-zero, which performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

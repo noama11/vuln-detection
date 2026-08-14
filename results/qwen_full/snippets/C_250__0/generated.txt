@@ -1,0 +1,45 @@
+int map_user_io(struct request_queue *q, struct request *rq, struct rq_map_data *map_data,
+                const struct iov_iter *iter, gfp_t gfp_mask) {
+    int ret = 0;
+    size_t iov_offset = 0;
+    struct bio *bio = NULL;
+    struct bio *prev_bio = NULL;
+
+    if (!q || !rq || !map_data || !iter)
+        return -EINVAL;
+
+    while (iov_iter_count(iter)) {
+        struct page *page;
+        unsigned int len, offset;
+
+        iov_iter_get_pages(iter, &page, iov_iter_count(iter), 1, &offset);
+        len = iov_iter_count(iter);
+
+        bio = bio_alloc(gfp_mask, 1);
+        if (!bio) {
+            ret = -EINVAL;
+            goto cleanup;
+        }
+
+        bio_add_page(bio, page, len, offset);
+
+        if (prev_bio)
+            prev_bio = bio_chain(prev_bio, bio);
+        else
+            prev_bio = bio;
+
+        iov_iter_advance(iter, len);
+    }
+
+    if (prev_bio) {
+        bio = prev_bio;
+        submit_bio(WRITE, bio);
+    }
+
+    return ret;
+
+cleanup:
+    if (bio)
+        bio_put(bio);
+    return ret;
+}

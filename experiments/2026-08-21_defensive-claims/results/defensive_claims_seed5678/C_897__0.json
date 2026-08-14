@@ -1,0 +1,130 @@
+{
+  "case_id": "C_897__0",
+  "sample_id": "D/C/897",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "uclouvain/openjpeg",
+  "cve_id": "CVE-2019-12973",
+  "cve_summary": "In OpenJPEG 2.3.1, there is excessive iteration in the opj_t1_encode_cblks function of openjp2/t1.c. Remote attackers could leverage this vulnerability to cause a denial of service via a crafted bmp file. This issue is similar to CVE-2018-6616.",
+  "changed_file": "src/bin/jp2/convertbmp.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Reads RLE4 encoded bitmap data from a file and decodes it into a specified  \n * buffer.  \n *  \n * Parameters:  \n * IN (FILE*): Pointer to the input file stream containing the bitmap data.  \n * pData (OPJ_UINT8*): Pointer to the buffer where the decoded pixel data will be stored.  \n * stride (OPJ_UINT32): The number of bytes in a row of the output buffer.  \n * width (OPJ_UINT32): The width of the bitmap in pixels.  \n * height (OPJ_UINT32): The height of the bitmap in pixels.  \n *  \n * Returns:  \n * OPJ_BOOL: Returns OPJ_TRUE if the data was read and decoded successfully,  \n * otherwise returns OPJ_FALSE.  \n *  \n * Logic:\n * The function processes the bitmap data in two modes: encoded mode and absolute mode. It reads\n * pixel values based on the RLE4 encoding scheme, updating the pixel buffer accordingly. It handles\n * end-of-line and end-of-packet markers, as well as pixel movement commands.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdint.h>\n\n#define OPJ_UINT8 uint8_t\n#define OPJ_UINT32 uint32_t\n#define OPJ_BOOL uint8_t\n#define OPJ_TRUE 1\n#define OPJ_FALSE 0\n\nOPJ_BOOL decode_rle4_bitmap(FILE* IN, OPJ_UINT8* pData, OPJ_UINT32 stride, OPJ_UINT32 width, OPJ_UINT32 height) {\n    if (!IN || !pData || width == 0 || height == 0 || stride < width) {\n        return OPJ_FALSE;\n    }\n\n    OPJ_UINT32 row = 0;\n    OPJ_UINT32 col = 0;\n    OPJ_UINT8* current_row = pData;\n\n    while (row < height) {\n        OPJ_UINT8 byte;\n        if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n            return OPJ_FALSE;\n        }\n\n        if (byte == 0x00) {\n            // End of line\n            if (row + 1 < height) {\n                current_row = pData + (row + 1) * stride;\n                row++;\n                col = 0;\n            } else {\n                return OPJ_FALSE; // Invalid end of line marker\n            }\n        } else if (byte == 0xFF) {\n            // End of packet\n            break;\n        } else {\n            // Read next byte to determine the mode\n            OPJ_UINT8 mode;\n            if (fread(&mode, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                return OPJ_FALSE;\n            }\n\n            if (mode == 0x00) {\n                // Absolute mode\n                while (col < width) {\n                    if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                        return OPJ_FALSE;\n                    }\n\n                    if (byte == 0x00) {\n                        // End of line\n                        if (row + 1 < height) {\n                            current_row = pData + (row + 1) * stride;\n                            row++;\n                            col = 0;\n                        } else {\n                            return OPJ_FALSE; // Invalid end of line marker\n                        }\n                        break;\n                    } else if (byte == 0xFF) {\n                        // End of packet\n                        return OPJ_TRUE;\n                    } else {\n                        // Read next byte for count\n                        OPJ_UINT8 count = byte;\n                        if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                            return OPJ_FALSE;\n                        }\n\n                        OPJ_UINT32 remaining = width - col;\n                        OPJ_UINT32 to_copy = (count + 1) * 2;\n                        if (to_copy > remaining) {\n                            to_copy = remaining;\n                        }\n\n                        for (OPJ_UINT32 i = 0; i < to_copy; i += 2) {\n                            if (col >= width) {\n                                return OPJ_FALSE; // Exceeding width\n                            }\n                            current_row[col++] = (byte >> 4) & 0x0F;\n                            if (col >= width) {\n                                return OPJ_FALSE; // Exceeding width\n                            }\n                            current_row[col++] = byte & 0x0F;\n                            if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                                return OPJ_FALSE;\n                            }\n                        }\n                    }\n                }\n            } else {\n                // Encoded mode\n                while (col < width) {\n                    if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                        return OPJ_FALSE;\n                    }\n\n                    if (byte == 0x00) {\n                        // End of line\n                        if (row + 1 < height) {\n                            current_row = pData + (row + 1) * stride;\n                            row++;\n                            col = 0;\n                        } else {\n                            return OPJ_FALSE; // Invalid end of line marker\n                        }\n                        break;\n                    } else if (byte == 0xFF) {\n                        // End of packet\n                        return OPJ_TRUE;\n                    } else {\n                        // Read next byte for count\n                        OPJ_UINT8 count = byte;\n                        if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                            return OPJ_FALSE;\n                        }\n\n                        OPJ_UINT32 remaining = width - col;\n                        OPJ_UINT32 to_copy = (count + 1) * 2;\n                        if (to_copy > remaining) {\n                            to_copy = remaining;\n                        }\n\n                        for (OPJ_UINT32 i = 0; i < to_copy; i += 2) {\n                            if (col >= width) {\n                                return OPJ_FALSE; // Exceeding width\n                            }\n                            current_row[col++] = (byte >> 4) & 0x0F;\n                            if (col >= width) {\n                                return OPJ_FALSE; // Exceeding width\n                            }\n                            current_row[col++] = byte & 0x0F;\n                        }\n                    }\n                }\n            }\n        }\n    }\n\n    return (row == height) ? OPJ_TRUE : OPJ_FALSE;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers and parameters",
+      "protects_against": "null pointers or invalid parameters"
+    },
+    {
+      "step": "check for end of file during read operations",
+      "protects_against": "premature end of file or incomplete data"
+    },
+    {
+      "step": "bound pixel copy operations to width",
+      "protects_against": "buffer overflow in the output buffer"
+    },
+    {
+      "step": "validate end of line marker",
+      "protects_against": "invalid or malformed end of line markers"
+    },
+    {
+      "step": "validate end of packet marker",
+      "protects_against": "invalid or malformed end of packet markers"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "validate input pointers and parameters — protects against: null pointers or invalid parameters",
+        "reasoning": "The implementation does not explicitly check if the input pointers (IN, pData) or parameters (stride, width, height) are valid. It assumes they are non-null and valid.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for end of file during read operations — protects against: premature end of file or incomplete data",
+        "reasoning": "The implementation checks for EOF after each call to getc(IN), and breaks the loop if EOF is encountered. This ensures that it handles premature end of file conditions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound pixel copy operations to width — protects against: buffer overflow in the output buffer",
+        "reasoning": "The implementation includes a condition (x < width) in the for loops that copy pixel data. This ensures that the copy operations do not exceed the width of the bitmap.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate end of line marker — protects against: invalid or malformed end of line markers",
+        "reasoning": "The implementation checks for the EOL marker (0x00) in absolute mode and resets x and y accordingly. It does not perform additional validation of the EOL marker beyond checking its value.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate end of packet marker — protects against: invalid or malformed end of packet markers",
+        "reasoning": "The implementation checks for the EOP marker (0x01) in absolute mode and breaks the loop if encountered. It does not perform additional validation of the EOP marker beyond checking its value.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate input pointers and parameters — protects against: null pointers or invalid parameters",
+        "reasoning": "The implementation does not explicitly check if the input pointers (IN, pData) or parameters (stride, width, height) are valid. It assumes they are non-null and valid.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for end of file during read operations — protects against: premature end of file or incomplete data",
+        "reasoning": "The implementation checks for EOF after each getc() call and breaks out of the loop if EOF is encountered. This ensures that incomplete data due to EOF is handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound pixel copy operations to width — protects against: buffer overflow in the output buffer",
+        "reasoning": "The implementation includes a condition (x < width) in the for loops that copy pixel data, ensuring that the copy does not exceed the width of the bitmap.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate end of line marker — protects against: invalid or malformed end of line markers",
+        "reasoning": "The implementation checks for the EOL marker (0x00) and handles it by resetting x and updating pix to the next row. It does not perform additional validation of the EOL marker itself.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate end of packet marker — protects against: invalid or malformed end of packet markers",
+        "reasoning": "The implementation checks for the EOP marker (0x01) and breaks out of the loop upon encountering it. It does not perform additional validation of the EOP marker itself.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "case_id": "C_8__0",
+  "implementation": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq, struct net_device *dev)\n{\n    struct sk_buff *skb = NULL;\n    size_t payload_len = 0;\n    int i;\n\n    if (!fq || !dev) {\n        return NULL;\n    }\n\n    for (i = 0; i < fq->q.pf; ++i) {\n        struct sk_buff *frag = fq->q.fragments[i];\n        if (!frag) {\n            continue;\n        }\n\n        payload_len += frag->len;\n        if (payload_len > IP6_MAX_MTU) {\n            pr_debug(\"IPv6 reassembly: payload exceeds maximum MTU\\n\");\n            goto error;\n        }\n    }\n\n    skb = alloc_skb(payload_len, GFP_ATOMIC);\n    if (!skb) {\n        pr_debug(\"IPv6 reassembly: failed to allocate memory for reassembled packet\\n\");\n        goto error;\n    }\n\n    for (i = 0; i < fq->q.pf; ++i) {\n        struct sk_buff *frag = fq->q.fragments[i];\n        if (!frag) {\n            continue;\n        }\n\n        if (skb_tailroom(skb) < frag->len) {\n            pr_debug(\"IPv6 reassembly: insufficient tailroom in reassembled packet\\n\");\n            goto error;\n        }\n\n        skb_put_data(skb, frag->data, frag->len);\n    }\n\n    skb->dev = dev;\n    skb->protocol = htons(ETH_P_IPV6);\n    skb->ip_summed = CHECKSUM_NONE;\n\n    return skb;\n\nerror:\n    if (skb) {\n        kfree_skb(skb);\n    }\n    return NULL;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing fq or dev"
+    },
+    {
+      "step": "validate fragment queue",
+      "protects_against": "invalid or corrupted fragment queue"
+    },
+    {
+      "step": "check for oversized payloads",
+      "protects_against": "payload exceeding maximum MTU size"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "memory allocation failure when creating reassembled packet"
+    },
+    {
+      "step": "check for sufficient tailroom",
+      "protects_against": "buffer overflow when copying fragment data into reassembled packet"
+    },
+    {
+      "step": "free allocated memory on error",
+      "protects_against": "memory leak in case of error during reassembly"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,53 @@
+TEE_Result generate_cryptographic_key(unsigned long obj,
+                                      unsigned long key_size,
+                                      const struct utee_attribute* usr_params,
+                                      unsigned long param_count) {
+    TEE_Result result = TEE_SUCCESS;
+    void* session = NULL;
+    struct key_attributes* attributes = NULL;
+
+    session = TEE_GetCurrentSession();
+    if (!session) {
+        return TEE_ERROR_BAD_STATE;
+    }
+
+    result = validate_object_state(obj);
+    if (result != TEE_SUCCESS) {
+        return result;
+    }
+
+    result = validate_key_size(key_size);
+    if (result != TEE_SUCCESS) {
+        return result;
+    }
+
+    attributes = (struct key_attributes*)malloc(param_count * sizeof(struct key_attributes));
+    if (!attributes) {
+        return TEE_ERROR_OUT_OF_MEMORY;
+    }
+
+    for (unsigned long i = 0; i < param_count; ++i) {
+        attributes[i] = usr_params[i];
+    }
+
+    switch (get_object_type(obj)) {
+        case TEE_TYPE_AES:
+            result = generate_aes_key(obj, key_size, attributes, param_count);
+            break;
+        case TEE_TYPE_RSA:
+            result = generate_rsa_key(obj, key_size, attributes, param_count);
+            break;
+        case TEE_TYPE_DSA:
+            result = generate_dsa_key(obj, key_size, attributes, param_count);
+            break;
+        default:
+            result = TEE_ERROR_NOT_SUPPORTED;
+            break;
+    }
+
+    if (result != TEE_SUCCESS) {
+        free(attributes);
+    }
+
+    return result;
+}

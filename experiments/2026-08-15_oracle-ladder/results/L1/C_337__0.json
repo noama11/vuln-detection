@@ -1,0 +1,49 @@
+{
+  "case_id": "C_337__0",
+  "sample_id": "D/C/337",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7513",
+  "cve_summary": "arch/x86/kvm/x86.c in the Linux kernel before 4.4 does not reset the PIT counter values during state restoration, which allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via a zero value, related to the kvm_vm_ioctl_set_pit and kvm_vm_ioctl_set_pit2 functions.",
+  "changed_file": "arch/x86/kvm/x86.c",
+  "docstring": "\"\"\"\nSummary: Updates the PIT (Programmable Interval Timer) state in a KVM (Kernel-based Virtual Machine) instance.\n\nParameters:\nkvm (struct kvm*): Pointer to the KVM instance whose PIT state is being updated.\nps (struct kvm_pit_state2*): Pointer to the new PIT state information to be applied.\n\nReturns:\nint: Always returns 0, indicating success.\n\nLogic: Logic: The function locks the PIT state mutex, checks and updates the legacy HPET (High Precision Event Timer) flag, copies the new channel states from the provided structure, updates the PIT flags, and loads PIT channel count state. Finally, it unlocks the mutex before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int kvm_vm_ioctl_set_pit2(struct v2 *v2, struct kvm_pit_state2 *v4)\n{\n    int v5 = 0;\n    int v1;\n    u32 v3, cur_legacy;\n    mutex_lock(&v2->arch.vpit->pit_state.lock);\n    v3 = v2->arch.vpit->pit_state.flags & KVM_PIT_FLAGS_HPET_LEGACY;\n    cur_legacy = v4->flags & KVM_PIT_FLAGS_HPET_LEGACY;\n    if (!v3 && cur_legacy)\n        v5 = 1;\n    memcpy(&v2->arch.vpit->pit_state.channels, &v4->channels,\n           sizeof(v2->arch.vpit->pit_state.channels));\n    v2->arch.vpit->pit_state.flags = v4->flags;\n    for (v1 = 0; v1 < 3; v1++)\n        kvm_pit_load_count(v2, v1, v2->arch.vpit->pit_state.channels[v1].count, v5);\n    mutex_unlock(&v2->arch.vpit->pit_state.lock);\n    return 0;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 5
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation iterates over all three PIT channels and calls `kvm_pit_load_count` for each, passing the `v5` flag (which is set to 1 if the legacy HPET flag was changed). The reference implementation only calls `kvm_pit_load_count` for the first channel and uses a variable `start` (which is set to 1 under the same condition). This is a behavioral difference, as the candidate implementation processes all three channels while the reference only processes the first. This discrepancy could affect the PIT state in a security-relevant way if the unprocessed channels are attacker-controlled or influence timing-sensitive operations. The difference is not a minor or cosmetic issue, and the missing logic in the reference implementation could lead to inconsistent or incorrect behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both lock the mutex, check and update the legacy HPET flag, copy the channel data, update the flags, and call `kvm_pit_load_count` with the same logic. The only differences are in variable names and struct names, which do not affect the observable behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

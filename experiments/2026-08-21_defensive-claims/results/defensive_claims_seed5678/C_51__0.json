@@ -1,0 +1,114 @@
+{
+  "case_id": "C_51__0",
+  "sample_id": "D/C/51",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-6367",
+  "cve_summary": "The apic_get_tmcct function in arch/x86/kvm/lapic.c in the KVM subsystem in the Linux kernel through 3.12.5 allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via crafted modifications of the TMICT value.",
+  "changed_file": "arch/x86/kvm/lapic.c",
+  "docstring": "Summary: This function retrieves the current timer count for the APIC (Advanced Programmable Interrupt Controller) by calculating the remaining time on the timer.\n\nParameters:\n- apic (struct kvm_lapic *): Pointer to the LAPIC structure representing the APIC.\n\nReturns:\n- u32: The current timer count value, or 0 if the initial count is 0 or the timer period is 0.\n\nLogic: The function first checks if the provided APIC pointer is valid. It then verifies whether the initial count permits a current count to be calculated, returning 0 when appropriate. It calculates the remaining time on the timer, ensuring it is non-negative. The function computes the timer count by taking the modulus of the remaining time with the timer period and dividing by the bus cycle duration adjusted by the divide count. Finally, it returns the computed timer count.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "u32 kvm_apic_get_current_count(struct kvm_lapic *apic) {\n    u64 period, remaining, bus_cycle;\n    u32 count;\n\n    if (!apic)\n        return 0;\n\n    if (apic->base.read_register(apic, APIC_TMICT) == 0)\n        return 0;\n\n    period = apic->base.read_register(apic, APIC_TDCR) & 0x0f;\n    if (period == 0)\n        return 0;\n\n    remaining = apic->base.read_register(apic, APIC_TMICT) - apic->base.read_register(apic, APIC_TMR);\n    if (remaining < 0)\n        remaining = 0;\n\n    bus_cycle = (1000000000ULL << period) / APIC_BUS_CYCLE_HZ;\n    count = (u32)(remaining % bus_cycle) / (1ULL << apic->base.read_register(apic, APIC_TDCR));\n\n    return count;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if apic pointer is null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if initial count is zero",
+      "protects_against": "division by zero when calculating timer count"
+    },
+    {
+      "step": "check if timer period is zero",
+      "protects_against": "division by zero when calculating timer count"
+    },
+    {
+      "step": "ensure remaining time is non-negative",
+      "protects_against": "negative time calculation leading to incorrect results"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if apic pointer is null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses an `ASSERT(apic != NULL)` macro, which ensures the apic pointer is not null. This guards against a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if initial count is zero — protects against: division by zero when calculating timer count",
+        "reasoning": "The implementation checks if the initial count is zero using `kvm_apic_get_reg(apic, APIC_TMICT) == 0` and returns 0 in that case. This prevents division by zero.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if timer period is zero — protects against: division by zero when calculating timer count",
+        "reasoning": "The implementation does not check if the timer period is zero before using it in the `div64_u64` operation. If the period is zero, this would result in a division by zero.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "ensure remaining time is non-negative — protects against: negative time calculation leading to incorrect results",
+        "reasoning": "The implementation checks if the remaining time is negative using `ktime_to_ns(remaining) < 0` and sets it to zero if so. This ensures the remaining time is non-negative.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if apic pointer is null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses an `ASSERT(apic != NULL)` macro, which ensures the apic pointer is not null before proceeding. This prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if initial count is zero — protects against: division by zero when calculating timer count",
+        "reasoning": "The implementation checks if the initial count (retrieved via `kvm_apic_get_reg(apic, APIC_TMICT)`) is zero and returns 0 early if so. This prevents division by zero in the calculation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if timer period is zero — protects against: division by zero when calculating timer count",
+        "reasoning": "The implementation checks if the timer period is zero and returns 0 early if so. This prevents division by zero in the calculation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure remaining time is non-negative — protects against: negative time calculation leading to incorrect results",
+        "reasoning": "The implementation checks if the remaining time is negative and sets it to zero if so. This ensures the remaining time is non-negative before proceeding with the calculation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

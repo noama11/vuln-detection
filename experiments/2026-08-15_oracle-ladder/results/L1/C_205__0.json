@@ -1,0 +1,49 @@
+{
+  "case_id": "C_205__0",
+  "sample_id": "D/C/205",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7509",
+  "cve_summary": "fs/ext4/namei.c in the Linux kernel before 3.7 allows physically proximate attackers to cause a denial of service (system crash) via a crafted no-journal filesystem, a related issue to CVE-2013-2015.",
+  "changed_file": "fs/ext4/namei.c",
+  "docstring": "/**\n * Summary: Adds an inode to the orphan list in the ext4 filesystem.\n * \n * Parameters:\n * handle (handle_t*): A pointer to the journal handle for transaction management.\n * inode (struct inode*): A pointer to the inode to be added to the orphan list.\n * \n * Returns: int - Returns 0 on success or a negative error code on failure.\n * \n * Logic: The function first determines whether orphan-list processing should proceed. It locks the orphan\n * list and verifies if the inode is already in the orphan list. It ensures that the inode is valid\n * for orphan handling (e.g., regular files, directories, or symbolic links). It then attempts to\n * get write access to the journal and reserves space for the inode. If the inode is not already\n * part of the on-disk orphan list, it updates the orphan list in the superblock and marks the inode\n * as dirty. Finally, if all operations succeed, it adds the inode to the in-memory orphan list and\n * unlocks the orphan lock before returning the result of the operation.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ext4_orphan_add(handle_t *v2, struct v4 *v4)\n{\n    struct super_block *v7 = v4->i_sb;\n    struct ext4_iloc v3;\n    int v1 = 0, rc;\n    if (!EXT4_SB(v7)->s_journal)\n        return 0;\n    mutex_lock(&EXT4_SB(v7)->s_orphan_lock);\n    if (!list_empty(&EXT4_I(v4)->i_orphan))\n        goto v6;\n    J_ASSERT((S_ISREG(v4->i_mode) || S_ISDIR(v4->i_mode) ||\n          S_ISLNK(v4->i_mode)) || v4->i_nlink == 0);\n    BUFFER_TRACE(EXT4_SB(v7)->s_sbh, \"get_write_access\");\n    v1 = ext4_journal_get_write_access(v2, EXT4_SB(v7)->s_sbh);\n    if (v1)\n        goto v6;\n    v1 = ext4_reserve_inode_write(v2, v4, &v3);\n    if (v1)\n        goto v6;\n    if (NEXT_ORPHAN(v4) && NEXT_ORPHAN(v4) <=\n        (le32_to_cpu(EXT4_SB(v7)->s_es->s_inodes_count)))\n            goto v5;\n    NEXT_ORPHAN(v4) = le32_to_cpu(EXT4_SB(v7)->s_es->s_last_orphan);\n    EXT4_SB(v7)->s_es->s_last_orphan = cpu_to_le32(v4->i_ino);\n    v1 = ext4_handle_dirty_super(v2, v7);\n    rc = ext4_mark_iloc_dirty(v2, v4, &v3);\n    if (!v1)\n        v1 = rc;\nv5:\n    if (!v1)\n        list_add(&EXT4_I(v4)->i_orphan, &EXT4_SB(v7)->s_orphan);\n    jbd_debug(4, \"superblock will point to %lu\\n\", v4->i_ino);\n    jbd_debug(4, \"orphan v4 %lu will point to %d\\n\",\n            v4->i_ino, NEXT_ORPHAN(v4));\nv6:\n    mutex_unlock(&EXT4_SB(v7)->s_orphan_lock);\n    ext4_std_error(v4->i_sb, v1);\n    return v1;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 7
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of their logic and behavior. Both check if the journal is valid, lock the orphan list, verify if the inode is already in the list, validate the inode type, reserve write access, update the orphan list in the superblock, and add the inode to the in-memory list. The only differences are in variable names and code formatting, which do not affect the observable behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform the same logic for adding an inode to the orphan list in the ext4 filesystem, including checking if the journal exists, acquiring the orphan lock, validating the inode, reserving space in the journal, updating the on-disk orphan list, and adding the inode to the in-memory list. The only differences are in variable names and code formatting, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

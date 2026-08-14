@@ -1,0 +1,36 @@
+{
+  "case_id": "Cpp_145__0",
+  "sample_id": "D/C++/145",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "facebook/hhvm",
+  "cve_id": "CVE-2014-5386",
+  "cve_summary": "The mcrypt_create_iv function in hphp/runtime/ext/mcrypt/ext_mcrypt.cpp in Facebook HipHop Virtual Machine (HHVM) before 3.3.0 does not seed the random number generator, which makes it easier for remote attackers to defeat cryptographic protection mechanisms by leveraging the use of a single initialization vector.",
+  "commit_message": "Fix mcrypt_create_iv(..., MCRYPT_RAND) to auto-seed RNG\n\nSummary: Without seeding the random number generator,\nwe'll always get the same IV, and that reduces the security\nof this function.\n\nFortunately, f_rand() has all of that logic for auto-seeding\nand selection of a suitable initial seed built-in.\n\nRealistically, using MCRYPT_RAND should be deprecated.\nI'm going to wait on PHP Internals to make a decision on\nhttps://wiki.php.net/rfc/deprecate_mcrypt_rand\nbefore adding that warning however, so that our test suite\nremains consistent.\n\nCredit: Theodore R. Smith of PHP Experts, Inc. <theodorephpexperts.pro>\n\nCloses #3496\n\nReviewed By: @ptarjan\n\nDifferential Revision: D1502435",
+  "changed_file": "hphp/runtime/ext/mcrypt/ext_mcrypt.cpp",
+  "docstring": "Summary:  \nGenerates a cryptographic initialization vector (IV) of a specified size using a specified source of randomness.\n\nParameters:  \nsize (int): The desired size of the IV in bytes.  \nsource (int): The source of randomness, either RANDOM or URANDOM (default is 0).\n\nReturns:  \nString: A string containing the generated IV, or false if an error occurs.\n\nLogic:  \nThe function first checks if the size is valid. If valid, it allocates memory for the IV. Depending on the source, it reads from either `/dev/random` or `/dev/urandom` to fill the IV. If the source is not valid, it generates random bytes using a user-defined `f_rand` function. The function raises warnings for various error conditions and returns the generated IV or false if any issues arise.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    350,
+    385
+  ],
+  "vulnerable_line_range": [
+    349,
+    383
+  ],
+  "vulnerable_snippet": "Variant HHVM_FUNCTION(mcrypt_create_iv, int size, int source /* = 0 */) {\r\n  if (size <= 0 || size >= INT_MAX) {\r\n    raise_warning(\"Can not create an IV with a size of less than 1 or \"\r\n                    \"greater than %d\", INT_MAX);\r\n    return false;\r\n  }\r\n\r\n  int n = 0;\r\n  char *iv = (char*)calloc(size + 1, 1);\r\n  if (source == RANDOM || source == URANDOM) {\r\n    int fd = open(source == RANDOM ? \"/dev/random\" : \"/dev/urandom\", O_RDONLY);\r\n    if (fd < 0) {\r\n      free(iv);\r\n      raise_warning(\"Cannot open source device\");\r\n      return false;\r\n    }\r\n    int read_bytes;\r\n    for (read_bytes = 0; read_bytes < size && n >= 0; read_bytes += n) {\r\n      n = read(fd, iv + read_bytes, size - read_bytes);\r\n    }\r\n    n = read_bytes;\r\n    close(fd);\r\n    if (n < size) {\r\n      free(iv);\r\n      raise_warning(\"Could not gather sufficient random data\");\r\n      return false;\r\n    }\r\n  } else {\r\n    n = size;\r\n    while (size) {\r\n      iv[--size] = (char)(255.0 * rand() / RAND_MAX);\r\n    }\r\n  }\r\n  return String(iv, n, AttachString);\r\n}",
+  "fixed_line_range": [
+    350,
+    385
+  ],
+  "fixed_snippet": "Variant HHVM_FUNCTION(mcrypt_create_iv, int size, int source /* = 0 */) {\r\n  if (size <= 0 || size >= INT_MAX) {\r\n    raise_warning(\"Can not create an IV with a size of less than 1 or \"\r\n                    \"greater than %d\", INT_MAX);\r\n    return false;\r\n  }\r\n\r\n  int n = 0;\r\n  char *iv = (char*)calloc(size + 1, 1);\r\n  if (source == RANDOM || source == URANDOM) {\r\n    int fd = open(source == RANDOM ? \"/dev/random\" : \"/dev/urandom\", O_RDONLY);\r\n    if (fd < 0) {\r\n      free(iv);\r\n      raise_warning(\"Cannot open source device\");\r\n      return false;\r\n    }\r\n    int read_bytes;\r\n    for (read_bytes = 0; read_bytes < size && n >= 0; read_bytes += n) {\r\n      n = read(fd, iv + read_bytes, size - read_bytes);\r\n    }\r\n    n = read_bytes;\r\n    close(fd);\r\n    if (n < size) {\r\n      free(iv);\r\n      raise_warning(\"Could not gather sufficient random data\");\r\n      return false;\r\n    }\r\n  } else {\r\n    n = size;\r\n    while (size) {\r\n      // Use userspace rand() function because it handles auto-seeding\r\n      iv[--size] = (char)f_rand(0, 255);\r\n    }\r\n  }\r\n  return String(iv, n, AttachString);\r\n}",
+  "func_name": "HHVM_FUNCTION",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

@@ -1,0 +1,114 @@
+{
+  "case_id": "C_68__1",
+  "sample_id": "D/C/68",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3302",
+  "cve_summary": "Race condition in the smb_send_rqst function in fs/cifs/transport.c in the Linux kernel before 3.7.2 allows local users to cause a denial of service (NULL pointer dereference and OOPS) or possibly have unspecified other impact via vectors involving a reconnection event.",
+  "changed_file": "fs/cifs/transport.c",
+  "docstring": "\"\"\"\nSummary: Sends an SMB request to a specified TCP server.\n\nParameters:\nserver (struct TCP_Server_Info *): Pointer to the TCP server information structure.\nrqst (struct smb_rqst *): Pointer to the SMB request structure containing the data to be sent.\n\nReturns: int: The result of the send operation; returns 0 on success or a negative error code on failure.\n\nLogic: The function prepares the socket for sending by setting the TCP_CORK option. The initial SMB request is sent using the `smb_send_kvec` function. If successful, it iterates through any additional pages in the request, sending each one. After sending, it uncorks the socket and checks if the total bytes sent match the expected length. If not, it marks the server's TCP status for reconnection. Finally, it logs any errors encountered during the send process and returns the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst) {\n    int result = 0;\n    int total_bytes_sent = 0;\n    int expected_bytes = 0;\n\n    if (!server || !rqst) {\n        return -EINVAL;\n    }\n\n    if (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){1}, sizeof(int)) < 0) {\n        return -errno;\n    }\n\n    total_bytes_sent = smb_send_kvec(server, rqst->iov, rqst->n_iov, 0);\n    if (total_bytes_sent < 0) {\n        result = total_bytes_sent;\n        goto uncork;\n    }\n\n    expected_bytes += iov_length(rqst->iov, rqst->n_iov);\n\n    for (int i = 0; i < rqst->nr_pages; i++) {\n        struct page *page = rqst->pages[i];\n        int bytes_sent = smb_send_kvec(server, (struct kvec[]){\n            { .iov_base = page_address(page), .iov_len = PAGE_SIZE }\n        }, 1, 0);\n\n        if (bytes_sent < 0) {\n            result = bytes_sent;\n            goto uncork;\n        }\n\n        total_bytes_sent += bytes_sent;\n        expected_bytes += PAGE_SIZE;\n    }\n\nuncork:\n    if (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int)) < 0) {\n        // Ignore error on uncork\n    }\n\n    if (total_bytes_sent != expected_bytes) {\n        server->tcp_status = TCP_STATUS_NEED_RECONNECT;\n        result = -EIO;\n    }\n\n    if (result < 0) {\n        // Log error\n    }\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate socket option calls",
+      "protects_against": "failure to cork or uncork the socket"
+    },
+    {
+      "step": "check for negative return values from send operations",
+      "protects_against": "partial or failed sends"
+    },
+    {
+      "step": "ensure total bytes sent match expected length",
+      "protects_against": "incomplete or corrupted data transmission"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for `server`, `rqst`, `ssocket`, or any other pointers before dereferencing them. A null pointer for `server` or `rqst` would cause a dereference failure.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate socket option calls — protects against: failure to cork or uncork the socket",
+        "reasoning": "The implementation calls `kernel_setsockopt` to cork and uncork the socket, but does not check the return value of these calls. If the cork or uncork fails, the socket behavior may be incorrect.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for negative return values from send operations — protects against: partial or failed sends",
+        "reasoning": "The implementation checks the return value of `smb_send_kvec` and breaks the loop if a negative return is encountered. This ensures that any failure in sending is caught and handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure total bytes sent match expected length — protects against: incomplete or corrupted data transmission",
+        "reasoning": "The implementation compares `total_len` with the expected length (`smb_buf_length + 4`) and marks the server for reconnection if they do not match. This ensures that incomplete sends are detected and handled.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `ssocket` is NULL before proceeding, which prevents a null pointer dereference for that specific pointer. However, it does not check if `rqst`, `rq_iov`, or `rq_pages` are NULL, which could lead to null pointer dereferences if accessed. Since the checklist item refers to checking for null pointers in general, and not all relevant pointers are checked, this is an omission.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate socket option calls — protects against: failure to cork or uncork the socket",
+        "reasoning": "The implementation calls `kernel_setsockopt` to cork and uncork the socket, but it does not check the return value of these calls. If the cork or uncork operation fails, it could lead to incorrect socket behavior or data transmission issues.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for negative return values from send operations — protects against: partial or failed sends",
+        "reasoning": "The implementation checks the return value of `smb_send_kvec` and jumps to the uncork label if it is negative. It also breaks the loop if a negative return value is encountered during the page send loop. This ensures that any negative return values are handled appropriately.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure total bytes sent match expected length — protects against: incomplete or corrupted data transmission",
+        "reasoning": "The implementation compares `total_len` with the expected length (`smb_buf_length + 4`) and marks the server's TCP status for reconnection if they do not match. This ensures that incomplete data transmission is detected and handled.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

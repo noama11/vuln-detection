@@ -1,0 +1,146 @@
+{
+  "case_id": "C_1191__0",
+  "sample_id": "D/C/1191",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2014-3156",
+  "cve_summary": "Buffer overflow in the clipboard implementation in Google Chrome before 35.0.1916.153 allows remote attackers to cause a denial of service or possibly have unspecified other impact via vectors that trigger unexpected bitmap data, related to content/renderer/renderer_clipboard_client.cc and content/renderer/webclipboard_impl.cc.",
+  "changed_file": "third_party/blink/renderer/core/clipboard/system_clipboard.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Writes an image to the system clipboard along with optional metadata.  \n *  \n * Parameters:  \n * image (Image*): Pointer to the image to be written to the clipboard.  \n * url (const KURL&): The URL associated with the image.  \n * title (const String&): The title for the image.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function first checks if the image is valid and retrieves its bitmap.  \n * If the bitmap is null, the function exits early. It then writes the image  \n * to the clipboard and, if the URL is valid, writes additional metadata such  \n * as a bookmark and HTML markup for rich text editors. Finally, it commits  \n * the write operation to the clipboard.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n// Assuming Image and KURL types are defined elsewhere\n// and that clipboard_write_image, clipboard_write_bookmark, clipboard_write_html,\n// and clipboard_commit are defined functions.\n\nvoid write_image_to_clipboard(Image* image, const KURL* url, const char* title) {\n    if (!image) {\n        return;\n    }\n\n    void* bitmap = image->get_bitmap();\n    if (!bitmap) {\n        return;\n    }\n\n    clipboard_write_image(bitmap);\n\n    if (url && url->is_valid()) {\n        char* bookmark = malloc(1024);\n        if (bookmark) {\n            snprintf(bookmark, 1024, \"Bookmark: %s, Title: %s\", url->get_url(), title);\n            clipboard_write_bookmark(bookmark);\n            free(bookmark);\n        }\n\n        char* html = malloc(2048);\n        if (html) {\n            snprintf(html, 2048, \"<img src=\\\"%s\\\" title=\\\"%s\\\">\", url->get_url(), title);\n            clipboard_write_html(html);\n            free(html);\n        }\n    }\n\n    clipboard_commit();\n}",
+  "defensive_steps": [
+    {
+      "step": "check image pointer before use",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check bitmap pointer before use",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check url pointer before use",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check memory allocation results",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "use bounded string formatting",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 4,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check image pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `DCHECK(image)` which is a debug assertion that checks if the image pointer is non-null. This serves as a defensive check against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check bitmap pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `bitmap.isNull()` and returns early if it is. It also checks if `bitmap.getPixels()` is null and returns early in that case. These checks ensure the bitmap pointer is valid before use.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check url pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation does not dereference the `url` parameter directly. Instead, it uses `url.IsValid()` and `url.IsEmpty()` which are methods that presumably handle null or invalid URLs safely. There is no direct null pointer dereference of the `url` parameter.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any explicit memory allocations (e.g., `malloc`, `new`, `calloc`). Therefore, there is no need to check the result of an allocation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use bounded string formatting — protects against: buffer overflow",
+        "reasoning": "The implementation does not perform any string formatting operations that could lead to buffer overflows. It uses methods like `GetString()` and `URLToImageMarkup()` which presumably handle string operations safely.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does not perform any explicit memory allocations, so there is no memory to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 3,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check image pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `DCHECK(image)` to verify the image pointer is not null before using it. This is a defensive check against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check bitmap pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `bitmap.isNull()` and returns early if it is. This is a defensive check against null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check url pointer before use — protects against: null pointer dereference",
+        "reasoning": "The implementation checks `url.IsValid()` and `!url.IsEmpty()` before using the URL. This is a defensive check against null pointer dereference or invalid URL usage.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform any explicit memory allocations that require checking the result. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use bounded string formatting — protects against: buffer overflow",
+        "reasoning": "The implementation does not perform any string formatting operations that could lead to buffer overflow. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does not perform any explicit memory allocations that require freeing. Therefore, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_878__0",
+  "sample_id": "D/C/878",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "pgbouncer/pgbouncer",
+  "cve_id": "CVE-2015-4054",
+  "cve_summary": "PgBouncer before 1.5.5 allows remote attackers to cause a denial of service (NULL pointer dereference and crash) by sending a password packet before a startup packet.",
+  "changed_file": "src/client.c",
+  "docstring": "Summary: This function checks if the provided password matches the stored password for a given client.\n\nParameters: \n- client (PgSocket *): The client socket containing authentication information.\n- passwd (const char *): The password to be verified against the stored password.\n\nReturns: \n- bool: Returns true if the password matches the stored password, false otherwise.\n\nLogic: The function verifies that the provided and stored passwords are not empty. Depending on the authentication type (plain, crypt, or MD5), it compares the passwords accordingly. For MD5, it checks the length of the password and encrypts it if necessary before comparison. If none of the conditions for matching are met, it returns false.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "bool verify_password(PgSocket *client, const char *passwd) {\n    if (!client || !passwd) {\n        return false;\n    }\n\n    const char *stored_password = client->auth_info.stored_password;\n    if (!stored_password || !*stored_password || !*passwd) {\n        return false;\n    }\n\n    if (strcmp(client->auth_info.auth_type, \"plain\") == 0) {\n        return strcmp(passwd, stored_password) == 0;\n    }\n\n    if (strcmp(client->auth_info.auth_type, \"crypt\") == 0) {\n        char *encrypted = crypt(passwd, stored_password);\n        if (!encrypted) {\n            return false;\n        }\n        return strcmp(encrypted, stored_password) == 0;\n    }\n\n    if (strcmp(client->auth_info.auth_type, \"MD5\") == 0) {\n        size_t len = strlen(passwd);\n        if (len == 0) {\n            return false;\n        }\n\n        char *md5_hash = (char *)malloc(33);\n        if (!md5_hash) {\n            return false;\n        }\n\n        snprintf(md5_hash, 33, \"MD5%x\", md5_string(passwd, len));\n        bool result = strcmp(md5_hash, stored_password) == 0;\n        free(md5_hash);\n        return result;\n    }\n\n    return false;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null client or password pointer dereference"
+    },
+    {
+      "step": "check for empty strings",
+      "protects_against": "empty password or stored password comparison"
+    },
+    {
+      "step": "validate password length before memory allocation",
+      "protects_against": "null or zero-length password for MD5 encryption"
+    },
+    {
+      "step": "check for successful memory allocation",
+      "protects_against": "memory allocation failure during MD5 hash creation"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak after MD5 hash creation"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 2,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null client or password pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for 'client' or 'passwd'. Dereferencing 'client->auth_user' or 'passwd' without a null check could lead to a crash if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for empty strings — protects against: empty password or stored password comparison",
+        "reasoning": "The implementation checks for empty passwords using 'if (!*passwd || !*user->passwd)' and returns false if either is empty. This performs the required defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate password length before memory allocation — protects against: null or zero-length password for MD5 encryption",
+        "reasoning": "The implementation checks the length of the password before performing MD5 encryption using 'if (strlen(passwd) != MD5_PASSWD_LEN)'. This ensures the password is of the correct length before proceeding with MD5-specific logic.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure during MD5 hash creation",
+        "reasoning": "The implementation does not perform any dynamic memory allocation during MD5 hash creation. It uses a fixed-size buffer 'md5[MD5_PASSWD_LEN + 1]'. Since no allocation is performed, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after MD5 hash creation",
+        "reasoning": "The implementation does not perform any dynamic memory allocation during MD5 hash creation. It uses a fixed-size buffer 'md5[MD5_PASSWD_LEN + 1]'. Since no allocation is performed, there is no memory to free, and this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 3,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null client or password pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `client` or `passwd` is null. Dereferencing `client` (e.g., `client->auth_user`) and `passwd` (e.g., `*passwd`) could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for empty strings — protects against: empty password or stored password comparison",
+        "reasoning": "The implementation checks if `*passwd` or `*user->passwd` is false (i.e., empty string), which prevents comparison with empty passwords.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate password length before memory allocation — protects against: null or zero-length password for MD5 encryption",
+        "reasoning": "The implementation does not perform memory allocation for MD5 encryption. It checks the length of the password before processing, but no allocation is involved.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for successful memory allocation — protects against: memory allocation failure during MD5 hash creation",
+        "reasoning": "The implementation does not perform any memory allocation for MD5 hash creation, so there is no need to check for allocation success.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after MD5 hash creation",
+        "reasoning": "The implementation does not perform any memory allocation for MD5 hash creation, so there is no memory to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

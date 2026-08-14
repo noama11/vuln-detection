@@ -1,0 +1,130 @@
+{
+  "case_id": "C_582__0",
+  "sample_id": "D/C/582",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "mjg59/linux",
+  "cve_id": "CVE-2015-7837",
+  "cve_summary": "The Linux kernel, as used in Red Hat Enterprise Linux 7, kernel-rt, and Enterprise MRG 2 and when booted with UEFI Secure Boot enabled, allows local users to bypass intended securelevel/secureboot restrictions by leveraging improper handling of secure_boot flag across kexec reboot.",
+  "changed_file": "arch/x86/kernel/kexec-bzimage64.c",
+  "docstring": "\"\"\"\nSummary: Initializes the EFI state for the boot parameters.\n\nParameters:\nparams (struct boot_params *): Pointer to the boot parameters structure.\nparams_load_addr (unsigned long): Address where the boot parameters are loaded.\nefi_map_offset (unsigned int): Offset for the EFI memory map.\nefi_map_sz (unsigned int): Size of the EFI memory map.\nefi_setup_data_offset (unsigned int): Offset for the EFI setup data.\n\nReturns: int: Returns 0 on successful setup or if EFI memory map is not enabled.\n\nLogic: The function checks if the current EFI memory map size is valid. If not, it returns 0. It also verifies if the 1:1 mapping is enabled; if not, it returns 0, indicating that the second kernel cannot utilize EFI services. It then copies relevant EFI information from the current boot parameters to the new parameters, sets up the EFI memory map, and prepares the EFI setup data before returning 0.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <stdint.h>\n\nstruct boot_params {\n    // Assume structure is defined elsewhere\n};\n\nint setup_efi_state(struct boot_params *params, unsigned long params_load_addr, unsigned int efi_map_offset, unsigned int efi_map_sz, unsigned int efi_setup_data_offset) {\n    // Check if the efi_map_sz is valid\n    if (efi_map_sz == 0) {\n        return 0;\n    }\n\n    // Check if 1:1 mapping is enabled (placeholder for actual check)\n    // This is a placeholder for the actual logic to check if 1:1 mapping is enabled\n    // For the purpose of this example, we assume it is a function that returns 0 if not enabled\n    if (!is_1to1_mapping_enabled()) {\n        return 0;\n    }\n\n    // Ensure that the efi_map_offset is within the bounds of the params structure\n    if (efi_map_offset >= sizeof(*params)) {\n        return 0;\n    }\n\n    // Ensure that the efi_setup_data_offset is within the bounds of the params structure\n    if (efi_setup_data_offset >= sizeof(*params)) {\n        return 0;\n    }\n\n    // Copy relevant EFI information from the current boot parameters to the new parameters\n    // Ensure that the copy does not exceed the bounds of the destination\n    size_t efi_map_size = (size_t)efi_map_sz;\n    if (efi_map_size > sizeof(*params) - efi_map_offset) {\n        efi_map_size = sizeof(*params) - efi_map_offset;\n    }\n\n    memcpy((uint8_t *)params + efi_map_offset, (const void *)params_load_addr, efi_map_size);\n\n    // Setup the EFI memory map\n    // Placeholder for actual setup logic\n\n    // Prepare the EFI setup data\n    // Placeholder for actual setup logic\n\n    return 0;\n}\n\n// Placeholder function for checking if 1:1 mapping is enabled\nint is_1to1_mapping_enabled() {\n    // Actual implementation would check if 1:1 mapping is enabled\n    return 1; // Assume it is enabled for this example\n}",
+  "defensive_steps": [
+    {
+      "step": "check efi_map_sz is not zero",
+      "protects_against": "invalid or zero size for the EFI memory map"
+    },
+    {
+      "step": "check if 1:1 mapping is enabled",
+      "protects_against": "attempting to use EFI services when 1:1 mapping is not enabled"
+    },
+    {
+      "step": "bound efi_map_offset to the size of the params structure",
+      "protects_against": "accessing memory outside the bounds of the params structure"
+    },
+    {
+      "step": "bound efi_setup_data_offset to the size of the params structure",
+      "protects_against": "accessing memory outside the bounds of the params structure"
+    },
+    {
+      "step": "bound copy length to the remaining capacity of the params structure",
+      "protects_against": "buffer overflow when copying the EFI memory map"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 16,
+    "n_omits": 4,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check efi_map_sz is not zero — protects against: invalid or zero size for the EFI memory map",
+        "reasoning": "The implementation does not explicitly check if efi_map_sz is zero. It proceeds with the function logic regardless of the value of efi_map_sz.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if 1:1 mapping is enabled — protects against: attempting to use EFI services when 1:1 mapping is not enabled",
+        "reasoning": "The implementation checks if 1:1 mapping is enabled using efi_enabled(EFI_OLD_MEMMAP). If it is enabled, the function returns 0, which prevents the use of EFI services.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound efi_map_offset to the size of the params structure — protects against: accessing memory outside the bounds of the params structure",
+        "reasoning": "The implementation does not perform any bounds checking on efi_map_offset relative to the size of the params structure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound efi_setup_data_offset to the size of the params structure — protects against: accessing memory outside the bounds of the params structure",
+        "reasoning": "The implementation does not perform any bounds checking on efi_setup_data_offset relative to the size of the params structure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to the remaining capacity of the params structure — protects against: buffer overflow when copying the EFI memory map",
+        "reasoning": "The implementation calls setup_efi_info_memmap and prepare_add_efi_setup_data, but does not explicitly bound the copy length to the remaining capacity of the params structure.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 16,
+    "n_omits": 4,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check efi_map_sz is not zero — protects against: invalid or zero size for the EFI memory map",
+        "reasoning": "The implementation checks `current_ei->efi_memmap_size`, but not `efi_map_sz`. There is no explicit check for `efi_map_sz` being zero.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if 1:1 mapping is enabled — protects against: attempting to use EFI services when 1:1 mapping is not enabled",
+        "reasoning": "The implementation checks `efi_enabled(EFI_OLD_MEMMAP)` and returns 0 if it is true. This is a check for whether 1:1 mapping is enabled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound efi_map_offset to the size of the params structure — protects against: accessing memory outside the bounds of the params structure",
+        "reasoning": "The implementation does not perform any bounds checking on `efi_map_offset` relative to the size of the `params` structure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound efi_setup_data_offset to the size of the params structure — protects against: accessing memory outside the bounds of the params structure",
+        "reasoning": "The implementation does not perform any bounds checking on `efi_setup_data_offset` relative to the size of the `params` structure.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "bound copy length to the remaining capacity of the params structure — protects against: buffer overflow when copying the EFI memory map",
+        "reasoning": "The implementation calls `setup_efi_info_memmap` and `prepare_add_efi_setup_data`, but does not perform any explicit bounds checking on the copy length relative to the `params` structure.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

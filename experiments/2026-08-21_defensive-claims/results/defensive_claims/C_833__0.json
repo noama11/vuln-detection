@@ -1,0 +1,194 @@
+{
+  "case_id": "C_833__0",
+  "sample_id": "D/C/833",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "luke-jr/bfgminer",
+  "cve_id": "CVE-2014-4502",
+  "cve_summary": "Multiple heap-based buffer overflows in the parse_notify function in sgminer before 4.2.2, cgminer before 4.3.5, and BFGMiner before 4.1.0 allow remote pool servers to have unspecified impact via a (1) large or (2) negative value in the Extranonc2_size parameter in a mining.subscribe response and a crafted mining.notify request.",
+  "changed_file": "util.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Initiates a Stratum mining session by sending a subscription request to the pool.  \n *  \n * Parameters:  \n * pool (struct pool*): Pointer to the pool structure containing connection details.  \n *  \n * Returns:  \n * bool: Returns true if the session is successfully initiated, false otherwise.  \n *  \n * Logic:  \n * The function first sets up a CURL connection for the Stratum protocol. It then constructs  \n * a JSON-RPC request to subscribe to mining notifications, sending it to the pool. It waits  \n * for a response and processes the received JSON to extract the session ID and nonce values.  \n * If successful, it updates the pool's state with these values and logs the session details.  \n * In case of failure, it handles errors appropriately, including retrying the subscription if  \n * a session ID was previously received.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdbool.h>\n#include <string.h>\n#include <curl/curl.h>\n#include <jansson.h>\n\n// Function to initiate a Stratum mining session\nbool initiate_stratum_session(struct pool* pool) {\n    if (!pool) {\n        return false;\n    }\n\n    CURL* curl = curl_easy_init();\n    if (!curl) {\n        return false;\n    }\n\n    // Set up the CURL connection\n    curl_easy_setopt(curl, CURLOPT_URL, pool->url);\n    curl_easy_setopt(curl, CURLOPT_POST, 1L);\n\n    // Construct the JSON-RPC request\n    json_t* request = json_object();\n    if (!request) {\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    json_object_set_new(request, \"jsonrpc\", json_string(\"2.0\"));\n    json_object_set_new(request, \"method\", json_string(\"mining.subscribe\"));\n    json_object_set_new(request, \"params\", json_array());\n\n    char* request_str = json_dumps(request, JSON_COMPACT);\n    if (!request_str) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        return false;\n    }\n\n    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_str);\n\n    // Set up response handling\n    struct curl_slist* headers = NULL;\n    headers = curl_slist_append(headers, \"Content-Type: application/json\");\n    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);\n\n    // Buffer for the response\n    char response[4096] = {0};\n    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);\n    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);\n    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, \n        [](void* contents, size_t size, size_t nmemb, void* userp) {\n            size_t realsize = size * nmemb;\n            size_t copy_len = sizeof(response) - 1 - strlen((char*)userp);\n            if (copy_len < realsize) {\n                realsize = copy_len;\n            }\n            memcpy(userp, contents, realsize);\n            ((char*)userp)[realsize] = '\\0';\n            return realsize;\n        });\n\n    // Perform the request\n    CURLcode res = curl_easy_perform(curl);\n    if (res != CURLE_OK) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Parse the JSON response\n    json_error_t error;\n    json_t* response_json = json_loads(response, 0, &error);\n    if (!response_json) {\n        json_decref(request);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    json_t* result = json_object_get(response_json, \"result\");\n    if (!result || !json_is_array(result)) {\n        json_decref(request);\n        json_decref(response_json);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Extract session ID and nonce\n    json_t* session_id = json_array_get(result, 0);\n    json_t* nonce = json_array_get(result, 1);\n\n    if (!session_id || !json_is_string(session_id) || !nonce || !json_is_string(nonce)) {\n        json_decref(request);\n        json_decref(response_json);\n        curl_easy_cleanup(curl);\n        curl_slist_free_all(headers);\n        free(request_str);\n        return false;\n    }\n\n    // Update the pool's state\n    if (pool->session_id) {\n        free(pool->session_id);\n    }\n    pool->session_id = strdup(json_string_value(session_id));\n    if (pool->nonce) {\n        free(pool->nonce);\n    }\n    pool->nonce = strdup(json_string_value(nonce));\n\n    // Log the session details\n    // (Logging implementation omitted for brevity)\n\n    // Clean up\n    json_decref(request);\n    json_decref(response_json);\n    curl_easy_cleanup(curl);\n    curl_slist_free_all(headers);\n    free(request_str);\n\n    return true;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pool pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null curl_easy_init return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null json_object return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for null json_dumps return",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for curl_easy_perform success",
+      "protects_against": "unsuccessful HTTP request"
+    },
+    {
+      "step": "check for json_loads success",
+      "protects_against": "malformed JSON response"
+    },
+    {
+      "step": "check for valid result array in JSON response",
+      "protects_against": "invalid JSON structure"
+    },
+    {
+      "step": "check for valid session_id and nonce in JSON response",
+      "protects_against": "invalid JSON structure"
+    },
+    {
+      "step": "free allocated memory before return",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 9,
+  "judge_vs_vulnerable": {
+    "score": 11,
+    "n_omits": 2,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pool pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the pool pointer is null before using it. It assumes the pointer is valid and proceeds with operations like `setup_stratum_curl(pool)` and `pool->sessionid`.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null curl_easy_init return — protects against: null pointer dereference",
+        "reasoning": "The implementation does not directly call `curl_easy_init`, nor does it perform any operations that would require such a check. The function `setup_stratum_curl` likely handles this internally, but the implementation does not explicitly check for a null return from it.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for null json_object return — protects against: null pointer dereference",
+        "reasoning": "The implementation uses `json_object_get` to retrieve values from the JSON response and checks if the result is null or null-typed. This guards against dereferencing a null pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null json_dumps return — protects against: null pointer dereference",
+        "reasoning": "The implementation calls `json_dumps` and assigns the result to `ss`, but does not check if `ss` is null before using it. It assumes the call will succeed and proceeds to log the result.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for curl_easy_perform success — protects against: unsuccessful HTTP request",
+        "reasoning": "The implementation does not directly call `curl_easy_perform`, nor does it perform any checks on the success of the HTTP request. The function `__stratum_send` likely handles this internally, but the implementation does not explicitly check for success.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check for json_loads success — protects against: malformed JSON response",
+        "reasoning": "The implementation calls `JSON_LOADS` and checks if the result is null. If it is, it logs an error and proceeds to the cleanup section. This guards against malformed JSON.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid result array in JSON response — protects against: invalid JSON structure",
+        "reasoning": "The implementation checks if `res_val` is null or null-typed, and if there is an error in the JSON response. This guards against invalid JSON structure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid session_id and nonce in JSON response — protects against: invalid JSON structure",
+        "reasoning": "The implementation checks if `sessionid` and `nonce1` are null after extracting them from the JSON response. If either is null, it logs an error and proceeds to the cleanup section. This guards against invalid JSON structure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory before return — protects against: memory leaks",
+        "reasoning": "The implementation frees `val` with `json_decref`, `sret`, `sessionid`, `nonce1`, and other allocated memory before returning. It also handles cleanup in the `out` label to ensure no memory is leaked.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 56,
+    "n_omits": 8,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pool pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not appear to check for a null pool pointer. The code snippet provided does not show any validation of the pool pointer.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null curl_easy_init return — protects against: null pointer dereference",
+        "reasoning": "The implementation does not appear to check for a null return from curl_easy_init. The code snippet provided does not show any validation of this return.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null json_object return — protects against: null pointer dereference",
+        "reasoning": "The implementation does not appear to check for a null return from json_object. The code snippet provided does not show any validation of this return.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null json_dumps return — protects against: null pointer dereference",
+        "reasoning": "The implementation does not appear to check for a null return from json_dumps. The code snippet provided does not show any validation of this return.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for curl_easy_perform success — protects against: unsuccessful HTTP request",
+        "reasoning": "The implementation does not appear to check for the success of curl_easy_perform. The code snippet provided does not show any validation of this operation.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for json_loads success — protects against: malformed JSON response",
+        "reasoning": "The implementation does not appear to check for the success of json_loads. The code snippet provided does not show any validation of this operation.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for valid result array in JSON response — protects against: invalid JSON structure",
+        "reasoning": "The implementation does not appear to check for a valid result array in the JSON response. The code snippet provided does not show any validation of this structure.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for valid session_id and nonce in JSON response — protects against: invalid JSON structure",
+        "reasoning": "The implementation does not appear to check for valid session_id and nonce in the JSON response. The code snippet provided does not show any validation of these values.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "free allocated memory before return — protects against: memory leaks",
+        "reasoning": "The implementation appears to free the sessionid memory in the case of a failed nonce1 check. However, it is unclear if all allocated memory is freed in all code paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "low",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

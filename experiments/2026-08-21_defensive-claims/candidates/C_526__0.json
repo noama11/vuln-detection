@@ -1,0 +1,31 @@
+{
+  "case_id": "C_526__0",
+  "implementation": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n#include \"MagickCore.h\"\n\nImage* ExtractPostscriptImage(Image *image, const ImageInfo *image_info, MagickOffsetType PS_Offset, ssize_t PS_Size, ExceptionInfo *exception) {\n    Image *new_image = (Image*) NULL;\n    ImageInfo *clone_info = (ImageInfo*) NULL;\n    char filename[MagickPathExtent] = {0};\n    FILE *file = (FILE*) NULL;\n\n    /* Clone the image info to avoid modifying the original */\n    clone_info = CloneImageInfo(image_info);\n    if (!clone_info) {\n        ThrowImageException(ResourceLimitError, \"MemoryAllocationFailed\");\n        return image;\n    }\n\n    /* Generate a unique filename for the temporary file */\n    GetPathComponent(clone_info->filename, UniqueFilename, filename, MagickPathExtent);\n\n    /* Open the file for writing */\n    file = fopen(filename, \"wb\");\n    if (!file) {\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    /* Ensure PS_Offset and PS_Size are valid */\n    if (PS_Offset < 0 || PS_Size <= 0 || (PS_Offset + PS_Size) > (MagickOffsetType)image->columns * image->rows) {\n        fclose(file);\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    /* Write the Postscript data to the file */\n    if (fwrite(image->pixels + PS_Offset, 1, PS_Size, file) != PS_Size) {\n        fclose(file);\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    fclose(file);\n\n    /* Check the file format using magic number detection */\n    clone_info = CloneImageInfo(clone_info);\n    clone_info->filename = filename;\n\n    new_image = ReadImage(clone_info, exception);\n    if (!new_image) {\n        (void) RemoveFile(filename);\n        DestroyImageInfo(clone_info);\n        return image;\n    }\n\n    /* Replace the current image with the new one while preserving attributes */\n    DestroyImageList(image);\n    image = new_image;\n\n    /* Clean up temporary resources */\n    (void) RemoveFile(filename);\n    DestroyImageInfo(clone_info);\n\n    return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null clone_info after allocation",
+      "protects_against": "memory allocation failure when cloning image info"
+    },
+    {
+      "step": "validate PS_Offset and PS_Size",
+      "protects_against": "invalid or out-of-bounds offset and size values that could cause buffer overflows"
+    },
+    {
+      "step": "check for null file pointer after fopen",
+      "protects_against": "failure to open the temporary file for writing"
+    },
+    {
+      "step": "verify fwrite returns expected size",
+      "protects_against": "partial or failed write of Postscript data to the file"
+    },
+    {
+      "step": "clean up resources on error paths",
+      "protects_against": "resource leaks in case of errors during file operations or image processing"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

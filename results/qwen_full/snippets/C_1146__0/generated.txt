@@ -1,0 +1,69 @@
+#include <pthread.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Assuming these types and functions are defined elsewhere in the codebase
+typedef struct AudioNode AudioNode;
+typedef struct AudioBuffer AudioBuffer;
+typedef struct AudioBus AudioBus;
+typedef struct ReverbEngine ReverbEngine;
+
+typedef struct ConvolverNode {
+    AudioNode base;
+    int sample_rate;
+    ReverbEngine* reverb;
+    AudioBuffer* buffer;
+    pthread_mutex_t buffer_mutex;
+} ConvolverNode;
+
+ConvolverNode* create_ConvolverNode(int sample_rate) {
+    ConvolverNode* node = (ConvolverNode*)malloc(sizeof(ConvolverNode));
+    if (!node) return NULL;
+
+    node->sample_rate = sample_rate;
+    node->reverb = NULL;
+    node->buffer = NULL;
+    pthread_mutex_init(&node->buffer_mutex, NULL);
+
+    return node;
+}
+
+void process_ConvolverNode(ConvolverNode* node, float* input, float* output, int num_frames) {
+    if (!node || !node->reverb) {
+        // Output silence
+        memset(output, 0, num_frames * sizeof(float));
+        return;
+    }
+
+    pthread_mutex_lock(&node->buffer_mutex);
+    node->reverb->process(input, output, num_frames);
+    pthread_mutex_unlock(&node->buffer_mutex);
+}
+
+void setBuffer_ConvolverNode(ConvolverNode* node, AudioBuffer* buffer) {
+    if (!node || !buffer) return;
+
+    AudioBus* bus = create_AudioBus(buffer);
+    if (!bus) return;
+
+    pthread_mutex_lock(&node->buffer_mutex);
+    free(node->buffer);
+    node->buffer = buffer;
+    node->reverb = create_ReverbEngine(bus);
+    pthread_mutex_unlock(&node->buffer_mutex);
+}
+
+AudioBuffer* getBuffer_ConvolverNode(ConvolverNode* node) {
+    if (!node) return NULL;
+    return node->buffer;
+}
+
+float getTailTime_ConvolverNode(ConvolverNode* node) {
+    if (!node || !node->reverb) return 0.0f;
+    return node->reverb->getTailTime();
+}
+
+float getLatencyTime_ConvolverNode(ConvolverNode* node) {
+    if (!node || !node->reverb) return 0.0f;
+    return node->reverb->getLatencyTime();
+}

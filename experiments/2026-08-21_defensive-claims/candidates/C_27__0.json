@@ -1,0 +1,35 @@
+{
+  "case_id": "C_27__0",
+  "implementation": "int unmap_journal_buffer(journal_t *journal, struct buffer_head *bh) {\n    int ret = 0;\n\n    if (!journal || !bh) {\n        return -EINVAL;\n    }\n\n    if (!buffer_journaled(bh)) {\n        return 0;\n    }\n\n    journal_lock(journal);\n\n    struct transaction *t = get_transaction(journal, bh);\n    if (!t) {\n        journal_unlock(journal);\n        return -EINVAL;\n    }\n\n    if (t == journal->running_transaction) {\n        if (buffer_dirty(bh)) {\n            clear_buffer_dirty(bh);\n        }\n        if (buffer_locked(bh)) {\n            unlock_buffer(bh);\n        }\n        dispose_buffer(bh);\n    } else if (t == journal->committing_transaction) {\n        if (buffer_dirty(bh)) {\n            clear_buffer_dirty(bh);\n        }\n        attach_to_committing_transaction(bh);\n    } else {\n        zap_buffer(bh);\n    }\n\n    journal_unlock(journal);\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null journal or buffer_head pointer passed to the function"
+    },
+    {
+      "step": "check if buffer is journaled",
+      "protects_against": "attempting to unmap a buffer that is not journaled"
+    },
+    {
+      "step": "acquire journal lock",
+      "protects_against": "concurrent modification of the journal state"
+    },
+    {
+      "step": "check if transaction is valid",
+      "protects_against": "invalid or null transaction pointer retrieved"
+    },
+    {
+      "step": "clear buffer dirty state",
+      "protects_against": "leaving the buffer in a dirty state after unmapping"
+    },
+    {
+      "step": "unlock buffer if locked",
+      "protects_against": "leaving the buffer in a locked state after unmapping"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,35 @@
+{
+  "case_id": "C_57__0",
+  "implementation": "ssize_t write_to_char_device(struct file *filp, const char __user *buf, size_t count, loff_t *fpos)\n{\n    struct device_data *dev_data = NULL;\n    struct element_info *elem = NULL;\n    ssize_t bytes_written = 0;\n    int ret = 0;\n\n    if (!filp || !buf || !fpos) {\n        return -EINVAL;\n    }\n\n    dev_data = get_active_device();\n    if (!dev_data) {\n        return -ENODEV;\n    }\n\n    if (!dev_data->is_connected) {\n        put_device_data(dev_data);\n        return -EIO;\n    }\n\n    elem = allocate_element_info();\n    if (!elem) {\n        put_device_data(dev_data);\n        return -ENOMEM;\n    }\n\n    if (count > MAX_ELEMENT_SIZE) {\n        count = MAX_ELEMENT_SIZE;\n    }\n\n    if (copy_from_user(elem->data, buf, count)) {\n        bytes_written = -EFAULT;\n        goto cleanup;\n    }\n\n    elem->length = count;\n    elem->sequence_number = dev_data->next_sequence++;\n\n    ret = queue_element(elem);\n    if (ret < 0) {\n        bytes_written = ret;\n        goto cleanup;\n    }\n\n    bytes_written = count;\n\n    *fpos += count;\n\n    dev_data->last_write_time = ktime_get();\n\n    if (dev_data->write_callback) {\n        dev_data->write_callback(dev_data, elem);\n    }\n\n    put_device_data(dev_data);\n    free_element_info(elem);\n\n    return bytes_written;\n\n  cleanup:\n    put_device_data(dev_data);\n    free_element_info(elem);\n    return bytes_written;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null filp, buf, or fpos pointers"
+    },
+    {
+      "step": "check device connection state",
+      "protects_against": "attempting to write to a disconnected device"
+    },
+    {
+      "step": "bound copy length to maximum element size",
+      "protects_against": "writing more data than the device can handle"
+    },
+    {
+      "step": "check copy_from_user return value",
+      "protects_against": "invalid user buffer addresses"
+    },
+    {
+      "step": "ensure proper cleanup on error paths",
+      "protects_against": "resource leaks in case of errors"
+    },
+    {
+      "step": "validate element allocation",
+      "protects_against": "memory allocation failures"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

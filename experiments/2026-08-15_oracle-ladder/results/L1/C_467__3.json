@@ -1,0 +1,49 @@
+{
+  "case_id": "C_467__3",
+  "sample_id": "D/C/467",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "erikd/libsndfile",
+  "cve_id": "CVE-2017-7742",
+  "cve_summary": "In libsndfile before 1.0.28, an error in the *flac_buffer_copy()* function (flac.c) can be exploited to cause a segmentation violation (with read memory access) via a specially crafted FLAC file during a resample attempt, a similar issue to CVE-2017-7585.",
+  "changed_file": "src/flac.c",
+  "docstring": "Summary:  \nProcesses audio data in a loop for a FLAC decoder, reading up to a specified length.\n\nParameters:  \npsf (SF_PRIVATE*): Pointer to the private state of the audio file.  \nlen (unsigned): The maximum number of bytes to read.\n\nReturns:  \nunsigned: The number of bytes successfully read.\n\nLogic: The function initializes the position and remaining length for reading. If a frame is available and not fully processed, it copies the buffered data. It then enters a loop to decode audio data until the specified length is reached or an end-of-stream state is encountered. Finally, it returns the number of bytes read.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static unsigned\nflac_read_loop (SF_PRIVATE *v2, unsigned v1)\n{    FLAC_PRIVATE* pflac = (FLAC_PRIVATE*) v2->codec_data ;\n    FLAC__StreamDecoderState v3 ;\n    pflac->pos = 0 ;\n    pflac->v1 = v1 ;\n    pflac->remain = v1 ;\n    v3 = FLAC__stream_decoder_get_state (pflac->fsd) ;\n    if (v3 > FLAC__STREAM_DECODER_END_OF_STREAM)\n    {    psf_log_printf (v2, \"FLAC__stream_decoder_get_state returned %s\\n\", FLAC__StreamDecoderStateString [v3]) ;\n        pflac->frame = NULL ;\n        } ;\n    if (pflac->frame != NULL && pflac->bufferpos < pflac->frame->header.blocksize)\n        flac_buffer_copy (v2) ;\n    while (pflac->pos < pflac->v1)\n    {    if (FLAC__stream_decoder_process_single (pflac->fsd) == 0)\n            break ;\n        v3 = FLAC__stream_decoder_get_state (pflac->fsd) ;\n        if (v3 >= FLAC__STREAM_DECODER_END_OF_STREAM)\n        {    psf_log_printf (v2, \"FLAC__stream_decoder_get_state returned %s\\n\", FLAC__StreamDecoderStateString [v3]) ;\n            pflac->frame = NULL ;\n            break ;\n            } ;\n        } ;\n    pflac->ptr = NULL ;\n    return pflac->pos ;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 3
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation initializes `pflac->v1` with the input `v1` (which corresponds to `len` in the reference implementation), but uses `v1` in the loop condition and assignments. The reference implementation uses `len` consistently. The logic for copying buffered data and decoding is similar, but the candidate implementation includes additional logging and sets `pflac->frame = NULL` under certain conditions, which the reference implementation does not. These differences could affect behavior in error or end-of-stream scenarios, but there is no clear security-relevant difference or crash-causing behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of their observable behavior. Both initialize the position and remaining length, check the decoder state, copy buffered data if available, and decode audio data in a loop until the specified length is reached or an end-of-stream state is encountered. The only differences are in variable names (e.g., `v1` vs. `len`, `v2` vs. `psf`) and minor formatting, which do not affect the behavior. There is no security-relevant or functional difference in how the code processes the input or handles errors.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

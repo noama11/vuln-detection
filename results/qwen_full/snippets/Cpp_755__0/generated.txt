@@ -1,0 +1,58 @@
+EbmlElement* FindNextEbmlElement(IOCallback &DataStream, const EbmlSemanticContext &Context, int &UpperLevel, uint64 MaxDataSize, bool AllowDummyElt, unsigned int MaxLowerLevel) {
+    // Placeholder for the current position in the stream
+    uint64 currentPosition = DataStream.Tell();
+
+    // Check if we have enough data to read an EBML ID
+    if (MaxDataSize < currentPosition + 1) {
+        return nullptr;
+    }
+
+    // Read the ID byte
+    uint8 idByte;
+    if (!DataStream.Read(&idByte, 1)) {
+        return nullptr;
+    }
+
+    // Determine the size of the element based on the ID byte
+    unsigned int sizeBytes = EbmlId::GetSize(idByte);
+    if (sizeBytes == 0) {
+        return nullptr;
+    }
+
+    // Check if we can read the size of the element
+    if (MaxDataSize < currentPosition + sizeBytes) {
+        return nullptr;
+    }
+
+    // Read the size of the element
+    uint64 elementSize;
+    if (!EbmlId::ReadSize(DataStream, sizeBytes, elementSize)) {
+        return nullptr;
+    }
+
+    // Check if the element size is valid
+    if (elementSize > MaxDataSize - currentPosition - sizeBytes) {
+        return nullptr;
+    }
+
+    // Create the EBML element
+    EbmlElement* element = Context.CreateEbmlElement(idByte, elementSize, AllowDummyElt);
+
+    if (!element) {
+        return nullptr;
+    }
+
+    // Set the level of the element
+    unsigned int elementLevel = element->GetLevel();
+    if (elementLevel > MaxLowerLevel) {
+        delete element;
+        return nullptr;
+    }
+
+    // Update the upper level if necessary
+    if (elementLevel > static_cast<unsigned int>(UpperLevel)) {
+        UpperLevel = static_cast<int>(elementLevel);
+    }
+
+    return element;
+}

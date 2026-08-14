@@ -1,0 +1,48 @@
+int x25_negotiate_facilities(struct sk_buff *skb, struct sock *sk,
+                             struct x25_facilities *new,
+                             struct x25_dte_facilities *dte)
+{
+    struct x25_facilities incoming;
+    unsigned char *ptr = skb->data;
+    int len = 0;
+
+    memset(new, 0, sizeof(*new));
+    memset(&incoming, 0, sizeof(incoming));
+
+    if (skb->len < 2)
+        return -EINVAL;
+
+    incoming.throughput = *ptr++;
+    incoming.packet_size = *ptr++;
+    incoming.window_size = *ptr++;
+    len += 3;
+
+    if (skb->len < len) {
+        X25_DEBUG("Facilities negotiation failed: incomplete data\n");
+        return -EINVAL;
+    }
+
+    if (incoming.throughput > X25_MAX_THROUGHPUT)
+        incoming.throughput = X25_MAX_THROUGHPUT;
+
+    if (incoming.packet_size > X25_MAX_PACKET_SIZE)
+        incoming.packet_size = X25_MAX_PACKET_SIZE;
+
+    if (incoming.window_size > X25_MAX_WINDOW_SIZE)
+        incoming.window_size = X25_MAX_WINDOW_SIZE;
+
+    new->throughput = min(incoming.throughput, sk->x25->max_throughput);
+    new->packet_size = min(incoming.packet_size, sk->x25->max_packet_size);
+    new->window_size = min(incoming.window_size, sk->x25->max_window_size);
+
+    if (incoming.reverse_charging) {
+        new->reverse_charging = 1;
+        X25_DEBUG("Reverse charging request accepted\n");
+    }
+
+    dte->throughput = new->throughput;
+    dte->packet_size = new->packet_size;
+    dte->window_size = new->window_size;
+
+    return len;
+}

@@ -1,0 +1,162 @@
+{
+  "case_id": "C_315__0",
+  "sample_id": "D/C/315",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2117",
+  "cve_summary": "The atl2_probe function in drivers/net/ethernet/atheros/atlx/atl2.c in the Linux kernel through 4.5.2 incorrectly enables scatter/gather I/O, which allows remote attackers to obtain sensitive information from kernel memory by reading packet data.",
+  "changed_file": "drivers/net/ethernet/atheros/atlx/atl2.c",
+  "docstring": "/**\n * Summary: Probes a PCI device for the ATL2 network driver and initializes it.\n * \n * Parameters:\n * pdev (struct pci_dev *): Pointer to the PCI device structure.\n * ent (const struct pci_device_id *): Pointer to the PCI device ID structure.\n * \n * Returns: int: 0 on success, or a negative error code on failure.\n * \n * Logic: The function enables the PCI device, sets up DMA masks, requests PCI regions, \n * allocates a network device structure, and initializes hardware settings. It configures \n * the network device operations, sets up timers for watchdog and PHY configuration, \n * and registers the network device. If any step fails, it performs cleanup and returns \n * an appropriate error code. The function also handles MAC address retrieval and \n * ensures the device is in a known good state before returning success.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent)\n{\n    int err;\n    struct net_device *netdev = NULL;\n    void *priv = NULL;\n\n    err = pci_enable_device(pdev);\n    if (err)\n        return err;\n\n    err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));\n    if (err) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    err = pci_request_regions(pdev, \"ATL2\");\n    if (err) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    netdev = alloc_etherdev(sizeof(*priv));\n    if (!netdev) {\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return -ENOMEM;\n    }\n\n    priv = netdev_priv(netdev);\n    netdev->irq = pdev->irq;\n    netdev->base_addr = pci_resource_start(pdev, 0);\n\n    pci_set_drvdata(pdev, netdev);\n\n    err = atl2_init_hw(pdev, netdev);\n    if (err) {\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    ether_addr_copy(netdev->dev_addr, atl2_get_mac_addr(pdev));\n\n    setup_timer(&priv->watchdog_timer, atl2_watchdog_timer, (unsigned long)netdev);\n    setup_timer(&priv->phy_config_timer, atl2_phy_config_timer, (unsigned long)netdev);\n\n    netdev->netdev_ops = &atl2_netdev_ops;\n\n    err = register_netdev(netdev);\n    if (err) {\n        del_timer_sync(&priv->watchdog_timer);\n        del_timer_sync(&priv->phy_config_timer);\n        atl2_shutdown(pdev);\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of pci_enable_device",
+      "protects_against": "failure to enable the PCI device"
+    },
+    {
+      "step": "check return value of pci_set_dma_mask",
+      "protects_against": "inability to set the DMA mask"
+    },
+    {
+      "step": "check return value of pci_request_regions",
+      "protects_against": "failure to request PCI regions"
+    },
+    {
+      "step": "check return value of alloc_etherdev",
+      "protects_against": "failure to allocate the network device"
+    },
+    {
+      "step": "check return value of atl2_init_hw",
+      "protects_against": "failure to initialize hardware"
+    },
+    {
+      "step": "check return value of register_netdev",
+      "protects_against": "failure to register the network device"
+    },
+    {
+      "step": "perform cleanup on error paths",
+      "protects_against": "resource leaks and inconsistent state"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check return value of pci_enable_device — protects against: failure to enable the PCI device",
+        "reasoning": "The implementation checks the return value of `pci_enable_device(pdev)` and returns the error if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of pci_set_dma_mask — protects against: inability to set the DMA mask",
+        "reasoning": "The implementation checks the return values of `pci_set_dma_mask` and `pci_set_consistent_dma_mask` by using a combined condition. If both fail, it prints an error and jumps to the error label.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of pci_request_regions — protects against: failure to request PCI regions",
+        "reasoning": "The implementation checks the return value of `pci_request_regions(pdev, atl2_driver_name)` and jumps to the error label if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of alloc_etherdev — protects against: failure to allocate the network device",
+        "reasoning": "The implementation checks if `alloc_etherdev` returns NULL and jumps to the error label if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of atl2_init_hw — protects against: failure to initialize hardware",
+        "reasoning": "The implementation does not explicitly check the return value of `atl2_init_hw`. It only checks the return value of `atl2_reset_hw`, which is a different function.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check return value of register_netdev — protects against: failure to register the network device",
+        "reasoning": "The implementation checks the return value of `register_netdev(netdev)` and jumps to the error label if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "perform cleanup on error paths — protects against: resource leaks and inconsistent state",
+        "reasoning": "The implementation includes a comprehensive error handling block that performs cleanup for all allocated resources on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check return value of pci_enable_device — protects against: failure to enable the PCI device",
+        "reasoning": "The implementation checks the return value of `pci_enable_device(pdev)` and returns the error if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of pci_set_dma_mask — protects against: inability to set the DMA mask",
+        "reasoning": "The implementation checks the return value of `pci_set_dma_mask` and `pci_set_consistent_dma_mask` together in a compound condition. If both fail, it prints an error and jumps to the error label.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of pci_request_regions — protects against: failure to request PCI regions",
+        "reasoning": "The implementation checks the return value of `pci_request_regions(pdev, atl2_driver_name)` and jumps to the error label if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of alloc_etherdev — protects against: failure to allocate the network device",
+        "reasoning": "The implementation checks if `alloc_etherdev` returns NULL and jumps to the error label if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of atl2_init_hw — protects against: failure to initialize hardware",
+        "reasoning": "The implementation does not explicitly check the return value of `atl2_init_hw`. It only checks the return value of `atl2_reset_hw`, which is a different function.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check return value of register_netdev — protects against: failure to register the network device",
+        "reasoning": "The implementation checks the return value of `register_netdev(netdev)` and jumps to the error label if it fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "perform cleanup on error paths — protects against: resource leaks and inconsistent state",
+        "reasoning": "The implementation includes a comprehensive error-handling block that performs cleanup for all allocated resources (ioremap, netdev, PCI regions, and PCI device) on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

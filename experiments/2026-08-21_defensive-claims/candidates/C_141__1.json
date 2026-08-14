@@ -1,0 +1,31 @@
+{
+  "case_id": "C_141__1",
+  "implementation": "int decrypt_data(struct ceph_crypto_key *secret, void **p, void *end, void **obuf, size_t olen) {\n    size_t data_len;\n    size_t decrypted_len;\n    void *input_data;\n    void *output_data = *obuf;\n\n    if (!secret || !p || !*p || !end || !obuf || olen == 0) {\n        return -EINVAL;\n    }\n\n    if (*p + sizeof(data_len) > end) {\n        return -EINVAL;\n    }\n\n    memcpy(&data_len, *p, sizeof(data_len));\n    *p += sizeof(data_len);\n\n    if (data_len > (size_t)(end - *p)) {\n        return -EINVAL;\n    }\n\n    input_data = *p;\n    decrypted_len = data_len;\n\n    if (decrypted_len > olen) {\n        return -EINVAL;\n    }\n\n    if (crypto_decrypt(secret, input_data, data_len, output_data, &decrypted_len) != 0) {\n        return -EIO;\n    }\n\n    if (decrypted_len < sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    uint32_t version;\n    memcpy(&version, output_data, sizeof(version));\n\n    if (version != EXPECTED_VERSION) {\n        return -EINVAL;\n    }\n\n    uint32_t magic;\n    memcpy(&magic, output_data + sizeof(version), sizeof(magic));\n\n    if (magic != EXPECTED_MAGIC) {\n        return -EINVAL;\n    }\n\n    *obuf += decrypted_len;\n    *p += data_len;\n\n    return (int)decrypted_len;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "verify data_len does not overflow",
+      "protects_against": "buffer overflow when reading data length"
+    },
+    {
+      "step": "bound data_len to input buffer size",
+      "protects_against": "reading beyond the input buffer"
+    },
+    {
+      "step": "bound decrypted_len to output buffer size",
+      "protects_against": "writing beyond the output buffer"
+    },
+    {
+      "step": "validate version and magic number",
+      "protects_against": "processing corrupted or invalid decrypted data"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

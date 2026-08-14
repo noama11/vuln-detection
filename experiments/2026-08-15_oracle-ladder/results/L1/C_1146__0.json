@@ -1,0 +1,49 @@
+{
+  "case_id": "C_1146__0",
+  "sample_id": "D/C/1146",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-2906",
+  "cve_summary": "Multiple race conditions in the Web Audio implementation in Blink, as used in Google Chrome before 30.0.1599.66, allow remote attackers to cause a denial of service or possibly have unspecified other impact via vectors related to threading in core/html/HTMLMediaElement.cpp, core/platform/audio/AudioDSPKernelProcessor.cpp, core/platform/audio/HRTFElevation.cpp, and modules/webaudio/ConvolverNode.cpp.",
+  "changed_file": "third_party/WebKit/Source/modules/webaudio/ConvolverNode.cpp",
+  "docstring": "Summary: This code defines the `ConvolverNode` class, which processes audio signals using convolution with an impulse response in a web audio context.\n\nParameters: \nN/A\n\nReturns: \nN/A\n\nLogic: The `ConvolverNode` class inherits from `AudioNode` and initializes with a specified audio context and sample rate. It manages audio processing through a reverb engine, which is created from an audio buffer containing the impulse response. The `process` method handles audio frames, ensuring synchronization with potential changes to the impulse response using a mutex. If the node is not initialized or the reverb is not set, it outputs silence. The `setBuffer` method validates the audio buffer and wraps it in an `AudioBus`, which is then used to create the reverb. The class also provides methods to retrieve the audio buffer and calculate tail and latency times.",
+  "heuristic_leakage_flag": true,
+  "generated_code": "namespace WebCore {\nConvolverNode::ConvolverNode(AudioContext* v3, float v9)\n    : AudioNode(v3, v9)\n    , m_normalize(true)\n{\n    ScriptWrappable::init(this);\n    addInput(adoptPtr(new AudioNodeInput(this)));\n    addOutput(adoptPtr(new AudioNodeOutput(this, 2)));\n    m_channelCount = 2;\n    m_channelCountMode = ClampedMax;\n    m_channelInterpretation = AudioBus::Speakers;\n    setNodeType(NodeTypeConvolver);\n    initialize();\n}\nConvolverNode::~ConvolverNode()\n{\n    uninitialize();\n}\nvoid ConvolverNode::process(size_t v4)\n{\n    AudioBus* v8 = output(0)->bus();\n    ASSERT(v8);\n    MutexTryLocker tryLocker(m_processLock);\n    if (tryLocker.locked()) {\n        if (!isInitialized() || !m_reverb.get())\n            v8->zero();\n        else {\n            m_reverb->process(input(0)->bus(), v8, v4);\n        }\n    } else {\n        v8->zero();\n    }\n}\nvoid ConvolverNode::reset()\n{\n    MutexLocker locker(m_processLock);\n    if (m_reverb.get())\n        m_reverb->reset();\n}\nvoid ConvolverNode::initialize()\n{\n    if (isInitialized())\n        return;\n    AudioNode::initialize();\n}\nvoid ConvolverNode::uninitialize()\n{\n    if (!isInitialized())\n        return;\n    m_reverb.clear();\n    AudioNode::uninitialize();\n}\nvoid ConvolverNode::setBuffer(AudioBuffer* v1)\n{\n    ASSERT(isMainThread());\n    if (!v1)\n        return;\n    unsigned v7 = v1->v7();\n    size_t v2 = v1->length();\n    bool v6 = v7 > 0 && v7 <= 4 && v2;\n    ASSERT(v6);\n    if (!v6)\n        return;\n    RefPtr<AudioBus> bufferBus = AudioBus::create(v7, v2, false);\n    for (unsigned v5 = 0; v5 < v7; ++v5)\n        bufferBus->setChannelMemory(v5, v1->getChannelData(v5)->data(), v2);\n    bufferBus->setSampleRate(v1->v9());\n    bool v10 = !v3()->isOfflineContext();\n    OwnPtr<Reverb> reverb = adoptPtr(new Reverb(bufferBus.get(), AudioNode::ProcessingSizeInFrames, MaxFFTSize, 2, v10, m_normalize));\n    {\n        MutexLocker locker(m_processLock);\n        m_reverb = reverb.release();\n        m_buffer = v1;\n    }\n}\nAudioBuffer* ConvolverNode::v1()\n{\n    ASSERT(isMainThread());\n    return m_buffer.get();\n}\ndouble ConvolverNode::tailTime() const\n{\n    MutexTryLocker tryLocker(m_processLock);\n    if (tryLocker.locked())\n        return m_reverb ? m_reverb->impulseResponseLength() / static_cast<double>(v9()) : 0;\n    return std::numeric_limits<double>::infinity();\n}\ndouble ConvolverNode::latencyTime() const\n{\n    MutexTryLocker tryLocker(m_processLock);\n    if (tryLocker.locked())\n        return m_reverb ? m_reverb->latencyFrames() / static_cast<double>(v9()) : 0;\n    return std::numeric_limits<double>::infinity();\n}\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 10
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both handle audio processing via convolution, manage synchronization with a mutex, validate the audio buffer, and create a reverb engine. The only differences are in naming (e.g., `v1()` vs. `buffer()`, `v9()` vs. `sampleRate()`), and minor formatting or comments, which do not affect observable behavior. There are no differences in error handling, input validation, or security-relevant logic.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both define a `ConvolverNode` class that processes audio signals using convolution with an impulse response. They both handle synchronization with a mutex, validate the audio buffer, and manage the reverb engine similarly. The only differences are in variable names and comments, which do not affect the observable behavior of the code.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

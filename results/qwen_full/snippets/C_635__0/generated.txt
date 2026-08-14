@@ -1,0 +1,59 @@
+int process_unique_identifier(char *line, void *data) {
+    struct context *ctx = (struct context *)data;
+    int index = 0;
+    char *endptr = NULL;
+
+    if (!line || !ctx) {
+        return -1;
+    }
+
+    // Convert line to integer index
+    index = strtol(line, &endptr, 10);
+    if (endptr == line || *endptr != '\0') {
+        return -1;
+    }
+
+    // Trim whitespace from line
+    while (isspace((unsigned char)*line)) {
+        line++;
+    }
+
+    // Check for valid unique identifier
+    if (!line || !*line) {
+        return -1;
+    }
+
+    // Search for the identifier in the context's headers
+    int i;
+    int found = 0;
+    for (i = 0; i < ctx->header_count; i++) {
+        if (strcmp(ctx->headers[i].identifier, line) == 0) {
+            found = 1;
+
+            // If index does not match, mark cache for clearing
+            if (ctx->headers[i].index != index) {
+                ctx->clear_cache = 1;
+            }
+
+            // Update the reference number and index
+            ctx->headers[i].reference_number = ctx->message.reference_number;
+            ctx->headers[i].index = index;
+            break;
+        }
+    }
+
+    // If not found, add a new header
+    if (!found) {
+        if (ctx->header_count >= ctx->max_headers) {
+            return -1;
+        }
+
+        strncpy(ctx->headers[ctx->header_count].identifier, line, MAX_IDENTIFIER_LENGTH - 1);
+        ctx->headers[ctx->header_count].identifier[MAX_IDENTIFIER_LENGTH - 1] = '\0';
+        ctx->headers[ctx->header_count].reference_number = ctx->message.reference_number;
+        ctx->headers[ctx->header_count].index = index;
+        ctx->header_count++;
+    }
+
+    return 0;
+}

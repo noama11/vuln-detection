@@ -1,0 +1,48 @@
+{
+  "case_id": "C_1191__0",
+  "sample_id": "D/C/1191",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2014-3156",
+  "cve_summary": "Buffer overflow in the clipboard implementation in Google Chrome before 35.0.1916.153 allows remote attackers to cause a denial of service or possibly have unspecified other impact via vectors that trigger unexpected bitmap data, related to content/renderer/renderer_clipboard_client.cc and content/renderer/webclipboard_impl.cc.",
+  "changed_file": "third_party/blink/renderer/core/clipboard/system_clipboard.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Writes an image to the system clipboard along with optional metadata.  \n *  \n * Parameters:  \n * image (Image*): Pointer to the image to be written to the clipboard.  \n * url (const KURL&): The URL associated with the image.  \n * title (const String&): The title for the image.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function first checks if the image is valid and retrieves its bitmap.  \n * If the bitmap is null, the function exits early. It then writes the image  \n * to the clipboard and, if the URL is valid, writes additional metadata such  \n * as a bookmark and HTML markup for rich text editors. Finally, it commits  \n * the write operation to the clipboard.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void SystemClipboard::WriteImage(Image* image,\r\n                                 const KURL& url,\r\n                                 const String& title) {\r\n  DCHECK(image);\r\n\r\n  PaintImage paint_image = image->PaintImageForCurrentFrame();\r\n  SkBitmap bitmap;\r\n  if (sk_sp<SkImage> sk_image = paint_image.GetSkImage())\r\n    sk_image->asLegacyBitmap(&bitmap);\r\n  if (bitmap.isNull())\r\n    return;\r\n\r\n  // TODO(crbug.com/918717): Remove CHECK if no crashes occur on it in canary.\r\n  CHECK(bitmap.getPixels());\r\n\r\n  clipboard_->WriteImage(mojom::ClipboardBuffer::kStandard, bitmap);\r\n\r\n  if (url.IsValid() && !url.IsEmpty()) {\r\n#if !defined(OS_MACOSX)\r\n    // See http://crbug.com/838808: Not writing text/plain on Mac for\r\n    // consistency between platforms, and to help fix errors in applications\r\n    // which prefer text/plain content over image content for compatibility with\r\n    // Microsoft Word.\r\n    clipboard_->WriteBookmark(mojom::ClipboardBuffer::kStandard,\r\n                              url.GetString(), NonNullString(title));\r\n#endif\r\n\r\n    // When writing the image, we also write the image markup so that pasting\r\n    // into rich text editors, such as Gmail, reveals the image. We also don't\r\n    // want to call writeText(), since some applications (WordPad) don't pick\r\n    // the image if there is also a text format on the clipboard.\r\n    clipboard_->WriteHtml(mojom::ClipboardBuffer::kStandard,\r\n                          URLToImageMarkup(url, title), KURL());\r\n  }\r\n  clipboard_->CommitWrite(mojom::ClipboardBuffer::kStandard);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation uses a CHECK on `bitmap.getPixels()` which will crash if null, while the reference implementation returns early if `bitmap.getPixels()` is null. This is a behavioral difference that could lead to a crash in the candidate implementation for invalid input, making it a potential security concern.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in terms of observable behavior. Both perform the same checks, write the image to the clipboard, conditionally write a bookmark and HTML markup, and commit the write operation. There are no differences in logic or behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

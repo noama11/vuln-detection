@@ -1,0 +1,49 @@
+{
+  "case_id": "C_264__0",
+  "sample_id": "D/C/264",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7913",
+  "cve_summary": "The xc2028_set_config function in drivers/media/tuners/tuner-xc2028.c in the Linux kernel before 4.6 allows local users to gain privileges or cause a denial of service (use-after-free) via vectors involving omission of the firmware name from a certain data structure.",
+  "changed_file": "drivers/media/tuners/tuner-xc2028.c",
+  "docstring": "\"\"\"\nSummary: \nSets the configuration for the xc2028 tuner device.\n\nParameters: \nfe (struct dvb_frontend*): Pointer to the frontend structure associated with the tuner.\npriv_cfg (void*): Pointer to the configuration data structure containing settings for the tuner.\n\nReturns: \nint: Returns 0 on success or a negative error code on failure.\n\nLogic: \nThe function locks the mutex for thread safety, copies the configuration data from the provided structure, and manages the firmware name. It checks if the firmware name has changed and frees the previous firmware if necessary. If the tuner is in a state indicating no firmware is loaded, it requests the firmware asynchronously. The function handles memory allocation for the firmware name and updates the state of the tuner accordingly. Finally, it unlocks the mutex and returns the result of the firmware request operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int xc2028_set_config(struct dvb_frontend *v1, void *v4)\n{\n    struct xc2028_data *v3 = v1->tuner_priv;\n    struct xc2028_ctrl *v2    = v4;\n    int                 v5   = 0;\n    tuner_dbg(\"%s called\\n\", __func__);\n    mutex_lock(&v3->lock);\n    kfree(v3->ctrl.fname);\n    v3->ctrl.fname = NULL;\n    memcpy(&v3->ctrl, v2, sizeof(v3->ctrl));\n    if (v2->fname) {\n        v3->ctrl.fname = kstrdup(v2->fname, GFP_KERNEL);\n        if (v3->ctrl.fname == NULL)\n            return -ENOMEM;\n    }\n    if (!firmware_name[0] && v2->fname &&\n        v3->fname && strcmp(v2->fname, v3->fname))\n        free_firmware(v3);\n    if (v3->ctrl.max_len < 9)\n        v3->ctrl.max_len = 13;\n    if (v3->state == XC2028_NO_FIRMWARE) {\n        if (!firmware_name[0])\n            v3->fname = v3->ctrl.fname;\n        else\n            v3->fname = firmware_name;\n        v5 = request_firmware_nowait(THIS_MODULE, 1,\n                         v3->fname,\n                         v3->i2c_props.adap->dev.parent,\n                         GFP_KERNEL,\n                         v1, load_firmware_cb);\n        if (v5 < 0) {\n            tuner_err(\"Failed to request firmware %s\\n\",\n                  v3->fname);\n            v3->state = XC2028_NODEV;\n        } else\n            v3->state = XC2028_WAITING_FIRMWARE;\n    }\n    mutex_unlock(&v3->lock);\n    return v5;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 5
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "category": "quality_bug",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation sets `v3->ctrl.fname = NULL` before calling `memcpy`, which the reference implementation does not do. This could lead to a memory leak if `memcpy` overwrites `v3->ctrl.fname` with a non-NULL value before `kstrdup` is called. Additionally, the candidate implementation sets `v3->fname = v3->ctrl.fname` under certain conditions, while the reference implementation sets `priv->fname = priv->ctrl.fname`. These differences could affect memory management and firmware handling, but they are not directly reachable via adversarial input and do not cause crashes or incorrect results for normal inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of observable behavior. Both implementations lock the mutex, free the old firmware name, copy the new configuration, handle firmware name changes, and request firmware if needed. The only differences are in variable names and code comments, which do not affect behavior. There are no differences in error handling, memory management, or state transitions that would lead to different outcomes for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

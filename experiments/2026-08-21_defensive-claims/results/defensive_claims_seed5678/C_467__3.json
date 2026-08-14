@@ -1,0 +1,114 @@
+{
+  "case_id": "C_467__3",
+  "sample_id": "D/C/467",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "erikd/libsndfile",
+  "cve_id": "CVE-2017-7742",
+  "cve_summary": "In libsndfile before 1.0.28, an error in the *flac_buffer_copy()* function (flac.c) can be exploited to cause a segmentation violation (with read memory access) via a specially crafted FLAC file during a resample attempt, a similar issue to CVE-2017-7585.",
+  "changed_file": "src/flac.c",
+  "docstring": "Summary:  \nProcesses audio data in a loop for a FLAC decoder, reading up to a specified length.\n\nParameters:  \npsf (SF_PRIVATE*): Pointer to the private state of the audio file.  \nlen (unsigned): The maximum number of bytes to read.\n\nReturns:  \nunsigned: The number of bytes successfully read.\n\nLogic: The function initializes the position and remaining length for reading. If a frame is available and not fully processed, it copies the buffered data. It then enters a loop to decode audio data until the specified length is reached or an end-of-stream state is encountered. Finally, it returns the number of bytes read.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "unsigned process_audio_data(SF_PRIVATE* psf, unsigned len) {\n    unsigned bytes_read = 0;\n    unsigned remaining = len;\n    unsigned buffer_pos = 0;\n\n    if (psf == NULL || len == 0) {\n        return 0;\n    }\n\n    if (psf->frame.buffer != NULL && psf->frame.buffered > 0) {\n        unsigned copy_len = psf->frame.buffered;\n        if (copy_len > remaining) {\n            copy_len = remaining;\n        }\n        memcpy(psf->output + bytes_read, psf->frame.buffer + buffer_pos, copy_len);\n        bytes_read += copy_len;\n        buffer_pos += copy_len;\n        psf->frame.buffered -= copy_len;\n        remaining -= copy_len;\n    }\n\n    while (remaining > 0 && !psf->eof_reached) {\n        unsigned decoded = decode_audio_frame(psf, psf->output + bytes_read, remaining);\n        if (decoded == 0) {\n            break;\n        }\n        bytes_read += decoded;\n        remaining -= decoded;\n    }\n\n    return bytes_read;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero length",
+      "protects_against": "unnecessary processing for zero-length requests"
+    },
+    {
+      "step": "bound copy length to remaining capacity",
+      "protects_against": "buffer overflow when copying buffered data"
+    },
+    {
+      "step": "validate decoded length",
+      "protects_against": "using invalid or zero decoded length which could lead to infinite loop or incorrect state"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 2,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for `psf` or `pflac`. Dereferencing a null pointer would cause a crash, but the code assumes these pointers are valid.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for zero length — protects against: unnecessary processing for zero-length requests",
+        "reasoning": "The implementation does not explicitly check for a zero-length request. If `len` is zero, the loop will not execute, but the function will still perform some setup (e.g., setting `pflac->len = len`).",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "bound copy length to remaining capacity — protects against: buffer overflow when copying buffered data",
+        "reasoning": "The implementation sets `pflac->len = len` and uses it in the loop condition (`pflac->pos < pflac->len`). However, it does not explicitly bound the copy length to the remaining capacity of the target buffer. The `flac_buffer_copy` function is called, but its implementation is not visible.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate decoded length — protects against: using invalid or zero decoded length which could lead to infinite loop or incorrect state",
+        "reasoning": "The implementation uses the return value of `flac_read_loop` (which is `pflac->pos`) to update `total`. If `current == 0`, the loop breaks. However, it does not explicitly validate the decoded length for correctness or invalidity.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 20,
+    "n_omits": 4,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `psf->codec_data` to assign to `pflac`, but does not check if `psf` is NULL. This could lead to a null pointer dereference if `psf` is NULL.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for zero length — protects against: unnecessary processing for zero-length requests",
+        "reasoning": "The implementation does not check if `len` is zero before proceeding with processing. It will still enter the loop and attempt to decode, which is unnecessary for a zero-length request.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "bound copy length to remaining capacity — protects against: buffer overflow when copying buffered data",
+        "reasoning": "The implementation calls `flac_buffer_copy(psf)`, but there is no visible logic in the provided code that bounds the copy length to the remaining capacity. It is unclear whether `flac_buffer_copy` performs this check.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "validate decoded length — protects against: using invalid or zero decoded length which could lead to infinite loop or incorrect state",
+        "reasoning": "The implementation uses `pflac->pos < pflac->len` as the loop condition, but there is no visible validation of the decoded length or any check for invalid or zero values that could cause an infinite loop or incorrect state.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

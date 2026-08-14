@@ -1,0 +1,31 @@
+{
+  "case_id": "C_108__0",
+  "implementation": "int hidp_setup_session(struct hidp_session *session, struct hidp_connadd_req *req) {\n    int err = -ENOMEM;\n\n    if (!session || !req) {\n        return -EINVAL;\n    }\n\n    session->hid_dev = hid_allocate_device();\n    if (!session->hid_dev) {\n        return -ENOMEM;\n    }\n\n    session->hid_dev->vendor = req->vendor;\n    session->hid_dev->product = req->product;\n    session->hid_dev->version = req->version;\n    session->hid_dev->country = req->country;\n\n    if (hid_is_blacklisted(session->hid_dev->vendor, session->hid_dev->product)) {\n        hid_free_device(session->hid_dev);\n        return -EPERM;\n    }\n\n    session->read_data = kmalloc(req->read_buffer_size, GFP_KERNEL);\n    if (!session->read_data) {\n        hid_free_device(session->hid_dev);\n        return -ENOMEM;\n    }\n\n    session->read_data_size = req->read_buffer_size;\n\n    if (copy_from_user(session->read_data, req->read_buffer, req->read_buffer_size)) {\n        kfree(session->read_data);\n        hid_free_device(session->hid_dev);\n        return -EFAULT;\n    }\n\n    err = hid_register_device(session->hid_dev);\n    if (err < 0) {\n        kfree(session->read_data);\n        hid_free_device(session->hid_dev);\n        return err;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check for successful device registration",
+      "protects_against": "device registration failure"
+    },
+    {
+      "step": "check for successful memory copy from user space",
+      "protects_against": "invalid user space pointer"
+    },
+    {
+      "step": "clean up allocated resources on failure",
+      "protects_against": "resource leak"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

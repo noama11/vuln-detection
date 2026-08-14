@@ -1,0 +1,35 @@
+{
+  "case_id": "C_103__0",
+  "implementation": "int process_diag_message(struct sk_buff *skb, struct nlmsghdr *nlh) {\n    int ret = -EINVAL;\n    struct sock_diag_handler *handler = NULL;\n\n    if (!skb || !nlh) {\n        return -EINVAL;\n    }\n\n    if (nlh->nlmsg_len < sizeof(*nlh)) {\n        return -EINVAL;\n    }\n\n    handler = sock_diag_lock_handler(nlh->nlmsg_type);\n    if (!handler) {\n        return -ENOENT;\n    }\n\n    if (!try_module_get(handler->owner)) {\n        sock_diag_unlock_handler(handler);\n        return -EINVAL;\n    }\n\n    if (handler->dump) {\n        ret = handler->dump(skb, nlh);\n    } else {\n        ret = -EINVAL;\n    }\n\n    module_put(handler->owner);\n    sock_diag_unlock_handler(handler);\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null skb or nlh pointer passed to the function"
+    },
+    {
+      "step": "validate netlink message length",
+      "protects_against": "malformed or undersized netlink message"
+    },
+    {
+      "step": "check if handler is available",
+      "protects_against": "attempting to use a null handler"
+    },
+    {
+      "step": "acquire module reference",
+      "protects_against": "using a handler whose module might be unloaded"
+    },
+    {
+      "step": "release module reference",
+      "protects_against": "memory leak or reference count imbalance"
+    },
+    {
+      "step": "unlock handler",
+      "protects_against": "leaving the handler locked and causing deadlocks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

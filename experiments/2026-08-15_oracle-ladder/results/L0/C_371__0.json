@@ -1,0 +1,48 @@
+{
+  "case_id": "C_371__0",
+  "sample_id": "D/C/371",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15115",
+  "cve_summary": "The sctp_do_peeloff function in net/sctp/socket.c in the Linux kernel before 4.14 does not check whether the intended netns is used in a peel-off action, which allows local users to cause a denial of service (use-after-free and system crash) or possibly have unspecified other impact via crafted system calls.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "\"\"\"\nSummary: \nPeels off a new socket from an existing SCTP association.\n\nParameters: \nsk (struct sock *): The original socket associated with the SCTP connection.\nid (sctp_assoc_t): The association ID to peel off from the original socket.\nsockp (struct socket **): A pointer to store the newly created socket.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function validates the association ID. It ensures that no threads are waiting for buffer space on the association and that the socket style is appropriate for peeling off. If all checks pass, it creates a new socket, copies relevant properties from the original socket, and migrates the association to the new socket. Finally, it updates the pointer to the new socket and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int sctp_do_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\r\n{\r\n\tstruct sctp_association *asoc = sctp_id2assoc(sk, id);\r\n\tstruct sctp_sock *sp = sctp_sk(sk);\r\n\tstruct socket *sock;\r\n\tint err = 0;\r\n\r\n\t/* Do not peel off from one netns to another one. */\r\n\tif (!net_eq(current->nsproxy->net_ns, sock_net(sk)))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (!asoc)\r\n\t\treturn -EINVAL;\r\n\r\n\t/* If there is a thread waiting on more sndbuf space for\r\n\t * sending on this asoc, it cannot be peeled.\r\n\t */\r\n\tif (waitqueue_active(&asoc->wait))\r\n\t\treturn -EBUSY;\r\n\r\n\t/* An association cannot be branched off from an already peeled-off\r\n\t * socket, nor is this supported for tcp style sockets.\r\n\t */\r\n\tif (!sctp_style(sk, UDP))\r\n\t\treturn -EINVAL;\r\n\r\n\t/* Create a new socket.  */\r\n\terr = sock_create(sk->sk_family, SOCK_SEQPACKET, IPPROTO_SCTP, &sock);\r\n\tif (err < 0)\r\n\t\treturn err;\r\n\r\n\tsctp_copy_sock(sock->sk, sk, asoc);\r\n\r\n\t/* Make peeled-off sockets more like 1-1 accepted sockets.\r\n\t * Set the daddr and initialize id to something more random\r\n\t */\r\n\tsp->pf->to_sk_daddr(&asoc->peer.primary_addr, sk);\r\n\r\n\t/* Populate the fields of the newsk from the oldsk and migrate the\r\n\t * asoc to the newsk.\r\n\t */\r\n\tsctp_sock_migrate(sk, sock->sk, asoc, SCTP_SOCKET_UDP_HIGH_BANDWIDTH);\r\n\r\n\t*sockp = sock;\r\n\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a check for network namespace equality (`net_eq(current->nsproxy->net_ns, sock_net(sk))`) that is absent in the reference implementation. This check prevents peeling off a socket from one network namespace to another, which could be a security-relevant restriction. Since this check is missing in the reference implementation, it may allow cross-namespace socket peeling, which could be exploited by an attacker with access to multiple namespaces.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation are identical in terms of logic, error checking, and behavior. Both perform the same validation steps, create a new socket under the same conditions, and return the same result. There are no observable behavioral differences for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

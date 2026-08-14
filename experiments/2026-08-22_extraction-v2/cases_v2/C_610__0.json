@@ -1,0 +1,36 @@
+{
+  "case_id": "C_610__0",
+  "sample_id": "D/C/610",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-18690",
+  "cve_summary": "In the Linux kernel before 4.17, a local attacker able to set attributes on an xfs filesystem could make this filesystem non-operational until the next mount by triggering an unchecked error condition during an xfs attribute change, because xfs_attr_shortform_addname in fs/xfs/libxfs/xfs_attr.c mishandles ATTR_REPLACE operations with conversion of an attr from short to long form.",
+  "commit_message": "xfs: don't fail when converting shortform attr to long form during ATTR_REPLACE\n\nKanda Motohiro reported that expanding a tiny xattr into a large xattr\nfails on XFS because we remove the tiny xattr from a shortform fork and\nthen try to re-add it after converting the fork to extents format having\nnot removed the ATTR_REPLACE flag.  This fails because the attr is no\nlonger present, causing a fs shutdown.\n\nThis is derived from the patch in his bug report, but we really\nshouldn't ignore a nonzero retval from the remove call.\n\nBugzilla: https://bugzilla.kernel.org/show_bug.cgi?id=199119\nReported-by: kanda.motohiro@gmail.com\nReviewed-by: Dave Chinner <dchinner@redhat.com>\nReviewed-by: Christoph Hellwig <hch@lst.de>\nSigned-off-by: Darrick J. Wong <darrick.wong@oracle.com>",
+  "changed_file": "fs/xfs/libxfs/xfs_attr.c",
+  "docstring": "\"\"\"\nSummary: \nAdds a name to a short-form attribute in the XFS filesystem.\n\nParameters: \nargs (xfs_da_args_t*): The arguments containing details about the attribute operation.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first traces the attribute addition operation and checks if the attribute already exists. If the `ATTR_REPLACE` flag is set and the attribute does not exist, it returns an error. If the attribute exists and the `ATTR_CREATE` flag is set, it also returns an error. If the attribute exists, it attempts to remove it before proceeding. The function checks if the name or value length exceeds the maximum allowed size, returning an error if so. It calculates the new size required for the attribute and checks if it can fit in the available space. If space is available, it adds the attribute; otherwise, it returns an error indicating insufficient space.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    500,
+    537
+  ],
+  "vulnerable_line_range": [
+    500,
+    530
+  ],
+  "vulnerable_snippet": "STATIC int\r\nxfs_attr_shortform_addname(xfs_da_args_t *args)\r\n{\r\n\tint newsize, forkoff, retval;\r\n\r\n\ttrace_xfs_attr_sf_addname(args);\r\n\r\n\tretval = xfs_attr_shortform_lookup(args);\r\n\tif ((args->flags & ATTR_REPLACE) && (retval == -ENOATTR)) {\r\n\t\treturn retval;\r\n\t} else if (retval == -EEXIST) {\r\n\t\tif (args->flags & ATTR_CREATE)\r\n\t\t\treturn retval;\r\n\t\tretval = xfs_attr_shortform_remove(args);\r\n\t\tASSERT(retval == 0);\r\n\t}\r\n\r\n\tif (args->namelen >= XFS_ATTR_SF_ENTSIZE_MAX ||\r\n\t    args->valuelen >= XFS_ATTR_SF_ENTSIZE_MAX)\r\n\t\treturn -ENOSPC;\r\n\r\n\tnewsize = XFS_ATTR_SF_TOTSIZE(args->dp);\r\n\tnewsize += XFS_ATTR_SF_ENTSIZE_BYNAME(args->namelen, args->valuelen);\r\n\r\n\tforkoff = xfs_attr_shortform_bytesfit(args->dp, newsize);\r\n\tif (!forkoff)\r\n\t\treturn -ENOSPC;\r\n\r\n\txfs_attr_shortform_add(args, forkoff);\r\n\treturn 0;\r\n}",
+  "fixed_line_range": [
+    500,
+    537
+  ],
+  "fixed_snippet": "STATIC int\r\nxfs_attr_shortform_addname(xfs_da_args_t *args)\r\n{\r\n\tint newsize, forkoff, retval;\r\n\r\n\ttrace_xfs_attr_sf_addname(args);\r\n\r\n\tretval = xfs_attr_shortform_lookup(args);\r\n\tif ((args->flags & ATTR_REPLACE) && (retval == -ENOATTR)) {\r\n\t\treturn retval;\r\n\t} else if (retval == -EEXIST) {\r\n\t\tif (args->flags & ATTR_CREATE)\r\n\t\t\treturn retval;\r\n\t\tretval = xfs_attr_shortform_remove(args);\r\n\t\tif (retval)\r\n\t\t\treturn retval;\r\n\t\t/*\r\n\t\t * Since we have removed the old attr, clear ATTR_REPLACE so\r\n\t\t * that the leaf format add routine won't trip over the attr\r\n\t\t * not being around.\r\n\t\t */\r\n\t\targs->flags &= ~ATTR_REPLACE;\r\n\t}\r\n\r\n\tif (args->namelen >= XFS_ATTR_SF_ENTSIZE_MAX ||\r\n\t    args->valuelen >= XFS_ATTR_SF_ENTSIZE_MAX)\r\n\t\treturn -ENOSPC;\r\n\r\n\tnewsize = XFS_ATTR_SF_TOTSIZE(args->dp);\r\n\tnewsize += XFS_ATTR_SF_ENTSIZE_BYNAME(args->namelen, args->valuelen);\r\n\r\n\tforkoff = xfs_attr_shortform_bytesfit(args->dp, newsize);\r\n\tif (!forkoff)\r\n\t\treturn -ENOSPC;\r\n\r\n\txfs_attr_shortform_add(args, forkoff);\r\n\treturn 0;\r\n}",
+  "func_name": "xfs_attr_shortform_addname",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

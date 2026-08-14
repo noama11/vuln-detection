@@ -1,0 +1,67 @@
+{
+  "case_id": "C_261__0",
+  "sample_id": "D/C/261",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7916",
+  "cve_summary": "Race condition in the environ_read function in fs/proc/base.c in the Linux kernel before 4.5.4 allows local users to obtain sensitive information from kernel memory by reading a /proc/*/environ file during a process-setup time interval in which environment-variable copying is incomplete.",
+  "changed_file": "fs/proc/base.c",
+  "docstring": "/**\n * Summary: Reads environment variables from a process's memory into a user buffer.\n * \n * Parameters:\n * file (struct file *): Pointer to the file structure representing the process.\n * buf (char __user *): Pointer to the user buffer where the environment variables will be copied.\n * count (size_t): The maximum number of bytes to read from the environment.\n * ppos (loff_t *): Pointer to the current position in the environment variables.\n * \n * Returns: ssize_t - The number of bytes read on success, or a negative error code on failure.\n * \n * Logic: The function checks if the process has an environment to read. It allocates a temporary page for reading, increments the process's user count, and acquires a read lock on the memory map. It then reads the environment variables in chunks, copying them to the user buffer until the specified count is reached or there are no more variables to read. Finally, it updates the position pointer and releases resources before returning the number of bytes read or an error code.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check for valid environment size",
+        "performed_by_count": 4,
+        "why_it_matters": "If mm->env_start and mm->env_end are not properly initialized or valid, reading from them could result in out-of-bounds memory access or invalid data being copied to user space."
+      },
+      {
+        "step": "Check for null or invalid mm->env before reading",
+        "performed_by_count": 4,
+        "why_it_matters": "If mm->env_start or mm->env_end is invalid or uninitialized, reading from it could cause a crash or memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a check for the presence of environment variables (e.g., mm->env_size or equivalent) before attempting to read them. A majority of the independent implementations perform this check, which is important to avoid reading from invalid or uninitialized memory. The target also lacks a check for the validity of the environment start and end addresses before using them, which could lead to out-of-bounds memory access.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 1,
+    "consensus_exposure": 3,
+    "net_exposure": -2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check that environment size is non-zero",
+        "performed_by_count": 3,
+        "why_it_matters": "If the environment size is zero, the function should return an error or zero, not proceed with reading. This check prevents invalid memory accesses."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several defensive steps that are not performed by the majority of the independent implementations, such as incrementing the mm_users reference count and calling mmput to decrement it. However, it omits a key consensus step: checking that the environment size is non-zero before proceeding. This is a majority step among the independent implementations and is important for ensuring that the process actually has an environment to read.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

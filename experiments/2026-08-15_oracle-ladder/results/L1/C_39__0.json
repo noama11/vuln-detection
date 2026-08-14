@@ -1,0 +1,49 @@
+{
+  "case_id": "C_39__0",
+  "sample_id": "D/C/39",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1759",
+  "cve_summary": "Integer overflow in the sys_oabi_semtimedop function in arch/arm/kernel/sys_oabi-compat.c in the Linux kernel before 2.6.39 on the ARM platform, when CONFIG_OABI_COMPAT is enabled, allows local users to gain privileges or cause a denial of service (heap memory corruption) by providing a crafted argument and leveraging a race condition.",
+  "changed_file": "arch/arm/kernel/sys_oabi-compat.c",
+  "docstring": "Summary: This function implements the system call for performing semaphore operations with a timeout.\n\nParameters:\n- semid (int): Identifier for the semaphore set.\n- tsops (struct oabi_sembuf __user *): Pointer to an array of semaphore operations.\n- nsops (unsigned): Number of semaphore operations to perform.\n- timeout (const struct timespec __user *): Pointer to a timespec structure specifying the timeout duration.\n\nReturns: \n- long: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first checks the validity of the number of operations. It allocates memory for the semaphore operations and retrieves user data into kernel space. If a timeout is provided, it copies the timeout value. The function then calls the underlying semaphore operation function, handling memory protection appropriately. Finally, it frees the allocated memory and returns the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "asmlinkage long sys_oabi_semtimedop(int v6,\n                    struct oabi_sembuf __user *tsops,\n                    unsigned v5,\n                    const struct timespec __user *timeout)\n{\n    struct sembuf *v7;\n    struct timespec v4;\n    long v1;\n    int v3;\n    if (v5 < 1 || v5 > SEMOPM)\n        return -EINVAL;\n    v7 = kmalloc(sizeof(*v7) * v5, GFP_KERNEL);\n    if (!v7)\n        return -ENOMEM;\n    v1 = 0;\n    for (v3 = 0; v3 < v5; v3++) {\n        __get_user_error(v7[v3].sem_num, &tsops->sem_num, v1);\n        __get_user_error(v7[v3].sem_op,  &tsops->sem_op,  v1);\n        __get_user_error(v7[v3].sem_flg, &tsops->sem_flg, v1);\n        tsops++;\n    }\n    if (timeout) {\n        v1 |= copy_from_user(&v4, timeout, sizeof(*timeout));\n        timeout = &v4;\n    }\n    if (v1) {\n        v1 = -EFAULT;\n    } else {\n        mm_segment_t v2 = get_fs();\n        set_fs(KERNEL_DS);\n        v1 = sys_semtimedop(v6, v7, v5, timeout);\n        set_fs(v2);\n    }\n    kfree(v7);\n    return v1;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 7
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both perform the same checks on the number of operations, allocate memory for the operations, copy user data into kernel space, handle the timeout, and call the underlying sys_semtimedop function. The only differences are in variable names and code formatting, which do not affect behavior. There are no observable differences in how the functions handle inputs or errors.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both perform the same checks on the number of operations, allocate memory for the semaphore operations, copy user data into kernel space, handle the timeout, and call the underlying sys_semtimedop function. The only differences are in variable names and code style, which do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

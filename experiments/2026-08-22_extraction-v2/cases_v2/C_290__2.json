@@ -1,0 +1,36 @@
+{
+  "case_id": "C_290__2",
+  "sample_id": "D/C/290",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "libgd/libgd",
+  "cve_id": "CVE-2016-5116",
+  "cve_summary": "gd_xbm.c in the GD Graphics Library (aka libgd) before 2.2.0, as used in certain custom PHP 5.5.x configurations, allows context-dependent attackers to obtain sensitive information from process memory or cause a denial of service (stack-based buffer under-read and application crash) via a long name.",
+  "commit_message": "xbm: avoid stack overflow (read) with large names #211\n\nWe use the name passed in to printf into a local stack buffer which is\nlimited to 4000 bytes.  So given a large enough value, lots of stack\ndata is leaked.  Rewrite the code to do simple memory copies with most\nof the strings to avoid that issue, and only use stack buffer for small\nnumbers of constant size.\n\nThis closes #211.",
+  "changed_file": "src/gd_xbm.c",
+  "docstring": "Summary:  \nGenerates XBM (X BitMap) format output for a given image, defining its width, height, and pixel data in a specific context.\n\nParameters:  \nimage (gdImagePtr): Pointer to the image to be processed.  \nfile_name (char*): Name of the file to be generated, used for defining width and height.  \nfg (int): Foreground color index used to determine which pixels are set.  \nout (gdIOCtx*): Output context where the generated data will be written.\n\nReturns:  \nNone: This function does not return a value.\n\nLogic:  \nThe function extracts the base name from the provided file name, ensuring it is valid for C definitions. It then outputs the width and height of the image as preprocessor definitions. Following that, it generates an array of pixel data, encoding the image's pixel values based on the foreground color. The pixel data is formatted as a static unsigned char array, with proper spacing and line breaks for readability.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    195,
+    272
+  ],
+  "vulnerable_line_range": [
+    195,
+    252
+  ],
+  "vulnerable_snippet": "BGD_DECLARE(void) gdImageXbmCtx(gdImagePtr image, char* file_name, int fg, gdIOCtx * out)\r\n{\r\n\tint x, y, c, b, sx, sy, p;\r\n\tchar *name, *f;\r\n\tsize_t i, l;\r\n\r\n\tname = file_name;\r\n\tif ((f = strrchr(name, '/')) != NULL) name = f+1;\r\n\tif ((f = strrchr(name, '\\\\')) != NULL) name = f+1;\r\n\tname = strdup(name);\r\n\tif ((f = strrchr(name, '.')) != NULL && !strcasecmp(f, \".XBM\")) *f = '\\0';\r\n\tif ((l = strlen(name)) == 0) {\r\n\t\tfree(name);\r\n\t\tname = strdup(\"image\");\r\n\t} else {\r\n\t\tfor (i=0; i<l; i++) {\r\n\t\t\t/* only in C-locale isalnum() would work */\r\n\t\t\tif (!isupper(name[i]) && !islower(name[i]) && !isdigit(name[i])) {\r\n\t\t\t\tname[i] = '_';\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\r\n\tgdCtxPrintf(out, \"#define %s_width %d\\n\", name, gdImageSX(image));\r\n\tgdCtxPrintf(out, \"#define %s_height %d\\n\", name, gdImageSY(image));\r\n\tgdCtxPrintf(out, \"static unsigned char %s_bits[] = {\\n  \", name);\r\n\r\n\tfree(name);\r\n\r\n\tb = 1;\r\n\tp = 0;\r\n\tc = 0;\r\n\tsx = gdImageSX(image);\r\n\tsy = gdImageSY(image);\r\n\tfor (y = 0; y < sy; y++) {\r\n\t\tfor (x = 0; x < sx; x++) {\r\n\t\t\tif (gdImageGetPixel(image, x, y) == fg) {\r\n\t\t\t\tc |= b;\r\n\t\t\t}\r\n\t\t\tif ((b == 128) || (x == sx && y == sy)) {\r\n\t\t\t\tb = 1;\r\n\t\t\t\tif (p) {\r\n\t\t\t\t\tgdCtxPrintf(out, \", \");\r\n\t\t\t\t\tif (!(p%12)) {\r\n\t\t\t\t\t\tgdCtxPrintf(out, \"\\n  \");\r\n\t\t\t\t\t\tp = 12;\r\n\t\t\t\t\t}\r\n\t\t\t\t}\r\n\t\t\t\tp++;\r\n\t\t\t\tgdCtxPrintf(out, \"0x%02X\", c);\r\n\t\t\t\tc = 0;\r\n\t\t\t} else {\r\n\t\t\t\tb <<= 1;\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\tgdCtxPrintf(out, \"};\\n\");\r\n}",
+  "fixed_line_range": [
+    198,
+    272
+  ],
+  "fixed_snippet": "BGD_DECLARE(void) gdImageXbmCtx(gdImagePtr image, char* file_name, int fg, gdIOCtx * out)\r\n{\r\n\tint x, y, c, b, sx, sy, p;\r\n\tchar *name, *f;\r\n\tsize_t i, l;\r\n\r\n\tname = file_name;\r\n\tif ((f = strrchr(name, '/')) != NULL) name = f+1;\r\n\tif ((f = strrchr(name, '\\\\')) != NULL) name = f+1;\r\n\tname = strdup(name);\r\n\tif ((f = strrchr(name, '.')) != NULL && !strcasecmp(f, \".XBM\")) *f = '\\0';\r\n\tif ((l = strlen(name)) == 0) {\r\n\t\tfree(name);\r\n\t\tname = strdup(\"image\");\r\n\t} else {\r\n\t\tfor (i=0; i<l; i++) {\r\n\t\t\t/* only in C-locale isalnum() would work */\r\n\t\t\tif (!isupper(name[i]) && !islower(name[i]) && !isdigit(name[i])) {\r\n\t\t\t\tname[i] = '_';\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\r\n\t/* Since \"name\" comes from the user, run it through a direct puts.\r\n\t * Trying to printf it into a local buffer means we'd need a large\r\n\t * or dynamic buffer to hold it all. */\r\n\r\n\t/* #define <name>_width 1234 */\r\n\tgdCtxPuts(out, \"#define \");\r\n\tgdCtxPuts(out, name);\r\n\tgdCtxPuts(out, \"_width \");\r\n\tgdCtxPrintf(out, \"%d\\n\", gdImageSX(image));\r\n\r\n\t/* #define <name>_height 1234 */\r\n\tgdCtxPuts(out, \"#define \");\r\n\tgdCtxPuts(out, name);\r\n\tgdCtxPuts(out, \"_height \");\r\n\tgdCtxPrintf(out, \"%d\\n\", gdImageSY(image));\r\n\r\n\t/* static unsigned char <name>_bits[] = {\\n */\r\n\tgdCtxPuts(out, \"static unsigned char \");\r\n\tgdCtxPuts(out, name);\r\n\tgdCtxPuts(out, \"_bits[] = {\\n  \");\r\n\r\n\tfree(name);\r\n\r\n\tb = 1;\r\n\tp = 0;\r\n\tc = 0;\r\n\tsx = gdImageSX(image);\r\n\tsy = gdImageSY(image);\r\n\tfor (y = 0; y < sy; y++) {\r\n\t\tfor (x = 0; x < sx; x++) {\r\n\t\t\tif (gdImageGetPixel(image, x, y) == fg) {\r\n\t\t\t\tc |= b;\r\n\t\t\t}\r\n\t\t\tif ((b == 128) || (x == sx && y == sy)) {\r\n\t\t\t\tb = 1;\r\n\t\t\t\tif (p) {\r\n\t\t\t\t\tgdCtxPuts(out, \", \");\r\n\t\t\t\t\tif (!(p%12)) {\r\n\t\t\t\t\t\tgdCtxPuts(out, \"\\n  \");\r\n\t\t\t\t\t\tp = 12;\r\n\t\t\t\t\t}\r\n\t\t\t\t}\r\n\t\t\t\tp++;\r\n\t\t\t\tgdCtxPrintf(out, \"0x%02X\", c);\r\n\t\t\t\tc = 0;\r\n\t\t\t} else {\r\n\t\t\t\tb <<= 1;\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\tgdCtxPuts(out, \"};\\n\");\r\n}",
+  "func_name": "BGD_DECLARE",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": "C_290__1"
+}

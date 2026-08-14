@@ -1,0 +1,34 @@
+{
+  "case_id": "C_191__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "long compat_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg,\n                            unsigned int vlen, unsigned int flags,\n                            struct compat_timespec __user *timeout)\n{\n    long ret;\n\n    if (flags & ~RMSG_MASK)\n        return -EINVAL;\n\n    if (!timeout)\n        return -EOPNOTSUPP;\n\n    ret = sys_recvmmsg(fd, mmsg, vlen, flags, NULL);\n    if (ret < 0)\n        return ret;\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "long compat_recvmmsg32(int fd, struct compat_mmsghdr __user *mmsg, unsigned int vlen, unsigned int flags, struct compat_timespec __user *timeout) {\n    long ret;\n    struct timespec ts = {0, 0};\n    struct compat_timespec ct;\n    int timeout_set = 0;\n\n    if (timeout) {\n        if (get_user(ct.tv_sec, &timeout->tv_sec) ||\n            get_user(ct.tv_nsec, &timeout->tv_nsec))\n            return -EFAULT;\n\n        ts.tv_sec = ct.tv_sec;\n        ts.tv_nsec = ct.tv_nsec;\n        timeout_set = 1;\n    }\n\n    if (flags & MSG_DONTWAIT)\n        flags |= MSG_ERRQUEUE;\n\n    ret = kernel_recvmmsg(fd, mmsg, vlen, flags, timeout_set ? &ts : NULL);\n    if (ret < 0)\n        return ret;\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "long compat_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg,\n                            unsigned int vlen, unsigned int flags,\n                            struct compat_timespec __user *timeout)\n{\n    long ret;\n    struct timespec ts;\n    struct mmsghdr *kmsg;\n    struct iovec *iov;\n    struct sockaddr *addr;\n    int i;\n\n    if (timeout) {\n        if (get_user(ts.tv_sec, &timeout->tv_sec) ||\n            get_user(ts.tv_nsec, &timeout->tv_nsec))\n            return -EFAULT;\n        if (ts.tv_nsec > 999999999)\n            return -EINVAL;\n    }\n\n    kmsg = compat_alloc_user_space(vlen * sizeof(struct mmsghdr));\n    if (copy_in_user(kmsg, mmsg, vlen * sizeof(struct mmsghdr)))\n        return -EFAULT;\n\n    iov = compat_alloc_user_space(vlen * sizeof(struct iovec));\n    if (copy_in_user(iov, mmsg->msg_hdr.msg_iov, vlen * sizeof(struct iovec)))\n        return -EFAULT;\n\n    addr = compat_alloc_user_space(vlen * sizeof(struct sockaddr));\n    if (copy_in_user(addr, mmsg->msg_hdr.msg_name, vlen * sizeof(struct sockaddr)))\n        return -EFAULT;\n\n    ret = recvmmsg(fd, kmsg, vlen, flags, timeout ? &ts : NULL);\n    if (ret > 0) {\n        for (i = 0; i < ret; i++) {\n            if (copy_to_user(&mmsg[i].msg_hdr, &kmsg[i].msg_hdr,\n                             sizeof(struct mmsghdr)))\n                return -EFAULT;\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "long compat_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg,\n                            unsigned int vlen, unsigned int flags,\n                            struct compat_timespec __user *timeout)\n{\n    long ret;\n    struct timespec ts = { 0, 0 };\n    struct mmsghdr *mmsg_native = NULL;\n    struct compat_mmsghdr compat_mmsg;\n    unsigned int i;\n    int err;\n\n    if (timeout) {\n        if (get_user(ts.tv_sec, &timeout->tv_sec) ||\n            get_user(ts.tv_nsec, &timeout->tv_nsec))\n            return -EFAULT;\n    }\n\n    mmsg_native = kmalloc_array(vlen, sizeof(*mmsg_native), GFP_KERNEL);\n    if (!mmsg_native)\n        return -ENOMEM;\n\n    for (i = 0; i < vlen; i++) {\n        if (copy_from_user(&compat_mmsg, mmsg + i, sizeof(compat_mmsg)))\n            return -EFAULT;\n\n        mmsg_native[i].msg_hdr.msg_name    = compat_mmsg.msg_hdr.msg_name;\n        mmsg_native[i].msg_hdr.msg_namelen = compat_mmsg.msg_hdr.msg_namelen;\n        mmsg_native[i].msg_hdr.msg_iov    = compat_mmsg.msg_hdr.msg_iov;\n        mmsg_native[i].msg_hdr.msg_iovlen = compat_mmsg.msg_hdr.msg_iovlen;\n        mmsg_native[i].msg_hdr.msg_control = compat_mmsg.msg_hdr.msg_control;\n        mmsg_native[i].msg_hdr.msg_controllen = compat_mmsg.msg_hdr.msg_controllen;\n        mmsg_native[i].msg_hdr.msg_flags   = compat_mmsg.msg_hdr.msg_flags;\n        mmsg_native[i].msg_len = compat_mmsg.msg_len;\n    }\n\n    ret = kernel_recvmmsg(fd, mmsg_native, vlen, flags, timeout ? &ts : NULL);\n    if (ret >= 0) {\n        for (i = 0; i < ret; i++) {\n            compat_mmsg.msg_hdr.msg_name    = mmsg_native[i].msg_hdr.msg_name;\n            compat_mmsg.msg_hdr.msg_namelen = mmsg_native[i].msg_hdr.msg_namelen;\n            compat_mmsg.msg_hdr.msg_iov    = mmsg_native[i].msg_hdr.msg_iov;\n            compat_mmsg.msg_hdr.msg_iovlen = mmsg_native[i].msg_hdr.msg_iovlen;\n            compat_mmsg.msg_hdr.msg_control = mmsg_native[i].msg_hdr.msg_control;\n            compat_mmsg.msg_hdr.msg_controllen = mmsg_native[i].msg_hdr.msg_controllen;\n            compat_mmsg.msg_hdr.msg_flags   = mmsg_native[i].msg_hdr.msg_flags;\n            compat_mmsg.msg_len = mmsg_native[i].msg_len;\n\n            if (copy_to_user(mmsg + i, &compat_mmsg, sizeof(compat_mmsg))) {\n                err = -EFAULT;\n                ret = err;\n                break;\n            }\n        }\n    }\n\n    kfree(mmsg_native);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "long compat_recvmmsg_time32(int fd, struct compat_mmsghdr __user *mmsg,\n                            unsigned int vlen, unsigned int flags,\n                            struct compat_timespec __user *timeout)\n{\n    long ret;\n\n    if (flags & ~(MSG_DONTWAIT|MSG_TRUNC|MSG_CMSG_CLOEXEC))\n        return -EINVAL;\n\n    if (timeout) {\n        struct timespec ts;\n        if (get_user(ts.tv_sec, &timeout->tv_sec) ||\n            get_user(ts.tv_nsec, &timeout->tv_nsec))\n            return -EFAULT;\n        timeout = compat_ptr((unsigned long)&ts);\n    }\n\n    ret = kernel_recvmmsg(fd, mmsg, vlen, flags, timeout);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

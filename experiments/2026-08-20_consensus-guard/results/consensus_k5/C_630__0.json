@@ -1,0 +1,62 @@
+{
+  "case_id": "C_630__0",
+  "sample_id": "D/C/630",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-14734",
+  "cve_summary": "drivers/infiniband/core/ucma.c in the Linux kernel through 4.17.11 allows ucma_leave_multicast to access a certain data structure after a cleanup step in ucma_process_join, which allows attackers to cause a denial of service (use-after-free).",
+  "changed_file": "drivers/infiniband/core/ucma.c",
+  "docstring": "\"\"\"\nSummary: Allocates and initializes a multicast structure for a given context.\n\nParameters:\nctx (struct ucma_context*): Pointer to the context in which the multicast is being allocated.\n\nReturns:\nstruct ucma_multicast*: Pointer to the allocated multicast structure on success, or NULL on failure.\n\nLogic: The function allocates memory for a `ucma_multicast` structure using `kzalloc`. It locks a mutex to safely allocate a unique ID from an IDR (ID Radix Tree) and assigns it to the multicast structure. If the ID allocation fails, it cleans up by freeing the allocated memory and returns NULL. If successful, it associates the multicast structure with the provided context and adds it to the context's multicast list before returning the pointer to the newly created structure.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 0,
+    "steps": [
+      {
+        "step": "mutex lock around idr_alloc",
+        "performed_by_count": 5,
+        "why_it_matters": "If multiple threads call this function concurrently, the lack of a mutex lock could lead to a race condition during idr_alloc, potentially causing incorrect or duplicate ID assignments."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation omits a mutex lock around the idr_alloc call, which is a consensus step among the independent implementations. This omission could lead to a race condition if multiple threads attempt to allocate IDs simultaneously.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 0,
+    "net_exposure": 6,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "passing allocated structure to idr_alloc",
+        "performed_by_count": 5,
+        "why_it_matters": "If the IDR does not track the allocated structure, subsequent operations using the ID may dereference invalid or uninitialized pointers, leading to undefined behavior or memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target omits a defensive step that a majority of the independent implementations perform: passing the allocated structure as the second argument to idr_alloc. This ensures the IDR associates the structure with the ID, which is necessary for later retrieval. The target passes NULL instead, which breaks the intended functionality and could lead to use-after-free or invalid pointer issues if the ID is used without the structure being tracked.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

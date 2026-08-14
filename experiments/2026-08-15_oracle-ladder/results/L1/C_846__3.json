@@ -1,0 +1,49 @@
+{
+  "case_id": "C_846__3",
+  "sample_id": "D/C/846",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a sound timer device into a user-provided buffer.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sound timer device.\nbuffer (char __user *): Pointer to the user buffer where data will be copied.\ncount (size_t): The maximum number of bytes to read from the device.\noffset (loff_t *): Pointer to the offset in the file from which to read.\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: \nThe function locks the device's mutex and spinlock to ensure thread safety while reading data. It checks if there is data available to read and waits if the queue is empty, handling non-blocking and interruptible conditions. Data is copied from the device's queue to the user buffer, and the function updates the read position accordingly. It handles errors during the read process and returns the number of bytes successfully read or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static ssize_t snd_timer_user_read(struct v4 *v4, char __user *buffer,\n                   size_t v2, loff_t *offset)\n{\n    struct snd_timer_user *v9;\n    long v6 = 0, unit;\n    int v5;\n    int v3 = 0;\n    v9 = v4->private_data;\n    unit = v9->tread ? sizeof(struct v8) : sizeof(struct v7);\n    mutex_lock(&v9->ioctl_lock);\n    spin_lock_irq(&v9->qlock);\n    while ((long)v2 - v6 >= unit) {\n        while (!v9->qused) {\n            wait_queue_t v10;\n            if ((v4->f_flags & O_NONBLOCK) != 0 || v6 > 0) {\n                v3 = -EAGAIN;\n                goto v1;\n            }\n            set_current_state(TASK_INTERRUPTIBLE);\n            init_waitqueue_entry(&v10, current);\n            add_wait_queue(&v9->qchange_sleep, &v10);\n            spin_unlock_irq(&v9->qlock);\n            mutex_unlock(&v9->ioctl_lock);\n            schedule();\n            mutex_lock(&v9->ioctl_lock);\n            spin_lock_irq(&v9->qlock);\n            remove_wait_queue(&v9->qchange_sleep, &v10);\n            if (v9->disconnected) {\n                v3 = -ENODEV;\n                goto v1;\n            }\n            if (signal_pending(current)) {\n                v3 = -ERESTARTSYS;\n                goto v1;\n            }\n        }\n        v5 = v9->v5++;\n        v9->v5 %= v9->queue_size;\n        v9->qused--;\n        spin_unlock_irq(&v9->qlock);\n        if (v9->tread) {\n            if (copy_to_user(buffer, &v9->tqueue[v5],\n                     sizeof(struct v8)))\n                v3 = -EFAULT;\n        } else {\n            if (copy_to_user(buffer, &v9->queue[v5],\n                     sizeof(struct v7)))\n                v3 = -EFAULT;\n        }\n        spin_lock_irq(&v9->qlock);\n        if (v3 < 0)\n            goto v1;\n        v6 += unit;\n        buffer += unit;\n    }\n v1:\n    spin_unlock_irq(&v9->qlock);\n    mutex_unlock(&v9->ioctl_lock);\n    return v6 > 0 ? v6 : v3;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 10
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the order of acquiring and releasing locks. In the candidate implementation, the spinlock is acquired first, followed by the mutex. In the reference implementation, the spinlock is acquired first, but the mutex is used inside the loop after releasing the spinlock. This difference could lead to a race condition in the candidate implementation if the mutex is not held during the copy_to_user operation, potentially allowing concurrent access to the queue. This is a security-relevant issue as it could lead to memory corruption or data inconsistency.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both implementations lock the same mutex and spinlock, handle non-blocking and interruptible conditions in the same way, and copy data from the queue to the user buffer. The only differences are in variable names (e.g., 'v4' vs. 'file', 'v9' vs. 'tu', 'v6' vs. 'result'), and the use of different struct names (e.g., 'struct v8' vs. 'struct snd_timer_tread'). These are surface-level differences and do not affect the observable behavior of the function.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

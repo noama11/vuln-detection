@@ -1,0 +1,58 @@
+{
+  "case_id": "C_647__0",
+  "sample_id": "D/C/647",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "GNOME/gimp",
+  "cve_id": "CVE-2018-12713",
+  "cve_summary": "GIMP through 2.10.2 makes g_get_tmp_dir calls to establish temporary filenames, which may result in a filename that already exists, as demonstrated by the gimp_write_and_read_file function in app/tests/test-xcf.c. This might be leveraged by attackers to overwrite files or read file content that was intended to be private.",
+  "changed_file": "app/tests/test-xcf.c",
+  "docstring": "\"\"\"\nSummary: \nThis function writes a GIMP image to a temporary file and then reads it back to verify that the image can be saved and loaded without significant information loss.\n\nParameters: \ngimp (Gimp*): Pointer to the GIMP instance.\nwith_unusual_stuff (gboolean): Flag indicating whether to include unusual features in the image.\ncompat_paths (gboolean): Flag for compatibility with older paths.\nuse_gimp_2_8_features (gboolean): Flag to enable GIMP 2.8 specific features.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function creates a main image using the provided parameters, asserts its validity, writes it to a temporary file, and then loads it back. It checks that the loaded image is valid, ensuring that the save and load operations do not result in significant data loss. Finally, it cleans up by deleting the temporary file.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void test_gimp_image_save_load(Gimp *gimp, gboolean with_unusual_stuff, gboolean compat_paths, gboolean use_gimp_2_8_features)\n{\n  GimpImage *image;\n  gchar *temp_file;\n  GimpImage *loaded_image;\n  GError *error = NULL;\n\n  image = create_test_gimp_image(gimp, with_unusual_stuff, compat_paths, use_gimp_2_8_features);\n  g_return_if_fail(image != NULL);\n\n  temp_file = g_strdup_printf(\"/tmp/gimp-test-save-load-%d.xcf\", getpid());\n\n  if (!gimp_file_save(GIMP_FILE_SAVE_EXPORT, NULL, image, NULL, temp_file, \"XCF\", &error))\n    {\n      g_critical(\"Failed to save image: %s\", error->message);\n      g_clear_error(&error);\n      g_free(temp_file);\n      return;\n    }\n\n  loaded_image = gimp_file_load(GIMP_FILE_LOAD_IMPORTED, NULL, temp_file, \"XCF\", &error);\n\n  if (!loaded_image || error)\n    {\n      g_critical(\"Failed to load image: %s\", error ? error->message : \"Unknown error\");\n      g_clear_error(&error);\n      g_free(temp_file);\n      gimp_image_delete(image);\n      return;\n    }\n\n  g_return_if_fail(loaded_image != NULL);\n\n  gimp_image_delete(loaded_image);\n  gimp_image_delete(image);\n  g_unlink(temp_file);\n  g_free(temp_file);\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 3,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "error-checking on gimp_file_save and gimp_file_load",
+      "null-check on loaded_image",
+      "logging of errors"
+    ],
+    "candidate_missing_steps": [],
+    "n_reference_missing": 3,
+    "n_candidate_missing": 0,
+    "confidence": "high",
+    "rationale": "Implementation 1 uses GFile and g_file_delete to manage the file, but does not explicitly handle errors from g_file_delete or g_object_unref. It also does not check the return value of gimp_test_load_image. Implementation 2 uses explicit error handling with GError, including checking the return values of gimp_file_save and gimp_file_load, and logs errors when they occur. It also ensures the loaded_image is not null before proceeding. These are the only differing defensive steps.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 0,
+    "candidate_exposure": 0,
+    "reference_missing_steps": [
+      "GError handling and cleanup",
+      "g_return_if_fail for image validity"
+    ],
+    "candidate_missing_steps": [
+      "g_assert on file handle",
+      "g_file_delete and g_object_unref for GFile"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "high",
+    "rationale": "Implementation 1 uses a GFile object and performs unref and delete operations on it, ensuring proper resource cleanup. It also uses g_assert to verify the file handle is valid. Implementation 2 uses a raw file path and performs explicit error handling with GError, including freeing the temp file path and cleaning up the image objects. Implementation 2 also includes a g_return_if_fail to ensure the image is not null before proceeding. Neither implementation performs a defensive step the other does not in a way that introduces significant exposure.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_78__0",
+  "sample_id": "D/C/78",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3222",
+  "cve_summary": "The vcc_recvmsg function in net/atm/common.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nReceives a message from a socket and copies it into a provided message header.\n\nParameters:  \niocb (struct kiocb *): The I/O control block associated with the operation.  \nsock (struct socket *): The socket from which to receive the message.  \nmsg (struct msghdr *): The message header where the received data will be stored.  \nsize (size_t): The maximum number of bytes to copy into the message header.  \nflags (int): Flags that modify the behavior of the receive operation (e.g., non-blocking).\n\nReturns:  \nint: The number of bytes copied into the message header, or an error code on failure.\n\nLogic:  \nThe function first checks the socket's connection state and validates the flags. It retrieves the associated virtual circuit and checks its status. If the socket is ready, it attempts to receive a datagram. If successful, it copies the data into the message header, handling truncation if necessary. If the MSG_PEEK flag is not set, it updates the socket's memory allocation and returns the datagram. Finally, it frees the received datagram and returns the number of bytes copied.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int\r\nsmb_send_rqst(struct TCP_Server_Info *server, struct smb_rqst *rqst)\r\n{\r\n\tint rc;\r\n\tstruct kvec *iov = rqst->rq_iov;\r\n\tint n_vec = rqst->rq_nvec;\r\n\tunsigned int smb_buf_length = get_rfc1002_length(iov[0].iov_base);\r\n\tunsigned int i;\r\n\tsize_t total_len = 0, sent;\r\n\tstruct socket *ssocket = server->ssocket;\r\n\tint val = 1;\r\n\r\n\tif (ssocket == NULL)\r\n\t\treturn -ENOTSOCK;\r\n\r\n\tcFYI(1, \"Sending smb: smb_len=%u\", smb_buf_length);\r\n\tdump_smb(iov[0].iov_base, iov[0].iov_len);\r\n\r\n\t/* cork the socket */\r\n\tkernel_setsockopt(ssocket, SOL_TCP, TCP_CORK,\r\n\t\t\t\t(char *)&val, sizeof(val));\r\n\r\n\trc = smb_send_kvec(server, iov, n_vec, &sent);\r\n\tif (rc < 0)\r\n\t\tgoto uncork;\r\n\r\n\ttotal_len += sent;\r\n\r\n\t/* now walk the page array and send each page in it */\r\n\tfor (i = 0; i < rqst->rq_npages; i++) {\r\n\t\tstruct kvec p_iov;\r\n\r\n\t\tcifs_rqst_page_to_kvec(rqst, i, &p_iov);\r\n\t\trc = smb_send_kvec(server, &p_iov, 1, &sent);\r\n\t\tkunmap(rqst->rq_pages[i]);\r\n\t\tif (rc < 0)\r\n\t\t\tbreak;\r\n\r\n\t\ttotal_len += sent;\r\n\t}\r\n\r\nuncork:\r\n\t/* uncork it */\r\n\tval = 0;\r\n\tkernel_setsockopt(ssocket, SOL_TCP, TCP_CORK,\r\n\t\t\t\t(char *)&val, sizeof(val));\r\n\r\n\tif ((total_len > 0) && (total_len != smb_buf_length + 4)) {\r\n\t\tcFYI(1, \"partial send (wanted=%u sent=%zu): terminating \"\r\n\t\t\t\"session\", smb_buf_length + 4, total_len);\r\n\t\t/*\r\n\t\t * If we have only sent part of an SMB then the next SMB could\r\n\t\t * be taken as the remainder of this one. We need to kill the\r\n\t\t * socket so the server throws away the partial SMB\r\n\t\t */\r\n\t\tserver->tcpStatus = CifsNeedReconnect;\r\n\t}\r\n\r\n\tif (rc < 0 && rc != -EINTR)\r\n\t\tcERROR(1, \"Error %d sending data on socket to server\", rc);\r\n\telse\r\n\t\trc = 0;\r\n\r\n\treturn rc;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_68__1"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is a send function (`smb_send_rqst`) that sends data over a socket, while the reference implementation is a receive function (`vcc_recvmsg`) that receives data from a socket. The two functions perform fundamentally different operations (sending vs. receiving), and thus cannot be considered behaviorally equivalent. This is a clear and significant mismatch.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ significantly in their behavior and purpose. The candidate implementation is a function for sending data over a socket (smb_send_rqst), while the reference implementation is for receiving data (vcc_recvmsg). These functions perform opposite operations (send vs. receive) and are not behaviorally equivalent for any input. As such, they are fundamentally different in their observable outcomes.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

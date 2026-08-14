@@ -1,0 +1,82 @@
+{
+  "case_id": "C_605__0",
+  "sample_id": "D/C/605",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-19824",
+  "cve_summary": "In the Linux kernel through 4.19.6, a local user could exploit a use-after-free in the ALSA driver by supplying a malicious USB Sound device (with zero interfaces) that is mishandled in usb_audio_probe in sound/usb/card.c.",
+  "changed_file": "sound/usb/card.c",
+  "docstring": "\"\"\"\nSummary: \nProbes a USB audio device and registers it with the ALSA sound system.\n\nParameters: \nintf (struct usb_interface *): Pointer to the USB interface structure.\nusb_id (const struct usb_device_id *): Pointer to the USB device ID structure.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function retrieves the USB device associated with the interface and checks for any quirks related to the device. It attempts to apply any necessary boot quirks and checks if the device is already registered. If not, it looks for an available slot to create a new card instance. The function also handles special cases for devices with multiple control interfaces and registers the card with ALSA. In case of errors, it cleans up resources and returns the appropriate error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/usb.h>\n#include <sound/core.h>\n\nint register_usb_audio_device(struct usb_interface *intf, const struct usb_device_id *usb_id) {\n    struct usb_device *dev = interface_to_usbdev(intf);\n    struct snd_card *card = NULL;\n    int err = -ENOMEM;\n\n    if (!dev || !intf || !usb_id) {\n        return -EINVAL;\n    }\n\n    // Check for device quirks and apply boot quirks if needed\n    if (dev->quirks & USB_QUIRK_AUDIO_BOOT_QUIRK) {\n        err = apply_boot_quirks(dev);\n        if (err < 0) {\n            return err;\n        }\n    }\n\n    // Check if the device is already registered\n    if (is_device_registered(dev)) {\n        return 0;\n    }\n\n    // Allocate a new sound card\n    card = snd_card_new_index(SNDRV_DEFAULT_IDX, -1, NULL, 0);\n    if (!card) {\n        return -ENOMEM;\n    }\n\n    // Handle special cases for devices with multiple control interfaces\n    if (dev->quirks & USB_QUIRK_AUDIO_MULTI_CTRL_INTERFACE) {\n        err = handle_multi_control_interfaces(dev, card);\n        if (err < 0) {\n            goto error;\n        }\n    }\n\n    // Register the card with ALSA\n    err = snd_card_register(card);\n    if (err < 0) {\n        goto error;\n    }\n\n    return 0;\n\nerror:\n    if (card) {\n        snd_card_free(card);\n    }\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null interface or device ID pointers"
+    },
+    {
+      "step": "allocate and free resources on error paths",
+      "protects_against": "memory leaks when error occurs during card registration"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null interface or device ID pointers",
+        "reasoning": "The implementation does not explicitly check if `intf` or `usb_id` are null before dereferencing them. Dereferencing null pointers could lead to a crash or undefined behavior.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "allocate and free resources on error paths — protects against: memory leaks when error occurs during card registration",
+        "reasoning": "The implementation includes an error-handling path (`__error:`) that checks if `chip` is non-null and performs cleanup actions such as calling `snd_card_free(chip->card)` and decrementing the active counter. This suggests that the implementation attempts to free resources on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null interface or device ID pointers",
+        "reasoning": "The implementation does not explicitly check whether `intf` or `usb_id` are null before dereferencing them. Dereferencing null pointers could lead to a crash or undefined behavior.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "allocate and free resources on error paths — protects against: memory leaks when error occurs during card registration",
+        "reasoning": "The implementation includes an error-handling path (`__error:`) that checks if `chip` is non-null and performs cleanup, including decrementing the active counter and calling `snd_card_free` if no interfaces are registered. This suggests that the implementation attempts to free resources on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

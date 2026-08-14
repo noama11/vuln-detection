@@ -1,0 +1,49 @@
+{
+  "case_id": "C_76__0",
+  "sample_id": "D/C/76",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3225",
+  "cve_summary": "The rfcomm_sock_recvmsg function in net/bluetooth/rfcomm/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/bluetooth/rfcomm/sock.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Receives a message from an RFCOMM socket and handles setup and throttling.  \n *  \n * Parameters:  \n * iocb (struct kiocb *): I/O control block for the operation.  \n * sock (struct socket *): The socket from which to receive the message.  \n * msg (struct msghdr *): Message header structure to fill with received data.  \n * size (size_t): Maximum size of the message to receive.  \n * flags (int): Flags to modify the behavior of the receive operation.  \n *  \n * Returns:  \n * int: The number of bytes received, or 0 if no data is available.  \n *  \n * Logic:  \n * The function checks if the RFCOMM connection setup is deferred and accepts it if so.  \n * It then calls a lower-level function to receive the message, updates the socket's  \n * receive memory allocation, and potentially unthrottles the connection if memory  \n * usage is below a certain threshold.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int rfcomm_sock_recvmsg(struct kiocb *v3, struct socket *v8,\n                   struct msghdr *v5, size_t v6, int v2)\n{\n    struct v8 *v7 = v8->v7;\n    struct rfcomm_dlc *v1 = rfcomm_pi(v7)->dlc;\n    int v4;\n    if (test_and_clear_bit(RFCOMM_DEFER_SETUP, &v1->v2)) {\n        rfcomm_dlc_accept(v1);\n        v5->msg_namelen = 0;\n        return 0;\n    }\n    v4 = bt_sock_stream_recvmsg(v3, v8, v5, v6, v2);\n    lock_sock(v7);\n    if (!(v2 & MSG_PEEK) && v4 > 0)\n        atomic_sub(v4, &v7->sk_rmem_alloc);\n    if (atomic_read(&v7->sk_rmem_alloc) <= (v7->sk_rcvbuf >> 2))\n        rfcomm_dlc_unthrottle(rfcomm_pi(v7)->dlc);\n    release_sock(v7);\n    return v4;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 8
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of behavior. Both handle deferred setup by calling `rfcomm_dlc_accept`, both call `bt_sock_stream_recvmsg`, and both manage memory allocation and throttling in the same way. The only differences are in variable names and minor syntactic variations, which do not affect observable behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle the deferred setup by calling `rfcomm_dlc_accept`, set `msg_namelen` to 0, and return 0. They both call `bt_sock_stream_recvmsg`, update the receive memory allocation, and unthrottle the connection if the memory usage is below a threshold. The only differences are in variable names and struct member access (e.g., `v7` vs. `sk`, `v1` vs. `d`, `v2` vs. `flags`), which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

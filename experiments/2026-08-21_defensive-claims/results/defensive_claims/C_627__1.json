@@ -1,0 +1,146 @@
+{
+  "case_id": "C_627__1",
+  "sample_id": "D/C/627",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "libgit2/libgit2",
+  "cve_id": "CVE-2018-15501",
+  "cve_summary": "In ng_pkt in transports/smart_pkt.c in libgit2 before 0.26.6 and 0.27.x before 0.27.4, a remote attacker can send a crafted smart-protocol *ng* packet that lacks a '0' byte to trigger an out-of-bounds read that leads to DoS.",
+  "changed_file": "src/transports/smart_pkt.c",
+  "docstring": "Summary: This function processes a packet line in a specific format and allocates memory for its components.\n\nParameters:\n- out (git_pkt **): A pointer to a pointer where the created packet will be stored.\n- line (const char *): The input string containing the packet data.\n- len (size_t): The length of the input string.\n\nReturns: \nint: Returns 0 on success, or -1 if an error occurs during processing.\n\nLogic: The function allocates memory for a `git_pkt_ng` structure, checks the validity of the input line, and extracts the reference and message components from the line. It handles memory allocation errors and ensures proper cleanup in case of failure. If successful, it populates the output pointer with the created packet and returns 0; otherwise, it sets an error and returns -1.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int parse_pkt_line(git_pkt **out, const char *line, size_t len) {\n    git_pkt_ng *pkt = NULL;\n    const char *ref_end = NULL;\n    const char *msg_start = NULL;\n    size_t ref_len = 0;\n    size_t msg_len = 0;\n\n    if (!out || !line || len < 5) {\n        return -1;\n    }\n\n    pkt = (git_pkt_ng *)malloc(sizeof(git_pkt_ng));\n    if (!pkt) {\n        return -1;\n    }\n\n    if (memcmp(line, \"PACK\", 4) != 0) {\n        free(pkt);\n        return -1;\n    }\n\n    line += 5;\n    len -= 5;\n\n    ref_end = memchr(line, '\\0', len);\n    if (!ref_end) {\n        free(pkt);\n        return -1;\n    }\n\n    ref_len = ref_end - line;\n    pkt->ref = (char *)malloc(ref_len + 1);\n    if (!pkt->ref) {\n        free(pkt);\n        return -1;\n    }\n\n    memcpy(pkt->ref, line, ref_len);\n    pkt->ref[ref_len] = '\\0';\n\n    line = ref_end + 1;\n    len -= ref_len + 1;\n\n    msg_start = memchr(line, '\\0', len);\n    if (!msg_start) {\n        free(pkt->ref);\n        free(pkt);\n        return -1;\n    }\n\n    msg_len = msg_start - line;\n    pkt->msg = (char *)malloc(msg_len + 1);\n    if (!pkt->msg) {\n        free(pkt->ref);\n        free(pkt);\n        return -1;\n    }\n\n    memcpy(pkt->msg, line, msg_len);\n    pkt->msg[msg_len] = '\\0';\n\n    *out = (git_pkt *)pkt;\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for minimum length",
+      "protects_against": "malformed input with insufficient length"
+    },
+    {
+      "step": "check for memory allocation failures",
+      "protects_against": "out of memory conditions"
+    },
+    {
+      "step": "validate input format",
+      "protects_against": "malformed input with incorrect format"
+    },
+    {
+      "step": "check for null-terminated strings",
+      "protects_against": "malformed input without null terminators"
+    },
+    {
+      "step": "properly clean up allocated memory on error",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers in the parameters. However, the function assumes that the inputs are valid and does not perform any checks for null values in 'out', 'line', or other pointers.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for minimum length — protects against: malformed input with insufficient length",
+        "reasoning": "The implementation does not check for a minimum length of the input string. It assumes the input is valid and processes it directly.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for memory allocation failures — protects against: out of memory conditions",
+        "reasoning": "The implementation uses 'git__malloc' and 'GITERR_CHECK_ALLOC' to check for memory allocation failures. If an allocation fails, the function jumps to the error handler and returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate input format — protects against: malformed input with incorrect format",
+        "reasoning": "The implementation validates the input format by checking for the presence of specific characters (' ' and '\n') in the input string. If the format is invalid, it jumps to the error handler and returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null-terminated strings — protects against: malformed input without null terminators",
+        "reasoning": "The implementation ensures that the strings are null-terminated by explicitly setting the last character to '\n' after copying the data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly clean up allocated memory on error — protects against: memory leaks",
+        "reasoning": "The implementation includes an error handler ('out_err') that frees any allocated memory before returning an error. This prevents memory leaks in case of failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters 'out' or 'line'. Dereferencing 'out' or 'line' could lead to a null pointer dereference if they are null.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for minimum length — protects against: malformed input with insufficient length",
+        "reasoning": "The implementation checks if 'len < 3' and skips the first 3 characters ('ng '). This is a check for minimum length to ensure the input is valid.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for memory allocation failures — protects against: out of memory conditions",
+        "reasoning": "The implementation uses 'git__malloc' and 'GITERR_CHECK_ALLOC' to check for memory allocation failures. If allocation fails, the function returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate input format — protects against: malformed input with incorrect format",
+        "reasoning": "The implementation validates the input format by checking for the presence of 'ng ' at the start and ensuring the presence of space and newline characters in the input. This ensures the input conforms to the expected format.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null-terminated strings — protects against: malformed input without null terminators",
+        "reasoning": "The implementation explicitly null-terminates the strings 'pkt->ref' and 'pkt->msg' after copying the data. This ensures the strings are null-terminated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly clean up allocated memory on error — protects against: memory leaks",
+        "reasoning": "The implementation includes an error cleanup path ('out_err') that frees the allocated memory for 'pkt->ref' and 'pkt'. This prevents memory leaks in case of an error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "case_id": "C_483__0",
+  "implementation": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *assoc;\n    struct socket *new_sk = NULL;\n    int ret = -EINVAL;\n\n    if (!sk || !sockp)\n        return -EINVAL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        return -ENOENT;\n\n    if (!assoc->peer.sctp_peeloff_capable) {\n        ret = -EOPNOTSUPP;\n        goto out;\n    }\n\n    ret = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_SCTP, &new_sk);\n    if (ret < 0) {\n        new_sk = NULL;\n        goto out;\n    }\n\n    ret = sctp_copy_sock(new_sk, sk);\n    if (ret < 0)\n        goto out;\n\n    ret = sctp_migrate_assoc(new_sk, assoc);\n    if (ret < 0)\n        goto out;\n\n    *sockp = new_sk;\n    ret = 0;\n\nout:\n    if (ret < 0 && new_sk) {\n        sock_release(new_sk);\n        new_sk = NULL;\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing sk or sockp"
+    },
+    {
+      "step": "check association capability",
+      "protects_against": "attempting to peel off an association from a socket that does not support it"
+    },
+    {
+      "step": "check return value of sock_create_kern",
+      "protects_against": "failing to create a new socket and continuing with invalid state"
+    },
+    {
+      "step": "check return value of sctp_copy_sock",
+      "protects_against": "failing to copy socket properties and continuing with invalid state"
+    },
+    {
+      "step": "check return value of sctp_migrate_assoc",
+      "protects_against": "failing to migrate association and continuing with invalid state"
+    },
+    {
+      "step": "release new socket on error",
+      "protects_against": "resource leak when error occurs after socket creation"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,162 @@
+{
+  "case_id": "C_246__0",
+  "sample_id": "D/C/246",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function handles the dumping of netlink messages from a socket, managing memory allocation and ensuring proper synchronization.\n\nParameters:  \nsk (struct sock *): The socket from which to dump netlink messages.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks a mutex to ensure thread safety and checks if the callback is running. It then verifies if the socket's receive buffer is full. Depending on the conditions, it allocates a socket buffer (skb) of appropriate size for the dump operation. If allocation fails, it cleans up and returns an error. The function then calls the dump callback to fill the skb with data. If the dump is successful, it checks for filters and sends the skb or frees it accordingly. Finally, it handles the completion of the dump, unlocking the mutex and cleaning up resources before returning.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int handle_netlink_dump(struct sock *sk) {\n    struct sk_buff *skb = NULL;\n    int err = 0;\n\n    mutex_lock(&sk->sk_lock);\n\n    if (sk->sk_callback_running) {\n        err = -EBUSY;\n        goto out;\n    }\n\n    if (skb_queue_len(&sk->sk_receive_queue) >= sk->sk_rcvbuf) {\n        err = -ENOBUFS;\n        goto out;\n    }\n\n    skb = alloc_skb(sk->sk_sndbuf, GFP_KERNEL);\n    if (!skb) {\n        err = -ENOMEM;\n        goto out;\n    }\n\n    sk->sk_callback_running = 1;\n\n    err = sk->sk_dump(skb);\n    if (err < 0) {\n        kfree_skb(skb);\n        sk->sk_callback_running = 0;\n        goto out;\n    }\n\n    if (sk->sk_filter && skb_filter(skb, sk->sk_filter)) {\n        skb_queue_tail(&sk->sk_receive_queue, skb);\n    } else {\n        kfree_skb(skb);\n    }\n\n    sk->sk_callback_running = 0;\n\nout:\n    mutex_unlock(&sk->sk_lock);\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if callback is already running",
+      "protects_against": "concurrent access to the socket's callback"
+    },
+    {
+      "step": "check if receive buffer is full",
+      "protects_against": "memory exhaustion when adding new messages"
+    },
+    {
+      "step": "check if skb allocation succeeded",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check if dump callback succeeded",
+      "protects_against": "malformed or incomplete data in skb"
+    },
+    {
+      "step": "ensure callback running flag is reset on error paths",
+      "protects_against": "deadlock from leaving callback running flag set"
+    },
+    {
+      "step": "ensure mutex is unlocked on all exit paths",
+      "protects_against": "deadlock from leaving mutex locked"
+    },
+    {
+      "step": "properly free skb on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check if callback is already running — protects against: concurrent access to the socket's callback",
+        "reasoning": "The implementation checks `nlk->cb_running` before proceeding, ensuring the callback is not already running. This prevents concurrent access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if receive buffer is full — protects against: memory exhaustion when adding new messages",
+        "reasoning": "The implementation checks `atomic_read(&sk->sk_rmem_alloc) >= sk->sk_rcvbuf` to determine if the receive buffer is full and skips allocation if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if skb allocation succeeded — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if `skb` is `NULL` after each allocation attempt and jumps to the error handler if allocation fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if dump callback succeeded — protects against: malformed or incomplete data in skb",
+        "reasoning": "The implementation checks if `len > 0` after calling the dump callback, indicating success. If not, it proceeds to error handling.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure callback running flag is reset on error paths — protects against: deadlock from leaving callback running flag set",
+        "reasoning": "The implementation sets `nlk->cb_running = false` before returning in the success path, but it does not explicitly reset the flag on error paths. However, it unlocks the mutex and returns an error, which may implicitly prevent re-entrancy.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "ensure mutex is unlocked on all exit paths — protects against: deadlock from leaving mutex locked",
+        "reasoning": "The implementation unlocks the mutex in both the success path and the error path (`errout_skb`), ensuring it is always unlocked.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly free skb on error paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree_skb(skb)` in the error path (`errout_skb`), ensuring the skb is freed if allocation or processing fails.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 7,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if callback is already running — protects against: concurrent access to the socket's callback",
+        "reasoning": "The implementation checks if `nlk->cb_running` is false before proceeding, ensuring the callback is not already running.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if receive buffer is full — protects against: memory exhaustion when adding new messages",
+        "reasoning": "The implementation checks if the receive buffer is full using `atomic_read(&sk->sk_rmem_alloc) >= sk->sk_rcvbuf` and skips further processing if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if skb allocation succeeded — protects against: memory allocation failure",
+        "reasoning": "The implementation checks if `skb` is not NULL after each allocation attempt and jumps to the error handler if it is NULL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if dump callback succeeded — protects against: malformed or incomplete data in skb",
+        "reasoning": "The implementation checks if `len > 0` after calling the dump callback, indicating success. If not, it proceeds to error handling.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure callback running flag is reset on error paths — protects against: deadlock from leaving callback running flag set",
+        "reasoning": "The implementation sets `nlk->cb_running = false` before returning from the function, ensuring the flag is reset.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure mutex is unlocked on all exit paths — protects against: deadlock from leaving mutex locked",
+        "reasoning": "The implementation unlocks the mutex in both the normal and error paths (`mutex_unlock(nlk->cb_mutex)`), ensuring it is always unlocked.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly free skb on error paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree_skb(skb)` in the error path (`errout_skb`) to ensure the skb is freed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

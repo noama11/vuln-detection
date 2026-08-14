@@ -1,0 +1,48 @@
+{
+  "case_id": "C_292__1",
+  "sample_id": "D/C/292",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-4805",
+  "cve_summary": "Use-after-free vulnerability in drivers/net/ppp/ppp_generic.c in the Linux kernel before 4.5.2 allows local users to cause a denial of service (memory corruption and system crash, or spinlock) or possibly have unspecified other impact by removing a network namespace, related to the ppp_register_net_channel and ppp_unregister_channel functions.",
+  "changed_file": "drivers/net/ppp/ppp_generic.c",
+  "docstring": "Summary: Unregisters a PPP channel and cleans up associated resources.\n\nParameters: \n- chan (struct ppp_channel*): Pointer to the PPP channel to be unregistered.\n\nReturns: None\n\nLogic: The function first checks if the provided channel is valid. If valid, it sets the channel's PPP pointer to NULL and ensures that any ongoing operations are completed by acquiring a write lock. It then disconnects the channel, removes it from the list of all channels, and decrements the reference count of the channel's file structure. If the reference count reaches zero, it destroys the channel. Additionally, it wakes up any processes waiting on the channel's file.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void\r\nppp_unregister_channel(struct ppp_channel *chan)\r\n{\r\n\tstruct channel *pch = chan->ppp;\r\n\tstruct ppp_net *pn;\r\n\r\n\tif (!pch)\r\n\t\treturn;\t\t/* should never happen */\r\n\r\n\tchan->ppp = NULL;\r\n\r\n\t/*\r\n\t * This ensures that we have returned from any calls into the\r\n\t * the channel's start_xmit or ioctl routine before we proceed.\r\n\t */\r\n\tdown_write(&pch->chan_sem);\r\n\tspin_lock_bh(&pch->downl);\r\n\tpch->chan = NULL;\r\n\tspin_unlock_bh(&pch->downl);\r\n\tup_write(&pch->chan_sem);\r\n\tppp_disconnect_channel(pch);\r\n\r\n\tpn = ppp_pernet(pch->chan_net);\r\n\tspin_lock_bh(&pn->all_channels_lock);\r\n\tlist_del(&pch->list);\r\n\tspin_unlock_bh(&pn->all_channels_lock);\r\n\tput_net(pch->chan_net);\r\n\tpch->chan_net = NULL;\r\n\r\n\tpch->file.dead = 1;\r\n\twake_up_interruptible(&pch->file.rwait);\r\n\tif (atomic_dec_and_test(&pch->file.refcnt))\r\n\t\tppp_destroy_channel(pch);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional call to `put_net(pch->chan_net);` and sets `pch->chan_net = NULL;`, which the reference implementation lacks. This difference affects resource cleanup related to the network namespace. While this may not directly impact security, it could lead to resource leaks or inconsistencies if the network namespace is not properly released. The difference is reachable and affects resource management.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation are identical in code and logic. Both perform the same checks, acquire the same locks, and execute the same cleanup operations. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

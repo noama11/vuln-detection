@@ -1,0 +1,98 @@
+{
+  "case_id": "C_199__2",
+  "sample_id": "D/C/199",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "bonzini/qemu",
+  "cve_id": "CVE-2011-3346",
+  "cve_summary": "Buffer overflow in hw/scsi-disk.c in the SCSI subsystem in QEMU before 0.15.2, as used by Xen, might allow local guest users with permission to access the CD-ROM to cause a denial of service (guest crash) via a crafted SAI READ CAPACITY SCSI command.  NOTE: this is only a vulnerability when root has manually modified certain permissions or ACLs.",
+  "changed_file": "hw/scsi-disk.c",
+  "docstring": "```plaintext\nSummary: \nEmulates a SCSI command for a disk device, handling specific requests such as ejecting the tray and checking the unit's readiness.\n\nParameters: \nr (SCSIDiskReq*): Pointer to the SCSI disk request structure containing command details.\n\nReturns: \nint: Returns 0 on success, -1 for errors related to tray operations or illegal requests.\n\nLogic: The function checks if the command buffer indicates a load or eject operation. If the device is a ROM type and the eject condition is met, it performs the corresponding eject operation. It also ensures that the command's transfer length does not exceed a specified limit, returning an error for illegal requests. The function processes the command based on its type, handling specific cases like checking if the unit is ready or if the tray is open.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int scsi_emulate_command(SCSIDiskReq *r) {\n    if (!r) {\n        return -1;\n    }\n\n    if (r->command[0] == 0x1B) { /* Eject tray or check readiness */\n        if (r->command[1] & 0x02) { /* Eject condition */\n            if (r->device_type == 0x5) { /* ROM device type */\n                if (r->tray_locked) {\n                    return -1; /* Tray is locked, cannot eject */\n                }\n                r->tray_open = 1; /* Perform eject operation */\n            } else {\n                return -1; /* Eject not supported for this device type */\n            }\n        } else if (r->command[1] & 0x01) { /* Check readiness */\n            if (!r->tray_open) {\n                return -1; /* Unit not ready, tray is closed */\n            }\n        } else {\n            return -1; /* Illegal request */\n        }\n\n        if (r->data_length > 0) {\n            return -1; /* Illegal request: non-zero data transfer length */\n        }\n\n        return 0; /* Success */\n    }\n\n    return -1; /* Illegal request */\n}",
+  "defensive_steps": [
+    {
+      "step": "check that the request pointer is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate command bytes before acting on them",
+      "protects_against": "processing invalid or unexpected command types"
+    },
+    {
+      "step": "check data_length for non-zero values",
+      "protects_against": "unexpected data transfer requests"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check that the request pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the request pointer is null. However, the function is called with a pointer to a valid SCSIDiskReq structure, and the code assumes it is non-null (e.g., accessing req->cmd.buf[0]).",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate command bytes before acting on them — protects against: processing invalid or unexpected command types",
+        "reasoning": "The implementation uses a switch statement on req->cmd.buf[0], which is the command byte. It handles specific command types and jumps to error labels for invalid cases (e.g., illegal_request). This validates the command bytes before acting on them.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check data_length for non-zero values — protects against: unexpected data transfer requests",
+        "reasoning": "The implementation does not explicitly check for non-zero data_length values. The code does not appear to validate or handle the data_length parameter in any way.",
+        "verdict": "omits",
+        "severity": 2
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 13,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check that the request pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the pointer `r` directly without checking if it is null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate command bytes before acting on them — protects against: processing invalid or unexpected command types",
+        "reasoning": "The implementation uses `req->cmd.buf[4]` to determine the `start` and `loej` flags, but does not validate the command bytes themselves. If the command buffer is malformed or unexpected, the function may act on invalid data.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check data_length for non-zero values — protects against: unexpected data transfer requests",
+        "reasoning": "The implementation does not reference or check the `data_length` field of the request. Since it does not perform any data transfer, this step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

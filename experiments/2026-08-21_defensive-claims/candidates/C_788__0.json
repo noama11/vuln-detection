@@ -1,0 +1,31 @@
+{
+  "case_id": "C_788__0",
+  "implementation": "int cleanup_zip_archive(struct archive_read *a) {\n  struct zip *zip = (struct zip *)a->format_data;\n  int ret = ARCHIVE_OK;\n\n  if (zip == NULL)\n    return ARCHIVE_OK;\n\n  // Free zlib decompression stream if valid\n  if (zip->zlib_stream != NULL) {\n    if (zip->zlib_stream->state != NULL)\n      inflateEnd(zip->zlib_stream);\n    free(zip->zlib_stream);\n    zip->zlib_stream = NULL;\n  }\n\n  // Free LZMA decompression stream if valid\n  if (zip->lzma_stream != NULL) {\n    if (zip->lzma_stream->state != NULL)\n      lzma_code_end(zip->lzma_stream);\n    free(zip->lzma_stream);\n    zip->lzma_stream = NULL;\n  }\n\n  // Free BZ2 decompression stream if valid\n  if (zip->bz2_stream != NULL) {\n    if (zip->bz2_stream->state != NULL)\n      BZ2_bzDecompressEnd(zip->bz2_stream);\n    free(zip->bz2_stream);\n    zip->bz2_stream = NULL;\n  }\n\n  // Free ZIP entry resources\n  struct zip_entry *entry = zip->entries;\n  while (entry != NULL) {\n    struct zip_entry *next = entry->next;\n\n    if (entry->data != NULL)\n      free(entry->data);\n\n    if (entry->extra != NULL)\n      free(entry->extra);\n\n    free(entry);\n    entry = next;\n  }\n\n  // Free main ZIP structure\n  free(zip);\n  a->format_data = NULL;\n\n  return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if zip pointer is NULL before dereferencing",
+      "protects_against": "dereferencing a NULL pointer which would cause a crash"
+    },
+    {
+      "step": "check if decompression stream state is valid before calling end functions",
+      "protects_against": "calling cleanup functions on invalid or uninitialized decompression streams"
+    },
+    {
+      "step": "safely traverse linked list of entries with next pointer check",
+      "protects_against": "dereferencing invalid or uninitialized next pointers in the linked list"
+    },
+    {
+      "step": "free entry data and extra fields before freeing the entry itself",
+      "protects_against": "memory leaks from not freeing all allocated resources"
+    },
+    {
+      "step": "set a->format_data to NULL after freeing the ZIP structure",
+      "protects_against": "dangling pointer that could be accidentally used after the ZIP structure has been freed"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

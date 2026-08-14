@@ -1,0 +1,114 @@
+{
+  "case_id": "C_217__1",
+  "sample_id": "D/C/217",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-4036",
+  "cve_summary": "Array index error in the tcm_vhost_make_tpg function in drivers/vhost/scsi.c in the Linux kernel before 4.0 might allow guest OS users to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted VHOST_SCSI_SET_ENDPOINT ioctl call.  NOTE: the affected function was renamed to vhost_scsi_make_tpg before the vulnerability was announced.",
+  "changed_file": "drivers/vhost/scsi.c",
+  "docstring": "/**\n * Summary: Creates a target portal group (TPG) for a SCSI virtual host.\n * \n * Parameters:\n * wwn (struct se_wwn *): The worldwide name associated with the TPG.\n * group (struct config_group *): The configuration group to which the TPG belongs.\n * name (const char *): The name of the TPG, expected to start with \"tpgt_\".\n * \n * Returns: \n * struct se_portal_group *: A pointer to the created TPG on success, or an error pointer on failure.\n * \n * Logic: The function validates the TPG name, allocates memory for the TPG structure, initializes it, and registers it with the core SCSI transport. If any step fails, appropriate error handling is performed, including memory cleanup and returning error codes. The new TPG is added to a global list of TPGs, ensuring thread safety with mutex locks.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n#include <pthread.h>\n\nstruct se_wwn;\nstruct config_group;\nstruct se_portal_group;\n\n// Assume these functions are defined elsewhere\nstruct se_portal_group *create_tpg_structure(struct se_wwn *wwn);\nint register_tpg_with_transport(struct se_portal_group *tpg);\nvoid add_tpg_to_global_list(struct se_portal_group *tpg);\n\n// Assume these types are defined elsewhere\nstruct se_wwn {\n    // ...\n};\n\nstruct config_group {\n    // ...\n};\n\nstruct se_portal_group {\n    // ...\n};\n\n// Global mutex for thread safety\npthread_mutex_t tpg_mutex = PTHREAD_MUTEX_INITIALIZER;\n\nstruct se_portal_group *create_tpg(struct se_wwn *wwn, struct config_group *group, const char *name) {\n    // Validate input pointers\n    if (!wwn || !group || !name) {\n        return (struct se_portal_group *)-1;\n    }\n\n    // Validate name format: must start with \"tpgt_\"\n    if (strncmp(name, \"tpgt_\", 5) != 0) {\n        return (struct se_portal_group *)-1;\n    }\n\n    // Allocate memory for TPG structure\n    struct se_portal_group *tpg = create_tpg_structure(wwn);\n    if (!tpg) {\n        return (struct se_portal_group *)-1;\n    }\n\n    // Initialize TPG (implementation details would go here)\n\n    // Register TPG with core SCSI transport\n    int ret = register_tpg_with_transport(tpg);\n    if (ret != 0) {\n        free(tpg);\n        return (struct se_portal_group *)-1;\n    }\n\n    // Add TPG to global list with thread safety\n    pthread_mutex_lock(&tpg_mutex);\n    add_tpg_to_global_list(tpg);\n    pthread_mutex_unlock(&tpg_mutex);\n\n    return tpg;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input pointers",
+      "protects_against": "null pointers for wwn, group, or name parameters"
+    },
+    {
+      "step": "validate name format",
+      "protects_against": "malformed TPG names that don't start with \"tpgt_\""
+    },
+    {
+      "step": "check memory allocation result",
+      "protects_against": "memory allocation failures when creating the TPG structure"
+    },
+    {
+      "step": "use mutex for thread safety",
+      "protects_against": "race conditions when adding the TPG to the global list"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null pointers for wwn, group, or name parameters",
+        "reasoning": "The implementation does not explicitly check if the input pointers (wwn, group, or name) are null. However, the function is called with these parameters, and the code proceeds to use them directly. A null pointer for any of these would cause undefined behavior.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate name format — protects against: malformed TPG names that don't start with \"tpgt_\"",
+        "reasoning": "The implementation checks if the name starts with \"tpgt_\" by comparing the result of strstr(name, \"tpgt_\") to name. If the name does not start with \"tpgt_\", it returns an error pointer with -EINVAL.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failures when creating the TPG structure",
+        "reasoning": "The implementation checks if the memory allocation for tpg is successful. If it fails, it logs an error and returns an error pointer with -ENOMEM.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use mutex for thread safety — protects against: race conditions when adding the TPG to the global list",
+        "reasoning": "The implementation uses a mutex (vhost_scsi_mutex) to lock the critical section where the TPG is added to the global list. This ensures thread safety during the addition.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input pointers — protects against: null pointers for wwn, group, or name parameters",
+        "reasoning": "The implementation does not explicitly check if the input pointers (wwn, group, or name) are null. However, the function is declared with parameters that are not marked as optional, and the code proceeds under the assumption that they are valid. There is no explicit null check.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "validate name format — protects against: malformed TPG names that don't start with \"tpgt_\"",
+        "reasoning": "The implementation checks if the name starts with \"tpgt_\" using `strstr(name, \"tpgt_\") != name`. If the name does not start with this prefix, it returns an error. It also parses the numeric part of the name and checks if it is within bounds.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation result — protects against: memory allocation failures when creating the TPG structure",
+        "reasoning": "The implementation checks the result of `kzalloc` and returns an error if it fails. It also logs an error message in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use mutex for thread safety — protects against: race conditions when adding the TPG to the global list",
+        "reasoning": "The implementation uses a mutex (`vhost_scsi_mutex`) to lock the critical section where the TPG is added to the global list. It calls `mutex_lock` before adding and `mutex_unlock` afterward.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "C_752__0",
+  "sample_id": "D/C/752",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-14284",
+  "cve_summary": "In the Linux kernel before 5.2.3, drivers/block/floppy.c allows a denial of service by setup_format_params division-by-zero. Two consecutive ioctls can trigger the bug: the first one should set the drive geometry with .sect and .rate values that make F_SECT_PER_TRACK be zero. Next, the floppy format operation should be called. It can be triggered by an unprivileged local user even when a floppy disk has not been inserted. NOTE: QEMU creates the floppy device by default.",
+  "changed_file": "drivers/block/floppy.c",
+  "docstring": "\"\"\"\nSummary: \nSets up format parameters for a floppy disk track.\n\nParameters: \ntrack (int): The track number to set up.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function initializes various parameters related to formatting a floppy disk track. It defines a structure to hold track formatting parameters and populates it based on the current floppy disk settings. It calculates the number of sectors per track and interleave based on the formatting requirements. The function also handles the positioning of logical sectors on the track, ensuring that each sector is assigned correctly and that busy sectors are skipped. Additionally, it adjusts sector numbers if a stretch is applied. The setup is finalized by assigning the kernel data and length for the raw command.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdint.h>\n\n// Define a structure to hold track formatting parameters\ntypedef struct {\n    int sectors_per_track;\n    int interleave;\n    int logical_sectors[16]; // Assuming a maximum of 16 logical sectors per track\n    int sector_count;\n} FloppyTrackParams;\n\n// Global variable to hold the current floppy disk settings\nint floppy_disk_settings = 0;\n\n// Function to set up format parameters for a floppy disk track\nvoid setup_floppy_track_format(int track) {\n    FloppyTrackParams params;\n    int i = 0;\n\n    // Calculate the number of sectors per track based on floppy disk settings\n    if (floppy_disk_settings == 0) {\n        params.sectors_per_track = 9;\n    } else {\n        params.sectors_per_track = 18;\n    }\n\n    // Calculate the interleave based on formatting requirements\n    if (track < 10) {\n        params.interleave = 1;\n    } else {\n        params.interleave = 2;\n    }\n\n    // Initialize logical sectors and skip busy sectors\n    params.sector_count = 0;\n    for (i = 0; i < params.sectors_per_track; i++) {\n        // Assume a function is_sector_busy() is available to check if a sector is busy\n        if (!is_sector_busy(track, i)) {\n            params.logical_sectors[params.sector_count++] = i;\n        }\n    }\n\n    // Adjust sector numbers if a stretch is applied\n    if (floppy_disk_settings == 1) {\n        for (i = 0; i < params.sector_count; i++) {\n            params.logical_sectors[i] *= 2;\n        }\n    }\n\n    // Finalize the setup by assigning kernel data and length for the raw command\n    // Assume a function assign_kernel_data() is available to assign the kernel data\n    assign_kernel_data(&params, sizeof(params));\n}",
+  "defensive_steps": [
+    {
+      "step": "bound loop indices to calculated sector count",
+      "protects_against": "out-of-bounds array access when initializing logical sectors"
+    },
+    {
+      "step": "checked for busy sectors before assigning logical sectors",
+      "protects_against": "assigning logical sectors to busy or invalid positions"
+    },
+    {
+      "step": "validated floppy disk settings before using them",
+      "protects_against": "incorrect or unexpected floppy disk settings"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "bound loop indices to calculated sector count — protects against: out-of-bounds array access when initializing logical sectors",
+        "reasoning": "The implementation uses `F_SECT_PER_TRACK` as the upper bound for loop indices in both the initialization and placement of logical sectors. The loop indices are bounded by `F_SECT_PER_TRACK`, and modulo operations are used to wrap indices within the array bounds.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "checked for busy sectors before assigning logical sectors — protects against: assigning logical sectors to busy or invalid positions",
+        "reasoning": "The implementation checks if a sector is busy (`if (here[n].sect)`) before assigning a logical sector. If a sector is busy, it skips to the next free sector. This prevents assigning logical sectors to busy positions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validated floppy disk settings before using them — protects against: incorrect or unexpected floppy disk settings",
+        "reasoning": "The implementation uses `_floppy` values directly without explicit validation. There is no check to ensure that `_floppy` is non-NULL or that its fields (e.g., `rate`, `sect`, `fmt_gap`, `stretch`) are valid before using them.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "bound loop indices to calculated sector count — protects against: out-of-bounds array access when initializing logical sectors",
+        "reasoning": "The implementation uses `F_SECT_PER_TRACK` as the upper bound for loop indices in both the initialization and placement loops. The loop indices are bounded by `F_SECT_PER_TRACK`, which is derived from the floppy disk settings and ensures that the loop does not exceed the allocated buffer size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "checked for busy sectors before assigning logical sectors — protects against: assigning logical sectors to busy or invalid positions",
+        "reasoning": "The implementation checks if a sector is busy (`if (here[n].sect)`) before assigning a logical sector. If a sector is busy, it skips to the next free sector. This ensures that logical sectors are not assigned to busy positions.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validated floppy disk settings before using them — protects against: incorrect or unexpected floppy disk settings",
+        "reasoning": "The implementation uses `_floppy` and `format_req` directly without explicit validation of their values. There is no check to ensure that these values are valid or within expected ranges before they are used in calculations or assignments.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

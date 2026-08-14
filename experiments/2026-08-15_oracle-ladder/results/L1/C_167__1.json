@@ -1,0 +1,49 @@
+{
+  "case_id": "C_167__1",
+  "sample_id": "D/C/167",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3181",
+  "cve_summary": "Multiple stack-based buffer overflows in the magicmouse_raw_event function in drivers/hid/hid-magicmouse.c in the Magic Mouse HID driver in the Linux kernel through 3.16.3 allow physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that provides a large amount of (1) EHCI or (2) XHCI data associated with an event.",
+  "changed_file": "drivers/hid/hid-magicmouse.c",
+  "docstring": "\"\"\"\nSummary: Processes raw input events from a Magic Mouse or Magic Trackpad device.\n\nParameters:\nhdev (struct hid_device *): Pointer to the HID device structure.\nreport (struct hid_report *): Pointer to the HID report structure.\ndata (u8 *): Pointer to the raw data buffer containing event information.\nsize (int): Size of the data buffer.\n\nReturns: int: Returns 1 if the event is processed successfully, otherwise returns 0.\n\nLogic: The function interprets different types of input reports (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, DOUBLE_REPORT_ID) and extracts touch data and click information. It handles the data according to the device type, updating the input device state accordingly. For trackpad reports, it processes touch points and clicks, while for mouse reports, it calculates relative movement and button clicks. If the report type is not recognized, it returns 0. The function ensures synchronization of the input device state before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "    switch (data[0]) {\n    case TRACKPAD_REPORT_ID:\n        if (size < 4 || ((size - 4) % 9) != 0)\n            return 0;\n        npoints = (size - 4) / 9;\n        if (npoints > 15) {\n            hid_warn(hdev, \"invalid size value (%d) for TRACKPAD_REPORT_ID\\n\",\n                    size);\n            return 0;\n        }\n        msc->ntouches = 0;\n        for (ii = 0; ii < npoints; ii++)\n            magicmouse_emit_touch(msc, ii, data + ii * 9 + 4);\n        clicks = data[1];\n        break;\n    case MOUSE_REPORT_ID:\n        if (size < 6 || ((size - 6) % 8) != 0)\n            return 0;\n        npoints = (size - 6) / 8;\n        if (npoints > 15) {\n            hid_warn(hdev, \"invalid size value (%d) for MOUSE_REPORT_ID\\n\",\n                    size);\n            return 0;\n        }\n        msc->ntouches = 0;\n        for (ii = 0; ii < npoints; ii++)\n            magicmouse_emit_touch(msc, ii, data + ii * 8 + 6);\n        x = (int)(((data[3] & 0x0c) << 28) | (data[1] << 22)) >> 22;\n        y = (int)(((data[3] & 0x30) << 26) | (data[2] << 22)) >> 22;\n        clicks = data[3];\n        break;\n    case DOUBLE_REPORT_ID:\n        magicmouse_raw_event(hdev, report, data + 2, data[1]);\n        magicmouse_raw_event(hdev, report, data + 2 + data[1],\n            size - 2 - data[1]);\n        break;\n    default:\n        return 0;\n    }",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 0
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is missing the code that reports input events (e.g., `input_report_rel`, `input_report_key`, `input_mt_report_pointer_emulation`, and `input_sync`) and the setup logic for the input device (e.g., `magicmouse_setup_input`). This omission means the candidate implementation does not update the input device state as required by the specification, leading to a functional mismatch. The missing code is not security-relevant but is essential for correct behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation are functionally equivalent for all relevant input cases. Both handle the same report types (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, DOUBLE_REPORT_ID) with the same size checks and processing logic. The only differences are in comments and formatting, which do not affect behavior. There are no observable differences in output or error handling for any realistic or edge-case input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

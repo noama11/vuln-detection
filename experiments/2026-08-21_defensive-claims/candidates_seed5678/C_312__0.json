@@ -1,0 +1,31 @@
+{
+  "case_id": "C_312__0",
+  "implementation": "int powermate_probe(struct usb_interface *intf, const struct usb_device_id *id) {\n    struct powermate_dev *dev;\n    int error = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        goto out;\n\n    dev->usb_dev = usb_get_dev(interface_to_usbdev(intf));\n    dev->intf = intf;\n\n    usb_set_intfdata(intf, dev);\n\n    dev->input_dev = input_allocate_device();\n    if (!dev->input_dev)\n        goto err_free_dev;\n\n    dev->input_dev->name = \"Powermate\";\n    dev->input_dev->id.bustype = BUS_USB;\n    dev->input_dev->id.vendor = le16_to_cpu(dev->usb_dev->descriptor.idVendor);\n    dev->input_dev->id.product = le16_to_cpu(dev->usb_dev->descriptor.idProduct);\n    dev->input_dev->id.version = 0x0100;\n\n    __set_bit(EV_REL, dev->input_dev->evbit);\n    __set_bit(REL_WHEEL, dev->input_dev->relbit);\n    __set_bit(EV_KEY, dev->input_dev->evbit);\n    __set_bit(BTN_MOUSE, dev->input_dev->keybit);\n\n    error = input_register_device(dev->input_dev);\n    if (error)\n        goto err_free_input_dev;\n\n    dev->urb = usb_alloc_urb(0, GFP_KERNEL);\n    if (!dev->urb)\n        goto err_unregister_input_dev;\n\n    usb_fill_int_urb(dev->urb, dev->usb_dev, usb_rcvintpipe(dev->usb_dev, 0x81),\n                     dev->data, sizeof(dev->data), powermate_irq, dev, 100);\n\n    dev->urb->transfer_flags |= URB_INTERRUPT;\n\n    error = usb_submit_urb(dev->urb, GFP_KERNEL);\n    if (error)\n        goto err_free_urb;\n\n    return 0;\n\nerr_free_urb:\n    usb_free_urb(dev->urb);\nerr_unregister_input_dev:\n    input_unregister_device(dev->input_dev);\nerr_free_input_dev:\n    input_free_device(dev->input_dev);\nerr_free_dev:\n    kfree(dev);\nout:\n    return error;\n}",
+  "defensive_steps": [
+    {
+      "step": "check kzalloc return",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check input_allocate_device return",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check usb_alloc_urb return",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check usb_submit_urb return",
+      "protects_against": "USB submission failure"
+    },
+    {
+      "step": "clean up allocated resources on error",
+      "protects_against": "resource leaks on failure paths"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_31__0",
+  "sample_id": "D/C/31",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-3191",
+  "cve_summary": "Integer signedness error in the CIFSFindNext function in fs/cifs/cifssmb.c in the Linux kernel before 3.1 allows remote CIFS servers to cause a denial of service (memory corruption) or possibly have unspecified other impact via a large length value in a response to a read request for a directory.",
+  "changed_file": "fs/cifs/cifssmb.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function performs a search operation in the CIFS (Common Internet File System) protocol, \n * retrieving the next set of search results based on a given search handle.  \n *  \n * Parameters:  \n * xid (int): Transaction ID for the request.  \n * tcon (struct cifs_tcon *): Pointer to the CIFS connection structure.  \n * searchHandle (__u16): Handle for the current search operation.  \n * psrch_inf (struct cifs_search_info *): Pointer to the structure containing search information.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function initializes a transaction request, sets up parameters for the search, \n * and sends the request to the server. It processes the server's response, updating the \n * search information structure accordingly. If the search reaches its end, it marks the \n * search as complete. Error handling is included for various failure scenarios.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int CIFSFindNext(const int v13, struct cifs_tcon *v12,\n         __u16 v11, struct cifs_search_info *v8)\n{\n    TRANSACTION2_FNEXT_REQ *v4 = NULL;\n    TRANSACTION2_FNEXT_RSP *v5 = NULL;\n    T2_FNEXT_RSP_PARMS *v7;\n    char *v10;\n    int v9 = 0;\n    int v1;\n    unsigned int v3;\n    __u16 v6, byte_count;\n    cFYI(1, \"In FindNext\");\n    if (v8->endOfSearch)\n        return -ENOENT;\n    v9 = smb_init(SMB_COM_TRANSACTION2, 15, v12, (void **) &v4,\n        (void **) &v5);\n    if (v9)\n        return v9;\n    v6 = 14;\n    byte_count = 0;\n    v4->TotalDataCount = 0;\n    v4->MaxParameterCount = cpu_to_le16(8);\n    v4->MaxDataCount =\n        cpu_to_le16((v12->ses->server->maxBuf - MAX_CIFS_HDR_SIZE) &\n                0xFFFFFF00);\n    v4->MaxSetupCount = 0;\n    v4->Reserved = 0;\n    v4->Flags = 0;\n    v4->Timeout = 0;\n    v4->Reserved2 = 0;\n    v4->ParameterOffset =  cpu_to_le16(\n          offsetof(struct smb_com_transaction2_fnext_req,SearchHandle) - 4);\n    v4->DataCount = 0;\n    v4->DataOffset = 0;\n    v4->SetupCount = 1;\n    v4->Reserved3 = 0;\n    v4->SubCommand = cpu_to_le16(TRANS2_FIND_NEXT);\n    v4->SearchHandle = v11;\n    v4->SearchCount =\n        cpu_to_le16(CIFSMaxBufSize / sizeof(FILE_UNIX_INFO));\n    v4->InformationLevel = cpu_to_le16(v8->info_level);\n    v4->ResumeKey = v8->resume_key;\n    v4->SearchFlags =\n          cpu_to_le16(CIFS_SEARCH_CLOSE_AT_END | CIFS_SEARCH_RETURN_RESUME);\n    v3 = v8->resume_name_len;\n    v6 += v3;\n    if (v3 < PATH_MAX) {\n        memcpy(v4->ResumeFileName, v8->presume_name, v3);\n        byte_count += v3;\n        v4->ResumeFileName[v3] = 0;\n        v4->ResumeFileName[v3+1] = 0;\n    } else {\n        v9 = -EINVAL;\n        goto FNext2_err_exit;\n    }\n    byte_count = v6 + 1  ;\n    v4->TotalParameterCount = cpu_to_le16(v6);\n    v4->ParameterCount = v4->TotalParameterCount;\n    inc_rfc1001_len(v4, byte_count);\n    v4->ByteCount = cpu_to_le16(byte_count);\n    v9 = SendReceive(v13, v12->ses, (struct smb_hdr *) v4,\n            (struct smb_hdr *) v5, &v1, 0);\n    cifs_stats_inc(&v12->num_fnext);\n    if (v9) {\n        if (v9 == -EBADF) {\n            v8->endOfSearch = true;\n            cifs_buf_release(v4);\n            v9 = 0;\n        } else\n            cFYI(1, \"FindNext returned = %d\", v9);\n    } else {\n        v9 = validate_t2((struct smb_t2_rsp *)v5);\n        if (v9 == 0) {\n            unsigned int v2;\n            if (v5->hdr.Flags2 & SMBFLG2_UNICODE)\n                v8->unicode = true;\n            else\n                v8->unicode = false;\n            v10 = (char *) &v5->hdr.Protocol +\n                   le16_to_cpu(v5->t2.ParameterOffset);\n            v7 = (T2_FNEXT_RSP_PARMS *)v10;\n            v10 = (char *)&v5->hdr.Protocol +\n                le16_to_cpu(v5->t2.DataOffset);\n            if (v8->smallBuf)\n                cifs_small_buf_release(\n                    v8->ntwrk_buf_start);\n            else\n                cifs_buf_release(v8->ntwrk_buf_start);\n            v8->srch_entries_start = v10;\n            v8->ntwrk_buf_start = (char *)v4;\n            v8->smallBuf = 0;\n            if (v7->EndofSearch)\n                v8->endOfSearch = true;\n            else\n                v8->endOfSearch = false;\n            v8->entries_in_buffer =\n                        le16_to_cpu(v7->SearchCount);\n            v8->index_of_last_entry +=\n                v8->entries_in_buffer;\n            v2 = le16_to_cpu(v7->LastNameOffset);\n            if (v12->ses->server->maxBuf - MAX_CIFS_HDR_SIZE <\n                  v2) {\n                cERROR(1, \"ignoring corrupt resume name\");\n                v8->last_entry = NULL;\n                return v9;\n            } else\n                v8->last_entry =\n                    v8->srch_entries_start + v2;\n        }\n    }\nFNext2_err_exit:\n    if (v9 != 0)\n        cifs_buf_release(v4);\n    return v9;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 13
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of their observable behavior. Both handle the search operation in the CIFS protocol, initialize the transaction request, process the server's response, and update the search information structure accordingly. The only differences are in variable names and code formatting, which do not affect the behavior of the function for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent in terms of their observable behavior. Both handle the search operation in the CIFS protocol, initialize the transaction request, process the server's response, and update the search information structure accordingly. The only differences are in variable names and code structure, which do not affect the behavior of the function for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "C_727__1",
+  "implementation": "#include <stdlib.h>\n#include <string.h>\n\n// Assuming TEE_Result is a known type and TEE_SUCCESS, TEE_ERROR_* are defined.\n// Also assuming that the session and object management functions are available.\n\n// Forward declarations for internal functions\nvoid* get_current_session();\nint is_transient_uninitialized(unsigned long obj);\nvoid* allocate_attributes(unsigned long attr_count);\nint validate_attributes(void* session, unsigned long obj, void* attributes, unsigned long attr_count);\nvoid update_object_state(unsigned long obj);\nvoid cleanup_attributes(void* attributes);\n\nTEE_Result populate_cryptographic_object(unsigned long obj, struct utee_attribute *usr_attrs, unsigned long attr_count) {\n    void* session = get_current_session();\n    if (!session) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    if (!is_transient_uninitialized(obj)) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    if (!usr_attrs || attr_count == 0) {\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    void* attributes = allocate_attributes(attr_count);\n    if (!attributes) {\n        return TEE_ERROR_OUT_OF_MEMORY;\n    }\n\n    // Copy attributes from user space with bounds checking\n    size_t total_size = attr_count * sizeof(struct utee_attribute);\n    if (total_size / sizeof(struct utee_attribute) != attr_count) {\n        cleanup_attributes(attributes);\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    memcpy(attributes, usr_attrs, total_size);\n\n    if (!validate_attributes(session, obj, attributes, attr_count)) {\n        cleanup_attributes(attributes);\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    update_object_state(obj);\n\n    cleanup_attributes(attributes);\n\n    return TEE_SUCCESS;\n}",
+  "defensive_steps": [
+    {
+      "step": "check session pointer before using it",
+      "protects_against": "null session pointer"
+    },
+    {
+      "step": "check if object is transient and uninitialized",
+      "protects_against": "attempting to populate a non-transient or already initialized object"
+    },
+    {
+      "step": "validate user attributes pointer and count",
+      "protects_against": "null pointer or zero attribute count"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "validate total size to prevent overflow",
+      "protects_against": "integer overflow when calculating total size"
+    },
+    {
+      "step": "copy attributes with bounds checking",
+      "protects_against": "buffer overflow when copying attributes"
+    },
+    {
+      "step": "validate attributes after copying",
+      "protects_against": "invalid or malformed attributes"
+    },
+    {
+      "step": "clean up allocated resources before returning",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 8,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

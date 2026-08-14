@@ -1,0 +1,146 @@
+{
+  "case_id": "C_675__0",
+  "sample_id": "D/C/675",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-8087",
+  "cve_summary": "Memory leak in the hwsim_new_radio_nl function in drivers/net/wireless/mac80211_hwsim.c in the Linux kernel through 4.15.9 allows local users to cause a denial of service (memory consumption) by triggering an out-of-array error case.",
+  "changed_file": "drivers/net/wireless/mac80211_hwsim.c",
+  "docstring": "Summary: This function creates a new radio in the hardware simulation environment by processing attributes from a netlink message.\n\nParameters:\n- msg (struct sk_buff *): The netlink message containing the attributes.\n- info (struct genl_info *): Information about the netlink message, including attributes.\n\nReturns: \n- int: The result of the radio creation operation, where a negative value indicates an error.\n\nLogic: The function initializes a `hwsim_new_radio_params` structure with values extracted from the netlink message attributes. It checks for various attributes to configure the radio parameters, such as regulatory strictness, support for P2P devices, channel settings, and a custom radio name. It also handles memory allocation for the radio name and validates the custom regulatory domain index. Finally, it calls `mac80211_hwsim_new_radio` to create the radio and returns the result, cleaning up allocated memory before returning.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int create_hwsim_radio(struct sk_buff *msg, struct genl_info *info) {\n    struct hwsim_new_radio_params params = {0};\n    int ret = 0;\n\n    if (!info || !msg) {\n        return -EINVAL;\n    }\n\n    if (!info->attrs[HWSIM_ATTR_REGULATORY_STRICTNESS]) {\n        return -EINVAL;\n    }\n\n    params.regulatory_strictness = nla_get_u32(info->attrs[HWSIM_ATTR_REGULATORY_STRICTNESS]);\n\n    if (info->attrs[HWSIM_ATTR_SUPPORT_IBSS_RB]) {\n        params.support_ibss_radar = nla_get_u8(info->attrs[HWSIM_ATTR_SUPPORT_IBSS_RB]);\n    }\n\n    if (info->attrs[HWSIM_ATTR_SUPPORT_P2P_DEVICE]) {\n        params.support_p2p_device = nla_get_u8(info->attrs[HWSIM_ATTR_SUPPORT_P2P_DEVICE]);\n    }\n\n    if (info->attrs[HWSIM_ATTR_CHANNELS]) {\n        params.channels = nla_get_u32(info->attrs[HWSIM_ATTR_CHANNELS]);\n    }\n\n    if (info->attrs[HWSIM_ATTR_RADIO_NAME]) {\n        size_t name_len = strlen(nla_get_string(info->attrs[HWSIM_ATTR_RADIO_NAME])) + 1;\n        params.radio_name = kmalloc(name_len, GFP_KERNEL);\n        if (!params.radio_name) {\n            return -ENOMEM;\n        }\n        strncpy(params.radio_name, nla_get_string(info->attrs[HWSIM_ATTR_RADIO_NAME]), name_len - 1);\n        params.radio_name[name_len - 1] = '\\0';\n    }\n\n    if (info->attrs[HWSIM_ATTR_CUSTOM_REG_DOMAIN]) {\n        if (params.regulatory_strictness < 0 || params.regulatory_strictness > 255) {\n            ret = -EINVAL;\n            goto error;\n        }\n        params.custom_reg_domain = nla_get_u8(info->attrs[HWSIM_ATTR_CUSTOM_REG_DOMAIN]);\n    }\n\n    ret = mac80211_hwsim_new_radio(&params);\n\nerror:\n    if (params.radio_name) {\n        kfree(params.radio_name);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing msg or info"
+    },
+    {
+      "step": "validate presence of required attributes",
+      "protects_against": "missing required attributes that would cause undefined behavior"
+    },
+    {
+      "step": "check for memory allocation failure",
+      "protects_against": "null pointer dereference when accessing allocated radio name"
+    },
+    {
+      "step": "ensure null-termination of string copy",
+      "protects_against": "buffer overflow or unterminated string when copying radio name"
+    },
+    {
+      "step": "validate range of regulatory strictness",
+      "protects_against": "invalid values for regulatory strictness that could cause unexpected behavior"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks when error occurs during radio creation"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing msg or info",
+        "reasoning": "The implementation does not explicitly check if `msg` or `info` are null before accessing them. However, since this is a netlink handler function, the kernel ensures that `msg` and `info` are valid when the handler is called, making this step not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate presence of required attributes — protects against: missing required attributes that would cause undefined behavior",
+        "reasoning": "The implementation does not explicitly validate the presence of required attributes. It assumes that the attributes are present and processes them conditionally. This could lead to undefined behavior if required attributes are missing.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for memory allocation failure — protects against: null pointer dereference when accessing allocated radio name",
+        "reasoning": "The implementation checks if `hwname` is null after calling `kasprintf`, and returns `-ENOMEM` if the allocation fails. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure null-termination of string copy — protects against: buffer overflow or unterminated string when copying radio name",
+        "reasoning": "The implementation uses `kasprintf` with `%.*s`, which ensures that the string is null-terminated and does not overflow the buffer. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate range of regulatory strictness — protects against: invalid values for regulatory strictness that could cause unexpected behavior",
+        "reasoning": "The implementation does not perform any validation on the `reg_strict` value. It is directly assigned from the attribute without checking its range. This could lead to unexpected behavior.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks when error occurs during radio creation",
+        "reasoning": "The implementation calls `kfree(hwname)` before returning, regardless of whether the call to `mac80211_hwsim_new_radio` succeeds or fails. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 18,
+    "n_omits": 3,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing msg or info",
+        "reasoning": "The implementation accesses `info->attrs` without checking if `info` is null. This could lead to a null pointer dereference if `info` is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate presence of required attributes — protects against: missing required attributes that would cause undefined behavior",
+        "reasoning": "The implementation does not explicitly check for the presence of any required attributes. It assumes that the required attributes are present and proceeds with their use.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for memory allocation failure — protects against: null pointer dereference when accessing allocated radio name",
+        "reasoning": "The implementation checks the return value of `kasprintf` and returns `-ENOMEM` if it fails, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure null-termination of string copy — protects against: buffer overflow or unterminated string when copying radio name",
+        "reasoning": "The implementation uses `kasprintf` with `%.*s` to copy the string, which ensures that the string is null-terminated and does not overflow the buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate range of regulatory strictness — protects against: invalid values for regulatory strictness that could cause unexpected behavior",
+        "reasoning": "The implementation does not perform any validation on the `reg_strict` value. It directly assigns it from `info->attrs[HWSIM_ATTR_REG_STRICT_REG]` without checking its validity.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks when error occurs during radio creation",
+        "reasoning": "The implementation frees `hwname` before returning, even if an error occurs (e.g., when `idx >= ARRAY_SIZE(...)`). This prevents a memory leak.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

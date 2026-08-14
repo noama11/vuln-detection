@@ -1,0 +1,146 @@
+{
+  "case_id": "C_417__0",
+  "sample_id": "D/C/417",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-12192",
+  "cve_summary": "The keyctl_read_key function in security/keys/keyctl.c in the Key Management subcomponent in the Linux kernel before 4.13.5 does not properly consider that a key may be possessed but negatively instantiated, which allows local users to cause a denial of service (OOPS and system crash) via a crafted KEYCTL_READ operation.",
+  "changed_file": "security/keys/keyctl.c",
+  "docstring": "\"\"\"\nSummary: \nReads the value of a key identified by its key ID and stores it in a user-provided buffer.\n\nParameters: \nkeyid (key_serial_t): The identifier of the key to read.\nbuffer (char __user *): Pointer to the buffer where the key value will be stored.\nbuflen (size_t): The size of the buffer provided.\n\nReturns: \nlong: Returns the number of bytes read on success, or a negative error code on failure.\n\nLogic: The function first attempts to look up the key using its ID. If the key is not found, it returns an error. It checks if the calling process has permission to read the key. If permission is granted, it attempts to read the key's value into the provided buffer while ensuring thread safety. The function handles various error conditions and cleans up resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/key.h>\n#include <linux/errno.h>\n#include <linux/uaccess.h>\n\nlong read_key_value(key_serial_t keyid, char __user *buffer, size_t buflen) {\n    struct key *key = NULL;\n    long ret = 0;\n\n    /* Look up the key by ID */\n    key = key_lookup(keyid);\n    if (IS_ERR(key)) {\n        return PTR_ERR(key);\n    }\n\n    /* Check if the calling process has permission to read the key */\n    ret = key_permission(key, KEY_NEED_READ);\n    if (ret < 0) {\n        key_put(key);\n        return ret;\n    }\n\n    /* Ensure thread safety when reading the key's value */\n    read_lock(&key->sem);\n\n    /* Check if the buffer is large enough to hold the key's payload */\n    if (buflen < key->datalen) {\n        ret = -ERANGE;\n    } else {\n        /* Copy the key's value to the user buffer */\n        if (copy_to_user(buffer, key->payload.data, key->datalen)) {\n            ret = -EFAULT;\n        } else {\n            ret = key->datalen;\n        }\n    }\n\n    read_unlock(&key->sem);\n    key_put(key);\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if buffer is large enough to hold key's payload",
+      "protects_against": "buffer overflow when copying key value to user buffer"
+    },
+    {
+      "step": "use IS_ERR to check if key lookup was successful",
+      "protects_against": "using an invalid key pointer after lookup failure"
+    },
+    {
+      "step": "use key_permission to verify read access",
+      "protects_against": "unauthorized access to key data"
+    },
+    {
+      "step": "use read_lock/read_unlock for thread safety",
+      "protects_against": "race conditions when reading key value"
+    },
+    {
+      "step": "use key_put to release key reference on all paths",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "use copy_to_user with error checking",
+      "protects_against": "invalid user space pointer dereference"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if buffer is large enough to hold key's payload — protects against: buffer overflow when copying key value to user buffer",
+        "reasoning": "The implementation does not explicitly check if the buffer is large enough to hold the key's payload before calling `key->type->read`. The `read` function is responsible for copying the data, but there is no explicit check or truncation of the data to the buffer size before this call.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "use IS_ERR to check if key lookup was successful — protects against: using an invalid key pointer after lookup failure",
+        "reasoning": "The implementation uses `IS_ERR(key_ref)` to check if the key lookup was successful. This is the correct use of `IS_ERR` to detect an error return from `lookup_user_key`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use key_permission to verify read access — protects against: unauthorized access to key data",
+        "reasoning": "The implementation calls `key_permission(key_ref, KEY_NEED_READ)` to verify read access. This is the correct use of `key_permission` to ensure the calling process has permission to read the key.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use read_lock/read_unlock for thread safety — protects against: race conditions when reading key value",
+        "reasoning": "The implementation uses `down_read(&key->sem)` and `up_read(&key->sem)` to acquire and release a read lock on the key's semaphore. This is the correct use of a read lock to ensure thread safety when reading the key's value.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use key_put to release key reference on all paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `key_put(key)` on all paths after the key is no longer needed, including error paths. This ensures the key reference is properly released, preventing memory leaks.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use copy_to_user with error checking — protects against: invalid user space pointer dereference",
+        "reasoning": "The implementation does not use `copy_to_user` directly. Instead, it calls `key->type->read(key, buffer, buflen)`, which is expected to handle the copying to user space. There is no explicit use of `copy_to_user` with error checking in the implementation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if buffer is large enough to hold key's payload — protects against: buffer overflow when copying key value to user buffer",
+        "reasoning": "The implementation does not explicitly check if the buffer is large enough to hold the key's payload. It directly calls `key->type->read(key, buffer, buflen)` without any bounds checking.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "use IS_ERR to check if key lookup was successful — protects against: using an invalid key pointer after lookup failure",
+        "reasoning": "The implementation uses `IS_ERR(key_ref)` to check if the key lookup was successful, which is the correct defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use key_permission to verify read access — protects against: unauthorized access to key data",
+        "reasoning": "The implementation calls `key_permission(key_ref, KEY_NEED_READ)` to verify read access, which is the correct defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use read_lock/read_unlock for thread safety — protects against: race conditions when reading key value",
+        "reasoning": "The implementation uses `down_read(&key->sem)` and `up_read(&key->sem)` to ensure thread safety when reading the key's value, which is the correct defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use key_put to release key reference on all paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `key_put(key)` on all paths before returning, which is the correct defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use copy_to_user with error checking — protects against: invalid user space pointer dereference",
+        "reasoning": "The implementation does not use `copy_to_user` directly. Instead, it calls `key->type->read(key, buffer, buflen)`, which is a type-specific function. There is no explicit error checking for invalid user space pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

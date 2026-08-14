@@ -1,0 +1,98 @@
+{
+  "case_id": "C_92__0",
+  "sample_id": "D/C/92",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1928",
+  "cve_summary": "The do_video_set_spu_palette function in fs/compat_ioctl.c in the Linux kernel before 3.6.5 on unspecified architectures lacks a certain error check, which might allow local users to obtain sensitive information from kernel stack memory via a crafted VIDEO_SET_SPU_PALETTE ioctl call on a /dev/dvb device.",
+  "changed_file": "fs/compat_ioctl.c",
+  "docstring": "/**\n * Summary: Sets the subtitle palette for video output by interacting with the ioctl system call.\n * \n * Parameters:\n * fd (unsigned int): File descriptor for the video device.\n * cmd (unsigned int): Command to be executed via ioctl.\n * up (struct compat_video_spu_palette __user *): Pointer to the user-space structure containing the palette data.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function retrieves the palette and its length from the user-space structure, allocates a native user-space structure, and populates it with the retrieved values. It then calls the ioctl system function to apply the changes, returning any error encountered during the process.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int set_subtitle_palette(unsigned int fd, unsigned int cmd, struct compat_video_spu_palette __user *up) {\n    struct compat_video_spu_palette __user *palette = NULL;\n    int ret = 0;\n\n    palette = kmalloc(sizeof(struct compat_video_spu_palette), GFP_KERNEL);\n    if (!palette) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(palette, up, sizeof(struct compat_video_spu_palette))) {\n        ret = -EFAULT;\n        goto error;\n    }\n\n    ret = ioctl(fd, cmd, palette);\n    if (ret < 0) {\n        goto error;\n    }\n\n    kfree(palette);\n    return 0;\n\nerror:\n    kfree(palette);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "copy_from_user with size check",
+      "protects_against": "invalid or malicious user-space data"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 1,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation uses `compat_alloc_user_space`, which is a helper that allocates memory in the user space. This function is designed to never return NULL in the context of the kernel, as it is backed by the current process's address space. Therefore, there is no need for a null pointer check.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "copy_from_user with size check — protects against: invalid or malicious user-space data",
+        "reasoning": "The implementation uses `get_user` to retrieve values from user space, which performs bounds checking and error handling. This is functionally equivalent to `copy_from_user` with a size check for the individual fields being retrieved.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation allocates memory via `compat_alloc_user_space`, which is a virtual memory allocation in the user space and does not require explicit freeing. There is no actual memory leak in this context.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure",
+        "reasoning": "The implementation does not perform a check for a null pointer after memory allocation. The function `compat_alloc_user_space` is used, but there is no explicit check for a null return value.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "copy_from_user with size check — protects against: invalid or malicious user-space data",
+        "reasoning": "The implementation uses `get_user` to retrieve data from user space, which includes bounds checking. This is equivalent to a `copy_from_user` with a size check for individual fields.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation does not free the allocated memory (`up_native`) on error paths. If `put_user` or `sys_ioctl` returns an error, the allocated memory is not released.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

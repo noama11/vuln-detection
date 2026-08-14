@@ -1,0 +1,27 @@
+{
+  "case_id": "C_339__0",
+  "implementation": "int sendto(int fd, void __user *buff, size_t len, unsigned int flags, struct sockaddr __user *addr, int addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    struct iovec iov;\n    int ret = -EBADF;\n\n    if (len > SSIZE_MAX)\n        len = SSIZE_MAX;\n\n    if (len == 0)\n        return 0;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = buff;\n    iov.iov_len = len;\n    msg.msg_name = addr;\n    msg.msg_namelen = addr_len;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        msg.msg_flags |= MSG_DONTWAIT;\n\n    ret = sock_sendmsg(sock, &msg, len);\n    fput_light(sock->file, 1);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "limit buffer length to SSIZE_MAX",
+      "protects_against": "buffer length exceeding system limits which could cause overflow or resource exhaustion"
+    },
+    {
+      "step": "check if socket exists before use",
+      "protects_against": "invalid file descriptor access"
+    },
+    {
+      "step": "initialize message structure with null pointers and zero lengths",
+      "protects_against": "uninitialized memory access"
+    },
+    {
+      "step": "release socket reference on all paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_steps": 4,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

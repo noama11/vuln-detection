@@ -1,0 +1,48 @@
+{
+  "case_id": "C_667__0",
+  "sample_id": "D/C/667",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-10021",
+  "cve_summary": "** DISPUTED ** drivers/scsi/libsas/sas_scsi_host.c in the Linux kernel before 4.16 allows local users to cause a denial of service (ata qc leak) by triggering certain failure conditions. NOTE: a third party disputes the relevance of this report because the failure can only occur for physically proximate attackers who unplug SAS Host Bus Adapter cables.",
+  "changed_file": "drivers/scsi/libsas/sas_scsi_host.c",
+  "docstring": "\"\"\"\nSummary: \nFinalizes the handling of a SCSI command after an abort operation.\n\nParameters: \ncmd (struct scsi_cmnd*): Pointer to the SCSI command structure that is being processed.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function retrieves the SAS host adapter from the SCSI command. It ensures that the command is not racing with any completions from the low-level driver since it is called after an abort. It then completes the command and moves it to an appropriate error-handler queue, removing it from the pending error handler list.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static void sas_eh_finish_cmd(struct scsi_cmnd *cmd)\r\n{\r\n\tstruct sas_ha_struct *sas_ha = SHOST_TO_SAS_HA(cmd->device->host);\r\n\tstruct domain_device *dev = cmd_to_domain_dev(cmd);\r\n\tstruct sas_task *task = TO_SAS_TASK(cmd);\r\n\r\n\t/* At this point, we only get called following an actual abort\r\n\t * of the task, so we should be guaranteed not to be racing with\r\n\t * any completions from the LLD.  Task is freed after this.\r\n\t */\r\n\tsas_end_task(cmd, task);\r\n\r\n\tif (dev_is_sata(dev)) {\r\n\t\t/* defer commands to libata so that libata EH can\r\n\t\t * handle ata qcs correctly\r\n\t\t */\r\n\t\tlist_move_tail(&cmd->eh_entry, &sas_ha->eh_ata_q);\r\n\t\treturn;\r\n\t}\r\n\r\n\t/* now finish the command and move it on to the error\r\n\t * handler done list, this also takes it off the\r\n\t * error handler pending list.\r\n\t */\r\n\tscsi_eh_finish_cmd(cmd, &sas_ha->eh_done_q);\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes a conditional check for SATA devices and moves the command to a specific queue (`eh_ata_q`) for handling by libata, while the reference implementation lacks this logic and directly calls `scsi_eh_finish_cmd`. This difference affects how SATA commands are processed, potentially leading to different behaviors for SATA-related inputs. This is a functional difference that could affect normal operation but does not appear to involve a security-relevant vulnerability.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in their logic and behavior. Both call `sas_end_task`, check if the device is SATA, and move the command to the appropriate queue. There are no observable differences in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

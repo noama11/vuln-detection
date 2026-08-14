@@ -1,0 +1,36 @@
+{
+  "case_id": "C_25__1",
+  "sample_id": "D/C/25",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-4913",
+  "cve_summary": "The rose_parse_ccitt function in net/rose/rose_subr.c in the Linux kernel before 2.6.39 does not validate the FAC_CCITT_DEST_NSAP and FAC_CCITT_SRC_NSAP fields, which allows remote attackers to (1) cause a denial of service (integer underflow, heap memory corruption, and panic) via a small length value in data sent to a ROSE socket, or (2) conduct stack-based buffer overflow attacks via a large length value in data sent to a ROSE socket.",
+  "commit_message": "ROSE: prevent heap corruption with bad facilities\n\nWhen parsing the FAC_NATIONAL_DIGIS facilities field, it's possible for\na remote host to provide more digipeaters than expected, resulting in\nheap corruption.  Check against ROSE_MAX_DIGIS to prevent overflows, and\nabort facilities parsing on failure.\n\nAdditionally, when parsing the FAC_CCITT_DEST_NSAP and\nFAC_CCITT_SRC_NSAP facilities fields, a remote host can provide a length\nof less than 10, resulting in an underflow in a memcpy size, causing a\nkernel panic due to massive heap corruption.  A length of greater than\n20 results in a stack overflow of the callsign array.  Abort facilities\nparsing on these invalid length values.\n\nSigned-off-by: Dan Rosenberg <drosenberg@vsecurity.com>\nCc: stable@kernel.org\nSigned-off-by: David S. Miller <davem@davemloft.net>",
+  "changed_file": "net/rose/rose_subr.c",
+  "docstring": "\"\"\"\nSummary: \nParses CCITT facilities information from a given byte stream.\n\nParameters: \np (unsigned char *): Pointer to the byte stream to be parsed.\nfacilities (struct rose_facilities_struct *): Pointer to a structure where parsed facilities will be stored.\nlen (int): Length of the byte stream to be parsed.\n\nReturns: \nint: The number of bytes processed from the stream, or -1 if an error occurs (e.g., invalid length).\n\nLogic: \nThe function iterates through the byte stream, processing different cases based on the first two bits of each byte. It updates the pointer and counts the number of bytes processed. If a specific facility type is detected, it extracts the source or destination address and callsign, ensuring that the length of the callsign is within valid bounds. The function continues until a termination byte (0x00) is encountered or the specified length is exhausted.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    314,
+    366
+  ],
+  "vulnerable_line_range": [
+    309,
+    356
+  ],
+  "vulnerable_snippet": "static int rose_parse_ccitt(unsigned char *p, struct rose_facilities_struct *facilities, int len)\r\n{\r\n\tunsigned char l, n = 0;\r\n\tchar callsign[11];\r\n\r\n\tdo {\r\n\t\tswitch (*p & 0xC0) {\r\n\t\tcase 0x00:\r\n\t\t\tp   += 2;\r\n\t\t\tn   += 2;\r\n\t\t\tlen -= 2;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0x40:\r\n\t\t\tp   += 3;\r\n\t\t\tn   += 3;\r\n\t\t\tlen -= 3;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0x80:\r\n\t\t\tp   += 4;\r\n\t\t\tn   += 4;\r\n\t\t\tlen -= 4;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0xC0:\r\n\t\t\tl = p[1];\r\n\t\t\tif (*p == FAC_CCITT_DEST_NSAP) {\r\n\t\t\t\tmemcpy(&facilities->source_addr, p + 7, ROSE_ADDR_LEN);\r\n\t\t\t\tmemcpy(callsign, p + 12,   l - 10);\r\n\t\t\t\tcallsign[l - 10] = '\\0';\r\n\t\t\t\tasc2ax(&facilities->source_call, callsign);\r\n\t\t\t}\r\n\t\t\tif (*p == FAC_CCITT_SRC_NSAP) {\r\n\t\t\t\tmemcpy(&facilities->dest_addr, p + 7, ROSE_ADDR_LEN);\r\n\t\t\t\tmemcpy(callsign, p + 12, l - 10);\r\n\t\t\t\tcallsign[l - 10] = '\\0';\r\n\t\t\t\tasc2ax(&facilities->dest_call, callsign);\r\n\t\t\t}\r\n\t\t\tp   += l + 2;\r\n\t\t\tn   += l + 2;\r\n\t\t\tlen -= l + 2;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t} while (*p != 0x00 && len > 0);\r\n\r\n\treturn n;\r\n}",
+  "fixed_line_range": [
+    314,
+    366
+  ],
+  "fixed_snippet": "static int rose_parse_ccitt(unsigned char *p, struct rose_facilities_struct *facilities, int len)\r\n{\r\n\tunsigned char l, n = 0;\r\n\tchar callsign[11];\r\n\r\n\tdo {\r\n\t\tswitch (*p & 0xC0) {\r\n\t\tcase 0x00:\r\n\t\t\tp   += 2;\r\n\t\t\tn   += 2;\r\n\t\t\tlen -= 2;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0x40:\r\n\t\t\tp   += 3;\r\n\t\t\tn   += 3;\r\n\t\t\tlen -= 3;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0x80:\r\n\t\t\tp   += 4;\r\n\t\t\tn   += 4;\r\n\t\t\tlen -= 4;\r\n\t\t\tbreak;\r\n\r\n\t\tcase 0xC0:\r\n\t\t\tl = p[1];\r\n\r\n\t\t\t/* Prevent overflows*/\r\n\t\t\tif (l < 10 || l > 20)\r\n\t\t\t\treturn -1;\r\n\r\n\t\t\tif (*p == FAC_CCITT_DEST_NSAP) {\r\n\t\t\t\tmemcpy(&facilities->source_addr, p + 7, ROSE_ADDR_LEN);\r\n\t\t\t\tmemcpy(callsign, p + 12,   l - 10);\r\n\t\t\t\tcallsign[l - 10] = '\\0';\r\n\t\t\t\tasc2ax(&facilities->source_call, callsign);\r\n\t\t\t}\r\n\t\t\tif (*p == FAC_CCITT_SRC_NSAP) {\r\n\t\t\t\tmemcpy(&facilities->dest_addr, p + 7, ROSE_ADDR_LEN);\r\n\t\t\t\tmemcpy(callsign, p + 12, l - 10);\r\n\t\t\t\tcallsign[l - 10] = '\\0';\r\n\t\t\t\tasc2ax(&facilities->dest_call, callsign);\r\n\t\t\t}\r\n\t\t\tp   += l + 2;\r\n\t\t\tn   += l + 2;\r\n\t\t\tlen -= l + 2;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t} while (*p != 0x00 && len > 0);\r\n\r\n\treturn n;\r\n}",
+  "func_name": "rose_parse_ccitt",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

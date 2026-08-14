@@ -1,0 +1,48 @@
+{
+  "case_id": "C_39__0",
+  "sample_id": "D/C/39",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1759",
+  "cve_summary": "Integer overflow in the sys_oabi_semtimedop function in arch/arm/kernel/sys_oabi-compat.c in the Linux kernel before 2.6.39 on the ARM platform, when CONFIG_OABI_COMPAT is enabled, allows local users to gain privileges or cause a denial of service (heap memory corruption) by providing a crafted argument and leveraging a race condition.",
+  "changed_file": "arch/arm/kernel/sys_oabi-compat.c",
+  "docstring": "Summary: This function implements the system call for performing semaphore operations with a timeout.\n\nParameters:\n- semid (int): Identifier for the semaphore set.\n- tsops (struct oabi_sembuf __user *): Pointer to an array of semaphore operations.\n- nsops (unsigned): Number of semaphore operations to perform.\n- timeout (const struct timespec __user *): Pointer to a timespec structure specifying the timeout duration.\n\nReturns: \n- long: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first checks the validity of the number of operations. It allocates memory for the semaphore operations and retrieves user data into kernel space. If a timeout is provided, it copies the timeout value. The function then calls the underlying semaphore operation function, handling memory protection appropriately. Finally, it frees the allocated memory and returns the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "asmlinkage long sys_oabi_semtimedop(int semid,\r\n\t\t\t\t    struct oabi_sembuf __user *tsops,\r\n\t\t\t\t    unsigned nsops,\r\n\t\t\t\t    const struct timespec __user *timeout)\r\n{\r\n\tstruct sembuf *sops;\r\n\tstruct timespec local_timeout;\r\n\tlong err;\r\n\tint i;\r\n\r\n\tif (nsops < 1 || nsops > SEMOPM)\r\n\t\treturn -EINVAL;\r\n\tsops = kmalloc(sizeof(*sops) * nsops, GFP_KERNEL);\r\n\tif (!sops)\r\n\t\treturn -ENOMEM;\r\n\terr = 0;\r\n\tfor (i = 0; i < nsops; i++) {\r\n\t\t__get_user_error(sops[i].sem_num, &tsops->sem_num, err);\r\n\t\t__get_user_error(sops[i].sem_op,  &tsops->sem_op,  err);\r\n\t\t__get_user_error(sops[i].sem_flg, &tsops->sem_flg, err);\r\n\t\ttsops++;\r\n\t}\r\n\tif (timeout) {\r\n\t\t/* copy this as well before changing domain protection */\r\n\t\terr |= copy_from_user(&local_timeout, timeout, sizeof(*timeout));\r\n\t\ttimeout = &local_timeout;\r\n\t}\r\n\tif (err) {\r\n\t\terr = -EFAULT;\r\n\t} else {\r\n\t\tmm_segment_t fs = get_fs();\r\n\t\tset_fs(KERNEL_DS);\r\n\t\terr = sys_semtimedop(semid, sops, nsops, timeout);\r\n\t\tset_fs(fs);\r\n\t}\r\n\tkfree(sops);\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation includes an additional check for `nsops > SEMOPM`, which the reference implementation lacks. This check ensures that the number of operations does not exceed a system-defined maximum, preventing potential resource exhaustion or overflow. This difference is security-relevant as it introduces a guard against adversarial input that could otherwise cause excessive memory allocation or system instability.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both validate the number of operations, allocate memory, copy user data into kernel space, handle the timeout, perform the system call with appropriate memory protection, and clean up the allocated memory. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

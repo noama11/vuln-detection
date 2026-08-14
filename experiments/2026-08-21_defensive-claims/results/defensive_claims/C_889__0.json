@@ -1,0 +1,130 @@
+{
+  "case_id": "C_889__0",
+  "sample_id": "D/C/889",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-14763",
+  "cve_summary": "In the Linux kernel before 4.16.4, a double-locking error in drivers/usb/dwc3/gadget.c may potentially cause a deadlock with f_hid.",
+  "changed_file": "drivers/usb/gadget/function/f_hid.c",
+  "docstring": "\"\"\"\nSummary: \nHandles writing data to a HID (Human Interface Device) gadget.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the device.\nbuffer (const char __user *): Pointer to the user buffer containing data to write.\ncount (size_t): Number of bytes to write from the buffer.\noffp (loff_t *): Pointer to the file offset.\n\nReturns: \nssize_t: The number of bytes written on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the user buffer is accessible. It then acquires a spinlock to manage concurrent access to the write queue. If a write is pending, it waits until the condition allows for a new write. It copies data from the user buffer to a request structure and queues it for transmission over USB. If the request cannot be queued, it logs an error and releases the write pending state. Finally, it wakes up any waiting processes on the write queue.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/fs.h>\n#include <linux/uaccess.h>\n#include <linux/spinlock.h>\n#include <linux/wait.h>\n#include <linux/usb.h>\n\nssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    struct hid_gadget_request *req;\n    ssize_t bytes_written = 0;\n    int ret = 0;\n\n    /* Check if the user buffer is accessible */\n    if (!access_ok(VERIFY_READ, buffer, count)) {\n        return -EFAULT;\n    }\n\n    spin_lock(&hid_gadget_lock);\n\n    /* Wait until a write can be initiated */\n    while (hid_gadget_write_pending) {\n        ret = wait_event_interruptible(hid_gadget_write_wait, !hid_gadget_write_pending);\n        if (ret < 0) {\n            spin_unlock(&hid_gadget_lock);\n            return ret;\n        }\n    }\n\n    /* Mark write as pending to prevent concurrent writes */\n    hid_gadget_write_pending = true;\n    spin_unlock(&hid_gadget_lock);\n\n    /* Allocate a request structure for the data to be sent */\n    req = hid_gadget_request_alloc();\n    if (!req) {\n        hid_gadget_write_pending = false;\n        return -ENOMEM;\n    }\n\n    /* Copy data from user buffer to the request structure */\n    if (copy_from_user(req->data, buffer, count)) {\n        hid_gadget_request_free(req);\n        hid_gadget_write_pending = false;\n        return -EFAULT;\n    }\n\n    req->length = count;\n\n    /* Queue the request for transmission over USB */\n    ret = hid_gadget_queue_request(req);\n    if (ret < 0) {\n        hid_gadget_request_free(req);\n        hid_gadget_write_pending = false;\n        return ret;\n    }\n\n    bytes_written = count;\n\n    /* Wake up any processes waiting on the write queue */\n    wake_up_interruptible(&hid_gadget_write_wait);\n\n    return bytes_written;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if user buffer is accessible",
+      "protects_against": "invalid or inaccessible user buffer pointer"
+    },
+    {
+      "step": "use spinlock to manage concurrent access",
+      "protects_against": "race conditions during concurrent writes"
+    },
+    {
+      "step": "wait for write condition to be available",
+      "protects_against": "overlapping writes that could corrupt data"
+    },
+    {
+      "step": "validate and copy data from user buffer",
+      "protects_against": "malformed or invalid user data"
+    },
+    {
+      "step": "release write pending state on error",
+      "protects_against": "leaving the device in an inconsistent state on failure"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if user buffer is accessible — protects against: invalid or inaccessible user buffer pointer",
+        "reasoning": "The implementation uses `access_ok(buffer, count)` to check if the user buffer is accessible before proceeding. This directly performs the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use spinlock to manage concurrent access — protects against: race conditions during concurrent writes",
+        "reasoning": "The implementation uses `spin_lock_irqsave` and `spin_unlock_irqrestore` around the write queue and write pending state, ensuring that concurrent access is properly managed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "wait for write condition to be available — protects against: overlapping writes that could corrupt data",
+        "reasoning": "The implementation includes a loop that waits for `!hidg->write_pending` (i.e., the write condition is available). If not, it unlocks and waits on the write queue before rechecking the condition.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate and copy data from user buffer — protects against: malformed or invalid user data",
+        "reasoning": "The implementation uses `copy_from_user(req->buf, buffer, count)` to copy data from the user buffer. It also checks the return value of `copy_from_user` and returns an error if it is non-zero, indicating a failure in the copy.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release write pending state on error — protects against: leaving the device in an inconsistent state on failure",
+        "reasoning": "The implementation includes a `release_write_pending` label that sets `hidg->write_pending = 0` and unlocks the spinlock, ensuring that the write pending state is released in the event of an error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if user buffer is accessible — protects against: invalid or inaccessible user buffer pointer",
+        "reasoning": "The implementation uses `access_ok(buffer, count)` to check if the user buffer is accessible. This is a direct check for an invalid or inaccessible user buffer pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use spinlock to manage concurrent access — protects against: race conditions during concurrent writes",
+        "reasoning": "The implementation uses `spin_lock_irqsave` and `spin_unlock_irqrestore` around the write queue and write pending state, which protects against race conditions during concurrent writes.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "wait for write condition to be available — protects against: overlapping writes that could corrupt data",
+        "reasoning": "The implementation includes a loop that waits for `!hidg->write_pending` before proceeding with a write. If the condition is not met, it unlocks and waits on the write queue, ensuring that overlapping writes do not occur.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate and copy data from user buffer — protects against: malformed or invalid user data",
+        "reasoning": "The implementation uses `copy_from_user` to copy data from the user buffer to the request buffer. It also limits the copy size to `hidg->report_length` to prevent overflows. If the copy fails, it returns an error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release write pending state on error — protects against: leaving the device in an inconsistent state on failure",
+        "reasoning": "The implementation includes a `release_write_pending` label that sets `hidg->write_pending = 0` and unlocks the spinlock, ensuring that the write pending state is released on error paths.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "case_id": "C_237__0",
+  "sample_id": "D/C/237",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "openssl/openssl",
+  "cve_id": "CVE-2014-8176",
+  "cve_summary": "The dtls1_clear_queues function in ssl/d1_lib.c in OpenSSL before 0.9.8za, 1.0.0 before 1.0.0m, and 1.0.1 before 1.0.1h frees data structures without considering that application data can arrive between a ChangeCipherSpec message and a Finished message, which allows remote DTLS peers to cause a denial of service (memory corruption and application crash) or possibly have unspecified other impact via unexpected application data.",
+  "changed_file": "ssl/d1_lib.c",
+  "docstring": "\"\"\"\nSummary: Clears all queues associated with a DTLS connection by freeing memory allocated for unprocessed, processed, buffered messages, sent messages, and buffered application data.\n\nParameters:\ns (SSL *): Pointer to the SSL structure representing the DTLS connection.\n\nReturns: None\n\nLogic: The function iterates through various queues in the SSL structure, popping items from each queue and freeing associated memory. For record queues, it checks for and frees an existing record buffer, as well as the memory for the items themselves. This process is repeated for unprocessed records, processed records, buffered messages, sent messages, and buffered application data to clear the queued entries and their associated data.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "void clear_dtls_queues(SSL *s) {\n    if (s == NULL) {\n        return;\n    }\n\n    // Clear unprocessed records queue\n    while (s->unprocessed_records.head != NULL) {\n        RECORD_LAYER *record = sk_RECORD_pop(&s->unprocessed_records);\n        if (record != NULL) {\n            if (record->buf != NULL) {\n                OPENSSL_free(record->buf);\n                record->buf = NULL;\n            }\n            OPENSSL_free(record);\n        }\n    }\n\n    // Clear processed records queue\n    while (s->processed_records.head != NULL) {\n        RECORD_LAYER *record = sk_RECORD_pop(&s->processed_records);\n        if (record != NULL) {\n            if (record->buf != NULL) {\n                OPENSSL_free(record->buf);\n                record->buf = NULL;\n            }\n            OPENSSL_free(record);\n        }\n    }\n\n    // Clear buffered messages queue\n    while (s->buffered_messages.head != NULL) {\n        SSL3_BUFFER *buffer = sk_SSL3_BUFFER_pop(&s->buffered_messages);\n        if (buffer != NULL) {\n            if (buffer->buf != NULL) {\n                OPENSSL_free(buffer->buf);\n                buffer->buf = NULL;\n            }\n            OPENSSL_free(buffer);\n        }\n    }\n\n    // Clear sent messages queue\n    while (s->sent_messages.head != NULL) {\n        WPACKET *packet = sk_WPACKET_pop(&s->sent_messages);\n        if (packet != NULL) {\n            WPACKET_cleanup(packet);\n            OPENSSL_free(packet);\n        }\n    }\n\n    // Clear buffered application data queue\n    while (s->buffered_app_data.head != NULL) {\n        SSL3_BUFFER *buffer = sk_SSL3_BUFFER_pop(&s->buffered_app_data);\n        if (buffer != NULL) {\n            if (buffer->buf != NULL) {\n                OPENSSL_free(buffer->buf);\n                buffer->buf = NULL;\n            }\n            OPENSSL_free(buffer);\n        }\n    }\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "free record buffer before freeing record",
+      "protects_against": "memory leak from unprocessed record buffer"
+    },
+    {
+      "step": "free buffer before freeing buffer structure",
+      "protects_against": "memory leak from buffered messages buffer"
+    },
+    {
+      "step": "clean up packet before freeing",
+      "protects_against": "memory leak from sent messages"
+    },
+    {
+      "step": "free app data buffer before freeing buffer structure",
+      "protects_against": "memory leak from buffered application data"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform an explicit check for null pointers for the input 's' or any of the queue pointers. However, the function is called with a valid SSL pointer in the context of a DTLS connection, and the code assumes the queues exist. If 's' or any queue is null, a null pointer dereference could occur.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free record buffer before freeing record — protects against: memory leak from unprocessed record buffer",
+        "reasoning": "The implementation frees the record buffer (`rdata->rbuf.buf`) before freeing the `item->data` (the record) in the unprocessed and processed records loops. This matches the defensive step described.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free buffer before freeing buffer structure — protects against: memory leak from buffered messages buffer",
+        "reasoning": "The implementation frees the `fragment` buffer (`frag->fragment`) before freeing the `frag` structure in the buffered messages loop. This matches the defensive step described.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up packet before freeing — protects against: memory leak from sent messages",
+        "reasoning": "The implementation frees the `fragment` buffer (`frag->fragment`) before freeing the `frag` structure in the sent messages loop. This matches the defensive step described.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free app data buffer before freeing buffer structure — protects against: memory leak from buffered application data",
+        "reasoning": "The implementation frees the `fragment` buffer (`frag->fragment`) before freeing the `frag` structure in the buffered application data loop. This matches the defensive step described.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for a null pointer for the input parameter `s`. However, the code assumes `s` is valid and dereferences it directly (e.g., `s->d1->unprocessed_rcds.q`). If `s` is null, this would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "free record buffer before freeing record — protects against: memory leak from unprocessed record buffer",
+        "reasoning": "The implementation frees the record buffer (`OPENSSL_free(rdata->rbuf.buf)`) before freeing the record (`OPENSSL_free(item->data)`) in the unprocessed and processed records loops. This matches the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free buffer before freeing buffer structure — protects against: memory leak from buffered messages buffer",
+        "reasoning": "The implementation frees the buffer (`OPENSSL_free(frag->fragment)`) before freeing the buffer structure (`OPENSSL_free(frag)`) in the buffered messages loop. This matches the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up packet before freeing — protects against: memory leak from sent messages",
+        "reasoning": "The implementation frees the packet (`OPENSSL_free(frag->fragment)`) before freeing the structure (`OPENSSL_free(frag)`) in the sent messages loop. This matches the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free app data buffer before freeing buffer structure — protects against: memory leak from buffered application data",
+        "reasoning": "The implementation frees the app data buffer (`OPENSSL_free(rdata->rbuf.buf)`) before freeing the buffer structure (`OPENSSL_free(item->data)`) in the buffered application data loop. This matches the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

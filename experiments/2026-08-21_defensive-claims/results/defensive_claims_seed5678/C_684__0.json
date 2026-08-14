@@ -1,0 +1,130 @@
+{
+  "case_id": "C_684__0",
+  "sample_id": "D/C/684",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "DanBloomberg/leptonica",
+  "cve_id": "CVE-2018-7247",
+  "cve_summary": "An issue was discovered in pixHtmlViewer in prog/htmlviewer.c in Leptonica before 1.75.3. Unsanitized input (rootname) can overflow a buffer, leading potentially to arbitrary code execution or possibly unspecified other impact.",
+  "changed_file": "prog/htmlviewer.c",
+  "docstring": "\"\"\"\nSummary: \nGenerates an HTML viewer for images in a specified input directory, creating thumbnails and viewable images, and outputs the results to a specified output directory.\n\nParameters: \ndirin (const char*): Path to the input directory containing images. \ndirout (const char*): Path to the output directory where HTML files will be saved. \nrootname (const char*): Base name for the generated HTML files. \nthumbwidth (l_int32): Desired width for thumbnail images. \nviewwidth (l_int32): Desired width for viewable images.\n\nReturns: \nl_int32: Returns 0 on success, or an error code on failure.\n\nLogic: \nThe function checks for valid input parameters, creates the output directory if it doesn't exist, retrieves image filenames from the input directory, generates thumbnails and viewable images, and constructs two HTML files: one for the main viewer and another for links to the images. It handles memory management and error reporting throughout the process.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <sys/stat.h>\n#include <dirent.h>\n#include <errno.h>\n\n#include \"leptoon/protos.h\"\n\nl_int32 generate_html_viewer(const char *dirin, const char *dirout, const char *rootname, l_int32 thumbwidth, l_int32 viewwidth) {\n    char *outdir;\n    char *mainhtml;\n    char *linkhtml;\n    char *filename;\n    char *fullpath;\n    char *thumbpath;\n    char *viewpath;\n    FILE *fp;\n    DIR *d;\n    struct dirent *dir;\n    l_int32 result = 0;\n\n    // Validate input parameters\n    if (!dirin || !dirin[0] || !dirout || !dirout[0] || !rootname || !rootname[0]) {\n        return 1;\n    }\n\n    // Allocate memory for output directory path\n    outdir = (char *)malloc(strlen(dirout) + 1);\n    if (!outdir) {\n        return 1;\n    }\n    strcpy(outdir, dirout);\n\n    // Create output directory if it doesn't exist\n    if (mkdir(outdir, 0777) && errno != EEXIST) {\n        free(outdir);\n        return 1;\n    }\n\n    // Allocate memory for HTML filenames\n    mainhtml = (char *)malloc(strlen(dirout) + strlen(rootname) + 12);\n    if (!mainhtml) {\n        free(outdir);\n        return 1;\n    }\n    sprintf(mainhtml, \"%s/%s.html\", dirout, rootname);\n\n    linkhtml = (char *)malloc(strlen(dirout) + strlen(rootname) + 13);\n    if (!linkhtml) {\n        free(outdir);\n        free(mainhtml);\n        return 1;\n    }\n    sprintf(linkhtml, \"%s/%s_links.html\", dirout, rootname);\n\n    // Open input directory\n    d = opendir(dirin);\n    if (!d) {\n        free(outdir);\n        free(mainhtml);\n        free(linkhtml);\n        return 1;\n    }\n\n    // Open main HTML file for writing\n    fp = fopen(mainhtml, \"w\");\n    if (!fp) {\n        closedir(d);\n        free(outdir);\n        free(mainhtml);\n        free(linkhtml);\n        return 1;\n    }\n\n    // Write header to main HTML file\n    fprintf(fp, \"<html><head><title>%s</title></head><body>\", rootname);\n\n    // Open link HTML file for writing\n    FILE *fp_links = fopen(linkhtml, \"w\");\n    if (!fp_links) {\n        fclose(fp);\n        closedir(d);\n        free(outdir);\n        free(mainhtml);\n        free(linkhtml);\n        return 1;\n    }\n\n    // Write header to link HTML file\n    fprintf(fp_links, \"<html><head><title>%s Links</title></head><body>\", rootname);\n\n    // Process each file in the input directory\n    while ((dir = readdir(d)) != NULL) {\n        // Skip . and ..\n        if (strcmp(dir->d_name, \".\") == 0 || strcmp(dir->d_name, \"..\") == 0) {\n            continue;\n        }\n\n        // Allocate memory for filename and full path\n        filename = (char *)malloc(strlen(dir->d_name) + 1);\n        if (!filename) {\n            result = 1;\n            break;\n        }\n        strcpy(filename, dir->d_name);\n\n        fullpath = (char *)malloc(strlen(dirin) + strlen(dir->d_name) + 2);\n        if (!fullpath) {\n            free(filename);\n            result = 1;\n            break;\n        }\n        sprintf(fullpath, \"%s/%s\", dirin, dir->d_name);\n\n        // Generate thumbnail and viewable image paths\n        thumbpath = (char *)malloc(strlen(dirout) + strlen(dir->d_name) + 12);\n        if (!thumbpath) {\n            free(filename);\n            free(fullpath);\n            result = 1;\n            break;\n        }\n        sprintf(thumbpath, \"%s/%s_thumb.jpg\", dirout, dir->d_name);\n\n        viewpath = (char *)malloc(strlen(dirout) + strlen(dir->d_name) + 11);\n        if (!viewpath) {\n            free(filename);\n            free(fullpath);\n            free(thumbpath);\n            result = 1;\n            break;\n        }\n        sprintf(viewpath, \"%s/%s_view.jpg\", dirout, dir->d_name);\n\n        // Generate thumbnail and viewable images\n        // (This is a placeholder for the actual image processing code)\n        // ...\n\n        // Write HTML entries for the main viewer and links\n        fprintf(fp, \"<a href=\\\"%s\\\"><img src=\\\"%s\\\" width=\\\"%d\\\"></a>\", viewpath, thumbpath, thumbwidth);\n        fprintf(fp_links, \"<a href=\\\"%s\\\">%s</a><br>\", viewpath, dir->d_name);\n\n        // Free allocated memory\n        free(filename);\n        free(fullpath);\n        free(thumbpath);\n        free(viewpath);\n    }\n\n    // Write footer to HTML files\n    fprintf(fp, \"</body></html>\");\n    fprintf(fp_links, \"</body></html>\");\n\n    // Close files and directories\n    fclose(fp);\n    fclose(fp_links);\n    closedir(d);\n\n    // Free allocated memory\n    free(outdir);\n    free(mainhtml);\n    free(linkhtml);\n\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate input parameters",
+      "protects_against": "null or empty input strings"
+    },
+    {
+      "step": "check memory allocation results",
+      "protects_against": "out of memory conditions"
+    },
+    {
+      "step": "check directory and file operations",
+      "protects_against": "file system errors"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "close files and directories",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 2,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input parameters — protects against: null or empty input strings",
+        "reasoning": "The implementation checks for null values of dirin, dirout, and rootname, returning an error if any are null.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: out of memory conditions",
+        "reasoning": "The implementation does not explicitly check the results of memory allocation functions like stringNew or genPathname. It assumes these functions succeed.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check directory and file operations — protects against: file system errors",
+        "reasoning": "The implementation checks the result of the directory creation and getFilenamesInDirectory. However, it does not check the results of other file operations like l_binaryWrite or WriteFormattedPix.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "free allocated memory — protects against: memory leaks",
+        "reasoning": "The implementation frees most of the allocated memory, including strings and sarrays. However, it does not explicitly free the memory for fname or other variables that may be allocated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "close files and directories — protects against: resource leaks",
+        "reasoning": "The implementation does not explicitly open or close files or directories. It uses functions like l_binaryWrite and WriteFormattedPix, which may handle file operations internally.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "validate input parameters — protects against: null or empty input strings",
+        "reasoning": "The implementation checks for null values of dirin, dirout, and rootname, returning an error if any are null.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check memory allocation results — protects against: out of memory conditions",
+        "reasoning": "The implementation does not explicitly check the results of memory allocation functions like stringNew or genPathname. It assumes these functions succeed.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check directory and file operations — protects against: file system errors",
+        "reasoning": "The implementation checks the result of the directory creation and getFilenamesInDirectory. However, it does not check the results of other file operations like l_binaryWrite or WriteFormattedPix.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "free allocated memory — protects against: memory leaks",
+        "reasoning": "The implementation frees most of the allocated memory using lept_free and sarrayDestroy. However, it does not explicitly free the memory for fname, which is retrieved from sarrayGetString with L_NOCOPY.",
+        "verdict": "omits",
+        "severity": 2
+      },
+      {
+        "step": "close files and directories — protects against: resource leaks",
+        "reasoning": "The implementation does not explicitly open or close files or directories. It uses functions like l_binaryWrite and WriteFormattedPix, which may handle file operations internally, but there is no explicit close.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

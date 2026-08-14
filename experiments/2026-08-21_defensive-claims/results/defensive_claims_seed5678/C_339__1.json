@@ -1,0 +1,82 @@
+{
+  "case_id": "C_339__1",
+  "sample_id": "D/C/339",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2686",
+  "cve_summary": "net/socket.c in the Linux kernel 3.19 before 3.19.3 does not validate certain range data for (1) sendto and (2) recvfrom system calls, which allows local users to gain privileges by leveraging a subsystem that uses the copy_from_iter function in the iov_iter interface, as demonstrated by the Bluetooth subsystem.",
+  "changed_file": "net/socket.c",
+  "docstring": "\"\"\"\nSummary: \nHandles receiving data from a socket.\n\nParameters: \nfd (int): The file descriptor of the socket to receive data from. \nubuf (void __user *): Pointer to the user buffer where the received data will be stored. \nsize (size_t): The maximum number of bytes to receive. \nflags (unsigned int): Flags that modify the behavior of the receive operation. \naddr (struct sockaddr __user *): Pointer to a user-provided structure to store the address of the sender. \naddr_len (int __user *): Pointer to an integer that holds the length of the address structure.\n\nReturns: \nint: The number of bytes received on success, or a negative error code on failure.\n\nLogic: The function retrieves the socket associated with the file descriptor, initializes the message header and I/O vector, and calls the socket receive function. If the address is provided, it copies the sender's address back to the user space. It handles non-blocking flags and ensures proper resource management.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <sys/socket.h>\n#include <unistd.h>\n#include <string.h>\n#include <errno.h>\n\nint handle_receive(int fd, void __user *ubuf, size_t size, unsigned int flags, struct sockaddr __user *addr, int __user *addr_len) {\n    struct msghdr msg = {0};\n    struct iovecnt iov;\n    ssize_t bytes_received;\n    int result;\n\n    iov.iov_base = ubuf;\n    iov.iov_len = size;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_name = addr;\n\n    if (addr_len) {\n        if (getsockopt(fd, SOL_SOCKET, SO_PEERNAME, addr, (socklen_t __user *)addr_len) < 0) {\n            return -errno;\n        }\n    }\n\n    bytes_received = recvmsg(fd, &msg, flags);\n    if (bytes_received < 0) {\n        return -errno;\n    }\n\n    result = (int)bytes_received;\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of getsockopt",
+      "protects_against": "failure to retrieve socket address information"
+    },
+    {
+      "step": "check return value of recvmsg",
+      "protects_against": "failure to receive data from the socket"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of getsockopt — protects against: failure to retrieve socket address information",
+        "reasoning": "The implementation does not use getsockopt. It retrieves the socket address information using move_addr_to_user after receiving data with sock_recvmsg.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check return value of recvmsg — protects against: failure to receive data from the socket",
+        "reasoning": "The implementation uses sock_recvmsg (a socket-specific variant of recvmsg) and checks its return value. If the return value is negative, it is treated as an error.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of getsockopt — protects against: failure to retrieve socket address information",
+        "reasoning": "The implementation does not use getsockopt. Instead, it uses sock_recvmsg to receive data and manage the address information. Since getsockopt is not used, there is no need to check its return value.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "check return value of recvmsg — protects against: failure to receive data from the socket",
+        "reasoning": "The implementation calls sock_recvmsg and stores the result in 'err'. It then checks if 'err' is less than 0 and returns it, which effectively checks the return value of the receive operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

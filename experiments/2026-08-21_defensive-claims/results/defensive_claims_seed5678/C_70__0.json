@@ -1,0 +1,130 @@
+{
+  "case_id": "C_70__0",
+  "sample_id": "D/C/70",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3233",
+  "cve_summary": "The llcp_sock_recvmsg function in net/nfc/llcp/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable and a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/nfc/llcp/sock.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header structure to fill with received data.\nlen (size_t): The maximum length of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header or an error code.\n\nLogic: \nThe function first checks the socket state and whether the receive queue is empty. It handles non-blocking and out-of-band flags, retrieves a datagram from the socket, and copies the data into the provided message header. It also populates the address information if the socket type is datagram. Depending on the socket type, it manages the received data, either re-queuing or freeing the socket buffer. Finally, it returns the number of bytes received or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    if (sk->sk_state == TCP_LISTEN) {\n        return -EINVAL;\n    }\n\n    if (sk->sk_receive_queue.head == sk->sk_receive_queue.tail) {\n        if (flags & MSG_DONTWAIT) {\n            return -EAGAIN;\n        }\n        if (flags & MSG_OOB) {\n            return -EOPNOTSUPP;\n        }\n        return -EAGAIN;\n    }\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    if (skb->len > len) {\n        copied = len;\n        err = skb_copy_datagram_const_msg(msg, 0, skb, 0, len);\n    } else {\n        copied = skb->len;\n        err = skb_copy_datagram_const_msg(msg, 0, skb, 0, skb->len);\n    }\n\n    if (err) {\n        kfree_skb(skb);\n        return err;\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;\n        if (addr) {\n            addr->sin_family = AF_INET;\n            addr->sin_port = skb->h.iph->dport;\n            addr->sin_addr.s_addr = skb->h.iph->daddr;\n        }\n        kfree_skb(skb);\n    } else {\n        skb_queue_head(&sk->sk_receive_queue, skb);\n    }\n\n    return copied;\n}",
+  "defensive_steps": [
+    {
+      "step": "check socket state before processing",
+      "protects_against": "attempting to receive on a listening socket"
+    },
+    {
+      "step": "check receive queue before processing",
+      "protects_against": "attempting to receive when no data is available"
+    },
+    {
+      "step": "bound copy length to minimum of skb length and requested length",
+      "protects_against": "buffer overflow when copying data to message header"
+    },
+    {
+      "step": "check for errors after copying data",
+      "protects_against": "partial or failed data copy"
+    },
+    {
+      "step": "properly free or re-queue socket buffer",
+      "protects_against": "memory leaks and resource exhaustion"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check socket state before processing — protects against: attempting to receive on a listening socket",
+        "reasoning": "The implementation checks if the socket state is LLCP_CLOSED and the receive queue is empty before proceeding. This guards against processing on a socket in an invalid state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check receive queue before processing — protects against: attempting to receive when no data is available",
+        "reasoning": "The implementation checks if the receive queue is empty when the socket is in the LLCP_CLOSED state. If so, it returns 0, indicating no data is available.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to minimum of skb length and requested length — protects against: buffer overflow when copying data to message header",
+        "reasoning": "The implementation uses `copied = min_t(unsigned int, rlen, len)` to ensure the copy length is bounded by both the requested length and the skb length.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors after copying data — protects against: partial or failed data copy",
+        "reasoning": "The implementation checks the return value of `skb_copy_datagram_iovec`. If it fails, it re-queues the skb (if not MSG_PEEK) and returns -EFAULT.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly free or re-queue socket buffer — protects against: memory leaks and resource exhaustion",
+        "reasoning": "The implementation either re-queues the skb (if it contains remaining data and the socket type is stream, dgram, or raw) or frees it using `kfree_skb`. This ensures the buffer is not leaked.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check socket state before processing — protects against: attempting to receive on a listening socket",
+        "reasoning": "The implementation checks `sk->sk_state` and returns 0 if the state is `LLCP_CLOSED` and the receive queue is empty. This guards against processing a socket in an invalid state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check receive queue before processing — protects against: attempting to receive when no data is available",
+        "reasoning": "The implementation checks `skb_queue_empty(&sk->sk_receive_queue)` in conjunction with the socket state. If the queue is empty, it returns 0, indicating no data is available.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to minimum of skb length and requested length — protects against: buffer overflow when copying data to message header",
+        "reasoning": "The implementation uses `copied = min_t(unsigned int, rlen, len)` to ensure the copy length is bounded by both the requested length and the actual skb length before copying data.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for errors after copying data — protects against: partial or failed data copy",
+        "reasoning": "The implementation checks the return value of `skb_copy_datagram_iovec` and returns `-EFAULT` if the copy fails. This guards against partial or failed data copies.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "properly free or re-queue socket buffer — protects against: memory leaks and resource exhaustion",
+        "reasoning": "The implementation either re-queues the skb using `skb_queue_head` if there is remaining data or frees it using `kfree_skb`. This ensures the socket buffer is not leaked.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

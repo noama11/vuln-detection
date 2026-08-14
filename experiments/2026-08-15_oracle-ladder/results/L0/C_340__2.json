@@ -1,0 +1,48 @@
+{
+  "case_id": "C_340__2",
+  "sample_id": "D/C/340",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2672",
+  "cve_summary": "The xsave/xrstor implementation in arch/x86/include/asm/xsave.h in the Linux kernel before 3.19.2 creates certain .altinstr_replacement pointers and consequently does not provide any protection against instruction faulting, which allows local users to cause a denial of service (panic) by triggering a fault, as demonstrated by an unaligned memory operand or a non-canonical address memory operand.",
+  "changed_file": "arch/x86/include/asm/xsave.h",
+  "docstring": "Summary: Restores the processor's extended state from a specified xsave structure using the xrstor or xrstors instruction based on feature availability.\n\nParameters: \nfx (struct xsave_struct *): Pointer to the xsave structure containing the state to restore.  \nmask (u64): Bitmask indicating which state components to restore.\n\nReturns: int: Returns an error code indicating the success or failure of the operation.\n\nLogic: The function checks if the xrstors instruction can be used to restore the context, which supports a compacted format of the xsave area. It utilizes an inline assembly block to perform the restoration and handles potential faults during the operation. The function ultimately returns an error code, which is initialized to zero.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static inline int xrstor_state(struct xsave_struct *fx, u64 mask)\r\n{\r\n\tint err = 0;\r\n\tu32 lmask = mask;\r\n\tu32 hmask = mask >> 32;\r\n\r\n\t/*\r\n\t * Use xrstors to restore context if it is enabled. xrstors supports\r\n\t * compacted format of xsave area which is not supported by xrstor.\r\n\t */\r\n\talternative_input(\r\n\t\t\"1: \" XRSTOR,\r\n\t\tXRSTORS,\r\n\t\tX86_FEATURE_XSAVES,\r\n\t\t\"D\" (fx), \"m\" (*fx), \"a\" (lmask), \"d\" (hmask)\r\n\t\t: \"memory\");\r\n\r\n\tasm volatile(\"2:\\n\"\r\n\t\t     xstate_fault\r\n\t\t     : \"0\" (0)\r\n\t\t     : \"memory\");\r\n\r\n\treturn err;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in the `alternative_input` macro usage. The candidate implementation correctly specifies the two instruction alternatives (`XRSTOR` and `XRSTORS`) as separate strings, while the reference implementation appears to be incomplete or malformed (the second instruction is missing in the reference). This could lead to incorrect assembly generation or runtime errors when the `X86_FEATURE_XSAVES` feature is enabled. This is a security-relevant issue as it could lead to incorrect state restoration, potentially causing undefined behavior or exploitable conditions.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both use the same inline assembly block and the same handling for xrstors/xrstor instructions based on feature availability. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

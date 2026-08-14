@@ -1,0 +1,49 @@
+{
+  "case_id": "C_312__0",
+  "sample_id": "D/C/312",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2186",
+  "cve_summary": "The powermate_probe function in drivers/input/misc/powermate.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a crafted endpoints value in a USB device descriptor.",
+  "changed_file": "drivers/input/misc/powermate.c",
+  "docstring": "/**\n * Summary: Probes and initializes a Powermate USB device.\n * \n * Parameters:\n *   intf (struct usb_interface *): Pointer to the USB interface for the device.\n *   id (const struct usb_device_id *): Pointer to the USB device ID structure.\n * \n * Returns: int: 0 on success, negative error code on failure.\n * \n * Logic: This function examines the USB interface, allocates necessary resources for the Powermate device,\n * and sets up the input device structure. It configures the interrupt URB for receiving data from\n * the device and registers the input device with the input subsystem. If any allocation or setup\n * fails, it cleans up allocated resources and returns an appropriate error code. The function also\n * handles specific product IDs to set the device name and initializes the device's LED pulse\n * parameters.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int powermate_probe(struct usb_interface *v11, const struct usb_device_id *v8)\n{\n    struct usb_device *v15 = interface_to_usbdev (v11);\n    struct usb_host_interface *v10;\n    struct usb_endpoint_descriptor *v1;\n    struct v14 *v13;\n    struct v9 *v9;\n    int v12, maxp;\n    int v2 = -ENOMEM;\n    v10 = v11->cur_altsetting;\n    if (v10->desc.bNumEndpoints < 1)\n        return -EINVAL;\n    v1 = &v10->v1[0].desc;\n    if (!usb_endpoint_is_int_in(v1))\n        return -EIO;\n    usb_control_msg(v15, usb_sndctrlpipe(v15, 0),\n        0x0a, USB_TYPE_CLASS | USB_RECIP_INTERFACE,\n        0, v10->desc.bInterfaceNumber, NULL, 0,\n        USB_CTRL_SET_TIMEOUT);\n    v13 = kzalloc(sizeof(struct v14), GFP_KERNEL);\n    v9 = input_allocate_device();\n    if (!v13 || !v9)\n        goto v3;\n    if (powermate_alloc_buffers(v15, v13))\n        goto v4;\n    v13->irq = usb_alloc_urb(0, GFP_KERNEL);\n    if (!v13->irq)\n        goto v4;\n    v13->config = usb_alloc_urb(0, GFP_KERNEL);\n    if (!v13->config)\n        goto v5;\n    v13->v15 = v15;\n    v13->v11 = v11;\n    v13->input = v9;\n    usb_make_path(v15, v13->phys, sizeof(v13->phys));\n    strlcat(v13->phys, \"/input0\", sizeof(v13->phys));\n    spin_lock_init(&v13->lock);\n    switch (le16_to_cpu(v15->descriptor.idProduct)) {\n    case POWERMATE_PRODUCT_NEW:\n        v9->name = pm_name_powermate;\n        break;\n    case POWERMATE_PRODUCT_OLD:\n        v9->name = pm_name_soundknob;\n        break;\n    default:\n        v9->name = pm_name_soundknob;\n        printk(KERN_WARNING \"powermate: unknown product v8 %04x\\n\",\n               le16_to_cpu(v15->descriptor.idProduct));\n    }\n    v9->phys = v13->phys;\n    usb_to_input_id(v15, &v9->v8);\n    v9->dev.parent = &v11->dev;\n    input_set_drvdata(v9, v13);\n    v9->event = powermate_input_event;\n    v9->evbit[0] = BIT_MASK(EV_KEY) | BIT_MASK(EV_REL) |\n        BIT_MASK(EV_MSC);\n    v9->keybit[BIT_WORD(BTN_0)] = BIT_MASK(BTN_0);\n    v9->relbit[BIT_WORD(REL_DIAL)] = BIT_MASK(REL_DIAL);\n    v9->mscbit[BIT_WORD(MSC_PULSELED)] = BIT_MASK(MSC_PULSELED);\n    v12 = usb_rcvintpipe(v15, v1->bEndpointAddress);\n    maxp = usb_maxpacket(v15, v12, usb_pipeout(v12));\n    if (maxp < POWERMATE_PAYLOAD_SIZE_MIN || maxp > POWERMATE_PAYLOAD_SIZE_MAX) {\n        printk(KERN_WARNING \"powermate: Expected payload of %d--%d bytes, found %d bytes!\\n\",\n            POWERMATE_PAYLOAD_SIZE_MIN, POWERMATE_PAYLOAD_SIZE_MAX, maxp);\n        maxp = POWERMATE_PAYLOAD_SIZE_MAX;\n    }\n    usb_fill_int_urb(v13->irq, v15, v12, v13->data,\n             maxp, powermate_irq,\n             v13, v1->bInterval);\n    v13->irq->transfer_dma = v13->data_dma;\n    v13->irq->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;\n    if (usb_submit_urb(v13->irq, GFP_KERNEL)) {\n        v2 = -EIO;\n        goto v6;\n    }\n    v2 = input_register_device(v13->input);\n    if (v2)\n        goto v7;\n    v13->requires_update = UPDATE_PULSE_ASLEEP | UPDATE_PULSE_AWAKE | UPDATE_PULSE_MODE | UPDATE_STATIC_BRIGHTNESS;\n    powermate_pulse_led(v13, 0x80, 255, 0, 1, 0);\n    usb_set_intfdata(v11, v13);\n    return 0;\n v7:    usb_kill_urb(v13->irq);\n v6:    usb_free_urb(v13->config);\n v5:    usb_free_urb(v13->irq);\n v4:    powermate_free_buffers(v15, v13);\n v3:    input_free_device(v9);\n    kfree(v13);\n    return v2;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 15
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform the same sequence of USB interface probing, resource allocation, error handling, and device registration. The only differences are in variable names (e.g., 'v14' vs. 'powermate_device'), which do not affect behavior. All logic paths, error handling, and resource cleanup are identical in both implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform the same sequence of USB interface validation, resource allocation, input device setup, and error handling. The only differences are in variable names (e.g., `v14` vs. `powermate_device`, `v9` vs. `input_dev`) and the order of some comments, which do not affect observable behavior. All error paths and cleanup logic are structurally identical.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

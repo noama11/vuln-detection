@@ -1,0 +1,98 @@
+{
+  "case_id": "C_4__1",
+  "sample_id": "D/C/4",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-4467",
+  "cve_summary": "The (1) do_siocgstamp and (2) do_siocgstampns functions in net/socket.c in the Linux kernel before 3.5.4 use an incorrect argument order, which allows local users to obtain sensitive information from kernel memory or cause a denial of service (system crash) via a crafted ioctl call.",
+  "changed_file": "net/socket.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the SIOCGSTAMPNS ioctl command for a socket, retrieving the timestamp in nanoseconds.\n\nParameters: \nnet (struct net *): The network namespace associated with the socket.\nsock (struct socket *): The socket for which the timestamp is being retrieved.\ncmd (unsigned int): The command identifier for the ioctl operation.\nup (void __user *): Pointer to user space where the timestamp will be written.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first saves the current memory segment state, then sets it to kernel mode. It calls `sock_do_ioctl` to perform the ioctl operation and retrieve the timestamp into a `timespec` structure. After restoring the original memory segment state, it attempts to copy the timestamp to user space using `compat_put_timespec`. The function returns the error code from the ioctl operation or the copy operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int handle_ioctl_sio_cstampns(struct net *net, struct socket *sock, unsigned int cmd, void __user *up)\n{\n    int ret = -EFAULT;\n    struct timespec ts;\n    mm_segment_t old_fs = get_fs();\n\n    set_fs(KERNEL_DS);\n    ret = sock_do_ioctl(net, sock, cmd, (unsigned long)&ts);\n    set_fs(old_fs);\n\n    if (ret < 0)\n        return ret;\n\n    if (compat_put_timespec(&ts, up))\n        return -EFAULT;\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check return value of sock_do_ioctl",
+      "protects_against": "failure to perform the ioctl operation"
+    },
+    {
+      "step": "check return value of compat_put_timespec",
+      "protects_against": "invalid or inaccessible user space pointer"
+    },
+    {
+      "step": "restore original memory segment state after kernel mode operation",
+      "protects_against": "memory access violations or unintended kernel mode behavior"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of sock_do_ioctl — protects against: failure to perform the ioctl operation",
+        "reasoning": "The implementation stores the return value of `sock_do_ioctl` in `err` and uses it in the subsequent logic. If `err` is non-zero, it is returned directly, which indicates the error is handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of compat_put_timespec — protects against: invalid or inaccessible user space pointer",
+        "reasoning": "The implementation calls `compat_put_timespec` and assigns its return value to `err` if the previous operation was successful. The final return statement returns `err`, which includes the result of `compat_put_timespec`, ensuring any error from this call is handled.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "restore original memory segment state after kernel mode operation — protects against: memory access violations or unintended kernel mode behavior",
+        "reasoning": "The implementation saves the original memory segment state in `old_fs`, sets it to kernel mode with `set_fs(KERNEL_DS)`, and then restores the original state with `set_fs(old_fs)` before returning. This ensures the original memory segment state is restored.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check return value of sock_do_ioctl — protects against: failure to perform the ioctl operation",
+        "reasoning": "The implementation stores the return value of `sock_do_ioctl` in `err` and uses it in the final return. If `sock_do_ioctl` returns a non-zero value, it is returned as the function's result, indicating failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check return value of compat_put_timespec — protects against: invalid or inaccessible user space pointer",
+        "reasoning": "The implementation calls `compat_put_timespec` and stores its return value in `err` if `sock_do_ioctl` succeeded. If `compat_put_timespec` returns a non-zero value, it is returned as the function's result, indicating failure to copy to user space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "restore original memory segment state after kernel mode operation — protects against: memory access violations or unintended kernel mode behavior",
+        "reasoning": "The implementation saves the original memory segment state in `old_fs`, sets it to kernel mode with `set_fs(KERNEL_DS)`, and then restores the original state with `set_fs(old_fs)` before returning. This ensures the memory segment state is restored.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

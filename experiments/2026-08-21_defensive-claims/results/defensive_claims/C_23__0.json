@@ -1,0 +1,98 @@
+{
+  "case_id": "C_23__0",
+  "sample_id": "D/C/23",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-0038",
+  "cve_summary": "Integer overflow in the xfs_acl_from_disk function in fs/xfs/xfs_acl.c in the Linux kernel before 3.1.9 allows local users to cause a denial of service (panic) via a filesystem with a malformed ACL, leading to a heap-based buffer overflow.",
+  "changed_file": "fs/xfs/xfs_acl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Converts an XFS ACL structure from disk format to a POSIX ACL structure.  \n *  \n * Parameters:  \n * aclp (struct xfs_acl*): Pointer to the XFS ACL structure to convert.  \n *  \n * Returns:  \n * struct posix_acl*: Pointer to the newly allocated POSIX ACL structure on success,  \n * or an error pointer on failure.  \n *  \n * Logic:\n * The function reads the count of ACL entries and allocates memory for the POSIX ACL. It then\n * iterates through each entry, converting the tag and permissions from disk format to core format.\n * Depending on the tag type, it assigns the appropriate ID or marks it as undefined. If any errors\n * occur during this process, it releases the allocated ACL and returns an error pointer.\n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct posix_acl* xfs_acl_to_posix_acl(struct xfs_acl* aclp) {\n    int i;\n    struct posix_acl *posix_acl = NULL;\n    struct posix_acl_entry *entry;\n    int count = aclp->count;\n\n    if (count < 0 || count > XFS_ACL_MAX_ENTRIES) {\n        return ERR_PTR(-EINVAL);\n    }\n\n    posix_acl = kmalloc(sizeof(*posix_acl), GFP_KERNEL);\n    if (!posix_acl) {\n        return ERR_PTR(-ENOMEM);\n    }\n\n    posix_acl->count = count;\n    posix_acl->a_entries = kcalloc(count, sizeof(*entry), GFP_KERNEL);\n    if (!posix_acl->a_entries) {\n        kfree(posix_acl);\n        return ERR_PTR(-ENOMEM);\n    }\n\n    for (i = 0; i < count; i++) {\n        struct xfs_acl_entry *xfs_entry = &aclp->entries[i];\n        entry = &posix_acl->a_entries[i];\n\n        switch (xfs_entry->tag) {\n            case XFS_ACL_USER_OBJ:\n                entry->e_tag = POSIX_ACL_USER_OBJ;\n                break;\n            case XFS_ACL_USER:\n                entry->e_tag = POSIX_ACL_USER;\n                entry->e_id = xfs_entry->id;\n                break;\n            case XFS_ACL_GROUP_OBJ:\n                entry->e_tag = POSIX_ACL_GROUP_OBJ;\n                break;\n            case XFS_ACL_GROUP:\n                entry->e_tag = POSIX_ACL_GROUP;\n                entry->e_id = xfs_entry->id;\n                break;\n            case XFS_ACL_OTHER:\n                entry->e_tag = POSIX_ACL_OTHER;\n                break;\n            case XFS_ACL_MASK:\n                entry->e_tag = POSIX_ACL_MASK;\n                break;\n            default:\n                entry->e_tag = POSIX_ACL_UNDEFINED;\n                break;\n        }\n\n        entry->e_perm = xfs_entry->perm;\n    }\n\n    return posix_acl;\n}",
+  "defensive_steps": [
+    {
+      "step": "check acl entry count against maximum allowed entries",
+      "protects_against": "malformed or malicious input with an excessive number of ACL entries"
+    },
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failures"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check acl entry count against maximum allowed entries — protects against: malformed or malicious input with an excessive number of ACL entries",
+        "reasoning": "The implementation does not check the entry count against a maximum allowed value. It directly uses the count from the input to allocate memory and process entries.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failures",
+        "reasoning": "The implementation checks the result of `posix_acl_alloc` and returns an error pointer if it is null, which correctly handles allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation includes a labeled `fail` block that calls `posix_acl_release(acl)` to free the allocated memory before returning an error pointer, ensuring no memory leak.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check acl entry count against maximum allowed entries — protects against: malformed or malicious input with an excessive number of ACL entries",
+        "reasoning": "The implementation checks if the count exceeds XFS_ACL_MAX_ENTRIES and returns an error if it does.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failures",
+        "reasoning": "The implementation checks if the allocated ACL is null and returns an error if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on error paths — protects against: memory leaks",
+        "reasoning": "The implementation calls posix_acl_release(acl) on the error path labeled 'fail'.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

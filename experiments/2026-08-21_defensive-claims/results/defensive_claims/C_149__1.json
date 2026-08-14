@@ -1,0 +1,178 @@
+{
+  "case_id": "C_149__1",
+  "sample_id": "D/C/149",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves socket options for a PPPoL2TP socket.\n\nParameters: \nsock (struct socket *): Pointer to the socket from which options are retrieved.\nlevel (int): The level at which the option resides, expected to be SOL_PPPOL2TP.\noptname (int): The name of the option to retrieve.\noptval (char __user *): Pointer to user space where the option value will be stored.\noptlen (int __user *): Pointer to user space where the length of the option value will be stored.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function first handles the provided option level. It retrieves the length of the option and ensures it is non-negative. It then checks if the socket is connected and retrieves the session context. Depending on the session ID, it either retrieves options for the tunnel or the session. Finally, it copies the option value back to user space and updates the length, returning appropriate error codes as needed.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/uaccess.h>\n#include <linux/socket.h>\n\nint get_pppol2tp_sockopt(struct socket *sock, int level, int optname, char __user *optval, int __user *optlen) {\n    int ret = 0;\n    struct sock *sk = sock->sk;\n    struct pppol2tp_session *session;\n    int len = 0;\n\n    if (!sk) {\n        return -EINVAL;\n    }\n\n    if (level != SOL_PPPOL2TP) {\n        return -ENOPROTOOPT;\n    }\n\n    if (get_user(len, optlen)) {\n        return -EFAULT;\n    }\n\n    if (len < 0) {\n        return -EINVAL;\n    }\n\n    if (!sock->sk->sk_state || sock->sk->sk_state != PPPOX_CONNECTED) {\n        return -ENOTCONN;\n    }\n\n    session = pppol2tp_get_session(sk);\n    if (!session) {\n        return -ENOENT;\n    }\n\n    switch (optname) {\n        case PPPOLOPT_TUNNEL_ID:\n            if (len < sizeof(int)) {\n                ret = -EINVAL;\n                break;\n            }\n            len = sizeof(int);\n            if (copy_to_user(optval, &session->tunnel_id, len)) {\n                ret = -EFAULT;\n            }\n            break;\n        case PPPOLOPT_SESSION_ID:\n            if (len < sizeof(int)) {\n                ret = -EINVAL;\n                break;\n            }\n            len = sizeof(int);\n            if (copy_to_user(optval, &session->session_id, len)) {\n                ret = -EFAULT;\n            }\n            break;\n        default:\n            ret = -ENOPROTOOPT;\n            break;\n    }\n\n    if (ret == 0 && put_user(len, optlen)) {\n        ret = -EFAULT;\n    }\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if socket is null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate level parameter",
+      "protects_against": "invalid protocol level"
+    },
+    {
+      "step": "check if socket is connected",
+      "protects_against": "attempting to retrieve options on unconnected socket"
+    },
+    {
+      "step": "validate session pointer",
+      "protects_against": "null pointer dereference when retrieving session"
+    },
+    {
+      "step": "bound copy length to option size",
+      "protects_against": "buffer overflow when copying option values to user space"
+    },
+    {
+      "step": "validate user space pointer for optlen",
+      "protects_against": "invalid memory access when retrieving length"
+    },
+    {
+      "step": "validate user space pointer for optval",
+      "protects_against": "invalid memory access when copying option values"
+    },
+    {
+      "step": "validate length is non-negative",
+      "protects_against": "invalid or negative length values"
+    }
+  ],
+  "n_claims": 8,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 7,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket is null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `sock->sk` without checking if `sock` is null, which could lead to a null pointer dereference if `sock` is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate level parameter — protects against: invalid protocol level",
+        "reasoning": "The implementation checks if `level != SOL_PPPOL2TP` and delegates to `udp_prot.getsockopt` if so, which implies the level is validated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if socket is connected — protects against: attempting to retrieve options on unconnected socket",
+        "reasoning": "The implementation checks if `sk->sk_user_data == NULL` and returns `-ENOTCONN` if so, which indicates the socket is not connected.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate session pointer — protects against: null pointer dereference when retrieving session",
+        "reasoning": "The implementation calls `pppol2tp_sock_to_session(sk)` and checks if the result is null, returning `-EBADF` if so, which prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to option size — protects against: buffer overflow when copying option values to user space",
+        "reasoning": "The implementation uses `len = min_t(unsigned int, len, sizeof(int))` to cap the copy length to the size of the option value (`int`), preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user space pointer for optlen — protects against: invalid memory access when retrieving length",
+        "reasoning": "The implementation calls `get_user(len, optlen)` and returns `-EFAULT` if it fails, which validates the user space pointer for `optlen`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user space pointer for optval — protects against: invalid memory access when copying option values",
+        "reasoning": "The implementation calls `copy_to_user((void __user *) optval, &val, len)` and returns `-EFAULT` if it fails, which validates the user space pointer for `optval`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate length is non-negative — protects against: invalid or negative length values",
+        "reasoning": "The implementation checks if `len < 0` and returns `-EINVAL` if so, which validates the length is non-negative.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 7,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check if socket is null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if the 'sock' parameter is null. It directly dereferences 'sock->sk', which could lead to a null pointer dereference if 'sock' is null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate level parameter — protects against: invalid protocol level",
+        "reasoning": "The implementation checks if the 'level' is not equal to 'SOL_PPPOL2TP' and returns an error if it is not. This validates the level parameter.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if socket is connected — protects against: attempting to retrieve options on unconnected socket",
+        "reasoning": "The implementation checks if 'sk->sk_user_data' is null and returns an error if it is. This indicates the socket is not connected, so the step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate session pointer — protects against: null pointer dereference when retrieving session",
+        "reasoning": "The implementation calls 'pppol2tp_sock_to_session(sk)' and checks if the returned session is null. If it is, it returns an error. This validates the session pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to option size — protects against: buffer overflow when copying option values to user space",
+        "reasoning": "The implementation uses 'min_t' to ensure the length is at most the size of an 'int'. This bounds the copy length to the option size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user space pointer for optlen — protects against: invalid memory access when retrieving length",
+        "reasoning": "The implementation uses 'get_user' and 'put_user' for 'optlen', which are safe user space access functions. This validates the user space pointer for 'optlen'.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate user space pointer for optval — protects against: invalid memory access when copying option values",
+        "reasoning": "The implementation uses 'copy_to_user' for 'optval', which is a safe user space copy function. This validates the user space pointer for 'optval'.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate length is non-negative — protects against: invalid or negative length values",
+        "reasoning": "The implementation checks if 'len' is less than 0 and returns an error if it is. This validates the length is non-negative.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

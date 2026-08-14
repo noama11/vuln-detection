@@ -1,0 +1,82 @@
+{
+  "case_id": "C_597__0",
+  "sample_id": "D/C/597",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2018-1999015",
+  "cve_summary": "FFmpeg before commit 5aba5b89d0b1d73164d3b81764828bb8b20ff32a contains an out of array read vulnerability in ASF_F format demuxer that can result in heap memory reading. This attack appear to be exploitable via specially crafted ASF file that has to provided as input. This vulnerability appears to have been fixed in 5aba5b89d0b1d73164d3b81764828bb8b20ff32a and later.",
+  "changed_file": "libavcodec/mpeg4videodec.c",
+  "docstring": "Summary: This function reads a quantization matrix from a bitstream and handles potential bugs in the encoding context.\n\nParameters:\n- s (MpegEncContext*): Pointer to the MPEG encoding context that holds state information.\n- gb (GetBitContext*): Pointer to the bitstream context from which data is read.\n\nReturns: \nint: Returns 0 on success or an error code (AVERROR_INVALIDDATA) if the bitstream data is insufficient.\n\nLogic: The function first checks if a specific bug workaround is needed and sets edge positions accordingly. It then checks if there are enough bits left in the stream to read a quantization matrix. If sufficient data is available, it reads 64 values into the intra quantizer matrix using a zigzag pattern.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int read_quant_matrix(MpegEncContext *s, GetBitContext *gb) {\n    int i, j, val;\n    int bug_workaround = 0;\n\n    if (s->workaround_bugs & FF_BUG_QP) {\n        bug_workaround = 1;\n    }\n\n    if (get_bits_left(gb) < 64 * 8) {\n        return AVERROR_INVALIDDATA;\n    }\n\n    for (i = 0; i < 64; i++) {\n        val = get_bits(gb, 8);\n        if (val < 1 || val > 255) {\n            return AVERROR_INVALIDDATA;\n        }\n        s->intra_quant_matrix[zigzag_direct[i]] = val;\n    }\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for sufficient bits in the bitstream",
+      "protects_against": "insufficient data in the bitstream to read the quantization matrix"
+    },
+    {
+      "step": "validate quantization matrix values",
+      "protects_against": "invalid quantization matrix values outside the valid range (1-255)"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for sufficient bits in the bitstream — protects against: insufficient data in the bitstream to read the quantization matrix",
+        "reasoning": "The implementation reads 64 values of 8 bits each from the bitstream. However, it does not check whether there are enough bits available in the bitstream to read all 64 values. This could lead to reading beyond the available data.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate quantization matrix values — protects against: invalid quantization matrix values outside the valid range (1-255)",
+        "reasoning": "The implementation reads 8-bit values from the bitstream and stores them directly into the quantization matrix without checking whether they fall within the valid range of 1 to 255.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for sufficient bits in the bitstream — protects against: insufficient data in the bitstream to read the quantization matrix",
+        "reasoning": "The implementation includes a check `if (get_bits_left(gb) < 3)` which ensures there are enough bits left in the bitstream before reading the quantization matrix. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate quantization matrix values — protects against: invalid quantization matrix values outside the valid range (1-255)",
+        "reasoning": "The implementation does not include any logic to validate the quantization matrix values against a range (1-255). The specification mentions reading 64 values into the intra quantizer matrix, but the implementation does not perform this validation.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

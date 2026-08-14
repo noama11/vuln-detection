@@ -1,0 +1,114 @@
+{
+  "case_id": "C_51__0",
+  "sample_id": "D/C/51",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-6367",
+  "cve_summary": "The apic_get_tmcct function in arch/x86/kvm/lapic.c in the KVM subsystem in the Linux kernel through 3.12.5 allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via crafted modifications of the TMICT value.",
+  "changed_file": "arch/x86/kvm/lapic.c",
+  "docstring": "Summary: This function retrieves the current timer count for the APIC (Advanced Programmable Interrupt Controller) by calculating the remaining time on the timer.\n\nParameters:\n- apic (struct kvm_lapic *): Pointer to the LAPIC structure representing the APIC.\n\nReturns:\n- u32: The current timer count value, or 0 if the initial count is 0 or the timer period is 0.\n\nLogic: The function first checks if the provided APIC pointer is valid. It then verifies whether the initial count permits a current count to be calculated, returning 0 when appropriate. It calculates the remaining time on the timer, ensuring it is non-negative. The function computes the timer count by taking the modulus of the remaining time with the timer period and dividing by the bus cycle duration adjusted by the divide count. Finally, it returns the computed timer count.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "u32 kvm_apic_get_current_count(struct kvm_lapic *apic) {\n    u64 remaining_time;\n    u32 timer_period;\n    u32 timer_count = 0;\n\n    if (!apic)\n        return 0;\n\n    if (apic->timer.initial_count == 0 || apic->timer.period == 0)\n        return 0;\n\n    remaining_time = apic->timer.initial_count - apic->timer.current_count;\n    if (remaining_time < 0)\n        return 0;\n\n    timer_period = apic->timer.period;\n    remaining_time %= timer_period;\n\n    if (timer_period > 0) {\n        timer_count = (u32)(remaining_time / (timer_period / apic->divide_count));\n    }\n\n    return timer_count;\n}",
+  "defensive_steps": [
+    {
+      "step": "check apic pointer is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check initial_count and period are non-zero",
+      "protects_against": "division by zero"
+    },
+    {
+      "step": "check remaining_time is non-negative",
+      "protects_against": "invalid negative time calculation"
+    },
+    {
+      "step": "cast to u32 after division",
+      "protects_against": "integer overflow"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check apic pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses an `ASSERT(apic != NULL)` macro, which ensures the pointer is not null. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check initial_count and period are non-zero — protects against: division by zero",
+        "reasoning": "The implementation checks if the initial count is zero and returns 0 in that case. However, it does not explicitly check if the period is zero before using it in the division. If `apic->lapic_timer.period` is zero, the division will result in a division by zero error.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check remaining_time is non-negative — protects against: invalid negative time calculation",
+        "reasoning": "The implementation checks if the `remaining` time is negative and sets it to zero if so. This ensures the remaining time is non-negative.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "cast to u32 after division — protects against: integer overflow",
+        "reasoning": "The implementation performs the division and assigns the result to a `u32` variable (`tmcct`). This ensures the result is cast to `u32` after the division, preventing integer overflow from being returned.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check apic pointer is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the macro ASSERT(apic != NULL), which ensures the apic pointer is not null before proceeding. This prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check initial_count and period are non-zero — protects against: division by zero",
+        "reasoning": "The implementation checks if the initial count (retrieved via kvm_apic_get_reg) is 0 or if the period is 0, and returns 0 in that case. This prevents division by zero in the subsequent calculation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check remaining_time is non-negative — protects against: invalid negative time calculation",
+        "reasoning": "The implementation checks if the remaining time is negative (ktime_to_ns(remaining) < 0) and sets it to zero if so. This ensures the remaining time is non-negative before further processing.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "cast to u32 after division — protects against: integer overflow",
+        "reasoning": "The implementation performs the division using div64_u64, which returns a u64, and then assigns the result to a u32 variable (tmcct). This ensures the final result is cast to u32 after the division, preventing integer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_1138__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void MaybeShowOneClickSignInInfoBar(net::URLRequest* request, ProfileIOData* io_data, int child_id, int route_id) {\n  std::string gaia_signin = request->request_headers().find(\"X-Gaia-SignIn\")->second;\n  if (gaia_signin.empty())\n    return;\n\n  std::string realm = request->url().host();\n  if (realm != \"accounts.google.com\" && realm != \"www.google.com\")\n    return;\n\n  std::istringstream iss(gaia_signin);\n  std::string email, session_index;\n  std::getline(iss, email, '\\0');\n  std::getline(iss, session_index, '\\0');\n\n  if (email.empty() && session_index.empty())\n    return;\n\n  io_data->email() = email;\n\n  bool auto_accept = !session_index.empty() && (request->request_initiator().host() == \"clients.google.com\");\n\n  content::GetUIThreadTaskRunner({})->PostTask(\n      FROM_HERE,\n      base::BindOnce(\n          [](ProfileIOData* io_data, int child_id, int route_id, const std::string& email, const std::string& session_index, bool auto_accept) {\n            ShowOneClickSignInInfoBar(email, session_index, auto_accept, child_id, route_id);\n          },\n          io_data, child_id, route_id, email, session_index, auto_accept));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void CheckAndDisplaySignInInfoBar(net::URLRequest* request, ProfileIOData* io_data, int child_id, int route_id) {\n  const std::string& headers = request->extra_request_headers().GetHeader(net::HttpRequestHeaders::kXRequestedWith);\n  if (headers.empty()) {\n    return;\n  }\n\n  GURL url = request->url();\n  if (!url.SchemeIs(\"https\") || !url.DomainIs(\"accounts.google.com\")) {\n    return;\n  }\n\n  std::string email, session_index;\n  if (!ParseSignInValuesFromHeaders(request->extra_request_headers(), &email, &session_index)) {\n    return;\n  }\n\n  if (email.empty() && session_index.empty()) {\n    return;\n  }\n\n  bool auto_accept = ShouldAutoAcceptSignIn(email, session_index, request);\n\n  io_data->task_runner()->PostTask(\n      FROM_HERE,\n      base::BindOnce(&DisplaySignInInfoBarOnUIThread, child_id, route_id, email, session_index, auto_accept));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void ShowOneClickSignInInfoBar(net::URLRequest* request, ProfileIOData* io_data, int child_id, int route_id) {\n  std::string sign_in_values = request->request_headers().GetHeader(\"X-Chrome-OAuth2-Signin\");\n  if (sign_in_values.empty())\n    return;\n\n  GURL url(request->url());\n  if (!url.SchemeIs(\"https\") || !url.DomainIs(\"accounts.google.com\"))\n    return;\n\n  std::string email, session_index;\n  size_t pos = sign_in_values.find(',');\n  if (pos != std::string::npos) {\n    email = sign_in_values.substr(0, pos);\n    session_index = sign_in_values.substr(pos + 1);\n  }\n\n  bool auto_accept = !email.empty() && !session_index.empty();\n\n  if (email.empty() && session_index.empty())\n    return;\n\n  BrowserThread::PostTask(\n      BrowserThread::UI,\n      FROM_HERE,\n      base::Bind(&ShowOneClickSignInInfoBarOnUIThread, email, session_index, auto_accept, child_id, route_id));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void ShowSignInInfoBar(net::URLRequest* request, ProfileIOData* io_data, int child_id, int route_id) {\n  const std::string& headers = request->extra_request_headers().GetHeader(\n      \"X-Chrome-OAuth2-Signin\", std::string());\n  if (headers.empty())\n    return;\n\n  GURL url(request->url());\n  if (!url.SchemeIs(\"https\") || !url.host().ends_with(\".google.com\"))\n    return;\n\n  std::string email, session_index;\n  size_t pos = headers.find(':');\n  if (pos != std::string::npos) {\n    email = headers.substr(0, pos);\n    session_index = headers.substr(pos + 1);\n  }\n\n  if (email.empty() && session_index.empty())\n    return;\n\n  bool auto_accept = !email.empty() && !session_index.empty();\n\n  io_data->task_runner()->PostTask(\n      FROM_HERE,\n      base::BindOnce(&ShowSignInInfoBarOnUIThread, child_id, route_id, email, session_index, auto_accept));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void ShowOneClickSignInInfoBar(net::URLRequest* request, ProfileIOData* io_data, int child_id, int route_id) {\n  const std::string& sign_in_header = request->request_headers().FindHeader(\"X-Chrome-Signin\");\n  if (sign_in_header.empty())\n    return;\n\n  // Parse the sign-in values from the header.\n  std::vector<std::string> sign_in_values = base::SplitString(sign_in_header, \";\", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);\n  std::string email;\n  std::string session_index;\n\n  for (const std::string& value : sign_in_values) {\n    if (base::StartsWith(value, \"email=\")) {\n      email = value.substr(6);\n    } else if (base::StartsWith(value, \"session_index=\")) {\n      session_index = value.substr(14);\n    }\n  }\n\n  if (email.empty() && session_index.empty())\n    return;\n\n  // Check if the request URL is for the Gaia sign-on realm.\n  const GURL& url = request->url();\n  if (!url.SchemeIs(\"https\") || !url.DomainIs(\"accounts.google.com\")) {\n    return;\n  }\n\n  bool auto_accept = !email.empty() && !session_index.empty();\n\n  // If all values are default, return early.\n  if (!auto_accept)\n    return;\n\n  // Post a task to the UI thread to show the info bar.\n  io_data->io_task_runner()->PostTask(\n      FROM_HERE,\n      base::BindOnce(&ShowOneClickSignInInfoBarOnUIThread, child_id, route_id, email, session_index));\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

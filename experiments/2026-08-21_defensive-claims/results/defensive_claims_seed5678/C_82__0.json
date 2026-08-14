@@ -1,0 +1,98 @@
+{
+  "case_id": "C_82__0",
+  "sample_id": "D/C/82",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-2234",
+  "cve_summary": "The (1) key_notify_sa_flush and (2) key_notify_policy_flush functions in net/key/af_key.c in the Linux kernel before 3.10 do not initialize certain structure members, which allows local users to obtain sensitive information from kernel heap memory by reading a broadcast message from the notify interface of an IPSec key_socket.",
+  "changed_file": "net/key/af_key.c",
+  "docstring": "Summary: This function handles the notification for flushing security associations in the kernel.\n\nParameters: \n- c (const struct km_event *): Pointer to the event structure containing protocol and sequence information.\n\nReturns: \n- int: Returns 0 on success, or -ENOBUFS if memory allocation fails.\n\nLogic: The function allocates a socket buffer for a security association message. It populates the message header with relevant information such as the message type, sequence number, and protocol type. If the allocation fails, it returns an error code. Finally, it broadcasts the message to notify other components of the flush event.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/skbuff.h>\n#include <linux/netlink.h>\n#include <linux/err.h>\n\nint handle_flush_sa_notification(const struct km_event *c) {\n    struct sk_buff *skb;\n    int skb_size = NLMSG_GOODSIZE;\n\n    skb = alloc_skb(skb_size, GFP_KERNEL);\n    if (!skb) {\n        return -ENOBUFS;\n    }\n\n    struct nlmsghdr *nlh = nlmsg_put(skb, 0, c->seq, NLMSG_DONE, 0, 0);\n    if (!nlh) {\n        kfree_skb(skb);\n        return -ENOBUFS;\n    }\n\n    nlh->nlmsg_type = SADB_FLUSH;\n    nlh->nlmsg_len = NLMSG_HDRLEN;\n\n    nlh->nlmsg_pid = 0; /* Broadcast to all listeners */\n    nlh->nlmsg_flags = NLM_F_ROOT | NLM_F_MATCH;\n\n    netlink_broadcast(skb, 0, 0, GFP_KERNEL);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if skb allocation is successful",
+      "protects_against": "memory allocation failure leading to null pointer dereference"
+    },
+    {
+      "step": "check if nlmsg_put returns null",
+      "protects_against": "null pointer dereference when populating the message header"
+    },
+    {
+      "step": "free skb on error path",
+      "protects_against": "memory leak when allocation succeeds but message header population fails"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 1,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check if skb allocation is successful — protects against: memory allocation failure leading to null pointer dereference",
+        "reasoning": "The implementation checks if `skb` is NULL after calling `alloc_skb`, and returns `-ENOBUFS` if the allocation fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if nlmsg_put returns null — protects against: null pointer dereference when populating the message header",
+        "reasoning": "The implementation does not use `nlmsg_put`. Instead, it directly assigns to the `hdr` pointer after calling `skb_put`, which is assumed to succeed. There is no check for a null return from a function that would cause a null pointer dereference.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free skb on error path — protects against: memory leak when allocation succeeds but message header population fails",
+        "reasoning": "The implementation does not have an error path where `skb` is allocated but not used. The allocation is followed directly by assignment of the header fields, and no error condition is introduced after allocation. Therefore, there is no memory leak scenario.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 1,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if skb allocation is successful — protects against: memory allocation failure leading to null pointer dereference",
+        "reasoning": "The implementation checks if `skb` is NULL after calling `alloc_skb`, and returns `-ENOBUFS` if it is. This ensures that no further operations are performed on a potentially invalid pointer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if nlmsg_put returns null — protects against: null pointer dereference when populating the message header",
+        "reasoning": "The implementation uses `skb_put` to reserve space in the skb and assign the result to `hdr`. It does not check if `skb_put` returns NULL, and proceeds to dereference `hdr` to populate the message header. This is a potential null pointer dereference if `skb_put` fails.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "free skb on error path — protects against: memory leak when allocation succeeds but message header population fails",
+        "reasoning": "The implementation allocates `skb` and uses it successfully, but there is no error path where `skb` could be freed if message population failed. Since the code proceeds to use `skb` directly in `pfkey_broadcast`, there is no explicit error condition that would require freeing it.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

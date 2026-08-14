@@ -1,0 +1,35 @@
+{
+  "case_id": "C_246__0",
+  "implementation": "#include <linux/skbuff.h>\n#include <linux/mutex.h>\n#include <linux/sock.h>\n#include <linux/netlink.h>\n\nint handle_netlink_dump(struct sock *sk) {\n    struct sk_buff *skb = NULL;\n    int err = 0;\n\n    mutex_lock(&sk->sk_mutex);\n\n    if (sk->sk_callback_running) {\n        err = -EBUSY;\n        goto out;\n    }\n\n    if (sk->sk_rcvbuf >= sk->sk_rcvbuf_end) {\n        err = -ENOBUFS;\n        goto out;\n    }\n\n    skb = alloc_skb(sk->sk_rcvbuf_end - sk->sk_rcvbuf, GFP_KERNEL);\n    if (!skb) {\n        err = -ENOMEM;\n        goto out;\n    }\n\n    err = sk->sk_prot->dump(sk, skb);\n    if (err < 0) {\n        kfree_skb(skb);\n        goto out;\n    }\n\n    if (sk->sk_filter) {\n        skb = sk_filter(sk, skb);\n        if (!skb) {\n            err = -EINVAL;\n            goto out;\n        }\n    }\n\n    skb_queue_tail(&sk->sk_receive_queue, skb);\n\nout:\n    mutex_unlock(&sk->sk_mutex);\n\n    if (err < 0) {\n        kfree_skb(skb);\n    }\n\n    return err;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if callback is running before proceeding",
+      "protects_against": "race conditions with concurrent operations"
+    },
+    {
+      "step": "check if receive buffer is full before allocating memory",
+      "protects_against": "memory allocation failures due to insufficient buffer space"
+    },
+    {
+      "step": "validate the result of alloc_skb",
+      "protects_against": "null pointer dereference on failed allocation"
+    },
+    {
+      "step": "validate the result of sk_filter",
+      "protects_against": "null pointer dereference on failed filtering"
+    },
+    {
+      "step": "free allocated skb on error paths",
+      "protects_against": "memory leaks"
+    },
+    {
+      "step": "unlock mutex on all paths",
+      "protects_against": "deadlocks"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

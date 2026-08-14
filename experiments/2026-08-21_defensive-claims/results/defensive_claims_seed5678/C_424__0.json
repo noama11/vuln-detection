@@ -1,0 +1,82 @@
+{
+  "case_id": "C_424__0",
+  "sample_id": "D/C/424",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-11450",
+  "cve_summary": "coders/jpeg.c in ImageMagick before 7.0.6-1 allows remote attackers to cause a denial of service (application crash) or possibly have unspecified other impact via JPEG data that is too short.",
+  "changed_file": "coders/jpeg.c",
+  "docstring": "Summary: RegisterJPEGImage() adds properties for the JPEG image format to the list of supported formats in the image processing library.\n\nParameters: N/A\n\nReturns: size_t: the size of the registered JPEG image format entry.\n\nLogic: The function initializes a version string and a description for the JPEG format. It creates a new MagickInfo entry for various JPEG-related identifiers (\"JPE\", \"JPEG\", \"JPG\", \"JPS\", \"PJPEG\") and sets properties such as decoder and encoder functions, thread support, and MIME type. The function checks the JPEG library version to conditionally set thread support. Each entry is registered using the RegisterMagickInfo function, ensuring that the image processing library can handle JPEG images correctly. The use of ConstantString ensures that string literals are managed efficiently.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n#include <stdlib.h>\n\n#include \"magick_info.h\"\n\nsize_t RegisterJPEGImage(void) {\n  MagickInfo *entry;\n  const char *version = \"JPEG 9.0\";\n  const char *description = \"Joint Photographic Experts Group JFIF format\";\n\n  entry = (MagickInfo *) malloc(sizeof(*entry));\n  if (entry == NULL)\n    return 0;\n\n  (void) memset(entry, 0, sizeof(*entry));\n\n  entry->decoder = JPEGDecoder;\n  entry->encoder = JPEGEcoder;\n  entry->thread_support = 1;\n  entry->mime_type = ConstantString(\"image/jpeg\");\n  entry->description = ConstantString(description);\n  entry->version = ConstantString(version);\n\n  if (JPEGVersion() >= 62)\n    entry->thread_support = 1;\n  else\n    entry->thread_support = 0;\n\n  if (!RegisterMagickInfo(\"JPE\", entry)) {\n    free(entry);\n    return 0;\n  }\n\n  if (!RegisterMagickInfo(\"JPEG\", entry)) {\n    free(entry);\n    return 0;\n  }\n\n  if (!RegisterMagickInfo(\"JPG\", entry)) {\n    free(entry);\n    return 0;\n  }\n\n  if (!RegisterMagickInfo(\"JPS\", entry)) {\n    free(entry);\n    return 0;\n  }\n\n  if (!RegisterMagickInfo(\"PJPEG\", entry)) {\n    free(entry);\n    return 0;\n  }\n\n  return sizeof(*entry);\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer after memory allocation",
+      "protects_against": "memory allocation failure causing null pointer dereference"
+    },
+    {
+      "step": "free allocated memory on registration failure",
+      "protects_against": "memory leak if registration fails"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure causing null pointer dereference",
+        "reasoning": "The implementation uses `SetMagickInfo` to create `MagickInfo` entries. If `SetMagickInfo` returns NULL due to allocation failure, the code proceeds to dereference `entry` without checking for NULL. This is a reachable path where a null pointer dereference could occur.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "free allocated memory on registration failure — protects against: memory leak if registration fails",
+        "reasoning": "The implementation does not check whether `RegisterMagickInfo(entry)` succeeds or fails. If registration fails, there is no mechanism to free the memory allocated for `entry`. Since `entry` is allocated via `SetMagickInfo`, and no cleanup is performed on failure, this could result in a memory leak.",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointer after memory allocation — protects against: memory allocation failure causing null pointer dereference",
+        "reasoning": "The implementation uses `SetMagickInfo`, which presumably allocates memory for the `MagickInfo` entry. However, the implementation does not check whether `entry` is `NULL` after calling `SetMagickInfo`. If `SetMagickInfo` returns `NULL`, the code will proceed to dereference `entry`, leading to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "free allocated memory on registration failure — protects against: memory leak if registration fails",
+        "reasoning": "The implementation calls `RegisterMagickInfo(entry)` but does not check whether the registration was successful. If registration fails, the implementation does not free the memory allocated by `SetMagickInfo`, which could result in a memory leak.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

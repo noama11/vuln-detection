@@ -1,0 +1,31 @@
+{
+  "case_id": "C_371__0",
+  "implementation": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    int ret = -EINVAL;\n    struct socket *new_sk = NULL;\n\n    if (!sk || !sockp)\n        return -EINVAL;\n\n    if (id <= 0)\n        return -EINVAL;\n\n    /* Check if the association exists and is valid. */\n    if (!sctp_id2assoc(sk, id))\n        return -ENOENT;\n\n    /* Ensure no threads are waiting for buffer space on the association. */\n    if (sctp_has_pending_buffers(sk, id)) {\n        return -EBUSY;\n    }\n\n    /* Create a new socket. */\n    ret = sock_create_kern(current->nsproxy->net_ns, PF_INET, sk->sk_type, sk->sk_protocol, &new_sk);\n    if (ret < 0) {\n        return ret;\n    }\n\n    /* Copy relevant properties from the original socket to the new one. */\n    sctp_copy_properties(sk, new_sk->sk);\n\n    /* Migrate the association to the new socket. */\n    ret = sctp_migrate_assoc(sk, id, new_sk->sk);\n    if (ret < 0) {\n        sock_release(new_sk);\n        return ret;\n    }\n\n    *sockp = new_sk;\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference on sk or sockp"
+    },
+    {
+      "step": "validate association ID",
+      "protects_against": "invalid or out-of-range association ID"
+    },
+    {
+      "step": "check for pending buffers",
+      "protects_against": "operation on association with pending operations"
+    },
+    {
+      "step": "check socket creation result",
+      "protects_against": "failure to create new socket"
+    },
+    {
+      "step": "release new socket on error",
+      "protects_against": "resource leak on error path"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

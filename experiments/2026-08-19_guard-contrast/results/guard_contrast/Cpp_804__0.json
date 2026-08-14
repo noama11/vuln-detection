@@ -1,0 +1,60 @@
+{
+  "case_id": "Cpp_804__0",
+  "sample_id": "D/C++/804",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "facebook/wangle",
+  "cve_id": "CVE-2019-3554",
+  "cve_summary": "Wangle's AcceptRoutingHandler incorrectly casts a socket when accepting a TLS 1.3 connection, leading to a potential denial of service attack against systems accepting such connections. This affects versions of Wangle prior to v2019.01.14.00",
+  "changed_file": "wangle/bootstrap/AcceptRoutingHandler-inl.h",
+  "docstring": "Summary: This function handles incoming routing data for a specific connection by managing the associated routing pipeline and transferring control to a new acceptor.\n\nParameters:\n- connId (uint64_t): The identifier for the connection.\n- routingData (RoutingData&): The routing data associated with the connection.\n\nReturns: None\n\nLogic: The function first retrieves the routing pipeline for the given connection ID. If the pipeline is not found, it logs a message and exits. It then pauses the transport associated with the pipeline and hashes the routing data to select a new acceptor. The function switches to the new acceptor's thread, where it attaches the socket to the acceptor's event base, creates a new pipeline with the routing data, and adds a new server connection to the acceptor. Finally, it activates the transport and reads any buffered bytes into the pipeline.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void handleRoutingData(uint64_t connId, RoutingData& routingData) {\n    auto pipeline = getRoutingPipeline(connId);\n    if (!pipeline) {\n        LOG(INFO) << \"Routing pipeline not found for connection ID: \" << connId;\n        return;\n    }\n\n    pipeline->pauseTransport();\n\n    uint32_t acceptorId = std::hash<std::string>()(routingData.toString()) % numAcceptors;\n\n    Acceptor* acceptor = getAcceptor(acceptorId);\n    if (!acceptor) {\n        LOG(ERROR) << \"Failed to find acceptor with ID: \" << acceptorId;\n        return;\n    }\n\n    acceptor->thread->runInEventBaseThread([&]() {\n        auto socket = pipeline->getSocket();\n        socket->attachEventBase(acceptor->eventBase);\n\n        auto newPipeline = createPipeline(routingData);\n        acceptor->addServerConnection(newPipeline);\n\n        newPipeline->activateTransport();\n        newPipeline->readBufferedBytes();\n    });\n}",
+  "candidate_slot": 2,
+  "judge_vs_vulnerable": {
+    "reference_exposure": 3,
+    "candidate_exposure": 4,
+    "reference_missing_steps": [
+      "null check on pipeline",
+      "null check on acceptor"
+    ],
+    "candidate_missing_steps": [
+      "dynamic_cast for socket type check",
+      "map erase to prevent use-after-free"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a bounds check on the acceptor selection using modulo and ensures the pipeline is moved and erased from the map to avoid use-after-free. It also performs a dynamic cast to ensure the socket is of the correct type. Implementation 2 performs a null check on the pipeline and the acceptor, and logs errors for both. Neither performs a validation of the routing data itself, and both assume the socket is valid. The main difference is in the bounds check and dynamic cast in 1, and the explicit null checks in 2.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "reference_exposure": 4,
+    "candidate_exposure": 3,
+    "reference_missing_steps": [
+      "null check for acceptor",
+      "error logging for missing acceptor"
+    ],
+    "candidate_missing_steps": [
+      "dynamic_cast null check",
+      "DCHECK for routingHandler"
+    ],
+    "n_reference_missing": 2,
+    "n_candidate_missing": 2,
+    "confidence": "medium",
+    "rationale": "Implementation 1 performs a null check on the socket after dynamic casting and includes a DCHECK for the routingHandler, which are defensive steps not present in implementation 2. Implementation 2 performs explicit error logging and a null check for the acceptor, which are not present in implementation 1. These differences are relevant to handling invalid or unexpected input.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "guard_contrast",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "judge_prompt_sha": "5c893462dfca",
+    "candidates_from": "results/qwen_full (published arm, unmodified)"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "case_id": "C_897__0",
+  "implementation": "OPJ_BOOL decode_rle4_bitmap(FILE* IN, OPJ_UINT8* pData, OPJ_UINT32 stride, OPJ_UINT32 width, OPJ_UINT32 height) {\n    if (!IN || !pData || stride < width || width == 0 || height == 0) {\n        return OPJ_FALSE;\n    }\n\n    OPJ_UINT32 total_pixels = width * height;\n    OPJ_UINT32 row_bytes = (width + 1) / 2; // RLE4 encodes 2 pixels per byte\n\n    OPJ_UINT8* p = pData;\n    OPJ_UINT32 row = 0;\n\n    while (row < height) {\n        OPJ_UINT8 byte;\n        if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n            return OPJ_FALSE;\n        }\n\n        if (byte == 0x00) {\n            // End of line or end of packet\n            if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                return OPJ_FALSE;\n            }\n            if (byte == 0x00) {\n                // End of packet\n                break;\n            } else if (byte == 0x01) {\n                // End of line\n                p = pData + (row + 1) * stride;\n                row++;\n                continue;\n            } else {\n                // Invalid marker\n                return OPJ_FALSE;\n            }\n        }\n\n        OPJ_UINT8 count = byte;\n        if (count == 0) {\n            // Read next byte for count\n            if (fread(&count, sizeof(OPJ_UINT8), 1, IN) != 1) {\n                return OPJ_FALSE;\n            }\n        }\n\n        if (fread(&byte, sizeof(OPJ_UINT8), 1, IN) != 1) {\n            return OPJ_FALSE;\n        }\n\n        OPJ_UINT32 remaining_pixels = total_pixels - (p - pData);\n        if (count > remaining_pixels) {\n            count = remaining_pixels;\n        }\n\n        for (OPJ_UINT32 i = 0; i < count; i++) {\n            if (p >= pData + stride * height) {\n                return OPJ_FALSE;\n            }\n\n            *p++ = (byte & 0xF0) >> 4;\n            if (p >= pData + stride * height) {\n                return OPJ_FALSE;\n            }\n\n            *p++ = byte & 0x0F;\n        }\n    }\n\n    return OPJ_TRUE;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers and invalid parameters",
+      "protects_against": "null or invalid input file stream or output buffer"
+    },
+    {
+      "step": "validate that stride is at least as large as width",
+      "protects_against": "buffer overflow when writing to output buffer"
+    },
+    {
+      "step": "check for successful file reads",
+      "protects_against": "unexpected end of file or read errors"
+    },
+    {
+      "step": "validate marker values",
+      "protects_against": "malformed or invalid RLE4 encoding markers"
+    },
+    {
+      "step": "bound copy length to remaining pixels",
+      "protects_against": "writing beyond the bounds of the output buffer"
+    },
+    {
+      "step": "check pointer bounds before writing",
+      "protects_against": "buffer overflow when writing pixel data"
+    }
+  ],
+  "n_steps": 6,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

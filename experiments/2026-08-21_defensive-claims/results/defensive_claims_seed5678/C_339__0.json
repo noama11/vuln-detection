@@ -1,0 +1,114 @@
+{
+  "case_id": "C_339__0",
+  "sample_id": "D/C/339",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2686",
+  "cve_summary": "net/socket.c in the Linux kernel 3.19 before 3.19.3 does not validate certain range data for (1) sendto and (2) recvfrom system calls, which allows local users to gain privileges by leveraging a subsystem that uses the copy_from_iter function in the iov_iter interface, as demonstrated by the Bluetooth subsystem.",
+  "changed_file": "net/socket.c",
+  "docstring": "Summary: This function implements the `sendto` system call for sending data to a specified address using a socket.\n\nParameters:\n- fd (int): The file descriptor of the socket.\n- buff (void __user *): A pointer to the buffer containing the data to be sent.\n- len (size_t): The length of the data in bytes.\n- flags (unsigned int): Flags that modify the behavior of the send operation.\n- addr (struct sockaddr __user *): A pointer to the address structure where the data is to be sent.\n- addr_len (int): The length of the address structure.\n\nReturns: int - The number of bytes sent on success, or a negative error code on failure.\n\nLogic: The function first limits the buffer length to a valid range. It retrieves the socket associated with the file descriptor and prepares the message header. If an address is provided, it converts it to kernel space. It sets the message flags based on the socket's non-blocking status and then calls `sock_sendmsg` to send the data. Finally, it releases the socket reference and returns the result of the send operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int sendto(int fd, void __user *buff, size_t len, unsigned int flags, struct sockaddr __user *addr, int addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    struct iovec iov;\n    int ret = -EBADF;\n\n    if (len > SSIZE_MAX)\n        len = SSIZE_MAX;\n\n    if (len == 0)\n        return 0;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = buff;\n    iov.iov_len = len;\n    msg.msg_name = addr;\n    msg.msg_namelen = addr_len;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        msg.msg_flags |= MSG_DONTWAIT;\n\n    ret = sock_sendmsg(sock, &msg, len);\n    fput_light(sock->file, 1);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "limit buffer length to SSIZE_MAX",
+      "protects_against": "buffer length exceeding system limits which could cause overflow or resource exhaustion"
+    },
+    {
+      "step": "check if socket exists before use",
+      "protects_against": "invalid file descriptor access"
+    },
+    {
+      "step": "initialize message structure with null pointers and zero lengths",
+      "protects_against": "uninitialized memory access"
+    },
+    {
+      "step": "release socket reference on all paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "limit buffer length to SSIZE_MAX — protects against: buffer length exceeding system limits which could cause overflow or resource exhaustion",
+        "reasoning": "The implementation limits the buffer length to INT_MAX, which is a system limit. This performs the same protective step as limiting to SSIZE_MAX, assuming INT_MAX is less than or equal to SSIZE_MAX on the target platform.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if socket exists before use — protects against: invalid file descriptor access",
+        "reasoning": "The implementation calls sockfd_lookup_light, which returns NULL if the socket does not exist. The code checks for NULL and jumps to 'out' if so, ensuring the socket is valid before use.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize message structure with null pointers and zero lengths — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly sets msg.msg_name to NULL, msg.msg_control to NULL, msg.msg_controllen to 0, and msg.msg_namelen to 0. This ensures the message structure is initialized with safe defaults.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release socket reference on all paths — protects against: resource leaks",
+        "reasoning": "The implementation calls fput_light in the 'out_put' and 'out' labels, ensuring the socket reference is released on all code paths, including error conditions.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "limit buffer length to SSIZE_MAX — protects against: buffer length exceeding system limits which could cause overflow or resource exhaustion",
+        "reasoning": "The implementation limits the buffer length to INT_MAX, which is a system limit. This is equivalent to limiting it to SSIZE_MAX in this context.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if socket exists before use — protects against: invalid file descriptor access",
+        "reasoning": "The implementation calls sockfd_lookup_light, which returns NULL if the socket does not exist. It then checks if sock is NULL and handles the error.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "initialize message structure with null pointers and zero lengths — protects against: uninitialized memory access",
+        "reasoning": "The implementation explicitly sets msg.msg_name to NULL, msg.msg_control to NULL, msg.msg_controllen to 0, and msg.msg_namelen to 0. This ensures the message structure is initialized with safe defaults.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "release socket reference on all paths — protects against: resource leaks",
+        "reasoning": "The implementation calls fput_light on the socket's file pointer in all paths, including error paths (via the out_put label). This ensures the socket reference is always released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

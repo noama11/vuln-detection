@@ -1,0 +1,62 @@
+{
+  "case_id": "C_103__0",
+  "sample_id": "D/C/103",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1763",
+  "cve_summary": "Array index error in the __sock_diag_rcv_msg function in net/core/sock_diag.c in the Linux kernel before 3.7.10 allows local users to gain privileges via a large family value in a Netlink message.",
+  "changed_file": "net/core/sock_diag.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a socket diagnostic message received via netlink.\n\nParameters: \nskb (struct sk_buff *): Pointer to the socket buffer containing the message.\nnlh (struct nlmsghdr *): Pointer to the netlink message header.\n\nReturns: \nint: Returns 0 on success, or a negative error code indicating the failure reason.\n\nLogic: The function first checks if the length of the netlink message is valid. It then obtains the socket diagnostic handler for the socket family specified in the request. If a handler is available, it locks the handler and attempts to call its dump function to process the message. After processing, it unlocks the handler and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "module_get before calling handler->dump",
+        "performed_by_count": 3,
+        "why_it_matters": "If the handler's module is unloaded before the dump function completes, it could lead to a use-after-free or null pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs locking and unlocking of the handler, which is a consensus step. However, it does not perform a module reference count increment (module_get) before calling the handler's dump function, which is a step performed by a majority of the independent implementations. This omission could lead to use-after-free if the handler is unloaded before the dump function completes.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "module reference count increment (try_module_get)",
+        "performed_by_count": 3,
+        "why_it_matters": "If the handler's module is unloaded while the dump function is being executed, it could lead to a use-after-free or crash. The target does not increment the module reference count before calling the dump function."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a family check and uses locking/unlocking of the handler, which are not performed by the majority of the independent implementations. However, it does not perform a module reference count increment before calling the handler's dump function, which is a consensus step among the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

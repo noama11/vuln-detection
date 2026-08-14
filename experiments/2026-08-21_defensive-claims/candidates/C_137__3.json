@@ -1,0 +1,31 @@
+{
+  "case_id": "C_137__3",
+  "implementation": "#include <stddef.h>\n#include <stdint.h>\n\n// Assuming the following types are defined elsewhere:\n// struct pt_regs;\n// struct syscall_metadata;\n// struct trace_buffer;\n\n// Forward declarations\nstruct syscall_metadata {\n    int enabled;\n    int has_exit_event;\n    size_t exit_event_size;\n};\n\nstruct trace_buffer {\n    size_t capacity;\n    size_t length;\n    uint8_t data[];\n};\n\n// Function to get the syscall number from registers\nint get_syscall_number(const struct pt_regs *regs);\n\n// Function to get the metadata for a syscall number\nconst struct syscall_metadata* get_syscall_metadata(int syscall_number);\n\n// Function to submit a trace buffer for processing\nvoid submit_trace_buffer(struct trace_buffer *buffer);\n\n// Function to prepare a trace buffer\nstruct trace_buffer* prepare_trace_buffer(size_t size);\n\n// Function to free a trace buffer\nvoid free_trace_buffer(struct trace_buffer *buffer);\n\nvoid syscall_exit_handler(void *ignore, struct pt_regs *regs, long ret) {\n    // Validate the registers pointer\n    if (!regs) {\n        return;\n    }\n\n    // Get the syscall number\n    int syscall_number = get_syscall_number(regs);\n\n    // Check if the syscall number is valid\n    if (syscall_number < 0) {\n        return;\n    }\n\n    // Get the syscall metadata\n    const struct syscall_metadata *metadata = get_syscall_metadata(syscall_number);\n\n    // Check if the metadata is valid and exit events are enabled\n    if (!metadata || !metadata->enabled || !metadata->has_exit_event) {\n        return;\n    }\n\n    // Prepare the trace buffer\n    struct trace_buffer *buffer = prepare_trace_buffer(metadata->exit_event_size);\n    if (!buffer) {\n        return;\n    }\n\n    // Check if the buffer has sufficient capacity\n    if (buffer->capacity < sizeof(syscall_number) + sizeof(ret)) {\n        free_trace_buffer(buffer);\n        return;\n    }\n\n    // Populate the buffer with the syscall number and return value\n    size_t offset = 0;\n    if (offset + sizeof(syscall_number) <= buffer->capacity) {\n        memcpy(&buffer->data[offset], &syscall_number, sizeof(syscall_number));\n        offset += sizeof(syscall_number);\n    }\n\n    if (offset + sizeof(ret) <= buffer->capacity) {\n        memcpy(&buffer->data[offset], &ret, sizeof(ret));\n        offset += sizeof(ret);\n    }\n\n    // Update the buffer length\n    buffer->length = offset;\n\n    // Submit the trace buffer for processing\n    submit_trace_buffer(buffer);\n}",
+  "defensive_steps": [
+    {
+      "step": "validate registers pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check syscall number validity",
+      "protects_against": "invalid or negative syscall numbers"
+    },
+    {
+      "step": "validate metadata pointer",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check buffer capacity before copying data",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "free trace buffer on error paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_8__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq, struct net_device *dev) {\n    struct sk_buff *skb = NULL;\n    struct sk_buff *frag;\n    unsigned int payload_len = 0;\n    int err;\n\n    if (!fq || !dev)\n        return NULL;\n\n    skb = alloc_skb(fq->payload_len, GFP_ATOMIC);\n    if (!skb) {\n        pr_debug(\"Memory allocation failure for IPv6 reassembly.\\n\");\n        return NULL;\n    }\n\n    skb->dev = dev;\n    skb->protocol = htons(ETH_P_IPV6);\n\n    /* Copy data from each fragment */\n    for (frag = fq->fragments; frag; frag = frag->next) {\n        payload_len += frag->len;\n\n        if (skb_tailroom(skb) < frag->len) {\n            pr_debug(\"Insufficient buffer space for fragment.\\n\");\n            kfree_skb(skb);\n            return NULL;\n        }\n\n        skb_put_data(skb, frag->data, frag->len);\n    }\n\n    skb->len = payload_len;\n    skb->data_len = payload_len;\n    skb->truesize = payload_len;\n\n    /* Adjust headers and checksums as needed */\n    err = ip6_reassemble(skb, 0);\n    if (err) {\n        pr_debug(\"IPv6 reassembly failed with error code %d.\\n\", err);\n        kfree_skb(skb);\n        return NULL;\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq,\n                                          struct net_device *dev) {\n    struct sk_buff *skb;\n    int payload_len;\n    int i;\n\n    if (!fq || !dev) {\n        return NULL;\n    }\n\n    payload_len = 0;\n    for (i = 0; i < fq->q.pf; i++) {\n        struct sk_buff *frag = fq->q.fragments[i];\n        payload_len += frag->len;\n    }\n\n    skb = alloc_skb(payload_len, GFP_ATOMIC);\n    if (!skb) {\n        pr_debug(\"Failed to allocate memory for reassembled packet.\\n\");\n        return NULL;\n    }\n\n    skb->dev = dev;\n    skb->protocol = htons(ETH_P_IPV6);\n\n    for (i = 0; i < fq->q.pf; i++) {\n        struct sk_buff *frag = fq->q.fragments[i];\n        int offset = frag->data - frag->head;\n\n        if (!skb_copy_bits(frag, offset, skb_put(skb, frag->len), frag->len)) {\n            pr_debug(\"Failed to copy fragment data.\\n\");\n            kfree_skb(skb);\n            return NULL;\n        }\n    }\n\n    ip6_hdr(skb)->payload_len = htons(payload_len);\n    skb->len = sizeof(struct ipv6hdr) + payload_len;\n    skb->data_len = skb->len;\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq, struct net_device *dev)\n{\n    struct sk_buff *skb;\n    struct ipv6hdr *ipv6_hdr;\n    int payload_len;\n    int ret;\n\n    if (!fq || !dev) {\n        return NULL;\n    }\n\n    payload_len = nf_ct_frag6_queue_payload_len(fq);\n    if (payload_len < 0) {\n        return NULL;\n    }\n\n    skb = alloc_skb(payload_len + sizeof(struct ipv6hdr), GFP_ATOMIC);\n    if (!skb) {\n        return NULL;\n    }\n\n    skb_reserve(skb, sizeof(struct ipv6hdr));\n\n    ret = nf_ct_frag6_queue_build_skb(fq, skb);\n    if (ret < 0) {\n        kfree_skb(skb);\n        return NULL;\n    }\n\n    ipv6_hdr = skb_push(skb, sizeof(struct ipv6hdr));\n    memset(ipv6_hdr, 0, sizeof(struct ipv6hdr));\n    ipv6_hdr->version = 6;\n    ipv6_hdr->payload_len = htons(payload_len);\n    ipv6_hdr->nexthdr = fq->frag->ipv6h->nexthdr;\n    ipv6_hdr->saddr = fq->frag->ipv6h->saddr;\n    ipv6_hdr->daddr = fq->frag->ipv6h->daddr;\n\n    skb->dev = dev;\n    skb->protocol = htons(ETH_P_IPV6);\n    skb->pkt_type = PACKET_HOST;\n    skb->ip_summed = CHECKSUM_NONE;\n\n    nf_ct_frag6_queue_destroy(fq);\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq, struct net_device *dev)\n{\n    int payload_len;\n    struct sk_buff *skb;\n\n    if (!fq || !dev)\n        return NULL;\n\n    payload_len = nf_ct_frag6_queue_payload_len(fq);\n    if (payload_len < 0)\n        return NULL;\n\n    skb = alloc_skb(payload_len, GFP_ATOMIC);\n    if (!skb)\n        return NULL;\n\n    if (fq->first && (fq->first->flags & IP6_FLAGS_MORE_FRAG)) {\n        if (payload_len < (fq->first->offset + 1)) {\n            kfree_skb(skb);\n            return NULL;\n        }\n    }\n\n    skb->len = payload_len;\n    skb->data_len = payload_len;\n\n    while (!skb_queue_empty(&fq->fragments)) {\n        struct sk_buff *fragment = skb_dequeue(&fq->fragments);\n\n        if (!fragment)\n            break;\n\n        skb_copy_from_linear_data_offset(fragment, 0, skb->data + fragment->offset,\n                                           fragment->len);\n    }\n\n    ip6_hdr(skb)->payload_len = htons(payload_len);\n    skb->ip_summed = CHECKSUM_NONE;\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "struct sk_buff *reassemble_ipv6_fragments(struct nf_ct_frag6_queue *fq, struct net_device *dev) {\n    struct sk_buff *skb;\n    int payload_len;\n    int i;\n\n    if (!fq || !dev) {\n        return NULL;\n    }\n\n    payload_len = 0;\n    for (i = 0; i < fq->q.pf->q.pf->q.fragments; i++) {\n        payload_len += fq->q.fragments[i].data_len;\n    }\n\n    skb = alloc_skb(payload_len, GFP_ATOMIC);\n    if (!skb) {\n        pr_debug(\"Memory allocation failed during IPv6 reassembly.\\n\");\n        return NULL;\n    }\n\n    if (fq->q.fragments[0].flags & MORE_FRAGMENTS) {\n        pr_debug(\"First fragment is itself fragmented.\\n\");\n        kfree_skb(skb);\n        return NULL;\n    }\n\n    for (i = 0; i < fq->q.fragments; i++) {\n        if (skb_copy_from_linear_data(skb, fq->q.fragments[i].data, fq->q.fragments[i].data_len)) {\n            pr_debug(\"Failed to copy fragment data during reassembly.\\n\");\n            kfree_skb(skb);\n            return NULL;\n        }\n    }\n\n    skb->len = payload_len;\n    skb->data_len = payload_len;\n    skb->truesize = payload_len;\n\n    /* Adjust IPv6 headers and checksums as needed */\n    ip6_hdr(skb)->payload_len = htons(payload_len);\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

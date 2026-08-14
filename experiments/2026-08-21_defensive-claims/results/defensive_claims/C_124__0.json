@@ -1,0 +1,114 @@
+{
+  "case_id": "C_124__0",
+  "sample_id": "D/C/124",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1180",
+  "cve_summary": "Multiple stack-based buffer overflows in the iriap_getvaluebyclass_indication function in net/irda/iriap.c in the Linux kernel before 2.6.39 allow remote attackers to cause a denial of service (memory corruption) or possibly have unspecified other impact by leveraging connectivity to an IrDA infrared network and sending a large integer value for a (1) name length or (2) attribute length.",
+  "changed_file": "net/irda/iriap.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the retrieval of attribute values by class indication in the IRDA protocol.\n\nParameters: \nself (struct iriap_cb *): Pointer to the IRDA control block.\nskb (struct sk_buff *): Pointer to the socket buffer containing the data.\n\nReturns: \nNone\n\nLogic: The function begins by validating the input parameters and extracting the class name and attribute name from the socket buffer. It processes the names for lookup against the available objects and attributes. If the specified object or attribute is not found, it sends a response indicating the error. If both are found, it retrieves the attribute value and sends a successful response with the value. Debugging information is logged throughout the process to assist in tracing execution and errors.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "generated_code": "void iriap_get_attr_by_class(struct iriap_cb *self, struct sk_buff *skb) {\n    char *class_name = NULL;\n    char *attr_name = NULL;\n\n    if (!self || !skb) {\n        return;\n    }\n\n    class_name = (char *)skb->data;\n    if (!class_name) {\n        return;\n    }\n\n    attr_name = class_name + strlen(class_name) + 1;\n    if (!attr_name || (attr_name - class_name) >= skb->len) {\n        return;\n    }\n\n    struct iriap_object *obj = find_object_by_name(self->objects, class_name);\n    if (!obj) {\n        send_error_response(skb, IRIAP_ERR_OBJECT_NOT_FOUND);\n        return;\n    }\n\n    struct iriap_attribute *attr = find_attribute_by_name(obj->attributes, attr_name);\n    if (!attr) {\n        send_error_response(skb, IRIAP_ERR_ATTRIBUTE_NOT_FOUND);\n        return;\n    }\n\n    send_value_response(skb, attr->value);\n}",
+  "defensive_steps": [
+    {
+      "step": "check self and skb pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate class_name and attr_name pointers",
+      "protects_against": "null pointer dereference and buffer overflow"
+    },
+    {
+      "step": "check if object exists",
+      "protects_against": "accessing invalid object"
+    },
+    {
+      "step": "check if attribute exists",
+      "protects_against": "accessing invalid attribute"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check self and skb pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses IRDA_ASSERT macros to check that self and skb are not NULL before proceeding. This prevents null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate class_name and attr_name pointers — protects against: null pointer dereference and buffer overflow",
+        "reasoning": "The implementation copies data from the socket buffer into fixed-size buffers (name and attr) with a length determined from the data. However, it does not explicitly validate that the pointers to the class_name and attr_name are valid or that the lengths are within safe bounds. It assumes the data in the socket buffer is valid.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check if object exists — protects against: accessing invalid object",
+        "reasoning": "The implementation calls irias_find_object and checks if the returned object is NULL. If it is, it sends an error response. This prevents accessing an invalid object.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if attribute exists — protects against: accessing invalid attribute",
+        "reasoning": "The implementation calls irias_find_attrib and checks if the returned attribute is NULL. If it is, it sends an error response. This prevents accessing an invalid attribute.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check self and skb pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation uses IRDA_ASSERT macros to check that self and skb are not NULL before proceeding. If either is NULL, the function returns early, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate class_name and attr_name pointers — protects against: null pointer dereference and buffer overflow",
+        "reasoning": "The implementation copies data from the socket buffer into fixed-size buffers (name and attr) after extracting lengths from the buffer. It uses IRDA_ASSERT to ensure the lengths are within bounds before copying, preventing buffer overflow. There is no explicit check for null pointers for the names, but the data is extracted from the socket buffer, which is already validated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if object exists — protects against: accessing invalid object",
+        "reasoning": "The implementation calls irias_find_object to locate the object. If it returns NULL, the function sends an error response and returns early, preventing access to an invalid object.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if attribute exists — protects against: accessing invalid attribute",
+        "reasoning": "The implementation calls irias_find_attrib to locate the attribute. If it returns NULL, the function sends an error response and returns early, preventing access to an invalid attribute.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

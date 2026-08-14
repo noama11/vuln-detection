@@ -1,0 +1,162 @@
+{
+  "case_id": "C_483__0",
+  "sample_id": "D/C/483",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-6353",
+  "cve_summary": "net/sctp/socket.c in the Linux kernel through 4.10.1 does not properly restrict association peel-off operations during certain wait states, which allows local users to cause a denial of service (invalid unlock and double free) via a multithreaded application.  NOTE: this vulnerability exists because of an incorrect fix for CVE-2017-5986.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function peels off a new socket from an existing SCTP association.  \n *  \n * Parameters:  \n * sk (struct sock *): The original socket associated with the SCTP connection.  \n * id (sctp_assoc_t): The association ID to peel off from the original socket.  \n * sockp (struct socket **): A pointer to store the newly created socket.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:\n * The function first retrieves the SCTP association using the provided ID. It checks whether the\n * association and socket are eligible for peeling off. If valid, it creates a new socket, copies\n * properties from the original socket, and migrates the association to the new socket before\n * returning it through the sockp parameter.\n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *assoc;\n    struct socket *new_sk = NULL;\n    int ret = -EINVAL;\n\n    if (!sk || !sockp)\n        return -EINVAL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        return -ENOENT;\n\n    if (!assoc->peer_supports_sack || !assoc->sctp_ep || !assoc->sctp_ep->base.sk)\n        return -EINVAL;\n\n    new_sk = sock_alloc();\n    if (!new_sk) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    if (sock_init_data(new_sk, assoc->sctp_ep->base.sk) < 0) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    if (sctp_association_migrate(assoc, new_sk) < 0) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    *sockp = new_sk;\n    ret = 0;\n\nout:\n    if (ret < 0 && new_sk) {\n        sock_release(new_sk);\n        *sockp = NULL;\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference when accessing sk or sockp"
+    },
+    {
+      "step": "check association existence",
+      "protects_against": "invalid association ID that does not exist"
+    },
+    {
+      "step": "check association properties",
+      "protects_against": "invalid or incomplete association state"
+    },
+    {
+      "step": "check socket allocation",
+      "protects_against": "memory allocation failure for new socket"
+    },
+    {
+      "step": "check socket initialization",
+      "protects_against": "failure to initialize new socket data"
+    },
+    {
+      "step": "check association migration",
+      "protects_against": "failure to migrate association to new socket"
+    },
+    {
+      "step": "release resources on error",
+      "protects_against": "memory leak if socket allocation fails"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 21,
+    "n_omits": 4,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sk or sockp",
+        "reasoning": "The implementation does not explicitly check for null pointers for sk or sockp. However, the function is exported and may be called with invalid pointers, which could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check association existence — protects against: invalid association ID that does not exist",
+        "reasoning": "The implementation checks if asoc is null and returns -EINVAL in that case. This directly corresponds to checking if the association exists.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check association properties — protects against: invalid or incomplete association state",
+        "reasoning": "The implementation checks if the socket is of UDP style before proceeding. This is a check on the socket's properties and ensures the association is in a valid state for peeling off.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket allocation — protects against: memory allocation failure for new socket",
+        "reasoning": "The implementation calls sock_create and checks if the return value is less than 0. If so, it returns the error, which indicates it handles allocation failure.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket initialization — protects against: failure to initialize new socket data",
+        "reasoning": "The implementation calls sctp_copy_sock and sctp_sock_migrate, which are responsible for copying and initializing the new socket's data. However, there is no explicit check for failure in these steps.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check association migration — protects against: failure to migrate association to new socket",
+        "reasoning": "The implementation calls sctp_sock_migrate, but there is no explicit check for failure in this step. If the migration fails, the function proceeds as if it succeeded.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release resources on error — protects against: memory leak if socket allocation fails",
+        "reasoning": "The implementation does not explicitly release the socket if an error occurs after allocation. For example, if sctp_copy_sock or sctp_sock_migrate fails, the allocated socket is not freed.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 22,
+    "n_omits": 4,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference when accessing sk or sockp",
+        "reasoning": "The implementation does not explicitly check for null pointers for sk or sockp. However, the function is expected to return an error if either is null, but no such check is present.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check association existence — protects against: invalid association ID that does not exist",
+        "reasoning": "The implementation checks if asoc is null and returns -EINVAL if it is, which directly corresponds to checking the existence of the association.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check association properties — protects against: invalid or incomplete association state",
+        "reasoning": "The implementation checks if the association has a waiting thread (waitqueue_active) and returns -EBUSY if it does, which is a check on the association's state.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket allocation — protects against: memory allocation failure for new socket",
+        "reasoning": "The implementation calls sock_create and checks if the return value is less than 0, which indicates an allocation failure. It returns the error code in that case.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check socket initialization — protects against: failure to initialize new socket data",
+        "reasoning": "The implementation calls sctp_copy_sock to copy socket data, but does not check for its success or failure. There is no explicit check for failure in socket initialization.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check association migration — protects against: failure to migrate association to new socket",
+        "reasoning": "The implementation calls sctp_sock_migrate but does not check for its success or failure. There is no explicit check for failure in the migration process.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "release resources on error — protects against: memory leak if socket allocation fails",
+        "reasoning": "The implementation does not include any code to release the newly created socket if an error occurs after sock_create. If sock_create succeeds but a later step fails, the socket is leaked.",
+        "verdict": "omits",
+        "severity": 7
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

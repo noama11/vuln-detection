@@ -1,0 +1,82 @@
+{
+  "case_id": "C_62__0",
+  "sample_id": "D/C/62",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4254",
+  "cve_summary": "The validate_event function in arch/arm/kernel/perf_event.c in the Linux kernel before 3.10.8 on the ARM platform allows local users to gain privileges or cause a denial of service (NULL pointer dereference and system crash) by adding a hardware event to an event group led by a software event.",
+  "changed_file": "arch/arm/kernel/perf_event.c",
+  "docstring": "Summary: Validates a performance event for a given hardware event structure.\n\nParameters: \n- hw_events (struct pmu_hw_events*): Pointer to the hardware events structure to validate against.\n- event (struct perf_event*): Pointer to the performance event to be validated.\n\nReturns: \n- int: Returns 1 if the event is valid, otherwise returns 0.\n\nLogic: The function verifies that the event's PMU matches the leader PMU and that the event's state is at least PERF_EVENT_STATE_OFF. If the event is off and not enabled on execution, it returns 1. Finally, it checks if the event index can be retrieved from the ARM PMU structure, returning 1 if valid and 0 otherwise.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int validate_perf_event(struct pmu_hw_events *hw_events, struct perf_event *event) {\n    if (!hw_events || !event) {\n        return 0;\n    }\n\n    if (event->pmu != event->group_leader->pmu) {\n        return 0;\n    }\n\n    if (event->state < PERF_EVENT_STATE_OFF) {\n        return 0;\n    }\n\n    if (event->state == PERF_EVENT_STATE_OFF && !(event->hw.config_base & PERF_EXEC_ENABLE)) {\n        return 1;\n    }\n\n    int idx = arm_pmu_event_idx(event);\n    if (idx < 0) {\n        return 0;\n    }\n\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "bound event index to non-negative value",
+      "protects_against": "invalid or negative index from arm_pmu_event_idx"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform an explicit check for null pointers for 'hw_events' or 'event'. Dereferencing these pointers without a null check could lead to a null pointer dereference if either is null.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound event index to non-negative value — protects against: invalid or negative index from arm_pmu_event_idx",
+        "reasoning": "The implementation returns the result of a comparison between the return value of 'armpmu->get_event_idx' and 0. This implies that the function ensures the index is non-negative, as it returns 1 only if the index is non-negative.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform any null checks on the 'hw_events' or 'event' pointers. Dereferencing these pointers without checking for null could lead to a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound event index to non-negative value — protects against: invalid or negative index from arm_pmu_event_idx",
+        "reasoning": "The implementation returns the result of 'armpmu->get_event_idx(hw_events, event) >= 0', which implies that the index is bounded to be non-negative. This step is performed.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

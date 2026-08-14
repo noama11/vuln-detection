@@ -1,0 +1,114 @@
+{
+  "case_id": "C_600__0",
+  "sample_id": "D/C/600",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-1000204",
+  "cve_summary": "** DISPUTED ** Linux Kernel version 3.18 to 4.16 incorrectly handles an SG_IO ioctl on /dev/sg0 with dxfer_direction=SG_DXFER_FROM_DEV and an empty 6-byte cmdp. This may lead to copying up to 1000 kernel heap pages to the userspace. This has been fixed upstream in https://github.com/torvalds/linux/commit/a45b599ad808c3c982fdcdc12b0b8611c2f92824 already. The problem has limited scope, as users don't usually have permissions to access SCSI devices. On the other hand, e.g. the Nero user manual suggests doing `chmod o+r+w /dev/sg*` to make the devices accessible. NOTE: third parties dispute the relevance of this report, noting that the requirement for an attacker to have both the CAP_SYS_ADMIN and CAP_SYS_RAWIO capabilities makes it *virtually impossible to exploit.*",
+  "changed_file": "drivers/scsi/sg.c",
+  "docstring": "\"\"\"\nSummary: \nBuilds an indirect scatter-gather list for a given buffer size.\n\nParameters: \nschp (Sg_scatter_hold *): Pointer to the scatter-hold structure to be filled.\nsfp (Sg_fd *): Pointer to the file descriptor structure associated with the device.\nbuff_size (int): The size of the buffer for which the scatter-gather list is built.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure (e.g., -ENOMEM for memory allocation failure).\n\nLogic: \nThe function first validates the buffer size and aligns it to the nearest sector size. It then attempts to build a scatter-gather table using the provided structures. Memory allocation for pages is performed based on the calculated order and flags, with retries if necessary. If allocation fails, previously allocated pages are freed. The function logs various states and returns the number of used scatter-gather elements or an error code if the operation fails.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n#include <errno.h>\n\n#define SECTOR_SIZE 512\n\nstruct Sg_scatter_hold {\n    int sg_nents_used;\n    // Additional fields can be added as needed\n};\n\nstruct Sg_fd {\n    // File descriptor structure fields can be added as needed\n};\n\nint build_sg_list(struct Sg_scatter_hold *schp, struct Sg_fd *sfp, int buff_size) {\n    if (!schp || !sfp) {\n        return -EINVAL;\n    }\n\n    if (buff_size <= 0) {\n        return -EINVAL;\n    }\n\n    // Align buffer size to the nearest sector size\n    int aligned_size = ((buff_size + SECTOR_SIZE - 1) / SECTOR_SIZE) * SECTOR_SIZE;\n\n    // Calculate the number of pages needed for the buffer\n    int page_size = getpagesize();\n    int num_pages = aligned_size / page_size;\n\n    // Allocate memory for the pages\n    void **pages = malloc(num_pages * sizeof(void *));\n    if (!pages) {\n        return -ENOMEM;\n    }\n\n    for (int i = 0; i < num_pages; ++i) {\n        pages[i] = malloc(page_size);\n        if (!pages[i]) {\n            // Free previously allocated pages in case of failure\n            for (int j = 0; j < i; ++j) {\n                free(pages[j]);\n            }\n            free(pages);\n            return -ENOMEM;\n        }\n    }\n\n    // Build the scatter-gather table using the allocated pages\n    // This is a placeholder for the actual logic to build the scatter-gather table\n    // For the purpose of this example, we'll assume it's successful\n    schp->sg_nents_used = num_pages;\n\n    // Free the allocated pages after building the scatter-gather table\n    for (int i = 0; i < num_pages; ++i) {\n        free(pages[i]);\n    }\n    free(pages);\n\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate buffer size",
+      "protects_against": "invalid or negative buffer size"
+    },
+    {
+      "step": "free allocated memory on failure",
+      "protects_against": "memory leak"
+    },
+    {
+      "step": "bound page allocation to the calculated number of pages",
+      "protects_against": "memory allocation overflow"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters (schp, sfp, or buff_size). However, the function is designed to operate on a scatter-gather list, which implies that schp and sfp are expected to be valid. Dereferencing these pointers without checks could lead to null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate buffer size — protects against: invalid or negative buffer size",
+        "reasoning": "The implementation includes a check for `blk_size < 0` and returns `-EFAULT` in that case. This validates the buffer size against being negative. However, it does not explicitly check for invalid buffer sizes beyond being negative (e.g., excessively large values).",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory on failure — protects against: memory leak",
+        "reasoning": "The implementation includes a labeled block (`out`) that iterates over the allocated pages and frees them using `__free_pages` in the event of a failure. This ensures that any previously allocated memory is freed before returning an error code.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound page allocation to the calculated number of pages — protects against: memory allocation overflow",
+        "reasoning": "The implementation uses a loop that iterates up to `mx_sc_elems` and allocates pages only as needed, based on the remaining size (`rem_sz`). The loop condition ensures that the number of pages allocated does not exceed the calculated number of scatter-gather elements.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 17,
+    "n_omits": 3,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for any of the parameters or structures used (e.g., schp, sfp, or schp->pages). Dereferencing these without checks could lead to null pointer dereference.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "validate buffer size — protects against: invalid or negative buffer size",
+        "reasoning": "The implementation does not include any explicit validation of the buffer size (buff_size) to ensure it is valid or non-negative. This could lead to incorrect behavior if buff_size is invalid.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "free allocated memory on failure — protects against: memory leak",
+        "reasoning": "The implementation includes a `goto out` path that suggests a cleanup section may exist elsewhere, but the code snippet does not show any explicit freeing of previously allocated pages on failure. Without this, a memory leak could occur.",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "bound page allocation to the calculated number of pages — protects against: memory allocation overflow",
+        "reasoning": "The implementation uses a variable `num` to determine how many pages to allocate, which is bounded by `scatter_elem_sz_prev` and `rem_sz`. This suggests that the allocation is constrained by the calculated number of pages.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

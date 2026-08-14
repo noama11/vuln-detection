@@ -1,0 +1,130 @@
+{
+  "case_id": "C_167__0",
+  "sample_id": "D/C/167",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3181",
+  "cve_summary": "Multiple stack-based buffer overflows in the magicmouse_raw_event function in drivers/hid/hid-magicmouse.c in the Magic Mouse HID driver in the Linux kernel through 3.16.3 allow physically proximate attackers to cause a denial of service (system crash) or possibly execute arbitrary code via a crafted device that provides a large amount of (1) EHCI or (2) XHCI data associated with an event.",
+  "changed_file": "drivers/hid/hid-magicmouse.c",
+  "docstring": "\"\"\"\nSummary: Processes raw input events from a Magic Mouse or Magic Trackpad device.\n\nParameters:\nhdev (struct hid_device *): Pointer to the HID device structure.\nreport (struct hid_report *): Pointer to the HID report structure.\ndata (u8 *): Pointer to the raw data received from the device.\nsize (int): Size of the raw data.\n\nReturns: int: Returns 1 if the event is successfully processed, 0 otherwise.\n\nLogic: The function first retrieves the driver data associated with the HID device. It then checks the type of report received (TRACKPAD_REPORT_ID, MOUSE_REPORT_ID, or DOUBLE_REPORT_ID) and processes the corresponding touch data accordingly. For each report type, it validates the size of the data, extracts touch points, and emits touch events. It also handles button clicks and reports relative movement for the mouse or trackpad. Finally, it synchronizes the input state before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/hid.h>\n#include <linux/input.h>\n\nint process_magic_input_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size) {\n    void *drv_data = hid_get_drvdata(hdev);\n    struct input_dev *input_dev = NULL;\n\n    if (!drv_data) {\n        return 0;\n    }\n\n    input_dev = ((struct magic_drvdata *)drv_data)->input_dev;\n    if (!input_dev) {\n        return 0;\n    }\n\n    switch (data[0]) {\n        case TRACKPAD_REPORT_ID: {\n            if (size < 4) {\n                return 0;\n            }\n            int touch_count = data[1];\n            if (touch_count < 0 || touch_count > MAX_TOUCHES) {\n                return 0;\n            }\n            for (int i = 0; i < touch_count; i++) {\n                int x = get_unaligned_le16(&data[2 + i * 4]);\n                int y = get_unaligned_le16(&data[2 + i * 4 + 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_X, x);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, y);\n            }\n            break;\n        }\n        case MOUSE_REPORT_ID: {\n            if (size < 4) {\n                return 0;\n            }\n            int dx = data[1];\n            int dy = data[2];\n            input_report_rel(input_dev, REL_X, dx);\n            input_report_rel(input_dev, REL_Y, dy);\n            break;\n        }\n        case DOUBLE_REPORT_ID: {\n            if (size < 8) {\n                return 0;\n            }\n            int touch_count = data[1];\n            if (touch_count < 0 || touch_count > MAX_TOUCHES) {\n                return 0;\n            }\n            for (int i = 0; i < touch_count; i++) {\n                int x = get_unaligned_le16(&data[2 + i * 4]);\n                int y = get_unaligned_le16(&data[2 + i * 4 + 2]);\n                input_report_abs(input_dev, ABS_MT_POSITION_X, x);\n                input_report_abs(input_dev, ABS_MT_POSITION_Y, y);\n            }\n            int dx = data[6];\n            int dy = data[7];\n            input_report_rel(input_dev, REL_X, dx);\n            input_report_rel(input_dev, REL_Y, dy);\n            break;\n        }\n        default:\n            return 0;\n    }\n\n    input_sync(input_dev);\n    return 1;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null driver data",
+      "protects_against": "null pointer dereference when accessing driver data"
+    },
+    {
+      "step": "check for null input device",
+      "protects_against": "null pointer dereference when accessing input device"
+    },
+    {
+      "step": "validate report id",
+      "protects_against": "processing invalid or unknown report types"
+    },
+    {
+      "step": "validate data size for each report type",
+      "protects_against": "buffer overflow or invalid data access"
+    },
+    {
+      "step": "validate touch count",
+      "protects_against": "processing invalid or excessive touch points"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 19,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null driver data — protects against: null pointer dereference when accessing driver data",
+        "reasoning": "The implementation retrieves the driver data using `hid_get_drvdata(hdev)` and assigns it to `msc`. If `msc` were null, dereferencing it would cause a null pointer dereference. However, the implementation does not explicitly check if `msc` is null before using it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null input device — protects against: null pointer dereference when accessing input device",
+        "reasoning": "The implementation accesses `msc->input` and assigns it to `input`. If `msc` or `msc->input` were null, dereferencing them would cause a null pointer dereference. However, the implementation does not explicitly check if `input` is null before using it.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate report id — protects against: processing invalid or unknown report types",
+        "reasoning": "The implementation uses a `switch` statement on `data[0]` to handle different report types. If the report ID is not one of the known values (`TRACKPAD_REPORT_ID`, `MOUSE_REPORT_ID`, or `DOUBLE_REPORT_ID`), the `default` case returns 0, which prevents processing of unknown report types.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate data size for each report type — protects against: buffer overflow or invalid data access",
+        "reasoning": "The implementation checks the size of the data for each report type. For `TRACKPAD_REPORT_ID`, it checks if `size < 4` or if `(size - 4) % 9 != 0`. For `MOUSE_REPORT_ID`, it checks if `size < 6` or if `(size - 6) % 8 != 0`. These checks ensure that the data size is valid for the report type before processing it.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate touch count — protects against: processing invalid or excessive touch points",
+        "reasoning": "The implementation calculates the number of touch points based on the data size and processes them in a loop. However, it does not explicitly check if the number of touch points is within a valid range or if it exceeds a maximum limit. There is no validation of the touch count itself.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 14,
+    "n_omits": 2,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null driver data — protects against: null pointer dereference when accessing driver data",
+        "reasoning": "The implementation does not explicitly check for null driver data. However, the code uses 'msc' (presumably the driver data) in a loop and function call. If 'msc' were null, this would cause a null pointer dereference. There is no check for this.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for null input device — protects against: null pointer dereference when accessing input device",
+        "reasoning": "The implementation does not explicitly check for null input device. The code uses 'hdev' in a call to 'hid_warn', but there is no check to ensure 'hdev' is not null before using it. If 'hdev' were null, this could cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "validate report id — protects against: processing invalid or unknown report types",
+        "reasoning": "The implementation uses a switch statement on 'data[0]' to handle different report IDs. The default case returns 0, which means any unknown report ID is not processed. This effectively validates the report ID.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate data size for each report type — protects against: buffer overflow or invalid data access",
+        "reasoning": "The implementation checks the size for each report type (TRACKPAD_REPORT_ID and MOUSE_REPORT_ID) and ensures the size is sufficient and divisible by the expected touch data size. This prevents buffer overflow or invalid data access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate touch count — protects against: processing invalid or excessive touch points",
+        "reasoning": "The implementation checks that the number of touch points does not exceed 15 for both TRACKPAD_REPORT_ID and MOUSE_REPORT_ID. This prevents processing an excessive number of touch points.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

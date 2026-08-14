@@ -1,0 +1,49 @@
+{
+  "case_id": "Cpp_804__0",
+  "sample_id": "D/C++/804",
+  "func_idx": 0,
+  "language": "cpp",
+  "repo": "facebook/wangle",
+  "cve_id": "CVE-2019-3554",
+  "cve_summary": "Wangle's AcceptRoutingHandler incorrectly casts a socket when accepting a TLS 1.3 connection, leading to a potential denial of service attack against systems accepting such connections. This affects versions of Wangle prior to v2019.01.14.00",
+  "changed_file": "wangle/bootstrap/AcceptRoutingHandler-inl.h",
+  "docstring": "Summary: This function handles incoming routing data for a specific connection by managing the associated routing pipeline and transferring control to a new acceptor.\n\nParameters:\n- connId (uint64_t): The identifier for the connection.\n- routingData (RoutingData&): The routing data associated with the connection.\n\nReturns: None\n\nLogic: The function first retrieves the routing pipeline for the given connection ID. If the pipeline is not found, it logs a message and exits. It then pauses the transport associated with the pipeline and hashes the routing data to select a new acceptor. The function switches to the new acceptor's thread, where it attaches the socket to the acceptor's event base, creates a new pipeline with the routing data, and adds a new server connection to the acceptor. Finally, it activates the transport and reads any buffered bytes into the pipeline.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "template <typename Pipeline, typename R>\nvoid AcceptRoutingHandler<Pipeline, R>::onRoutingData(\n    uint64_t v2,\n    typename RoutingDataHandler<R>::RoutingData& routingData) {\n  auto v8 = routingPipelines_.find(v2);\n  if (v8 == routingPipelines_.end()) {\n    VLOG(2) << \"Connection has already been closed, \"\n               \"or routed to a worker thread.\";\n    return;\n  }\n  auto v7 = std::move(v8->second);\n  routingPipelines_.erase(v8);\n  auto v9 = std::dynamic_pointer_cast<folly::AsyncTransportWrapper>(\n      v7->getTransport());\n  CHECK(v9);\n  v7->transportInactive();\n  v9->detachEventBase();\n  uint64_t v4 = std::v4<R>()(routingData.routingData);\n  auto v1 = acceptors_[v4 % acceptors_.size()];\n  v1->getEventBase()->runInEventBaseThread(\n      [ =, routingData = std::move(routingData) ]() mutable {\n        v9->attachEventBase(v1->getEventBase());\n        auto v6 =\n            v7->template getHandler<RoutingDataHandler<R>>();\n        DCHECK(v6);\n        auto v10 = v7->getTransportInfo();\n        auto v5 = childPipelineFactory_->newPipeline(\n            v9, routingData.routingData, v6, v10);\n        auto v3 =\n            new typename ServerAcceptor<Pipeline>::ServerConnection(v5);\n        v1->addConnection(v3);\n        v5->transportActive();\n        v5->read(routingData.bufQueue);\n      });\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 10
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both handle the routing data by retrieving the pipeline, pausing the transport, hashing the routing data to select a new acceptor, and switching to the new acceptor's thread to create a new pipeline and connection. The logic and sequence of operations are the same, with only variable names and minor syntactic differences. There is no observable difference in behavior for any realistic input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both retrieve the routing pipeline for the given connection ID, pause the transport, hash the routing data to select a new acceptor, and switch to the new acceptor's thread. In the new thread, both attach the socket to the acceptor's event base, create a new pipeline with the routing data, add a new server connection to the acceptor, activate the transport, and read any buffered bytes into the pipeline. The only differences are in variable names and code formatting, which do not affect behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

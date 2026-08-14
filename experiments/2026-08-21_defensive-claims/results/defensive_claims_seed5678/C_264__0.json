@@ -1,0 +1,130 @@
+{
+  "case_id": "C_264__0",
+  "sample_id": "D/C/264",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7913",
+  "cve_summary": "The xc2028_set_config function in drivers/media/tuners/tuner-xc2028.c in the Linux kernel before 4.6 allows local users to gain privileges or cause a denial of service (use-after-free) via vectors involving omission of the firmware name from a certain data structure.",
+  "changed_file": "drivers/media/tuners/tuner-xc2028.c",
+  "docstring": "\"\"\"\nSummary: \nSets the configuration for the xc2028 tuner device.\n\nParameters: \nfe (struct dvb_frontend*): Pointer to the frontend structure associated with the tuner.\npriv_cfg (void*): Pointer to the configuration data structure containing settings for the tuner.\n\nReturns: \nint: Returns 0 on success or a negative error code on failure.\n\nLogic: \nThe function locks the mutex for thread safety, copies the configuration data from the provided structure, and manages the firmware name. It checks if the firmware name has changed and frees the previous firmware if necessary. If the tuner is in a state indicating no firmware is loaded, it requests the firmware asynchronously. The function handles memory allocation for the firmware name and updates the state of the tuner accordingly. Finally, it unlocks the mutex and returns the result of the firmware request operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdlib.h>\n#include <string.h>\n\nint xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg) {\n    struct xc2028_priv *cfg = (struct xc2028_priv *)priv_cfg;\n    int result = 0;\n\n    if (!fe || !cfg) {\n        return -1;\n    }\n\n    if (!fe->ops->lock_mutex || !fe->ops->unlock_mutex) {\n        return -1;\n    }\n\n    fe->ops->lock_mutex(fe);\n\n    if (cfg->firmware_name && fe->firmware_name && strcmp(cfg->firmware_name, fe->firmware_name) != 0) {\n        free(fe->firmware_name);\n        fe->firmware_name = NULL;\n    }\n\n    if (cfg->firmware_name) {\n        fe->firmware_name = strdup(cfg->firmware_name);\n        if (!fe->firmware_name) {\n            fe->ops->unlock_mutex(fe);\n            return -1;\n        }\n    }\n\n    if (fe->state == XC2028_STATE_NO_FIRMWARE) {\n        result = fe->ops->request_firmware(fe);\n        if (result < 0) {\n            fe->ops->unlock_mutex(fe);\n            return result;\n        }\n    }\n\n    fe->ops->unlock_mutex(fe);\n    return result;\n}",
+  "defensive_steps": [
+    {
+      "step": "check frontend and configuration pointers for null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check mutex lock and unlock functions exist",
+      "protects_against": "invalid function pointer dereference"
+    },
+    {
+      "step": "free previous firmware name before reallocating",
+      "protects_against": "memory leak"
+    },
+    {
+      "step": "check firmware name duplication result",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "unlock mutex on error paths",
+      "protects_against": "deadlock"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check frontend and configuration pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `fe` or `priv_cfg` are null before dereferencing them. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check mutex lock and unlock functions exist — protects against: invalid function pointer dereference",
+        "reasoning": "The implementation uses `mutex_lock` and `mutex_unlock`, which are standard functions in the Linux kernel and are expected to exist. There is no check for their existence.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free previous firmware name before reallocating — protects against: memory leak",
+        "reasoning": "The implementation frees `priv->ctrl.fname` before copying the new configuration and potentially reallocating it. This prevents a memory leak.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check firmware name duplication result — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `kstrdup` returns null and sets `rc = -ENOMEM` in that case. This prevents a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock mutex on error paths — protects against: deadlock",
+        "reasoning": "The implementation unlocks the mutex after all operations, including error paths. The `mutex_unlock` is called unconditionally after the critical section.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 1,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check frontend and configuration pointers for null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `fe` or `priv_cfg` are null before dereferencing them. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check mutex lock and unlock functions exist — protects against: invalid function pointer dereference",
+        "reasoning": "The implementation uses `mutex_lock` and `mutex_unlock`, which are standard kernel functions. There is no indication that these functions might be invalid or undefined in this context.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "free previous firmware name before reallocating — protects against: memory leak",
+        "reasoning": "The implementation calls `kfree(priv->ctrl.fname);` before assigning a new value to `priv->ctrl.fname`, ensuring the previous memory is freed before reallocation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check firmware name duplication result — protects against: null pointer dereference",
+        "reasoning": "The implementation checks if `priv->ctrl.fname` is `NULL` after calling `kstrdup`, and returns `-ENOMEM` if it is, preventing a null pointer dereference.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock mutex on error paths — protects against: deadlock",
+        "reasoning": "The implementation calls `mutex_unlock(&priv->lock);` after the critical section, regardless of success or failure. There is no error path that skips unlocking the mutex.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

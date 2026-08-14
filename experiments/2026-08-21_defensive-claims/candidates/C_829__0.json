@@ -1,0 +1,39 @@
+{
+  "case_id": "C_829__0",
+  "implementation": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/mutex.h>\n\nint get_rfcomm_devices(void __user *arg) {\n    int num_devices = 0;\n    int ret = 0;\n    struct rfcomm_dev *dev;\n\n    if (!arg)\n        return -EINVAL;\n\n    num_devices = get_num_rfcomm_devices(); // Assume this function exists\n    if (num_devices <= 0)\n        return -EINVAL;\n\n    struct rfcomm_dev_info *list = kmalloc_array(num_devices, sizeof(struct rfcomm_dev_info), GFP_KERNEL);\n    if (!list)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_list_lock);\n\n    int i = 0;\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= num_devices) {\n            ret = -EINVAL;\n            break;\n        }\n\n        if (dev->state == RFCOMM_DEV_RELEASED)\n            continue;\n\n        list[i].id = dev->id;\n        list[i].state = dev->state;\n        list[i].flags = dev->flags;\n        i++;\n    }\n\n    mutex_unlock(&rfcomm_dev_list_lock);\n\n    if (ret < 0) {\n        kfree(list);\n        return ret;\n    }\n\n    if (copy_to_user(arg, list, i * sizeof(struct rfcomm_dev_info))) {\n        kfree(list);\n        return -EFAULT;\n    }\n\n    kfree(list);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer",
+      "protects_against": "null pointer dereference when accessing user space memory"
+    },
+    {
+      "step": "validate number of devices",
+      "protects_against": "invalid or negative number of devices requested"
+    },
+    {
+      "step": "check memory allocation result",
+      "protects_against": "out of memory condition when allocating device list"
+    },
+    {
+      "step": "use mutex lock to protect device list access",
+      "protects_against": "race conditions when accessing shared device list"
+    },
+    {
+      "step": "check for array bounds when populating device list",
+      "protects_against": "buffer overflow when populating device information"
+    },
+    {
+      "step": "check for copy to user space failure",
+      "protects_against": "faulty user space pointer when copying data back"
+    },
+    {
+      "step": "ensure memory is freed on all return paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_steps": 7,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

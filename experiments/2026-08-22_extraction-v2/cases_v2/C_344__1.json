@@ -1,0 +1,36 @@
+{
+  "case_id": "C_344__1",
+  "sample_id": "D/C/344",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "libgd/libgd",
+  "cve_id": "CVE-2013-7456",
+  "cve_summary": "gd_interpolation.c in the GD Graphics Library (aka libgd) before 2.1.1, as used in PHP before 5.5.36, 5.6.x before 5.6.22, and 7.x before 7.0.7, allows remote attackers to cause a denial of service (out-of-bounds read) or possibly have unspecified other impact via a crafted image that is mishandled by the imagescale function.",
+  "commit_message": "Fixed memory overrun bug in gdImageScaleTwoPass\n\n_gdContributionsCalc would compute a window size and then adjust\nthe left and right positions of the window to make a window within\nthat size.  However, it was storing the values in the struct *before*\nit made the adjustment.  This change fixes that.",
+  "changed_file": "src/gd_interpolation.c",
+  "docstring": "\"\"\"\nSummary: Calculates contributions for a line based on the specified parameters and interpolation method.\n\nParameters:\nline_size (unsigned int): The number of pixels in the line.\nsrc_size (unsigned int): The total number of source pixels.\nscale_d (double): The scaling factor for the line.\npFilter (const interpolation_method): A pointer to the interpolation function used for weight calculation.\n\nReturns:\nLineContribType*: A pointer to a LineContribType structure containing the calculated contributions, or NULL if an error occurs.\n\nLogic: The function first determines the width of the filter based on the scaling factor. It allocates memory for the contributions and iterates over each pixel in the line, calculating the left and right edge points that affect the pixel based on the filter width. It computes the total weight of contributions from the source pixels and normalizes the weights. If the total weight is negative, it frees the allocated memory and returns NULL. Otherwise, it returns the pointer to the computed contributions.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    929,
+    984
+  ],
+  "vulnerable_line_range": [
+    929,
+    984
+  ],
+  "vulnerable_snippet": "static inline LineContribType *_gdContributionsCalc(unsigned int line_size, unsigned int src_size, double scale_d,  const interpolation_method pFilter)\r\n{\r\n\tdouble width_d;\r\n\tdouble scale_f_d = 1.0;\r\n\tconst double filter_width_d = DEFAULT_BOX_RADIUS;\r\n\tint windows_size;\r\n\tunsigned int u;\r\n\tLineContribType *res;\r\n\r\n\tif (scale_d < 1.0) {\r\n\t\twidth_d = filter_width_d / scale_d;\r\n\t\tscale_f_d = scale_d;\r\n\t}  else {\r\n\t\twidth_d= filter_width_d;\r\n\t}\r\n\r\n\twindows_size = 2 * (int)ceil(width_d) + 1;\r\n\tres = _gdContributionsAlloc(line_size, windows_size);\r\n\r\n\tfor (u = 0; u < line_size; u++) {\r\n\t\tconst double dCenter = (double)u / scale_d;\r\n\t\t/* get the significant edge points affecting the pixel */\r\n\t\tregister int iLeft = MAX(0, (int)floor (dCenter - width_d));\r\n\t\tint iRight = MIN((int)ceil(dCenter + width_d), (int)src_size - 1);\r\n\t\tdouble dTotalWeight = 0.0;\r\n\t\tint iSrc;\r\n\r\n\t\tres->ContribRow[u].Left = iLeft;\r\n\t\tres->ContribRow[u].Right = iRight;\r\n\r\n\t\t/* Cut edge points to fit in filter window in case of spill-off */\r\n\t\tif (iRight - iLeft + 1 > windows_size)  {\r\n\t\t\tif (iLeft < ((int)src_size - 1 / 2))  {\r\n\t\t\t\tiLeft++;\r\n\t\t\t} else {\r\n\t\t\t\tiRight--;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\tfor (iSrc = iLeft; iSrc <= iRight; iSrc++) {\r\n\t\t\tdTotalWeight += (res->ContribRow[u].Weights[iSrc-iLeft] =  scale_f_d * (*pFilter)(scale_f_d * (dCenter - (double)iSrc)));\r\n\t\t}\r\n\r\n\t\tif (dTotalWeight < 0.0) {\r\n\t\t\t_gdContributionsFree(res);\r\n\t\t\treturn NULL;\r\n\t\t}\r\n\r\n\t\tif (dTotalWeight > 0.0) {\r\n\t\t\tfor (iSrc = iLeft; iSrc <= iRight; iSrc++) {\r\n\t\t\t\tres->ContribRow[u].Weights[iSrc-iLeft] /= dTotalWeight;\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\treturn res;\r\n}",
+  "fixed_line_range": [
+    929,
+    984
+  ],
+  "fixed_snippet": "static inline LineContribType *_gdContributionsCalc(unsigned int line_size, unsigned int src_size, double scale_d,  const interpolation_method pFilter)\r\n{\r\n\tdouble width_d;\r\n\tdouble scale_f_d = 1.0;\r\n\tconst double filter_width_d = DEFAULT_BOX_RADIUS;\r\n\tint windows_size;\r\n\tunsigned int u;\r\n\tLineContribType *res;\r\n\r\n\tif (scale_d < 1.0) {\r\n\t\twidth_d = filter_width_d / scale_d;\r\n\t\tscale_f_d = scale_d;\r\n\t}  else {\r\n\t\twidth_d= filter_width_d;\r\n\t}\r\n\r\n\twindows_size = 2 * (int)ceil(width_d) + 1;\r\n\tres = _gdContributionsAlloc(line_size, windows_size);\r\n\r\n\tfor (u = 0; u < line_size; u++) {\r\n\t\tconst double dCenter = (double)u / scale_d;\r\n\t\t/* get the significant edge points affecting the pixel */\r\n\t\tregister int iLeft = MAX(0, (int)floor (dCenter - width_d));\r\n\t\tint iRight = MIN((int)ceil(dCenter + width_d), (int)src_size - 1);\r\n\t\tdouble dTotalWeight = 0.0;\r\n\t\tint iSrc;\r\n\r\n\t\t/* Cut edge points to fit in filter window in case of spill-off */\r\n\t\tif (iRight - iLeft + 1 > windows_size)  {\r\n\t\t\tif (iLeft < ((int)src_size - 1 / 2))  {\r\n\t\t\t\tiLeft++;\r\n\t\t\t} else {\r\n\t\t\t\tiRight--;\r\n\t\t\t}\r\n\t\t}\r\n\r\n\t\tres->ContribRow[u].Left = iLeft;\r\n\t\tres->ContribRow[u].Right = iRight;\r\n\r\n\t\tfor (iSrc = iLeft; iSrc <= iRight; iSrc++) {\r\n\t\t\tdTotalWeight += (res->ContribRow[u].Weights[iSrc-iLeft] =  scale_f_d * (*pFilter)(scale_f_d * (dCenter - (double)iSrc)));\r\n\t\t}\r\n\r\n\t\tif (dTotalWeight < 0.0) {\r\n\t\t\t_gdContributionsFree(res);\r\n\t\t\treturn NULL;\r\n\t\t}\r\n\r\n\t\tif (dTotalWeight > 0.0) {\r\n\t\t\tfor (iSrc = iLeft; iSrc <= iRight; iSrc++) {\r\n\t\t\t\tres->ContribRow[u].Weights[iSrc-iLeft] /= dTotalWeight;\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\treturn res;\r\n}",
+  "func_name": "_gdContributionsCalc",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": "C_344__0"
+}

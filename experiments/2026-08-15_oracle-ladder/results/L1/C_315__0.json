@@ -1,0 +1,49 @@
+{
+  "case_id": "C_315__0",
+  "sample_id": "D/C/315",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2117",
+  "cve_summary": "The atl2_probe function in drivers/net/ethernet/atheros/atlx/atl2.c in the Linux kernel through 4.5.2 incorrectly enables scatter/gather I/O, which allows remote attackers to obtain sensitive information from kernel memory by reading packet data.",
+  "changed_file": "drivers/net/ethernet/atheros/atlx/atl2.c",
+  "docstring": "/**\n * Summary: Probes a PCI device for the ATL2 network driver and initializes it.\n * \n * Parameters:\n * pdev (struct pci_dev *): Pointer to the PCI device structure.\n * ent (const struct pci_device_id *): Pointer to the PCI device ID structure.\n * \n * Returns: int: 0 on success, or a negative error code on failure.\n * \n * Logic: The function enables the PCI device, sets up DMA masks, requests PCI regions, \n * allocates a network device structure, and initializes hardware settings. It configures \n * the network device operations, sets up timers for watchdog and PHY configuration, \n * and registers the network device. If any step fails, it performs cleanup and returns \n * an appropriate error code. The function also handles MAC address retrieval and \n * ensures the device is in a known good state before returning success.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int atl2_probe(struct pci_dev *v16, const struct pci_device_id *ent)\n{\n    struct net_device *v15;\n    struct v2 *v1;\n    static int v3;\n    unsigned long v14;\n    int v13;\n    int v4;\n    v3 = 0;\n    v4 = pci_enable_device(v16);\n    if (v4)\n        return v4;\n    if (pci_set_dma_mask(v16, DMA_BIT_MASK(32)) &&\n        pci_set_consistent_dma_mask(v16, DMA_BIT_MASK(32))) {\n        printk(KERN_ERR \"atl2: No usable DMA configuration, aborting\\n\");\n        goto v6;\n    }\n    v4 = pci_request_regions(v16, atl2_driver_name);\n    if (v4)\n        goto v9;\n    pci_set_master(v16);\n    v4 = -ENOMEM;\n    v15 = alloc_etherdev(sizeof(struct v2));\n    if (!v15)\n        goto v5;\n    SET_NETDEV_DEV(v15, &v16->dev);\n    pci_set_drvdata(v16, v15);\n    v1 = netdev_priv(v15);\n    v1->v15 = v15;\n    v1->v16 = v16;\n    v1->hw.back = v1;\n    v14 = pci_resource_start(v16, 0x0);\n    v13 = pci_resource_len(v16, 0x0);\n    v1->hw.mem_rang = (u32)v13;\n    v1->hw.hw_addr = ioremap(v14, v13);\n    if (!v1->hw.hw_addr) {\n        v4 = -EIO;\n        goto v8;\n    }\n    atl2_setup_pcicmd(v16);\n    v15->netdev_ops = &atl2_netdev_ops;\n    v15->ethtool_ops = &atl2_ethtool_ops;\n    v15->watchdog_timeo = 5 * HZ;\n    strncpy(v15->name, pci_name(v16), sizeof(v15->name) - 1);\n    v15->mem_start = v14;\n    v15->mem_end = v14 + v13;\n    v1->bd_number = v3;\n    v1->pci_using_64 = false;\n    v4 = atl2_sw_init(v1);\n    if (v4)\n        goto v12;\n    v4 = -EIO;\n    v15->hw_features = NETIF_F_HW_VLAN_CTAG_RX;\n    v15->features |= (NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX);\n    atl2_phy_init(&v1->hw);\n    if (atl2_reset_hw(&v1->hw)) {\n        v4 = -EIO;\n        goto v11;\n    }\n    atl2_read_mac_addr(&v1->hw);\n    memcpy(v15->dev_addr, v1->hw.mac_addr, v15->addr_len);\n    if (!is_valid_ether_addr(v15->dev_addr)) {\n        v4 = -EIO;\n        goto v7;\n    }\n    atl2_check_options(v1);\n    setup_timer(&v1->watchdog_timer, atl2_watchdog,\n            (unsigned long)v1);\n    setup_timer(&v1->phy_config_timer, atl2_phy_config,\n            (unsigned long)v1);\n    INIT_WORK(&v1->reset_task, atl2_reset_task);\n    INIT_WORK(&v1->link_chg_task, atl2_link_chg_task);\n    strcpy(v15->name, \"eth%d\");\n    v4 = register_netdev(v15);\n    if (v4)\n        goto v10;\n    netif_carrier_off(v15);\n    netif_stop_queue(v15);\n    v3++;\n    return 0;\nv11:\nv10:\nv12:\nv7:\n    iounmap(v1->hw.hw_addr);\nv8:\n    free_netdev(v15);\nv5:\n    pci_release_regions(v16);\nv9:\nv6:\n    pci_disable_device(v16);\n    return v4;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 16
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent in terms of PCI device probing and initialization. Both handle DMA configuration, PCI region requests, device allocation, hardware setup, and error cleanup in the same way. The only differences are in variable names (e.g., `v15` vs. `netdev`, `v1` vs. `adapter`) and minor code formatting, which do not affect observable behavior. There are no differences in error handling, memory safety, or input validation that would impact security or correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are behaviorally equivalent. Both perform the same sequence of operations: enabling the PCI device, setting DMA masks, requesting regions, allocating a network device, initializing hardware, setting up timers and work queues, and registering the device. The only differences are in variable names (e.g., `v15` vs. `netdev`, `v1` vs. `adapter`) and minor code formatting, which do not affect the observable behavior. All error handling paths and cleanup logic are functionally the same.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

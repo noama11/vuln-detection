@@ -1,0 +1,49 @@
+{
+  "case_id": "C_674__0",
+  "sample_id": "D/C/674",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libgit2/libgit2",
+  "cve_id": "CVE-2018-8099",
+  "cve_summary": "Incorrect returning of an error code in the index.c:read_entry() function leads to a double free in libgit2 before v0.26.2, which allows an attacker to cause a denial of service via a crafted repository index file.",
+  "changed_file": "src/index.c",
+  "docstring": "\"\"\"\nSummary: \nReads an index entry from a buffer and populates the output parameters with the entry details.\n\nParameters: \nout (git_index_entry **): Pointer to store the address of the populated index entry.\nout_size (size_t *): Pointer to store the size of the entry read.\nindex (git_index *): Pointer to the git index from which to read the entry.\nbuffer (const void *): Pointer to the buffer containing the entry data.\nbuffer_size (size_t): Size of the buffer provided.\nlast (const char *): Pointer to a string used for constructing the entry path if compressed.\n\nReturns: \nint: Returns 0 on success, or -1 on failure indicating an error occurred during reading.\n\nLogic: \nThe function checks the buffer size, copies data from the buffer into a temporary entry structure, processes the entry based on its flags, and handles both compressed and uncompressed paths. It allocates memory for the path if necessary and ensures that the entry is valid before returning it through the output parameters.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int read_entry(\n    git_index_entry **v12,\n    size_t *v13,\n    git_index *v9,\n    const void *v1,\n    size_t v2,\n    const char *v10)\n{\n    size_t v16, entry_size;\n    const char *v17;\n    struct v6 v19;\n    git_index_entry v4 = {{0}};\n    bool v3 = v9->version >= INDEX_VERSION_NUMBER_COMP;\n    char *v22 = NULL;\n    if (INDEX_FOOTER_SIZE + minimal_entry_size > v2)\n        return -1;\n    memcpy(&v19, v1, sizeof(struct v6));\n    v4.ctime.seconds = (git_time_t)ntohl(v19.ctime.seconds);\n    v4.ctime.nanoseconds = ntohl(v19.ctime.nanoseconds);\n    v4.mtime.seconds = (git_time_t)ntohl(v19.mtime.seconds);\n    v4.mtime.nanoseconds = ntohl(v19.mtime.nanoseconds);\n    v4.dev = ntohl(v19.dev);\n    v4.ino = ntohl(v19.ino);\n    v4.mode = ntohl(v19.mode);\n    v4.uid = ntohl(v19.uid);\n    v4.gid = ntohl(v19.gid);\n    v4.file_size = ntohl(v19.file_size);\n    git_oid_cpy(&v4.id, &v19.oid);\n    v4.flags = ntohs(v19.flags);\n    if (v4.flags & GIT_IDXENTRY_EXTENDED) {\n        uint16_t v8;\n        size_t v7;\n        v7 = offsetof(struct v5, flags_extended);\n        memcpy(&v8, (const char *) v1 + v7,\n            sizeof(v8));\n        v8 = ntohs(v8);\n        memcpy(&v4.flags_extended, &v8, sizeof(v8));\n        v17 = (const char *) v1 + offsetof(struct v5, path);\n    } else\n        v17 = (const char *) v1 + offsetof(struct v6, path);\n    if (!v3) {\n        v16 = v4.flags & GIT_IDXENTRY_NAMEMASK;\n        if (v16 == 0xFFF) {\n            const char *v14;\n            v14 = memchr(v17, '\\0', v2);\n            if (v14 == NULL)\n                return -1;\n            v16 = v14 - v17;\n        }\n        entry_size = index_entry_size(v16, 0, v4.flags);\n        v4.path = (char *)v17;\n    } else {\n        size_t v23;\n        size_t v20 = git_decode_varint((const unsigned char *)v17,\n                             &v23);\n        size_t v11 = strlen(v10);\n        size_t v18 = v11 - v20;\n        size_t v21 = strlen(v17 + v23);\n        size_t v15;\n        if (v23 == 0)\n            return index_error_invalid(\"incorrect prefix length\");\n        GITERR_CHECK_ALLOC_ADD(&v15, v18, v21);\n        GITERR_CHECK_ALLOC_ADD(&v15, v15, 1);\n        v22 = git__malloc(v15);\n        GITERR_CHECK_ALLOC(v22);\n        memcpy(v22, v10, v18);\n        memcpy(v22 + v18, v17 + v23, v21 + 1);\n        entry_size = index_entry_size(v21, v23, v4.flags);\n        v4.path = v22;\n    }\n    if (entry_size == 0)\n        return -1;\n    if (INDEX_FOOTER_SIZE + entry_size > v2)\n        return -1;\n    if (index_entry_dup(v12, v9, &v4) < 0) {\n        git__free(v22);\n        return -1;\n    }\n    git__free(v22);\n    *v13 = entry_size;\n    return 0;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 23
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their return types and error handling. The candidate implementation returns an `int` with `0` on success and `-1` on failure, while the reference implementation returns a `size_t` with the actual entry size on success and `0` on failure. Additionally, the candidate implementation includes a `minimal_entry_size` check that is not present in the reference implementation, which could lead to different behavior for malformed inputs. These differences are not security-relevant but could affect integration with other code expecting a specific return type or error code.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "Both implementations perform the same logic for reading an index entry from a buffer, handling compressed and uncompressed paths, and validating the input buffer size. They differ in variable names and struct names, but the behavior is identical for all realistic and edge-case inputs. There are no observable differences in output, error handling, or memory management.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

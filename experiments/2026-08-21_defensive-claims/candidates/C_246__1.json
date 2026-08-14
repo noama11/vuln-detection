@@ -1,0 +1,43 @@
+{
+  "case_id": "C_246__1",
+  "implementation": "int netlink_dump(struct sock *sk) {\n    int ret = -EINVAL;\n    struct sk_buff *skb = NULL;\n\n    if (!sk)\n        return ret;\n\n    mutex_lock(&sk->sk_lock);\n\n    if (sk->sk_state & SK_STATE_RUNNING_CALLBACK) {\n        mutex_unlock(&sk->sk_lock);\n        return -EBUSY;\n    }\n\n    skb = alloc_skb(NETLINK_DEFAULT_BUFFER_SIZE, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOMEM;\n    }\n\n    if (sk->sk_callback && sk->sk_callback->dump) {\n        ret = sk->sk_callback->dump(sk, skb);\n        if (ret < 0) {\n            kfree_skb(skb);\n            goto unlock;\n        }\n\n        if (sk->sk_filter) {\n            skb = sk_filter(sk, skb);\n            if (!skb) {\n                ret = -EINVAL;\n                goto unlock;\n            }\n        }\n\n        ret = netlink_unicast(sk, skb, sk->sk_bound_dev_if, MSG_DONTWAIT);\n        if (ret < 0) {\n            kfree_skb(skb);\n            goto unlock;\n        }\n    } else {\n        kfree_skb(skb);\n        ret = -EOPNOTSUPP;\n    }\n\nunlock:\n    mutex_unlock(&sk->sk_lock);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check if sk is NULL",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if callback is running",
+      "protects_against": "race condition with concurrent callback execution"
+    },
+    {
+      "step": "allocate skb with error checking",
+      "protects_against": "memory allocation failure"
+    },
+    {
+      "step": "check if callback and dump function exist",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check dump function return value",
+      "protects_against": "unsuccessful dump operation"
+    },
+    {
+      "step": "check if filter is present and apply it",
+      "protects_against": "invalid filter application"
+    },
+    {
+      "step": "ensure mutex is unlocked on all return paths",
+      "protects_against": "deadlock from un-released mutex"
+    },
+    {
+      "step": "properly free allocated skb on error paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 8,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "C_78__0",
+  "sample_id": "D/C/78",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3222",
+  "cve_summary": "The vcc_recvmsg function in net/atm/common.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nReceives a message from a socket and copies it into a provided message header.\n\nParameters:  \niocb (struct kiocb *): The I/O control block associated with the operation.  \nsock (struct socket *): The socket from which to receive the message.  \nmsg (struct msghdr *): The message header where the received data will be stored.  \nsize (size_t): The maximum number of bytes to copy into the message header.  \nflags (int): Flags that modify the behavior of the receive operation (e.g., non-blocking).\n\nReturns:  \nint: The number of bytes copied into the message header, or an error code on failure.\n\nLogic:  \nThe function first checks the socket's connection state and validates the flags. It retrieves the associated virtual circuit and checks its status. If the socket is ready, it attempts to receive a datagram. If successful, it copies the data into the message header, handling truncation if necessary. If the MSG_PEEK flag is not set, it updates the socket's memory allocation and returns the datagram. Finally, it frees the received datagram and returns the number of bytes copied.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int vcc_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\r\n\t\tsize_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct atm_vcc *vcc;\r\n\tstruct sk_buff *skb;\r\n\tint copied, error = -EINVAL;\r\n\r\n\tmsg->msg_namelen = 0;\r\n\r\n\tif (sock->state != SS_CONNECTED)\r\n\t\treturn -ENOTCONN;\r\n\r\n\t/* only handle MSG_DONTWAIT and MSG_PEEK */\r\n\tif (flags & ~(MSG_DONTWAIT | MSG_PEEK))\r\n\t\treturn -EOPNOTSUPP;\r\n\r\n\tvcc = ATM_SD(sock);\r\n\tif (test_bit(ATM_VF_RELEASED, &vcc->flags) ||\r\n\t    test_bit(ATM_VF_CLOSE, &vcc->flags) ||\r\n\t    !test_bit(ATM_VF_READY, &vcc->flags))\r\n\t\treturn 0;\r\n\r\n\tskb = skb_recv_datagram(sk, flags, flags & MSG_DONTWAIT, &error);\r\n\tif (!skb)\r\n\t\treturn error;\r\n\r\n\tcopied = skb->len;\r\n\tif (copied > size) {\r\n\t\tcopied = size;\r\n\t\tmsg->msg_flags |= MSG_TRUNC;\r\n\t}\r\n\r\n\terror = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);\r\n\tif (error)\r\n\t\treturn error;\r\n\tsock_recv_ts_and_drops(msg, sk, skb);\r\n\r\n\tif (!(flags & MSG_PEEK)) {\r\n\t\tpr_debug(\"%d -= %d\\n\", atomic_read(&sk->sk_rmem_alloc),\r\n\t\t\t skb->truesize);\r\n\t\tatm_return(vcc, skb->truesize);\r\n\t}\r\n\r\n\tskb_free_datagram(sk, skb);\r\n\treturn copied;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate and reference implementations are nearly identical, with the only difference being that the candidate implementation includes an assignment `msg->msg_namelen = 0;` at the beginning. This line is not present in the reference implementation. However, this assignment is harmless and does not affect the observable behavior of the function since `msg->msg_namelen` is not used in the rest of the function. Therefore, there is no behavioral difference between the two implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same checks, handle the same flags, and manage the same socket and memory operations. There is no observable difference in behavior for any input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "case_id": "C_358__0",
+  "sample_id": "D/C/358",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-17052",
+  "cve_summary": "The mm_init function in kernel/fork.c in the Linux kernel before 4.12.10 does not clear the ->exe_file member of a new process's mm_struct, allowing a local attacker to achieve a use-after-free or possibly have unspecified other impact by running a specially crafted program.",
+  "changed_file": "kernel/fork.c",
+  "docstring": "Summary: Initializes a memory management structure for a given task.\n\nParameters:\n- mm (struct mm_struct *): Pointer to the memory management structure to initialize.\n- p (struct task_struct *): Pointer to the task structure associated with the memory management.\n- user_ns (struct user_namespace *): Pointer to the user namespace for the memory management.\n\nReturns: struct mm_struct *: Pointer to the initialized memory management structure, or NULL on failure.\n\nLogic: The function sets up various fields of the `mm_struct`, including initializing memory mappings, reference counts, and locks. It also configures flags based on the current process's memory management state or defaults if none exists. The function allocates page tables and initializes a new context for the task. If any initialization step fails, it cleans up allocated resources and returns NULL.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static int apparmor_setprocattr(struct task_struct *task, char *name,\r\n\t\t\t\tvoid *value, size_t size)\r\n{\r\n\tstruct common_audit_data sa;\r\n\tstruct apparmor_audit_data aad = {0,};\r\n\tchar *command, *largs = NULL, *args = value;\r\n\tsize_t arg_size;\r\n\tint error;\r\n\r\n\tif (size == 0)\r\n\t\treturn -EINVAL;\r\n\t/* task can only write its own attributes */\r\n\tif (current != task)\r\n\t\treturn -EACCES;\r\n\r\n\t/* AppArmor requires that the buffer must be null terminated atm */\r\n\tif (args[size - 1] != '\\0') {\r\n\t\t/* null terminate */\r\n\t\tlargs = args = kmalloc(size + 1, GFP_KERNEL);\r\n\t\tif (!args)\r\n\t\t\treturn -ENOMEM;\r\n\t\tmemcpy(args, value, size);\r\n\t\targs[size] = '\\0';\r\n\t}\r\n\r\n\terror = -EINVAL;\r\n\targs = strim(args);\r\n\tcommand = strsep(&args, \" \");\r\n\tif (!args)\r\n\t\tgoto out;\r\n\targs = skip_spaces(args);\r\n\tif (!*args)\r\n\t\tgoto out;\r\n\r\n\targ_size = size - (args - (char *) value);\r\n\tif (strcmp(name, \"current\") == 0) {\r\n\t\tif (strcmp(command, \"changehat\") == 0) {\r\n\t\t\terror = aa_setprocattr_changehat(args, arg_size,\r\n\t\t\t\t\t\t\t !AA_DO_TEST);\r\n\t\t} else if (strcmp(command, \"permhat\") == 0) {\r\n\t\t\terror = aa_setprocattr_changehat(args, arg_size,\r\n\t\t\t\t\t\t\t AA_DO_TEST);\r\n\t\t} else if (strcmp(command, \"changeprofile\") == 0) {\r\n\t\t\terror = aa_setprocattr_changeprofile(args, !AA_ONEXEC,\r\n\t\t\t\t\t\t\t     !AA_DO_TEST);\r\n\t\t} else if (strcmp(command, \"permprofile\") == 0) {\r\n\t\t\terror = aa_setprocattr_changeprofile(args, !AA_ONEXEC,\r\n\t\t\t\t\t\t\t     AA_DO_TEST);\r\n\t\t} else\r\n\t\t\tgoto fail;\r\n\t} else if (strcmp(name, \"exec\") == 0) {\r\n\t\tif (strcmp(command, \"exec\") == 0)\r\n\t\t\terror = aa_setprocattr_changeprofile(args, AA_ONEXEC,\r\n\t\t\t\t\t\t\t     !AA_DO_TEST);\r\n\t\telse\r\n\t\t\tgoto fail;\r\n\t} else\r\n\t\t/* only support the \"current\" and \"exec\" process attributes */\r\n\t\tgoto fail;\r\n\r\n\tif (!error)\r\n\t\terror = size;\r\nout:\r\n\tkfree(largs);\r\n\treturn error;\r\n\r\nfail:\r\n\tsa.type = LSM_AUDIT_DATA_NONE;\r\n\tsa.aad = &aad;\r\n\taad.profile = aa_current_profile();\r\n\taad.op = OP_SETPROCATTR;\r\n\taad.info = name;\r\n\taad.error = error = -EINVAL;\r\n\taa_audit_msg(AUDIT_APPARMOR_DENIED, &sa, NULL);\r\n\tgoto out;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_of_other_case",
+    "donor_case_id": "C_277__0"
+  },
+  "generator_model": "oracle_L2",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and does not perform memory management structure initialization as described in the specification. Instead, it handles AppArmor process attributes, which is a completely different functionality. This is a degenerate case where the candidate implementation is off-topic.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 1,
+    "category": "degenerate_generation",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation is unrelated to the reference implementation and does not perform memory management structure initialization as described in the specification. Instead, it handles AppArmor process attributes, which is a completely different functionality. This is a degenerate implementation that does not align with the specification.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L2",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

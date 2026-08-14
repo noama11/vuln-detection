@@ -1,0 +1,98 @@
+{
+  "case_id": "C_106__0",
+  "sample_id": "D/C/106",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2013-1415",
+  "cve_summary": "The pkinit_check_kdc_pkid function in plugins/preauth/pkinit/pkinit_crypto_openssl.c in the PKINIT implementation in the Key Distribution Center (KDC) in MIT Kerberos 5 (aka krb5) before 1.10.4 and 1.11.x before 1.11.1 does not properly handle errors during extraction of fields from an X.509 certificate, which allows remote attackers to cause a denial of service (NULL pointer dereference and daemon crash) via a malformed KRB5_PADATA_PK_AS_REQ AS-REQ request.",
+  "changed_file": "src/plugins/preauth/pkinit/pkinit_crypto_openssl.c",
+  "docstring": "\"\"\"\nSummary: Checks the validity of the KDC public key identifier.\n\nParameters:\ncontext (krb5_context): The Kerberos context.\nplg_cryptoctx (pkinit_plg_crypto_context): The plugin crypto context.\nreq_cryptoctx (pkinit_req_crypto_context): The request crypto context.\nid_cryptoctx (pkinit_identity_crypto_context): The identity crypto context.\npdid_buf (unsigned char *): Buffer containing the public key identifier data.\npkid_len (unsigned int): Length of the public key identifier data.\nvalid_kdcPkId (int *): Pointer to an integer that will be set to indicate if the KDC public key identifier is valid.\n\nReturns: krb5_error_code: Returns 0 on success or an error code indicating failure.\n\nLogic: The function decodes the public key identifier from the provided buffer, compares it with the KDC's certificate issuer and serial number, and sets the validity flag accordingly. It performs cleanup of allocated resources before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "krb5_error_code validate_kdc_public_key_identifier(krb5_context context, pkinit_plg_crypto_context plg_cryptoctx, pkinit_req_crypto_context req_cryptoctx, pkinit_identity_crypto_context id_cryptoctx, unsigned char *pdid_buf, unsigned int pkid_len, int *valid_kdcPkId) {\n    krb5_error_code ret = 0;\n    unsigned char *decoded_pdid = NULL;\n    size_t decoded_len = 0;\n\n    if (!context || !plg_cryptoctx || !req_cryptoctx || !id_cryptoctx || !pdid_buf || !valid_kdcPkId) {\n        return KRB5_BAD_MALLOC;\n    }\n\n    ret = decode_public_key_identifier(pdid_buf, pkid_len, &decoded_pdid, &decoded_len);\n    if (ret != 0) {\n        return ret;\n    }\n\n    if (!decoded_pdid || decoded_len == 0) {\n        free(decoded_pdid);\n        return KRB5_BAD_DATA;\n    }\n\n    ret = compare_with_kdc_certificate(decoded_pdid, decoded_len, id_cryptoctx);\n    if (ret != 0) {\n        free(decoded_pdid);\n        return ret;\n    }\n\n    *valid_kdcPkId = 1;\n\n    free(decoded_pdid);\n    return 0;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero length decoded data",
+      "protects_against": "invalid or empty decoded public key identifier"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 9,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters. However, the function uses `pdid_buf` directly and assumes it is non-null. If `pdid_buf` is null, the call to `d2i_PKCS7_ISSUER_AND_SERIAL` would dereference a null pointer.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check for zero length decoded data — protects against: invalid or empty decoded public key identifier",
+        "reasoning": "The implementation does not check whether the decoded data (from `d2i_PKCS7_ISSUER_AND_SERIAL`) is empty or invalid after decoding. If the decoded data is invalid or incomplete, the function proceeds with comparisons, which could lead to undefined behavior.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does free the allocated memory for `is->issuer`, `is->serial`, and `is` in the `cleanup` block, ensuring no memory leak occurs.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 12,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check for null pointers for the input parameters. However, the function dereferences `valid_kdcPkId` early in the function (`*valid_kdcPkId = 0;`) and uses `pdid_buf` directly in `d2i_PKCS7_ISSUER_AND_SERIAL`. If `valid_kdcPkId` or `pdid_buf` is null, this would cause a null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check for zero length decoded data — protects against: invalid or empty decoded public key identifier",
+        "reasoning": "The implementation does not check whether the decoded data is zero length or invalid. It proceeds to use the decoded `is` structure without validation.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak",
+        "reasoning": "The implementation does free the allocated memory for `is->issuer`, `is->serial`, and `is` before returning. This ensures no memory leak occurs from the allocation of `is`.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

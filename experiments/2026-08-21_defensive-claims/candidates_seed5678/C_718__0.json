@@ -1,0 +1,31 @@
+{
+  "case_id": "C_718__0",
+  "implementation": "int copy_huge_page_table_entry(struct mm_struct *dst_mm, pte_t *dst_pte, struct vm_area_struct *dst_vma, unsigned long dst_addr, unsigned long src_addr, struct page **pagep) {\n    struct page *page = *pagep;\n    int ret = -EFAULT;\n\n    if (!dst_mm || !dst_pte || !dst_vma || !pagep) {\n        return -EINVAL;\n    }\n\n    if (!page) {\n        page = alloc_pages(GFP_HIGHUSER | __GFP_ZERO, HPAGE_SHIFT - PAGE_SHIFT);\n        if (!page) {\n            return -ENOMEM;\n        }\n        *pagep = page;\n    }\n\n    if (!get_user_pages(current, current->mm, src_addr, 1, 1, 0, &page, NULL)) {\n        goto out;\n    }\n\n    if (copy_from_user(page_address(page), (void __user *)src_addr, HPAGE_SIZE)) {\n        goto out;\n    }\n\n    set_page_dirty(page);\n    set_pte_at(dst_mm, dst_addr, dst_pte, mk_pte(page, dst_vma->vm_page_prot));\n\n    ret = 0;\n\nout:\n    if (ret < 0 && !(*pagep)) {\n        __free_pages(page, HPAGE_SHIFT - PAGE_SHIFT);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for page allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "check for successful user page retrieval",
+      "protects_against": "invalid user address access"
+    },
+    {
+      "step": "check for successful user data copy",
+      "protects_against": "invalid user address access"
+    },
+    {
+      "step": "free allocated pages on error",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 5678,
+  "finish_reason": "stop"
+}

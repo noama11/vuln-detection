@@ -1,0 +1,34 @@
+{
+  "case_id": "C_600__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int ret = 0;\n    int alloc_order = 0;\n    int sg_ent = 0;\n    int i;\n    size_t align_mask = 512 - 1;  // Assume sector size is 512 bytes\n    size_t align_size;\n    size_t page_size = 4096;  // Assume standard 4KB pages\n    void *page = NULL;\n\n    if (buff_size <= 0)\n        return -EINVAL;\n\n    align_size = (buff_size + align_mask) & ~align_mask;\n    if (align_size > schp->bufflen)\n        return -ENOMEM;\n\n    for (i = 0; i < SG_DEF_MAX; i++) {\n        page = (void *)__get_free_pages(GFP_KERNEL, alloc_order);\n        if (!page) {\n            ret = -ENOMEM;\n            goto cleanup;\n        }\n\n        schp->sg[sg_ent].address = (unsigned long)page;\n        schp->sg[sg_ent].length = page_size << alloc_order;\n        sg_ent++;\n\n        if (align_size <= (size_t)page_size << alloc_order)\n            break;\n\n        align_size -= page_size << alloc_order;\n    }\n\n    if (align_size != 0) {\n        schp->sg[sg_ent].address = (unsigned long)page + (align_size - 512);\n        schp->sg[sg_ent].length = 512;\n        sg_ent++;\n    }\n\n    schp->k_use = sg_ent;\n    return 0;\n\ncleanup:\n    for (i = 0; i < sg_ent; i++) {\n        free_pages((unsigned long)schp->sg[i].address, 0);\n    }\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int k, order, ret = 0;\n    size_t align_size = 0;\n\n    if (!buff_size)\n        return 0;\n\n    align_size = (buff_size + (1 << sfp->device->sector_shift) - 1) &\n                 (~((size_t)(1 << sfp->device->sector_shift) - 1));\n\n    if (align_size != (size_t)buff_size)\n        return -EINVAL;\n\n    schp->k_use = 0;\n\n    for (k = 0; k < SG_MAX_INDIRECT; ++k) {\n        order = get_order(align_size);\n        schp->sg_cpu[k] = __get_free_pages(GFP_ATOMIC | __GFP_HIGH, order);\n        if (!schp->sg_cpu[k]) {\n            ret = -ENOMEM;\n            break;\n        }\n\n        schp->sg_dma[k] = virt_to_phys((void *)schp->sg_cpu[k]);\n        schp->sg_count[k] = align_size;\n        schp->k_use++;\n    }\n\n    if (ret < 0) {\n        for (k = 0; k < schp->k_use; ++k) {\n            free_pages((unsigned long)schp->sg_cpu[k], get_order(schp->sg_count[k]));\n        }\n        schp->k_use = 0;\n    }\n\n    return (ret < 0) ? ret : (int)schp->k_use;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int k, result = 0;\n    unsigned int sg_ent = 0;\n    unsigned int alloc_order = 0;\n    struct sg_page *sp;\n\n    if (unlikely(buff_size <= 0)) {\n        return -EINVAL;\n    }\n\n    buff_size = (buff_size + sfp->device_sectorsize - 1) & ~(sfp->device_sectorsize - 1);\n\n    while (1 << alloc_order < (buff_size >> sfp->device_pageshift))\n        alloc_order++;\n\n    for (k = 0; k < SG_DEF_RESERVED_SIZE; ++k) {\n        sp = (struct sg_page *)kmalloc(sizeof(struct sg_page), GFP_ATOMIC);\n        if (!sp) {\n            result = -ENOMEM;\n            break;\n        }\n\n        sp->data = __get_free_pages(GFP_ATOMIC, alloc_order);\n        if (!sp->data) {\n            kfree(sp);\n            result = -ENOMEM;\n            break;\n        }\n\n        sp->data_len = 1 << (alloc_order + PAGE_SHIFT);\n        schp->setup.sbp[sg_ent].data = sp->data;\n        schp->setup.sbp[sg_ent].data_len = sp->data_len;\n        schp->setup.sbp[sg_ent].page = sp;\n        sg_ent++;\n    }\n\n    if (unlikely(result < 0)) {\n        while (sg_ent--) {\n            struct sg_page *sp = schp->setup.sbp[sg_ent].page;\n            if (sp) {\n                free_pages(sp->data, get_order(sp->data_len));\n                kfree(sp);\n            }\n        }\n        return result;\n    }\n\n    schp->k_ref = SG_K_REF;\n    schp->sg_count = sg_ent;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int build_indirect_scatter_list(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int k, order, result;\n    size_t align_mask;\n    unsigned int nents;\n    Sg_scat *s_cat;\n\n    if (!schp || !sfp)\n        return -EINVAL;\n\n    align_mask = sfp->device->sector_size - 1;\n    buff_size = (buff_size + align_mask) & ~align_mask;\n\n    nents = buff_size / (1 << sfp->device->page_order);\n    if (!nents)\n        return -EINVAL;\n\n    schp->kiov = kmalloc(sizeof(*schp->kiov), GFP_KERNEL);\n    if (!schp->kiov)\n        return -ENOMEM;\n\n    schp->kiov[0].iov_base = NULL;\n    schp->kiov[0].iov_len = buff_size;\n    schp->kiov[0].count = 0;\n\n    s_cat = schp->setup_scat;\n    schp->setup_scat = NULL;\n    schp->res_used = 0;\n\n    for (k = 0; k < nents; ++k) {\n        order = sfp->device->page_order;\n        s_cat = sg_alloc_table_nob(s_cat, 1 << order, GFP_KERNEL | __GFP_RETRY_MAYFAIL);\n        if (!s_cat) {\n            result = -ENOMEM;\n            break;\n        }\n        schp->setup_scat = s_cat;\n        ++schp->res_used;\n    }\n\n    if (result < 0) {\n        while (schp->setup_scat != s_cat) {\n            sg_free_table(s_cat, 1 << sfp->device->page_order);\n            ++s_cat;\n        }\n        kfree(schp->kiov);\n        return result;\n    }\n\n    return schp->res_used;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int build_indirect_sg_list(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int order = 0;  // Assuming default order for allocation\n    int sg_count = 0;\n    int ret = 0;\n\n    // Align buffer size to sector size (assuming 512-byte sector)\n    buff_size = (buff_size + 511) & ~511;\n\n    // Initialize scatter-gather table\n    sg_count = sg_table_alloc(schp, buff_size);\n\n    if (sg_count < 0) {\n        return sg_count; // Returns error code\n    }\n\n    // Allocate memory for pages with retries\n    while (sg_count > 0) {\n        void *page = alloc_pages(order, GFP_KERNEL);\n\n        if (!page) {\n            // Free previously allocated pages\n            while (sg_count > 0) {\n                free_pages(page, order);\n                sg_count--;\n            }\n            return -ENOMEM;\n        }\n\n        // Assign page to scatter-gather element\n        sg_set_page(&schp->sg[sg_count - 1], page, buff_size, 0);\n        buff_size -= PAGE_SIZE << order;\n        sg_count--;\n    }\n\n    // Log allocation success\n    printk(KERN_INFO \"Indirect SG list built successfully with %d elements.\\n\", sg_count);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "C_847__0",
+  "sample_id": "D/C/847",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-17499",
+  "cve_summary": "ImageMagick before 6.9.9-24 and 7.x before 7.0.7-12 has a use-after-free in Magick::Image::read in Magick++/lib/Image.cpp.",
+  "changed_file": "Magick++/lib/Image.cpp",
+  "docstring": "Summary: This function reads an image into the Magick::Image object, ensuring that only a single image frame is processed.\n\nParameters:\n- image (MagickCore::Image *): Pointer to the image to be read.\n- exceptionInfo (MagickCore::ExceptionInfo *): Pointer to the exception information structure.\n\nReturns: None\n\nLogic: The function first checks if the provided image has multiple frames; if so, it destroys the extra frames. It then replaces the current image with the provided one. If the severity of the exception information indicates an undefined exception and the image pointer is null, it destroys the exception info and throws a warning if not in quiet mode. It uses the image-exception macro to report applicable image exceptions.",
+  "heuristic_leakage_flag": true,
+  "generated_code": "#include <MagickCore/MagickCore.h>\n\nvoid ReadImage(MagickCore::Image *image, MagickCore::ExceptionInfo *exceptionInfo) {\n  if (image == (MagickCore::Image *) NULL) {\n    DestroyException(exceptionInfo);\n    (void) ThrowMagickException(exceptionInfo, GetMagickModule(), \n      WarningError, \"NullImagePointer\", \"\");\n    return;\n  }\n\n  if (image->next != (MagickCore::Image *) NULL) {\n    MagickCore::Image *nextImage = image->next;\n    while (nextImage != (MagickCore::Image *) NULL) {\n      MagickCore::Image *temp = nextImage->next;\n      DestroyImage(nextImage);\n      nextImage = temp;\n    }\n    image->next = (MagickCore::Image *) NULL;\n  }\n\n  if (exceptionInfo->severity == UndefinedException) {\n    if (image == (MagickCore::Image *) NULL) {\n      DestroyException(exceptionInfo);\n      (void) ThrowMagickException(exceptionInfo, GetMagickModule(), \n        WarningError, \"NullImagePointer\", \"\");\n      return;\n    }\n  }\n\n  (void) CloneImageException(image, exceptionInfo);\n}",
+  "defensive_steps": [
+    {
+      "step": "check if image pointer is null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if exception severity is undefined and image pointer is null",
+      "protects_against": "null pointer dereference and invalid exception handling"
+    },
+    {
+      "step": "destroy extra image frames",
+      "protects_against": "memory leaks and processing of unintended image frames"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check if image pointer is null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform a check for a null image pointer before using it (e.g., accessing image->next).",
+        "verdict": "omits",
+        "severity": 6
+      },
+      {
+        "step": "check if exception severity is undefined and image pointer is null — protects against: null pointer dereference and invalid exception handling",
+        "reasoning": "The implementation checks if exception severity is undefined and image pointer is null, and performs appropriate actions (destroying exception info and throwing a warning).",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "destroy extra image frames — protects against: memory leaks and processing of unintended image frames",
+        "reasoning": "The implementation checks if there are extra image frames and destroys them using DestroyImageList, preventing memory leaks and unintended processing.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 8,
+    "n_omits": 2,
+    "n_performs": 1,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check if image pointer is null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not check if the image pointer is null in isolation. It only checks if the image pointer is null in combination with the exception severity being undefined.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check if exception severity is undefined and image pointer is null — protects against: null pointer dereference and invalid exception handling",
+        "reasoning": "The implementation does check if the exception severity is undefined and the image pointer is null, and performs appropriate actions (destroying the exception info and throwing a warning if not in quiet mode).",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "destroy extra image frames — protects against: memory leaks and processing of unintended image frames",
+        "reasoning": "The implementation does not perform any action related to destroying extra image frames. It does not check for multiple frames or destroy them.",
+        "verdict": "omits",
+        "severity": 5
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

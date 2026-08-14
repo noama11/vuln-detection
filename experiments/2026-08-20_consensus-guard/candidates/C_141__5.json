@@ -1,0 +1,34 @@
+{
+  "case_id": "C_141__5",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac,\n                                    struct ceph_crypto_key *secret,\n                                    void **p, void *end) {\n    int ret = -EINVAL;\n    void *pos = *p;\n    __u8 type;\n    __u16 version;\n    struct ceph_auth_ticket_handler *handler;\n\n    if (pos + sizeof(type) > end)\n        goto out;\n\n    type = ceph_decode_8(&pos);\n    if (pos + sizeof(version) > end)\n        goto out;\n\n    version = ceph_decode_16(&pos);\n\n    handler = ceph_get_auth_ticket_handler(type);\n    if (!handler) {\n        ret = -ENOTSUPP;\n        goto out;\n    }\n\n    ret = handler->decode_ticket(ac, secret, &pos, end);\n    if (ret < 0)\n        goto out;\n\n    ret = 0;\n    ac->have_session_key = true;\n    ac->session_key = secret;\n    ac->ticket_blob = ceph_memdup(pos, end - pos);\n    if (!ac->ticket_blob) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\nout:\n    *p = pos;\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac,\n                                    struct ceph_crypto_key *secret,\n                                    void **p, void *end) {\n  int ret = -EINVAL;\n\n  if (!ac || !secret || !p || !end || *p > end) {\n    return -EINVAL;\n  }\n\n  // Decode the ticket structure version and type\n  uint8_t version;\n  uint8_t type;\n  void *start = *p;\n\n  if ((start + 2) > end) {\n    return -EINVAL;\n  }\n\n  version = ((uint8_t *)start)[0];\n  type = ((uint8_t *)start)[1];\n\n  // Advance pointer\n  *p = start + 2;\n\n  // Retrieve the appropriate ticket handler\n  struct ceph_auth_ticket_handler *handler =\n      ceph_get_ticket_handler(ac, type, version);\n  if (!handler) {\n    return -ENOENT;\n  }\n\n  // Decrypt the ticket data\n  struct ceph_buffer *decrypted =\n      ceph_decrypt_ticket_data(secret, *p, end);\n  if (!decrypted) {\n    return -EIO;\n  }\n\n  // Update session key and ticket blob\n  if (ceph_validate_ticket(decrypted)) {\n    // Update the session key\n    ret = ceph_update_session_key(ac, decrypted);\n    if (ret < 0) {\n      ceph_buffer_put(decrypted);\n      return ret;\n    }\n\n    // Update the ticket blob\n    ret = ceph_update_ticket_blob(ac, decrypted);\n  } else {\n    ret = -EINVAL;\n  }\n\n  ceph_buffer_put(decrypted);\n\n  return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int ret = -EINVAL;\n    uint8_t type, version;\n    struct ceph_auth_ticket *ticket = NULL;\n\n    if (!ac || !secret || !p || !*p || !end) {\n        return -EINVAL;\n    }\n\n    if (ceph_decode_skip(&p, end, NULL, NULL) < 0)\n        goto out;\n\n    ceph_decode_8_safe(&p, end, type);\n    ceph_decode_8_safe(&p, end, version);\n\n    ticket = kmalloc(sizeof(*ticket), GFP_NOFS);\n    if (!ticket)\n        goto out;\n\n    if (ceph_auth_client_get_ticket(ac, type, version, secret, &ticket->data, &ticket->data_len, &p, end)) {\n        ret = -EIO;\n        goto out;\n    }\n\n    if (ticket->valid_after || ticket->valid_until) {\n        if (time_after(jiffies, ticket->valid_until)) {\n            ret = -ETIMEDOUT;\n            goto out;\n        }\n    }\n\n    if (ceph_crypto_key_update(&ac->session_key, ticket->data, ticket->data_len)) {\n        ret = -EKEYREJECTED;\n        goto out;\n    }\n\n    ac->ticket_blob = kmemdup(ticket->data, ticket->data_len, GFP_NOFS);\n    if (!ac->ticket_blob) {\n        ret = -ENOMEM;\n        goto out;\n    }\n    ac->ticket_blob_len = ticket->data_len;\n    ret = 0;\n\nout:\n    kfree(ticket);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int err = 0;\n    uint32_t type, version;\n\n    // decode ticket type and version\n    if ((err = ceph_decode_32(p, end, &type)) < 0)\n        return err;\n    if ((err = ceph_decode_32(p, end, &version)) < 0)\n        return err;\n\n    // retrieve handler based on type and version\n    struct ceph_auth_ticket_handler *handler = ceph_get_ticket_handler(type, version);\n    if (!handler)\n        return -EINVAL;\n\n    // decrypt ticket data\n    if ((err = handler->decrypt_ticket(ac, secret, p, end)) < 0)\n        return err;\n\n    // update session key and ticket blob\n    if ((err = handler->update_session_key(ac, secret, p, end)) < 0)\n        return err;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac, struct ceph_crypto_key *secret, void **p, void *end) {\n    int ret = -EINVAL;\n    u8 type;\n    u8 version;\n    struct ceph_auth_ticket *ticket;\n\n    if (!ac || !secret || !p || !end || *p >= end) {\n        return ret;\n    }\n\n    if ((end - *p) < sizeof(type) + sizeof(version)) {\n        return ret;\n    }\n\n    type = **(u8**)p;\n    (*p) += sizeof(type);\n\n    version = **(u8**)p;\n    (*p) += sizeof(version);\n\n    ticket = ceph_auth_ticket_get_handler(ac, type, version);\n    if (!ticket) {\n        return ret;\n    }\n\n    ret = ticket->decode(ticket, p, end, secret);\n    if (ret < 0) {\n        goto out;\n    }\n\n    if (ticket->is_valid(ticket)) {\n        ceph_update_session_key(ac, &ticket->session_key);\n        ceph_set_ticket_blob(ac, &ticket->blob);\n    } else {\n        ret = -ETIME;\n        goto out;\n    }\n\n    ret = 0;\nout:\n    ceph_auth_ticket_put(ticket);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

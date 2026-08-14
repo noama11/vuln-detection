@@ -1,0 +1,146 @@
+{
+  "case_id": "C_647__1",
+  "sample_id": "D/C/647",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "GNOME/gimp",
+  "cve_id": "CVE-2018-12713",
+  "cve_summary": "GIMP through 2.10.2 makes g_get_tmp_dir calls to establish temporary filenames, which may result in a filename that already exists, as demonstrated by the gimp_write_and_read_file function in app/tests/test-xcf.c. This might be leveraged by attackers to overwrite files or read file content that was intended to be private.",
+  "changed_file": "app/tests/test-xcf.c",
+  "docstring": "\"\"\"\nSummary: \nWrites an image to a temporary file and then reads it back to verify data integrity.\n\nParameters: \ngimp (Gimp*): Pointer to the Gimp instance.\nwith_unusual_stuff (gboolean): Flag indicating whether to include unusual features.\ncompat_paths (gboolean): Flag for compatibility with older paths.\nuse_gimp_2_8_features (gboolean): Flag to enable GIMP 2.8 specific features.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function creates a main image using the provided Gimp instance and specified flags. It asserts the validity of the created image, then writes it to a temporary file. After saving, it loads the image back from the file and asserts the integrity of the loaded image. Finally, it cleans up by deleting the temporary file and releasing the file object.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <glib.h>\n#include <gimp.h>\n\nvoid write_and_verify_image(Gimp *gimp, gboolean with_unusual_stuff, gboolean compat_paths, gboolean use_gimp_2_8_features) {\n  gchar *temp_file_path = NULL;\n  GFile *temp_file = NULL;\n  GError *error = NULL;\n  GimpImage *image = NULL;\n  GimpImage *loaded_image = NULL;\n\n  // Create a temporary file\n  temp_file = g_file_new_tmp(\"gimp-XXXXXX\", NULL, &error);\n  if (!temp_file) {\n    g_printerr(\"Failed to create temporary file: %s\\n\", error->message);\n    g_error_free(error);\n    return;\n  }\n\n  temp_file_path = g_file_get_path(temp_file);\n\n  // Create the main image using the provided Gimp instance and flags\n  image = gimp_image_new(100, 100, GIMP_RGB_IMAGE, with_unusual_stuff, compat_paths, use_gimp_2_8_features);\n  if (!image) {\n    g_printerr(\"Failed to create image\\n\");\n    g_object_unref(temp_file);\n    g_free(temp_file_path);\n    return;\n  }\n\n  // Save the image to the temporary file\n  if (!gimp_file_save(GIMP_FILE(temp_file), image, NULL, NULL, &error)) {\n    g_printerr(\"Failed to save image: %s\\n\", error->message);\n    g_error_free(error);\n    g_object_unref(temp_file);\n    g_free(temp_file_path);\n    g_object_unref(image);\n    return;\n  }\n\n  // Load the image back from the file\n  loaded_image = gimp_file_load(GIMP_FILE(temp_file), NULL, NULL, &error);\n  if (!loaded_image) {\n    g_printerr(\"Failed to load image: %s\\n\", error->message);\n    g_error_free(error);\n    g_object_unref(temp_file);\n    g_free(temp_file_path);\n    g_object_unref(image);\n    return;\n  }\n\n  // Verify the loaded image\n  if (gimp_image_get_width(image) != gimp_image_get_width(loaded_image) ||\n      gimp_image_get_height(image) != gimp_image_get_height(loaded_image)) {\n    g_printerr(\"Image dimensions do not match\\n\");\n  }\n\n  // Clean up\n  g_object_unref(temp_file);\n  g_free(temp_file_path);\n  g_object_unref(image);\n  g_object_unref(loaded_image);\n}",
+  "defensive_steps": [
+    {
+      "step": "check temporary file creation",
+      "protects_against": "failure to create a temporary file"
+    },
+    {
+      "step": "check image creation",
+      "protects_against": "failure to create a valid image"
+    },
+    {
+      "step": "check image save",
+      "protects_against": "failure to save the image to the temporary file"
+    },
+    {
+      "step": "check image load",
+      "protects_against": "failure to load the image from the temporary file"
+    },
+    {
+      "step": "check image dimensions",
+      "protects_against": "data corruption during save/load"
+    },
+    {
+      "step": "clean up resources",
+      "protects_against": "memory leaks and resource leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 17,
+    "n_omits": 4,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 5,
+    "items": [
+      {
+        "step": "check temporary file creation — protects against: failure to create a temporary file",
+        "reasoning": "The implementation creates a temporary file using g_build_filename and g_file_new_for_path, but does not check whether the file creation was successful. If g_build_filename or g_file_new_for_path fails, the code proceeds without handling the error.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check image creation — protects against: failure to create a valid image",
+        "reasoning": "The implementation calls gimp_create_mainimage to create the image and then calls gimp_assert_mainimage to validate it. This validates that the image was created successfully.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check image save — protects against: failure to save the image to the temporary file",
+        "reasoning": "The implementation calls file_save to save the image to the temporary file but does not check whether the save operation was successful. There is no error handling for this step.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check image load — protects against: failure to load the image from the temporary file",
+        "reasoning": "The implementation calls gimp_test_load_image to load the image from the file and then calls gimp_assert_mainimage on the loaded image. This implies that the loaded image is validated, but there is no explicit check for whether the load succeeded or failed.",
+        "verdict": "omits",
+        "severity": 5
+      },
+      {
+        "step": "check image dimensions — protects against: data corruption during save/load",
+        "reasoning": "The implementation calls gimp_assert_mainimage on the loaded image, which presumably includes a check for image dimensions and data integrity. This implies that the image dimensions are validated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "clean up resources — protects against: memory leaks and resource leaks",
+        "reasoning": "The implementation calls g_file_delete and g_object_unref to clean up the file object. However, it does not check whether the deletion was successful, and there is no cleanup for the image or loaded_image objects, which could lead to resource leaks.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 11,
+    "n_omits": 3,
+    "n_performs": 2,
+    "n_na": 1,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check temporary file creation — protects against: failure to create a temporary file",
+        "reasoning": "The implementation uses `g_file_open_tmp` to create a temporary file and asserts that the file handle is not -1, indicating success.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check image creation — protects against: failure to create a valid image",
+        "reasoning": "The implementation calls `gimp_create_mainimage` to create the image, but does not explicitly check the return value for success. However, it later calls `gimp_assert_mainimage`, which may implicitly validate the image.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "check image save — protects against: failure to save the image to the temporary file",
+        "reasoning": "The implementation calls `file_save` but does not check for success or failure of the save operation.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check image load — protects against: failure to load the image from the temporary file",
+        "reasoning": "The implementation calls `gimp_test_load_image` to load the image but does not check whether the loaded image is valid or whether the function succeeded.",
+        "verdict": "omits",
+        "severity": 4
+      },
+      {
+        "step": "check image dimensions — protects against: data corruption during save/load",
+        "reasoning": "The implementation calls `gimp_assert_mainimage` on the loaded image, which may include a check for image dimensions or data integrity, but this is not explicitly stated or verified.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "clean up resources — protects against: memory leaks and resource leaks",
+        "reasoning": "The implementation deletes the file using `g_file_delete` and unreferences the file object using `g_object_unref`, which ensures proper cleanup.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

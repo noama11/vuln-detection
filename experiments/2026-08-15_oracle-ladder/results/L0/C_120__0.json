@@ -1,0 +1,48 @@
+{
+  "case_id": "C_120__0",
+  "sample_id": "D/C/120",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-4604",
+  "cve_summary": "The bat_socket_read function in net/batman-adv/icmp_socket.c in the Linux kernel before 3.3 allows remote attackers to cause a denial of service (memory corruption) or possibly have unspecified other impact via a crafted batman-adv ICMP packet.",
+  "changed_file": "net/batman-adv/icmp_socket.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a socket associated with a file descriptor.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the socket.\nbuf (char __user *): Buffer to store the read data.\ncount (size_t): Number of bytes to read from the socket.\nppos (loff_t *): Pointer to the current file position (not used in this function).\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: The function checks if the socket is non-blocking and if there are no queued packets, returning -EAGAIN if so. It validates the buffer and its size, returning -EINVAL for invalid parameters and -EFAULT for access issues. It waits for data to be available in the socket's queue. Upon acquiring the lock, it retrieves the first packet from the queue, updates the queue length, and releases the lock. It then copies packet data to the user buffer, cleans up the packet, and returns the number of bytes read or an error code if the copy fails.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static ssize_t bat_socket_read(struct file *file, char __user *buf,\r\n\t\t\t       size_t count, loff_t *ppos)\r\n{\r\n\tstruct socket_client *socket_client = file->private_data;\r\n\tstruct socket_packet *socket_packet;\r\n\tsize_t packet_len;\r\n\tint error;\r\n\r\n\tif ((file->f_flags & O_NONBLOCK) && (socket_client->queue_len == 0))\r\n\t\treturn -EAGAIN;\r\n\r\n\tif ((!buf) || (count < sizeof(struct icmp_packet)))\r\n\t\treturn -EINVAL;\r\n\r\n\tif (!access_ok(VERIFY_WRITE, buf, count))\r\n\t\treturn -EFAULT;\r\n\r\n\terror = wait_event_interruptible(socket_client->queue_wait,\r\n\t\t\t\t\t socket_client->queue_len);\r\n\r\n\tif (error)\r\n\t\treturn error;\r\n\r\n\tspin_lock_bh(&socket_client->lock);\r\n\r\n\tsocket_packet = list_first_entry(&socket_client->queue_list,\r\n\t\t\t\t\t struct socket_packet, list);\r\n\tlist_del(&socket_packet->list);\r\n\tsocket_client->queue_len--;\r\n\r\n\tspin_unlock_bh(&socket_client->lock);\r\n\r\n\tpacket_len = min(count, socket_packet->icmp_len);\r\n\terror = copy_to_user(buf, &socket_packet->icmp_packet, packet_len);\r\n\r\n\tkfree(socket_packet);\r\n\r\n\tif (error)\r\n\t\treturn -EFAULT;\r\n\r\n\treturn packet_len;\r\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_verbatim"
+  },
+  "generator_model": "oracle_L0",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the order of operations involving `copy_to_user` and `packet_len`. In the candidate implementation, `packet_len` is computed as `min(count, socket_packet->icmp_len)` before calling `copy_to_user`, whereas in the reference implementation, `copy_to_user` is called with `socket_packet->icmp_len` directly. This could lead to different behavior if `count` is less than the packet length, as the candidate implementation limits the amount of data copied to the user buffer. This is a functional difference but not security-relevant, as it does not introduce a vulnerability.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are identical in code and logic. They both perform the same checks for non-blocking mode, validate the buffer and size, wait for data, acquire the lock, retrieve the packet, copy data to the user buffer, and handle errors in the same way. There are no observable behavioral differences.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L0",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

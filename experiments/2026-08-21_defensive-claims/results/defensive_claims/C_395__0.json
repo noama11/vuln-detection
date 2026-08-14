@@ -1,0 +1,146 @@
+{
+  "case_id": "C_395__0",
+  "sample_id": "D/C/395",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-13142",
+  "cve_summary": "In ImageMagick before 6.9.9-0 and 7.x before 7.0.6-1, a crafted PNG file could trigger a crash because there was an insufficient check for short files.",
+  "changed_file": "coders/png.c",
+  "docstring": "```plaintext\nSummary: \nReads a PNG image from a file and returns an Image structure.\n\nParameters: \nimage_info (const ImageInfo *): Information about the image to be read.\nexception (ExceptionInfo *): Structure to handle exceptions.\n\nReturns: \nImage *: A pointer to the Image structure containing the read PNG image, or NULL if an error occurs.\n\nLogic: The function begins by validating the input parameters and logging the entry event. It opens the image file and checks for a valid PNG signature, throwing an exception if the signature is incorrect. Memory is allocated for a MngInfo structure, which is initialized and used to read the PNG image data. After reading, it checks the image dimensions and colorspace, adjusting the colorspace if necessary. Finally, it logs the exit event and returns the image or NULL in case of errors.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "Image *ReadPNGImage(const ImageInfo *image_info, ExceptionInfo *exception) {\n  Image *image = NULL;\n  FILE *file = NULL;\n  MngInfo *mng_info = NULL;\n\n  if (image_info == NULL || exception == NULL) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      OptionError, \"InvalidArgument\", \"\");\n    return NULL;\n  }\n\n  (void) LogMagickEvent(CoderEvent, GetMagickModule(), \"Entry %s\", image_info->filename);\n\n  file = fopen(image_info->filename, \"rb\");\n  if (file == NULL) {\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToOpenFile\", \n      image_info->filename);\n    return NULL;\n  }\n\n  unsigned char signature[PNGSIG_MAX_LENGTH];\n  if (fread(signature, 1, PNGSIG_LENGTH, file) != PNGSIG_LENGTH) {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      CorruptImageError, \"NotPNGFile\", image_info->filename);\n    return NULL;\n  }\n\n  if (png_sig_cmp(signature, 0, PNGSIG_LENGTH)) {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      CorruptImageError, \"NotPNGFile\", image_info->filename);\n    return NULL;\n  }\n\n  mng_info = (MngInfo *) AcquireMagickMemory(sizeof(MngInfo));\n  if (mng_info == NULL) {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      ResourceLimitError, \"UnableToAllocateMemory\", \"MngInfo\");\n    return NULL;\n  }\n\n  (void) memset(mng_info, 0, sizeof(MngInfo));\n\n  if (fseek(file, 0, SEEK_SET) != 0) {\n    (void) fclose(file);\n    (void) RelinquishMagickMemory(mng_info);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      FileOpenError, \"UnableToSeekFile\", image_info->filename);\n    return NULL;\n  }\n\n  if (ReadPNGImageData(file, mng_info, image_info, &image, exception) != MagickPass) {\n    (void) fclose(file);\n    (void) RelinquishMagickMemory(mng_info);\n    return NULL;\n  }\n\n  if (image->columns <= 0 || image->rows <= 0) {\n    (void) fclose(file);\n    (void) RelinquishMagickMemory(mng_info);\n    (void) DestroyImage(image);\n    (void) ThrowMagickException(exception, GetMagickModule(), \n      CorruptImageError, \"InvalidImageDimensions\", \"\");\n    return NULL;\n  }\n\n  if (image->colorspace == UndefinedColorspace) {\n    image->colorspace = sRGBColorspace;\n  }\n\n  (void) fclose(file);\n  (void) RelinquishMagickMemory(mng_info);\n\n  (void) LogMagickEvent(CoderEvent, GetMagickModule(), \"Exit %s\", image_info->filename);\n\n  return image;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for NULL input parameters",
+      "protects_against": "dereferencing null pointers"
+    },
+    {
+      "step": "validate file opening",
+      "protects_against": "failing to open the file"
+    },
+    {
+      "step": "check for correct PNG signature",
+      "protects_against": "processing non-PNG files"
+    },
+    {
+      "step": "allocate and initialize MngInfo structure",
+      "protects_against": "memory allocation failures"
+    },
+    {
+      "step": "check for valid image dimensions",
+      "protects_against": "invalid or malformed image data"
+    },
+    {
+      "step": "ensure proper cleanup on error paths",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for NULL input parameters — protects against: dereferencing null pointers",
+        "reasoning": "The implementation uses assert() to verify that image_info and exception are not NULL, which ensures that the function does not proceed with NULL pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate file opening — protects against: failing to open the file",
+        "reasoning": "The implementation checks the return value of OpenBlob() and throws an exception if it fails, ensuring that the function does not proceed with an invalid file.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for correct PNG signature — protects against: processing non-PNG files",
+        "reasoning": "The implementation reads the first 8 bytes of the file and compares them to the expected PNG signature. If the signature is incorrect, it throws an exception.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate and initialize MngInfo structure — protects against: memory allocation failures",
+        "reasoning": "The implementation allocates memory for the MngInfo structure and checks if the allocation was successful. If it fails, it throws an exception.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid image dimensions — protects against: invalid or malformed image data",
+        "reasoning": "The implementation checks if the image's columns or rows are zero after reading and throws an exception if they are, indicating a corrupt image.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper cleanup on error paths — protects against: resource leaks",
+        "reasoning": "The implementation frees the MngInfo structure and closes the file blob before returning in error cases. However, it does not explicitly check if the image is NULL before calling CloseBlob(), which could lead to a potential leak if image is NULL.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "n_omits": 1,
+    "n_performs": 5,
+    "n_na": 0,
+    "max_severity": 4,
+    "items": [
+      {
+        "step": "check for NULL input parameters — protects against: dereferencing null pointers",
+        "reasoning": "The implementation uses `assert` to verify that `image_info` and `exception` are not NULL, which ensures that the function does not proceed with invalid pointers.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate file opening — protects against: failing to open the file",
+        "reasoning": "The implementation calls `OpenBlob` and checks its return value. If it fails, an exception is thrown, ensuring that the function does not proceed with an invalid file.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for correct PNG signature — protects against: processing non-PNG files",
+        "reasoning": "The implementation reads the first 8 bytes of the file and compares them to the expected PNG signature. If the signature is incorrect, an exception is thrown.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate and initialize MngInfo structure — protects against: memory allocation failures",
+        "reasoning": "The implementation allocates memory for the `MngInfo` structure using `AcquireMagickMemory` and checks if the allocation was successful. If it fails, an exception is thrown.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check for valid image dimensions — protects against: invalid or malformed image data",
+        "reasoning": "The implementation checks if the image dimensions (`columns` and `rows`) are zero after reading the image. If they are, an exception is thrown.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure proper cleanup on error paths — protects against: resource leaks",
+        "reasoning": "The implementation frees the `MngInfo` structure using `MngInfoFreeStruct` and calls `CloseBlob` to close the file. However, it does not explicitly handle all possible error paths to ensure all resources are released in all cases (e.g., if `ReadOnePNGImage` fails).",
+        "verdict": "omits",
+        "severity": 4
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

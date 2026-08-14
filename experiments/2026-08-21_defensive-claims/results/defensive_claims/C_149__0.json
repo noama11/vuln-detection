@@ -1,0 +1,162 @@
+{
+  "case_id": "C_149__0",
+  "sample_id": "D/C/149",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "/**\n * Summary: \n * Sets socket options for a PPPoL2TP socket.\n * \n * Parameters:\n * sock (struct socket *): Pointer to the socket for which options are being set.\n * level (int): Level at which the option resides (should be SOL_PPPOL2TP).\n * optname (int): Name of the option to set.\n * optval (char __user *): Pointer to the value to set for the option.\n * optlen (unsigned int): Length of the option value.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function handles PPPoL2TP socket option requests and checks whether the option length is\n * sufficient. It retrieves the option value from user space and checks if the socket is connected.\n * It then retrieves the session context associated with the socket. Depending on the session ID, it\n * either sets options for the tunnel or the session. Finally, it cleans up and returns the\n * appropriate error code or success indicator.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int setsockopt_pppol2tp(struct socket *sock, int level, int optname, char __user *optval, unsigned int optlen) {\n    int ret = -EINVAL;\n    struct sock *sk = sock->sk;\n    struct pppol2tp_session *session;\n    void *val = NULL;\n    size_t val_len = 0;\n\n    if (level != SOL_PPPOL2TP)\n        return -EOPNOTSUPP;\n\n    if (!sock->sk->sk_bound_dev_if || !sock->sk->sk_type)\n        return -ENOTCONN;\n\n    session = pppol2tp_get_session(sk);\n    if (!session)\n        return -ENOENT;\n\n    if (optlen > 0) {\n        val = kmalloc(optlen, GFP_KERNEL);\n        if (!val)\n            return -ENOMEM;\n\n        if (copy_from_user(val, optval, optlen)) {\n            kfree(val);\n            return -EFAULT;\n        }\n        val_len = optlen;\n    }\n\n    switch (optname) {\n        case PPPOLOPT_TUNNEL_ID:\n            if (val_len < sizeof(u32)) {\n                kfree(val);\n                return -EINVAL;\n            }\n            session->tunnel_id = *(u32 *)val;\n            ret = 0;\n            break;\n        case PPPOLOPT_SESSION_ID:\n            if (val_len < sizeof(u32)) {\n                kfree(val);\n                return -EINVAL;\n            }\n            session->session_id = *(u32 *)val;\n            ret = 0;\n            break;\n        default:\n            ret = -EOPNOTSUPP;\n            break;\n    }\n\n    kfree(val);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check level against SOL_PPPOL2TP",
+      "protects_against": "invalid or unsupported level parameter"
+    },
+    {
+      "step": "verify socket is connected",
+      "protects_against": "calling setsockopt on an unconnected socket"
+    },
+    {
+      "step": "retrieve and validate session context",
+      "protects_against": "invalid session context or missing session"
+    },
+    {
+      "step": "allocate memory for option value",
+      "protects_against": "memory allocation failure when copying from user space"
+    },
+    {
+      "step": "copy from user space with bounds check",
+      "protects_against": "invalid user pointer or buffer overflow"
+    },
+    {
+      "step": "validate option value length",
+      "protects_against": "insufficient data for the requested option"
+    },
+    {
+      "step": "free allocated memory",
+      "protects_against": "memory leak after processing the option"
+    }
+  ],
+  "n_claims": 7,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check level against SOL_PPPOL2TP — protects against: invalid or unsupported level parameter",
+        "reasoning": "The implementation checks if the level is not equal to SOL_PPPOL2TP and returns a default setsockopt handler if it is not. This performs the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify socket is connected — protects against: calling setsockopt on an unconnected socket",
+        "reasoning": "The implementation checks if sk->sk_user_data is NULL and returns -ENOTCONN if it is. This indicates the socket is not connected, performing the required check.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "retrieve and validate session context — protects against: invalid session context or missing session",
+        "reasoning": "The implementation calls pppol2tp_sock_to_session to retrieve the session context and checks if it is NULL, returning -EBADF if it is. This performs the required validation.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for option value — protects against: memory allocation failure when copying from user space",
+        "reasoning": "The implementation does not allocate memory for the option value. It directly retrieves the value using get_user, which does not require memory allocation.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "copy from user space with bounds check — protects against: invalid user pointer or buffer overflow",
+        "reasoning": "The implementation uses get_user to copy the option value from user space. This function performs a bounds check and returns an error if the pointer is invalid, performing the required step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate option value length — protects against: insufficient data for the requested option",
+        "reasoning": "The implementation checks if optlen is less than sizeof(int) and returns -EINVAL if it is. This performs the required validation of the option value length.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after processing the option",
+        "reasoning": "The implementation does not allocate memory for the option value, so there is no memory to free. This step is not applicable.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 5,
+    "n_na": 2,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check level against SOL_PPPOL2TP — protects against: invalid or unsupported level parameter",
+        "reasoning": "The implementation checks if the level is not equal to SOL_PPPOL2TP and returns -EINVAL if it is not.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "verify socket is connected — protects against: calling setsockopt on an unconnected socket",
+        "reasoning": "The implementation checks if sk->sk_user_data is NULL and returns -ENOTCONN if it is, indicating the socket is not connected.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "retrieve and validate session context — protects against: invalid session context or missing session",
+        "reasoning": "The implementation retrieves the session context using pppol2tp_sock_to_session and checks if it is NULL, returning -EBADF if it is.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "allocate memory for option value — protects against: memory allocation failure when copying from user space",
+        "reasoning": "The implementation does not allocate memory for the option value. It directly retrieves the value from user space using get_user.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "copy from user space with bounds check — protects against: invalid user pointer or buffer overflow",
+        "reasoning": "The implementation uses get_user to copy an integer from user space, which performs a bounds check implicitly by validating the pointer and size.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "validate option value length — protects against: insufficient data for the requested option",
+        "reasoning": "The implementation checks if optlen is less than sizeof(int) and returns -EINVAL if it is, ensuring sufficient data for the requested option.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "free allocated memory — protects against: memory leak after processing the option",
+        "reasoning": "The implementation does not allocate memory for the option value, so there is no memory to free.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

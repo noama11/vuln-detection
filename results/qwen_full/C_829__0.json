@@ -1,0 +1,53 @@
+{
+  "case_id": "C_829__0",
+  "sample_id": "D/C/829",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6545",
+  "cve_summary": "The Bluetooth RFCOMM implementation in the Linux kernel before 3.6 does not properly initialize certain structures, which allows local users to obtain sensitive information from kernel memory via a crafted application.",
+  "changed_file": "net/bluetooth/rfcomm/tty.c",
+  "docstring": "Summary:  \nRetrieves a list of RFCOMM devices and copies it to user space.\n\nParameters:  \narg (void __user *): Pointer to user space where the device list will be copied.\n\nReturns:  \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic:  \nThe function first retrieves the number of devices requested from user space. It checks for valid input and allocates memory for the device list. It then locks the device list and iterates through the existing RFCOMM devices, populating the device information into the allocated structure while skipping released devices. After populating the list, it unlocks the device list, copies the populated structure back to user space, and frees the allocated memory. The function returns an error code if any operation fails, or 0 if successful.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n#include <linux/mutex.h>\n\nint rfcomm_get_dev_list(void __user *arg)\n{\n    int __user *n = arg;\n    int n_devs;\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_list *list;\n    int i = 0, err = 0;\n\n    if (get_user(n_devs, n))\n        return -EFAULT;\n\n    if (n_devs < 0)\n        return -EINVAL;\n\n    list = kmalloc(sizeof(*list) + n_devs * sizeof(list->devs[0]), GFP_KERNEL);\n    if (!list)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_lock);\n\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= n_devs)\n            break;\n        if (dev->state == RFCOMM_DEV_RELEASED)\n            continue;\n        list->devs[i].id = dev->id;\n        list->devs[i].state = dev->state;\n        list->devs[i].flags = dev->flags;\n        i++;\n    }\n\n    mutex_unlock(&rfcomm_dev_lock);\n\n    list->count = i;\n\n    if (copy_to_user(arg, list, sizeof(*list) + i * sizeof(list->devs[0]))) {\n        err = -EFAULT;\n        goto out;\n    }\n\nout:\n    kfree(list);\n    return err;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key aspects. The candidate implementation retrieves an integer from user space and uses it to allocate a fixed-size structure with a device array, whereas the reference implementation retrieves a 16-bit device number and enforces a maximum limit based on page size. The candidate implementation skips devices in the 'RFCOMM_DEV_RELEASED' state, while the reference implementation checks for the 'RFCOMM_TTY_RELEASED' bit in the flags. Additionally, the reference implementation includes more detailed device information (e.g., channel, source, destination addresses), which the candidate implementation lacks. These differences are observable for all realistic and edge-case inputs and could affect the correctness of the user-space application. However, none of these differences involve security-critical checks or memory safety issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key aspects. First, the candidate implementation uses `mutex_lock` and `mutex_unlock`, while the reference implementation uses `spin_lock` and `spin_unlock`. This affects concurrency behavior and may lead to different performance characteristics. Second, the candidate implementation skips devices with `RFCOMM_DEV_RELEASED` state, while the reference implementation skips devices with the `RFCOMM_TTY_RELEASED` bit set in the flags. These are not equivalent conditions, and may lead to different device lists being returned. Third, the candidate implementation does not copy the `channel`, `src`, and `dst` Bluetooth addresses to user space, which are included in the reference implementation. These differences are observable and may affect the correctness of the returned data for certain inputs, making the implementations functionally different.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

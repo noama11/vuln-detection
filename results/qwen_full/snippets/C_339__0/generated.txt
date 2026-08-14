@@ -1,0 +1,49 @@
+#include <linux/socket.h>
+#include <linux/uaccess.h>
+#include <linux/fdtable.h>
+#include <linux/sockios.h>
+
+int sendto(int fd, void __user *buff, size_t len, unsigned int flags,
+           struct sockaddr __user *addr, int addr_len)
+{
+    struct socket *sock;
+    struct msghdr msg;
+    int ret;
+
+    sock = sockfd_lookup(fd, &ret);
+    if (!sock)
+        return ret;
+
+    msg.msg_name = NULL;
+    msg.msg_namelen = 0;
+    msg.msg_iov = NULL;
+    msg.msg_iovlen = 0;
+    msg.msg_control = NULL;
+    msg.msg_controllen = 0;
+    msg.msg_flags = flags;
+
+    if (addr) {
+        struct sockaddr *kaddr = kmalloc(addr_len, GFP_KERNEL);
+        if (!kaddr) {
+            ret = -ENOMEM;
+            goto out;
+        }
+        if (copy_from_user(kaddr, addr, addr_len)) {
+            ret = -EFAULT;
+            kfree(kaddr);
+            goto out;
+        }
+        msg.msg_name = kaddr;
+        msg.msg_namelen = addr_len;
+    }
+
+    ret = sock_sendmsg(sock, &msg, len);
+
+    if (addr && msg.msg_name) {
+        kfree(msg.msg_name);
+    }
+
+out:
+    sockfd_put(sock);
+    return ret;
+}

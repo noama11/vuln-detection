@@ -1,0 +1,31 @@
+{
+  "case_id": "C_493__0",
+  "implementation": "int vc4_prepare_binning(struct drm_device *dev, struct vc4_exec_info *exec)\n{\n    int ret = 0;\n    size_t binning_size = 0;\n    size_t shader_records_size = 0;\n    size_t uniforms_size = 0;\n    void *binning_data = NULL;\n    void *shader_records_data = NULL;\n    void *uniforms_data = NULL;\n\n    if (!exec || !dev) {\n        return -EINVAL;\n    }\n\n    if (exec->binning_args.size > SIZE_MAX - 3 * sizeof(uint32_t)) {\n        return -EINVAL;\n    }\n\n    binning_size = exec->binning_args.size;\n    shader_records_size = exec->shader_records_args.size;\n    uniforms_size = exec->uniforms_args.size;\n\n    binning_data = kmalloc(binning_size, GFP_KERNEL);\n    if (!binning_data) {\n        return -ENOMEM;\n    }\n\n    shader_records_data = kmalloc(shader_records_size, GFP_KERNEL);\n    if (!shader_records_data) {\n        ret = -ENOMEM;\n        goto free_binning_data;\n    }\n\n    uniforms_data = kmalloc(uniforms_size, GFP_KERNEL);\n    if (!uniforms_data) {\n        ret = -ENOMEM;\n        goto free_shader_records_data;\n    }\n\n    if (copy_from_user(binning_data, exec->binning_args.ptr,\n                       binning_size)) {\n        ret = -EFAULT;\n        goto free_uniforms_data;\n    }\n\n    if (copy_from_user(shader_records_data, exec->shader_records_args.ptr,\n                       shader_records_size)) {\n        ret = -EFAULT;\n        goto free_uniforms_data;\n    }\n\n    if (copy_from_user(uniforms_data, exec->uniforms_args.ptr,\n                       uniforms_size)) {\n        ret = -EFAULT;\n        goto free_uniforms_data;\n    }\n\n    ret = vc4_validate_binning(dev, binning_data, binning_size);\n    if (ret) {\n        goto free_uniforms_data;\n    }\n\n    ret = vc4_validate_shader_records(dev, shader_records_data, shader_records_size);\n    if (ret) {\n        goto free_uniforms_data;\n    }\n\n    ret = vc4_wait_for_previous_render(dev);\n    if (ret) {\n        goto free_uniforms_data;\n    }\n\n    ret = vc4_create_bo(dev, binning_data, binning_size, shader_records_data, shader_records_size, uniforms_data, uniforms_size);\n\nfree_uniforms_data:\n    kfree(uniforms_data);\nfree_shader_records_data:\n    kfree(shader_records_data);\nfree_binning_data:\n    kfree(binning_data);\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "validate size to prevent overflow",
+      "protects_against": "integer overflow when calculating size"
+    },
+    {
+      "step": "allocate memory and check for allocation failure",
+      "protects_against": "out of memory condition"
+    },
+    {
+      "step": "use copy_from_user with size validation",
+      "protects_against": "invalid user space pointer access"
+    },
+    {
+      "step": "free allocated memory on error paths",
+      "protects_against": "memory leak"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

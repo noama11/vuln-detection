@@ -1,0 +1,82 @@
+{
+  "case_id": "C_1061__0",
+  "sample_id": "D/C/1061",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2011-2787",
+  "cve_summary": "Google Chrome before 13.0.782.107 does not properly address re-entrancy issues associated with the GPU lock, which allows remote attackers to cause a denial of service (application crash) via unspecified vectors.",
+  "changed_file": "content/browser/gpu/gpu_data_manager.cc",
+  "docstring": "/**\n * Summary: Updates the GPU information and notifies relevant callbacks.\n * \n * Parameters:\n * gpu_info (const GPUInfo&): The new GPU information to be merged.\n * \n * Returns: None\n * \n * Logic: The function locks access to the GPU information and attempts to merge the new GPU info with the\n * existing data. If the merge is unsuccessful, it returns without completing the update.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdatomic.h>\n\n// Assume GPUInfo is a user-defined type representing GPU information.\ntypedef struct {\n    // Fields representing GPU information.\n} GPUInfo;\n\n// Assume merge_gpu_info is a user-defined function that merges two GPUInfo instances.\n// Returns 0 on success, non-zero on failure.\nint merge_gpu_info(GPUInfo* dest, const GPUInfo* src);\n\n// Assume current_gpu_info is a global atomic variable representing the current GPU information.\n// Assume lock is a global atomic variable representing a lock for the GPU information.\natomic<GPUInfo> current_gpu_info;\natomic<int> lock;\n\nvoid update_gpu_info(const GPUInfo& new_gpu_info) {\n    // Try to acquire the lock\n    while (atomic_exchange(&lock, 1) == 1) {\n        // Wait until the lock is released\n    }\n\n    // Create a temporary copy of the current GPU info\n    GPUInfo temp_gpu_info = atomic_load(&current_gpu_info);\n\n    // Attempt to merge the new GPU info with the current one\n    int merge_result = merge_gpu_info(&temp_gpu_info, &new_gpu_info);\n\n    // If the merge was successful, update the current GPU info\n    if (merge_result == 0) {\n        atomic_store(&current_gpu_info, temp_gpu_info);\n    }\n\n    // Release the lock\n    atomic_store(&lock, 0);\n}",
+  "defensive_steps": [
+    {
+      "step": "use atomic operations for lock and GPU info",
+      "protects_against": "race conditions when multiple threads access the GPU information simultaneously"
+    },
+    {
+      "step": "check merge result before updating GPU info",
+      "protects_against": "applying invalid or corrupted GPU information due to a failed merge"
+    }
+  ],
+  "n_claims": 2,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "use atomic operations for lock and GPU info — protects against: race conditions when multiple threads access the GPU information simultaneously",
+        "reasoning": "The implementation uses a base::AutoLock to lock the gpu_info_lock_ mutex, which ensures that only one thread can access the GPU info at a time. This prevents race conditions by serializing access to the GPU information.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check merge result before updating GPU info — protects against: applying invalid or corrupted GPU information due to a failed merge",
+        "reasoning": "The implementation checks the result of gpu_info_.Merge(gpu_info) and returns early if the merge fails. This ensures that invalid or corrupted GPU information is not applied.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 2,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "use atomic operations for lock and GPU info — protects against: race conditions when multiple threads access the GPU information simultaneously",
+        "reasoning": "The implementation uses a lock (`base::AutoLock auto_lock(gpu_info_lock_)`), which ensures mutual exclusion and prevents race conditions. While it does not explicitly use atomic operations, the lock provides equivalent thread-safety for the GPU info update.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check merge result before updating GPU info — protects against: applying invalid or corrupted GPU information due to a failed merge",
+        "reasoning": "The implementation checks the result of the merge operation (`if (!gpu_info_.Merge(gpu_info)) return;`) and returns early if the merge fails, ensuring that invalid or corrupted GPU information is not applied.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

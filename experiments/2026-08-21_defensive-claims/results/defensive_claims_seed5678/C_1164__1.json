@@ -1,0 +1,98 @@
+{
+  "case_id": "C_1164__1",
+  "sample_id": "D/C/1164",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2013-0889",
+  "cve_summary": "Google Chrome before 25.0.1364.97 on Windows and Linux, and before 25.0.1364.99 on Mac OS X, does not properly enforce a user gesture requirement before proceeding with a file download, which might make it easier for remote attackers to execute arbitrary code via a crafted file.",
+  "changed_file": "chrome/browser/download/chrome_download_manager_delegate.cc",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Determines whether a given download is considered dangerous based on various  \n * criteria including file type, user gestures, and referrer history.  \n *  \n * Parameters:  \n * download (const DownloadItem&): The download item to evaluate.  \n * suggested_path (const FilePath&): The suggested file path for the download.  \n * visited_referrer_before (bool): Indicates if the user has visited the referrer  \n *                                   page before today.  \n *  \n * Returns:  \n * bool: True if the file is considered dangerous, false otherwise.  \n *  \n * Logic:  \n * The function checks if off-store extension installations are enabled and if the  \n * download is an extension without approval. It also evaluates user gestures and  \n * the danger level of the file based on its extension and the user's interaction  \n * with the hosting page.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <string.h>\n\n// Function to check if a file extension is dangerous\nstatic bool IsDangerousExtension(const char* file_path) {\n    const char* dangerous_extensions[] = {\".exe\", \".bat\", \".sh\", \".dll\"};\n    size_t num_extensions = sizeof(dangerous_extensions) / sizeof(dangerous_extensions[0]);\n\n    // Find the last dot in the file path\n    const char* last_dot = strrchr(file_path, '.');\n    if (!last_dot) {\n        return false;\n    }\n\n    // Check if the extension matches any dangerous extension\n    for (size_t i = 0; i < num_extensions; ++i) {\n        if (strcmp(last_dot, dangerous_extensions[i]) == 0) {\n            return true;\n        }\n    }\n\n    return false;\n}\n\n// Function to determine if a download is dangerous\nbool IsDangerousDownload(const DownloadItem& download, const FilePath& suggested_path, bool visited_referrer_before) {\n    // Check if the download is an extension without approval\n    if (download.is_extension && !download.is_approved) {\n        return true;\n    }\n\n    // Check if the file has a dangerous extension\n    if (IsDangerousExtension(suggested_path)) {\n        return true;\n    }\n\n    // If the user has not interacted with the page and hasn't visited the referrer before, it's dangerous\n    if (!download.user_gesture && !visited_referrer_before) {\n        return true;\n    }\n\n    return false;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointer in string operations",
+      "protects_against": "null or invalid file path pointer passed to the function"
+    },
+    {
+      "step": "validate string operations with bounds checking",
+      "protects_against": "malformed or malicious file paths that could cause buffer overflows"
+    },
+    {
+      "step": "use safe string comparison functions",
+      "protects_against": "unexpected or malformed file extensions that could cause undefined behavior"
+    }
+  ],
+  "n_claims": 3,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 0,
+    "n_na": 3,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check for null pointer in string operations — protects against: null or invalid file path pointer passed to the function",
+        "reasoning": "The implementation uses the FilePath class, which is a wrapper for file paths and is expected to handle null or invalid paths safely. There is no explicit check for null pointers in the code, but the FilePath class is assumed to be safe and robust.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "validate string operations with bounds checking — protects against: malformed or malicious file paths that could cause buffer overflows",
+        "reasoning": "The implementation uses the FilePath class and calls methods like BaseName(), which are expected to handle malformed or malicious file paths safely. There is no explicit bounds checking in the code, but the FilePath class is assumed to be safe.",
+        "verdict": "not_applicable",
+        "severity": 0
+      },
+      {
+        "step": "use safe string comparison functions — protects against: unexpected or malformed file extensions that could cause undefined behavior",
+        "reasoning": "The implementation calls functions like ShouldOpenFileBasedOnExtension and GetFileDangerLevel, which are expected to handle file extensions safely. There is no explicit use of unsafe string comparison functions in the code.",
+        "verdict": "not_applicable",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "n_omits": 3,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 3,
+    "items": [
+      {
+        "step": "check for null pointer in string operations — protects against: null or invalid file path pointer passed to the function",
+        "reasoning": "The implementation does not perform any explicit null pointer checks on the `suggested_path` or any string operations involving it. However, the `FilePath` type is used, which is a wrapper for file paths and may internally handle null or invalid values. Since the implementation does not explicitly check for null pointers in string operations, it is not performing this step.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "validate string operations with bounds checking — protects against: malformed or malicious file paths that could cause buffer overflows",
+        "reasoning": "The implementation uses the `FilePath` type and calls functions like `BaseName()` and `HasUserGesture()`, but does not perform explicit bounds checking on the string operations. The `FilePath` type may internally handle bounds checking, but the implementation does not explicitly validate the string operations with bounds checking.",
+        "verdict": "omits",
+        "severity": 3
+      },
+      {
+        "step": "use safe string comparison functions — protects against: unexpected or malformed file extensions that could cause undefined behavior",
+        "reasoning": "The implementation uses functions like `ShouldOpenFileBasedOnExtension` and `GetFileDangerLevel`, which likely handle file extensions. However, the implementation does not explicitly use safe string comparison functions for these operations. The safety of these functions depends on their internal implementation, which is not visible here.",
+        "verdict": "omits",
+        "severity": 3
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

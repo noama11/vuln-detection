@@ -1,0 +1,36 @@
+{
+  "case_id": "C_522__0",
+  "sample_id": "D/C/522",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "systemd/systemd",
+  "cve_id": "CVE-2016-10156",
+  "cve_summary": "A flaw in systemd v228 in /src/basic/fs-util.c caused world writable suid files to be created when using the systemd timers features, allowing local attackers to escalate their privileges to root. This is fixed in v229.",
+  "commit_message": "basic: fix touch() creating files with 07777 mode\n\nmode_t is unsigned, so MODE_INVALID < 0 can never be true.\n\nThis fixes a possible DoS where any user could fill /run by writing to\na world-writable /run/systemd/show-status.",
+  "changed_file": "src/basic/fs-util.c",
+  "docstring": "Summary: This function creates or updates a file at the specified path with given attributes.\n\nParameters: \npath (const char*): The path of the file to create or update.  \nparents (bool): If true, create parent directories as needed.  \nstamp (usec_t): The timestamp to set on the file.  \nuid (uid_t): The user ID to set as the owner of the file.  \ngid (gid_t): The group ID to set as the owner of the file.  \nmode (mode_t): The file permissions to set; if invalid, defaults to 0644.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function first checks if the path is valid and optionally creates parent directories. It then attempts to open the file with specified permissions, updates its mode and ownership if provided, and sets the file's timestamp. If any operation fails, it returns an error code.",
+  "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    335,
+    373
+  ],
+  "vulnerable_line_range": [
+    335,
+    372
+  ],
+  "vulnerable_snippet": "int touch_file(const char *path, bool parents, usec_t stamp, uid_t uid, gid_t gid, mode_t mode) {\r\n        _cleanup_close_ int fd;\r\n        int r;\r\n\r\n        assert(path);\r\n\r\n        if (parents)\r\n                mkdir_parents(path, 0755);\r\n\r\n        fd = open(path, O_WRONLY|O_CREAT|O_CLOEXEC|O_NOCTTY, mode > 0 ? mode : 0644);\r\n        if (fd < 0)\r\n                return -errno;\r\n\r\n        if (mode != MODE_INVALID) {\r\n                r = fchmod(fd, mode);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (uid != UID_INVALID || gid != GID_INVALID) {\r\n                r = fchown(fd, uid, gid);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (stamp != USEC_INFINITY) {\r\n                struct timespec ts[2];\r\n\r\n                timespec_store(&ts[0], stamp);\r\n                ts[1] = ts[0];\r\n                r = futimens(fd, ts);\r\n        } else\r\n                r = futimens(fd, NULL);\r\n        if (r < 0)\r\n                return -errno;\r\n\r\n        return 0;\r\n}",
+  "fixed_line_range": [
+    335,
+    373
+  ],
+  "fixed_snippet": "int touch_file(const char *path, bool parents, usec_t stamp, uid_t uid, gid_t gid, mode_t mode) {\r\n        _cleanup_close_ int fd;\r\n        int r;\r\n\r\n        assert(path);\r\n\r\n        if (parents)\r\n                mkdir_parents(path, 0755);\r\n\r\n        fd = open(path, O_WRONLY|O_CREAT|O_CLOEXEC|O_NOCTTY,\r\n                        (mode == 0 || mode == MODE_INVALID) ? 0644 : mode);\r\n        if (fd < 0)\r\n                return -errno;\r\n\r\n        if (mode != MODE_INVALID) {\r\n                r = fchmod(fd, mode);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (uid != UID_INVALID || gid != GID_INVALID) {\r\n                r = fchown(fd, uid, gid);\r\n                if (r < 0)\r\n                        return -errno;\r\n        }\r\n\r\n        if (stamp != USEC_INFINITY) {\r\n                struct timespec ts[2];\r\n\r\n                timespec_store(&ts[0], stamp);\r\n                ts[1] = ts[0];\r\n                r = futimens(fd, ts);\r\n        } else\r\n                r = futimens(fd, NULL);\r\n        if (r < 0)\r\n                return -errno;\r\n\r\n        return 0;\r\n}",
+  "func_name": "touch_file",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
+}

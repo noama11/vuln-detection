@@ -1,0 +1,114 @@
+{
+  "case_id": "C_337__0",
+  "sample_id": "D/C/337",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-7513",
+  "cve_summary": "arch/x86/kvm/x86.c in the Linux kernel before 4.4 does not reset the PIT counter values during state restoration, which allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via a zero value, related to the kvm_vm_ioctl_set_pit and kvm_vm_ioctl_set_pit2 functions.",
+  "changed_file": "arch/x86/kvm/x86.c",
+  "docstring": "\"\"\"\nSummary: Updates the PIT (Programmable Interval Timer) state in a KVM (Kernel-based Virtual Machine) instance.\n\nParameters:\nkvm (struct kvm*): Pointer to the KVM instance whose PIT state is being updated.\nps (struct kvm_pit_state2*): Pointer to the new PIT state information to be applied.\n\nReturns:\nint: Always returns 0, indicating success.\n\nLogic: Logic: The function locks the PIT state mutex, checks and updates the legacy HPET (High Precision Event Timer) flag, copies the new channel states from the provided structure, updates the PIT flags, and loads PIT channel count state. Finally, it unlocks the mutex before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int update_pit_state(struct kvm *kvm, struct kvm_pit_state2 *ps) {\n    int ret = 0;\n\n    if (!kvm || !ps) {\n        return -1;\n    }\n\n    mutex_lock(&kvm->pit_state_mutex);\n\n    kvm->pit.flags &= ~KVM_PIT_FLAGS_HPET_LEGACY;\n    kvm->pit.flags |= ps->flags & KVM_PIT_FLAGS_HPET_LEGACY;\n\n    memcpy(&kvm->pit.channels[0], &ps->channels[0], sizeof(ps->channels));\n\n    kvm->pit.flags |= KVM_PIT_FLAGS_UPDATED;\n\n    kvm_pit_load_count_state(kvm);\n\n    mutex_unlock(&kvm->pit_state_mutex);\n\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "lock mutex before accessing shared data",
+      "protects_against": "race conditions during concurrent access"
+    },
+    {
+      "step": "bound copy length to known size",
+      "protects_against": "buffer overflow"
+    },
+    {
+      "step": "unlock mutex on return path",
+      "protects_against": "deadlock"
+    }
+  ],
+  "n_claims": 4,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `kvm->arch.vpit->pit_state.lock`, `kvm->arch.vpit->pit_state.flags`, and `ps->flags`, but does not check if `kvm`, `kvm->arch.vpit`, or `ps` are null.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "lock mutex before accessing shared data — protects against: race conditions during concurrent access",
+        "reasoning": "The implementation calls `mutex_lock(&kvm->arch.vpit->pit_state.lock)` before modifying shared data, ensuring mutual exclusion.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to known size — protects against: buffer overflow",
+        "reasoning": "The implementation uses `sizeof(kvm->arch.vpit->pit_state.channels)` as the copy length, which is bounded by the size of the destination buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock mutex on return path — protects against: deadlock",
+        "reasoning": "The implementation calls `mutex_unlock(&kvm->arch.vpit->pit_state.lock)` before returning, ensuring the mutex is always released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 3,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "check for null pointers — protects against: null pointer dereference",
+        "reasoning": "The implementation does not perform any explicit checks for null pointers. It assumes that the pointers 'kvm' and 'ps' are valid and dereferences them directly.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "lock mutex before accessing shared data — protects against: race conditions during concurrent access",
+        "reasoning": "The implementation locks the mutex before accessing the shared data in 'kvm->arch.vpit->pit_state'.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy length to known size — protects against: buffer overflow",
+        "reasoning": "The implementation uses 'sizeof(kvm->arch.vpit->pit_state.channels)' as the copy length, which is bounded by the size of the destination buffer.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "unlock mutex on return path — protects against: deadlock",
+        "reasoning": "The implementation unlocks the mutex before returning, ensuring that the lock is always released.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 5678,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

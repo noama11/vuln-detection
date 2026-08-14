@@ -1,0 +1,49 @@
+{
+  "case_id": "C_169__1",
+  "sample_id": "D/C/169",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the nested netlink attribute from a given socket buffer context.\n\nParameters: \nctx (u64): The context of the socket buffer.\nA (u64): The offset in the socket buffer where the netlink attribute starts.\nX (u64): The type of nested netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the nested netlink attribute from the start of the socket buffer, or 0 if not found or if any validation fails.\n\nLogic: The function first checks whether the socket buffer can be processed. It then performs validation of the specified offset A and the netlink attribute. If these checks pass, it attempts to find the nested attribute of type X and returns its offset; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "static u64 __skb_get_nlattr_nest(u64 v1, u64 A, u64 X, u64 r4, u64 r5)\n{\n    struct sk_buff *v4 = (struct sk_buff *)(long) v1;\n    struct v3 *v2;\n    if (skb_is_nonlinear(v4))\n        return 0;\n    if (v4->len < sizeof(struct v3))\n        return 0;\n    if (A > v4->len - sizeof(struct v3))\n        return 0;\n    v2 = (struct v3 *) &v4->data[A];\n    if (v2->nla_len > v4->len - A)\n        return 0;\n    v2 = nla_find_nested(v2, X);\n    if (v2)\n        return (void *) v2 - (void *) v4->data;\n    return 0;\n}",
+  "candidate_provenance": {
+    "source": "fixed_snippet_perturbed",
+    "identifiers_renamed": 4
+  },
+  "generator_model": "oracle_L1",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation uses a struct v3 and checks for v4->len < sizeof(struct v3), while the reference implementation uses struct nlattr and checks skb->len - sizeof(struct nlattr). Additionally, the candidate implementation has a condition checking if v2->nla_len > v4->len - A, whereas the reference implementation checks if nla->nla_len > A - skb->len. These differences in struct types and validation logic could lead to different behaviors for certain inputs, particularly at boundary conditions. The difference in validation logic may affect memory safety if the input is adversarially crafted.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations are functionally equivalent. Both check for non-linear skb, validate the length of the skb and the offset A, and ensure the attribute length does not exceed the available buffer. The only differences are in variable names (e.g., v1/skb, v3/nlattr), which do not affect behavior. All logic paths and validation checks are the same.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "runtime": {
+    "arm": "oracle_ladder",
+    "rung": "L1",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d"
+  }
+}

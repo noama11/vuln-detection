@@ -1,0 +1,146 @@
+{
+  "case_id": "C_39__0",
+  "sample_id": "D/C/39",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1759",
+  "cve_summary": "Integer overflow in the sys_oabi_semtimedop function in arch/arm/kernel/sys_oabi-compat.c in the Linux kernel before 2.6.39 on the ARM platform, when CONFIG_OABI_COMPAT is enabled, allows local users to gain privileges or cause a denial of service (heap memory corruption) by providing a crafted argument and leveraging a race condition.",
+  "changed_file": "arch/arm/kernel/sys_oabi-compat.c",
+  "docstring": "Summary: This function implements the system call for performing semaphore operations with a timeout.\n\nParameters:\n- semid (int): Identifier for the semaphore set.\n- tsops (struct oabi_sembuf __user *): Pointer to an array of semaphore operations.\n- nsops (unsigned): Number of semaphore operations to perform.\n- timeout (const struct timespec __user *): Pointer to a timespec structure specifying the timeout duration.\n\nReturns: \n- long: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first checks the validity of the number of operations. It allocates memory for the semaphore operations and retrieves user data into kernel space. If a timeout is provided, it copies the timeout value. The function then calls the underlying semaphore operation function, handling memory protection appropriately. Finally, it frees the allocated memory and returns the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/errno.h>\n#include <linux/uaccess.h>\n#include <linux/slab.h>\n\nlong sys_semtimedop(int semid, struct oabi_sembuf __user *tsops, unsigned nsops, const struct timespec __user *timeout) {\n    struct oabi_sembuf *sops;\n    long ret = -EINVAL;\n\n    if (nsops == 0) {\n        return -EINVAL;\n    }\n\n    sops = kmalloc_array(nsops, sizeof(*sops), GFP_KERNEL);\n    if (!sops) {\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(sops, tsops, nsops * sizeof(*sops))) {\n        goto out;\n    }\n\n    if (timeout) {\n        struct timespec to;\n        if (copy_from_user(&to, timeout, sizeof(to))) {\n            ret = -EFAULT;\n            goto out;\n        }\n        ret = do_semtimedop(semid, sops, nsops, &to);\n    } else {\n        ret = do_semtimedop(semid, sops, nsops, NULL);\n    }\n\nout:\n    kfree(sops);\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check nsops is non-zero",
+      "protects_against": "invalid zero operation count"
+    },
+    {
+      "step": "use kmalloc_array with explicit size",
+      "protects_against": "memory allocation overflow"
+    },
+    {
+      "step": "check kmalloc_array return value",
+      "protects_against": "out-of-memory condition"
+    },
+    {
+      "step": "use copy_from_user with explicit size",
+      "protects_against": "invalid user pointer access"
+    },
+    {
+      "step": "check copy_from_user return status",
+      "protects_against": "invalid user data access"
+    },
+    {
+      "step": "ensure memory is freed on all exit paths",
+      "protects_against": "memory leaks"
+    }
+  ],
+  "n_claims": 6,
+  "judge_vs_vulnerable": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check nsops is non-zero — protects against: invalid zero operation count",
+        "reasoning": "The implementation checks if `nsops < 1` and returns `-EINVAL` if true, which ensures that the number of operations is non-zero.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kmalloc_array with explicit size — protects against: memory allocation overflow",
+        "reasoning": "The implementation uses `kmalloc` with an explicit size (`sizeof(*sops) * nsops`) instead of `kmalloc_array`, which could be more robust against overflow. However, the explicit size is still used, so the overflow risk is mitigated.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check kmalloc_array return value — protects against: out-of-memory condition",
+        "reasoning": "The implementation checks if `sops` is `NULL` after the allocation and returns `-ENOMEM` if so, which handles the out-of-memory condition.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use copy_from_user with explicit size — protects against: invalid user pointer access",
+        "reasoning": "The implementation uses `copy_from_user` with an explicit size (`sizeof(*timeout)`) to copy the timeout value from user space, which protects against invalid user pointer access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check copy_from_user return status — protects against: invalid user data access",
+        "reasoning": "The implementation checks the return status of `copy_from_user` by assigning it to `err` and later checking if `err` is non-zero, which handles invalid user data access.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure memory is freed on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree(sops)` before returning, ensuring that the allocated memory is freed regardless of the success or failure of the operation.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 0,
+    "n_omits": 0,
+    "n_performs": 6,
+    "n_na": 0,
+    "max_severity": 0,
+    "items": [
+      {
+        "step": "check nsops is non-zero — protects against: invalid zero operation count",
+        "reasoning": "The implementation checks that `nsops` is greater than or equal to 1, which ensures it is non-zero.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use kmalloc_array with explicit size — protects against: memory allocation overflow",
+        "reasoning": "The implementation uses `kmalloc` with an explicit size (`sizeof(*sops) * nsops`) rather than `kmalloc_array`, but it still prevents overflow by using a multiplication of the size and count.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check kmalloc_array return value — protects against: out-of-memory condition",
+        "reasoning": "The implementation checks the return value of `kmalloc` and returns `-ENOMEM` if the allocation fails.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "use copy_from_user with explicit size — protects against: invalid user pointer access",
+        "reasoning": "The implementation uses `copy_from_user` with an explicit size (`sizeof(*timeout)`) to copy the timeout structure from user space.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check copy_from_user return status — protects against: invalid user data access",
+        "reasoning": "The implementation checks the return status of `copy_from_user` by storing the result in `err` and returns `-EFAULT` if an error occurs.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "ensure memory is freed on all exit paths — protects against: memory leaks",
+        "reasoning": "The implementation calls `kfree(sops)` before returning, ensuring the allocated memory is freed regardless of success or failure.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

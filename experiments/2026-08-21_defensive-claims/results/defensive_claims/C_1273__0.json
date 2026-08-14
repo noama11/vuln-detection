@@ -1,0 +1,130 @@
+{
+  "case_id": "C_1273__0",
+  "sample_id": "D/C/1273",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "chromium/chromium",
+  "cve_id": "CVE-2017-5067",
+  "cve_summary": "An insufficient watchdog timer in navigation in Google Chrome prior to 58.0.3029.81 for Linux, Windows, and Mac allowed a remote attacker to spoof the contents of the Omnibox (URL bar) via a crafted HTML page.",
+  "changed_file": "media/gpu/test/image_processor/image_processor_client.cc",
+  "docstring": "Summary: Clones a VideoFrame with a specified layout by copying its content from a source frame.\n\nParameters:\n- src_frame (const VideoFrame*): Pointer to the source VideoFrame to be cloned.\n- dst_layout (const VideoFrameLayout&): The layout for the destination VideoFrame.\n\nReturns: scoped_refptr<VideoFrame>: A smart pointer to the newly created VideoFrame, or nullptr if the creation fails.\n\nLogic: The function first checks if the source frame is mappable and if its format matches the destination layout. It then creates a new VideoFrame with the specified layout and copies the content from each plane of the source frame to the destination frame. If the creation of the destination frame fails, it logs an error and returns nullptr. Finally, it returns the cloned VideoFrame.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <memory>\n#include <algorithm>\n\n// Assuming scoped_refptr is a reference-counted smart pointer type.\n// Assuming VideoFrame and VideoFrameLayout are defined elsewhere.\n\nscoped_refptr<VideoFrame> CloneVideoFrameWithLayout(const VideoFrame* src_frame, const VideoFrameLayout& dst_layout) {\n  // Validate that the source frame is not null.\n  if (!src_frame) {\n    return nullptr;\n  }\n\n  // Check if the source frame is mappable.\n  if (!src_frame->IsMappable()) {\n    return nullptr;\n  }\n\n  // Check if the source format matches the destination layout format.\n  if (src_frame->format() != dst_layout.format()) {\n    return nullptr;\n  }\n\n  // Create a new VideoFrame with the specified layout.\n  scoped_refptr<VideoFrame> dst_frame = VideoFrame::Create(dst_layout);\n  if (!dst_frame) {\n    return nullptr;\n  }\n\n  // Copy content from each plane of the source frame to the destination frame.\n  for (size_t i = 0; i < src_frame->NumPlanes(); ++i) {\n    const uint8_t* src_plane = src_frame->Data(i);\n    size_t src_plane_size = src_frame->DataSize(i);\n    uint8_t* dst_plane = dst_frame->MutableData(i);\n    size_t dst_plane_capacity = dst_frame->DataCapacity(i);\n\n    // Ensure the copy does not exceed the destination capacity.\n    size_t copy_size = std::min(src_plane_size, dst_plane_capacity);\n    if (copy_size > 0) {\n      std::memcpy(dst_plane, src_plane, copy_size);\n    }\n  }\n\n  return dst_frame;\n}",
+  "defensive_steps": [
+    {
+      "step": "validate source frame is not null",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check if source frame is mappable",
+      "protects_against": "attempting to access unmappable frame data"
+    },
+    {
+      "step": "check if source format matches destination layout format",
+      "protects_against": "format mismatch causing invalid data copy"
+    },
+    {
+      "step": "check if destination frame creation succeeded",
+      "protects_against": "using a null destination frame"
+    },
+    {
+      "step": "bound copy size to destination plane capacity",
+      "protects_against": "buffer overflow during data copy"
+    }
+  ],
+  "n_claims": 5,
+  "judge_vs_vulnerable": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate source frame is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences `src_frame` in multiple places (e.g., `src_frame->IsMappable()`), but does not explicitly check that `src_frame` is not null. Dereferencing a null pointer would cause a crash.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if source frame is mappable — protects against: attempting to access unmappable frame data",
+        "reasoning": "The implementation uses `LOG_ASSERT(src_frame->IsMappable())` to check if the source frame is mappable. This prevents the function from proceeding if the source frame is not mappable.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if source format matches destination layout format — protects against: format mismatch causing invalid data copy",
+        "reasoning": "The implementation uses `LOG_ASSERT(src_frame->format() == dst_layout.format())` to ensure the source format matches the destination layout format. This prevents invalid data copy due to format mismatch.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if destination frame creation succeeded — protects against: using a null destination frame",
+        "reasoning": "The implementation checks if `dst_frame` is not null before proceeding with the copy operation. If `dst_frame` is null, the function logs an error and returns `nullptr`.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy size to destination plane capacity — protects against: buffer overflow during data copy",
+        "reasoning": "The implementation uses `VideoFrame::Columns` and `VideoFrame::Rows` to determine the size of the data to copy. These functions are expected to return values that are appropriate for the destination plane's capacity, thus preventing buffer overflow.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 7,
+    "n_omits": 1,
+    "n_performs": 4,
+    "n_na": 0,
+    "max_severity": 7,
+    "items": [
+      {
+        "step": "validate source frame is not null — protects against: null pointer dereference",
+        "reasoning": "The implementation does not explicitly check if `src_frame` is null. However, the first line uses `LOG_ASSERT(src_frame->IsMappable())`, which would crash if `src_frame` is null. This is not a proper null check and does not protect against null pointer dereference.",
+        "verdict": "omits",
+        "severity": 7
+      },
+      {
+        "step": "check if source frame is mappable — protects against: attempting to access unmappable frame data",
+        "reasoning": "The implementation includes `LOG_ASSERT(src_frame->IsMappable())`, which checks if the source frame is mappable. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if source format matches destination layout format — protects against: format mismatch causing invalid data copy",
+        "reasoning": "The implementation includes `LOG_ASSERT(src_frame->format() == dst_layout.format())`, which checks if the source format matches the destination layout format. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "check if destination frame creation succeeded — protects against: using a null destination frame",
+        "reasoning": "The implementation checks if `dst_frame` is null after creation and returns `nullptr` if it is. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      },
+      {
+        "step": "bound copy size to destination plane capacity — protects against: buffer overflow during data copy",
+        "reasoning": "The implementation calculates `plane_size` using `VideoFrame::PlaneSize`, which should return the correct size for the destination plane. The `libyuv::CopyPlane` function is then called with this size, ensuring the copy is bounded by the destination plane's capacity. This satisfies the defensive step.",
+        "verdict": "performs",
+        "severity": 0
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

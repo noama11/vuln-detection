@@ -1,0 +1,31 @@
+{
+  "case_id": "C_250__1",
+  "implementation": "int map_user_iov_to_request(struct request_queue *q, struct request *rq, struct rq_map_data *map_data, const struct iov_iter *iter, gfp_t gfp_mask) {\n    size_t iov_offset = 0;\n    size_t iov_len = iov_iter_count(iter);\n    struct bio *bio = NULL;\n    int ret = 0;\n\n    if (!q || !rq || !map_data || !iter) {\n        return -EINVAL;\n    }\n\n    if (iov_len == 0) {\n        return 0;\n    }\n\n    while (iov_offset < iov_len) {\n        struct bio *new_bio;\n        size_t bio_len = min(iov_len - iov_offset, (size_t)PAGE_SIZE);\n\n        new_bio = bio_alloc(GFP_KERNEL, 1);\n        if (!new_bio) {\n            ret = -ENOMEM;\n            goto unmap;\n        }\n\n        if (iov_iter_get_pages(iter, new_bio->bi_io_vec, bio_len, 0, NULL) != bio_len) {\n            bio_put(new_bio);\n            ret = -EINVAL;\n            goto unmap;\n        }\n\n        new_bio->bi_iter.bi_size = bio_len;\n        new_bio->bi_bdev = map_data->bdev;\n        new_bio->bi_end_io = NULL;\n\n        if (bio) {\n            bio_chain(bio, new_bio);\n        } else {\n            bio = new_bio;\n        }\n\n        iov_offset += bio_len;\n    }\n\n    rq->bio = bio;\n    return 0;\n\nunmap:\n    if (bio) {\n        bio_unmap_user(bio);\n        bio_put(bio);\n    }\n    return ret;\n}",
+  "defensive_steps": [
+    {
+      "step": "check for null pointers",
+      "protects_against": "null pointer dereference"
+    },
+    {
+      "step": "check for zero length",
+      "protects_against": "processing empty I/O vectors"
+    },
+    {
+      "step": "bound bio length to page size",
+      "protects_against": "memory allocation overflow"
+    },
+    {
+      "step": "validate iov_iter_get_pages return value",
+      "protects_against": "partial or failed mapping"
+    },
+    {
+      "step": "clean up on error path",
+      "protects_against": "resource leaks"
+    }
+  ],
+  "n_steps": 5,
+  "generator_prompt_sha": "ef2baeea3085",
+  "temperature": 0.2,
+  "seed": 1234,
+  "finish_reason": "stop"
+}

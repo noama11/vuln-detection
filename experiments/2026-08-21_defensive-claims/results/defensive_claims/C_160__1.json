@@ -1,0 +1,66 @@
+{
+  "case_id": "C_160__1",
+  "sample_id": "D/C/160",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3647",
+  "cve_summary": "arch/x86/kvm/emulate.c in the KVM subsystem in the Linux kernel through 3.17.2 does not properly perform RIP changes, which allows guest OS users to cause a denial of service (guest OS crash) via a crafted application.",
+  "changed_file": "arch/x86/kvm/emulate.c",
+  "docstring": "\"\"\"\nSummary: \nLoads the state of a task from a 16-bit Task State Segment (TSS) into the emulator context.\n\nParameters: \nctxt (struct x86_emulate_ctxt *): Pointer to the emulator context where the state will be loaded.\ntss (struct tss_segment_16 *): Pointer to the TSS structure containing the state information.\n\nReturns: \nint: Returns X86EMUL_CONTINUE on success or an error code if a fault occurs during segment descriptor loading.\n\nLogic: \nThe function initializes the emulator context's instruction pointer and flags from the TSS, writes the general-purpose registers with values from the TSS, and sets the segment selectors. It then attempts to load the segment descriptors corresponding to the TSS fields, handling any faults that may occur during this process. If all operations succeed, it returns a continuation status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int load_tss_state(struct x86_emulate_ctxt *ctxt, struct tss_segment_16 *tss) {\n    int rc = X86EMUL_CONTINUE;\n\n    if (!ctxt || !tss) {\n        return -EINVAL;\n    }\n\n    /* Initialize emulator context from TSS */\n    ctxt->regs->eip = tss->eip;\n    ctxt->regs->eflags = tss->eflags;\n\n    /* Load general-purpose registers */\n    ctxt->regs->eax = tss->eax;\n    ctxt->regs->ecx = tss->ecx;\n    ctxt->regs->edx = tss->edx;\n    ctxt->regs->ebx = tss->ebx;\n    ctxt->regs->esp = tss->esp;\n    ctxt->regs->ebp = tss->ebp;\n    ctxt->regs->esi = tss->esi;\n    ctxt->regs->edi = tss->edi;\n\n    /* Set segment selectors */\n    ctxt->regs->cs = tss->cs;\n    ctxt->regs->ds = tss->ds;\n    ctxt->regs->es = tss->es;\n    ctxt->regs->fs = tss->fs;\n    ctxt->regs->gs = tss->gs;\n    ctxt->regs->ss = tss->ss;\n\n    /* Load segment descriptors, handling faults */\n    if ((rc = load_segment_descriptor(ctxt, tss->cs, SEGMENT_CS)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n    if ((rc = load_segment_descriptor(ctxt, tss->ds, SEGMENT_DS)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n    if ((rc = load_segment_descriptor(ctxt, tss->es, SEGMENT_ES)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n    if ((rc = load_segment_descriptor(ctxt, tss->fs, SEGMENT_FS)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n    if ((rc = load_segment_descriptor(ctxt, tss->gs, SEGMENT_GS)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n    if ((rc = load_segment_descriptor(ctxt, tss->ss, SEGMENT_SS)) != X86EMUL_CONTINUE) {\n        return rc;\n    }\n\n    return rc;\n}",
+  "defensive_steps": [
+    {
+      "step": "check pointer validity",
+      "protects_against": "null pointer dereference"
+    }
+  ],
+  "n_claims": 1,
+  "judge_vs_vulnerable": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check pointer validity — protects against: null pointer dereference",
+        "reasoning": "The implementation uses the `tss` pointer to access fields like `tss->ldt`, `tss->es`, etc. However, the implementation does not explicitly check whether `tss` is null before dereferencing it. This could lead to a null pointer dereference if `tss` is null.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "medium",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 6,
+    "n_omits": 1,
+    "n_performs": 0,
+    "n_na": 0,
+    "max_severity": 6,
+    "items": [
+      {
+        "step": "check pointer validity — protects against: null pointer dereference",
+        "reasoning": "The implementation dereferences the `tss` pointer to access its fields (e.g., `tss->ip`, `tss->flag`, `tss->ax`, etc.) but does not check whether `tss` is null before doing so. This could lead to a null pointer dereference if `tss` is null.",
+        "verdict": "omits",
+        "severity": 6
+      }
+    ],
+    "no_claims": false,
+    "confidence": "high",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "defensive_claims",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "seed": 1234,
+    "generator_prompt_sha": "ef2baeea3085",
+    "judge_prompt_sha": "d490b9b09ae3"
+  }
+}

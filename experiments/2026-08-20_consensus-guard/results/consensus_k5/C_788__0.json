@@ -1,0 +1,62 @@
+{
+  "case_id": "C_788__0",
+  "sample_id": "D/C/788",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libarchive/libarchive",
+  "cve_id": "CVE-2019-11463",
+  "cve_summary": "A memory leak in archive_read_format_zip_cleanup in archive_read_support_format_zip.c in libarchive 3.3.4-dev allows remote attackers to cause a denial of service via a crafted ZIP file because of a HAVE_LZMA_H typo. NOTE: this only affects users who downloaded the development code from GitHub. Users of the product's official releases are unaffected.",
+  "changed_file": "libarchive/archive_read_support_format_zip.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Cleans up resources associated with a ZIP archive read operation.  \n *  \n * Parameters:  \n * a (struct archive_read *): Pointer to the archive read structure containing  \n *                             format-specific data.  \n *  \n * Returns:  \n * int: Returns ARCHIVE_OK upon successful cleanup.  \n *  \n * Logic:  \n * The function releases various resources allocated during the ZIP archive  \n * reading process, including decompressing streams, buffers, and entries.  \n * It checks for the validity of different compression streams (zlib, LZMA,  \n * BZ2) and frees associated resources. It also iterates through the linked  \n * list of ZIP entries to free each entry and its resources. Finally, it  \n * frees the main ZIP structure and sets the format data pointer to NULL.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 3,
+    "net_exposure": 1,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "freeing zip_entry->filename",
+        "performed_by_count": 4,
+        "why_it_matters": "If the filename is not freed before the zip_entry is freed, it can lead to memory leaks or undefined behavior when the memory is accessed after being freed."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several resource cleanup steps that are not present in the majority of the independent implementations, such as freeing a decrypted buffer, releasing AES CTR context, cleaning up HMAC SHA1 context, and freeing additional buffers like iv, erd, and v_data. However, it does not perform a critical consensus step: freeing the filename in each zip_entry before freeing the entry itself. This omission could lead to memory leaks or undefined behavior if the filename is not properly released.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 6,
+    "steps": [
+      {
+        "step": "Iterate through and free all ZIP entries with proper nulling of pointers and field cleanup",
+        "performed_by_count": 4,
+        "why_it_matters": "Failure to properly free each ZIP entry and its fields (like filename) could result in memory leaks or incomplete cleanup of resources associated with the ZIP archive."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several resource cleanup steps, including freeing buffers and cryptographic contexts, which are not present in most of the independent implementations. However, it does not perform a key consensus step: iterating through and freeing all ZIP entries with proper nulling of pointers and field cleanup, which is done by a majority of the independent implementations. This omission could lead to memory leaks or incomplete cleanup of entry resources.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}
