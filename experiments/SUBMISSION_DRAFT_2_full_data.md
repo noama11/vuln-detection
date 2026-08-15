@@ -18,7 +18,7 @@
 ---
 
 ## Abstract
-
+ 
 We test whether a vulnerability can be found without labels, without training,
 and without any prior description of the vulnerability — using only the
 function's own documentation. A language model that has never seen the code
