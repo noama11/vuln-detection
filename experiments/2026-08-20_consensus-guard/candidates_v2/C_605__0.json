@@ -1,0 +1,34 @@
+{
+  "case_id": "C_605__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int register_usb_audio_device(struct usb_interface *intf, const struct usb_device_id *usb_id) {\n    struct usb_device *udev;\n    int err = 0;\n    int card_index = -1;\n    struct snd_card *card = NULL;\n\n    udev = interface_to_usbdev(intf);\n    if (!udev) {\n        return -ENODEV;\n    }\n\n    if (quirk_present(udev)) {\n        apply_boot_quirks(udev);\n    }\n\n    if (device_already_registered(udev)) {\n        return 0;\n    }\n\n    card_index = find_available_card_slot();\n    if (card_index < 0) {\n        return -ENOSPC;\n    }\n\n    err = snd_card_new(&card, card_index, \"USB Audio\", 0, sizeof(struct snd_usb_audio));\n    if (err < 0) {\n        return err;\n    }\n\n    if (has_multiple_control_interfaces(udev)) {\n        handle_multiple_interfaces(card, intf);\n    }\n\n    err = alsa_register_card(card);\n    if (err < 0) {\n        snd_card_free(card);\n        return err;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int snd_usb_audio_probe(struct usb_interface *intf, const struct usb_device_id *usb_id)\n{\n    struct usb_device *dev = interface_to_usbdev(intf);\n    int err = -ENODEV;\n    int card_idx;\n\n    if (!dev)\n        return -EINVAL;\n\n    if (dev->state != USB_STATE_CONFIGURED)\n        return -ENODEV;\n\n    if (quirk_has_boot_quirk(dev)) {\n        err = quirk_apply_boot_quirk(dev);\n        if (err < 0)\n            return err;\n    }\n\n    if (dev->driver) {\n        if (dev->driver == &snd_usb_audio_driver)\n            return -EBUSY;\n    }\n\n    card_idx = find_first_zero_bit(card_present, SNDRV_CARDS);\n    if (card_idx < 0)\n        return -ENOSPC;\n\n    struct snd_card *card = snd_card_new(card_idx, \"USB Audio\", 0, 0);\n    if (!card)\n        return -ENOMEM;\n\n    err = snd_usb_card_register(card, intf, usb_id);\n    if (err < 0) {\n        snd_card_free(card);\n        return err;\n    }\n\n    dev->driver_data = card;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int snd_usb_audio_probe(struct usb_interface *intf, const struct usb_device_id *usb_id)\n{\n    struct usb_device *dev = interface_to_usbdev(intf);\n    int err;\n\n    if (dev->quirks)\n        apply_boot_quirks(dev);\n\n    if (device_is_registered(dev))\n        return 0;\n\n    err = find_available_slot();\n    if (err < 0)\n        return err;\n\n    if (has_multiple_control_interfaces(dev))\n        handle_multiple_control_interfaces(dev);\n\n    err = register_with_alsa(dev);\n    if (err < 0) {\n        cleanup_resources(dev);\n        return err;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int snd_usb_audio_probe(struct usb_interface *intf, const struct usb_device_id *usb_id)\n{\n    struct usb_device *dev = interface_to_usbdev(intf);\n    int err;\n\n    if (!dev) {\n        return -ENODEV;\n    }\n\n    err = snd_usb_apply_boot_quirk(dev, intf, usb_id);\n    if (err < 0) {\n        return err;\n    }\n\n    if (snd_usb_is_registered(dev)) {\n        return 0;\n    }\n\n    err = snd_card_new(&intf->dev, SNDRV_DEFAULT_IDX1, SNDRV_DEFAULT_STR1,\n                       THIS_MODULE, 0, NULL);\n    if (err < 0) {\n        return err;\n    }\n\n    err = snd_usb_create_card(intf, dev, usb_id);\n    if (err < 0) {\n        snd_card_free(dev->card);\n        return err;\n    }\n\n    err = snd_card_register(dev->card, NULL);\n    if (err < 0) {\n        snd_card_free(dev->card);\n        return err;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int probe_usb_audio_device(struct usb_interface *intf, const struct usb_device_id *usb_id)\n{\n    struct usb_device *usb_dev = interface_to_usbdev(intf);\n    struct snd_card *card = NULL;\n    int err;\n\n    if (!usb_dev)\n        return -EINVAL;\n\n    /* Check for any device quirks or special handling */\n    if (usb_id) {\n        if (usb_id->driver_info & USB_DEVICE_QUIRK_FLAG) {\n            err = apply_boot_quirks(usb_dev);\n            if (err < 0)\n                return err;\n        }\n    }\n\n    /* Check if the device is already registered */\n    if (snd_usb_find_device(usb_dev)) {\n        return -EEXIST;\n    }\n\n    /* Allocate a new sound card instance */\n    err = snd_card_new(&card);\n    if (err < 0) {\n        return err;\n    }\n\n    /* Handle devices with multiple control interfaces */\n    if (usb_dev->actconfig->interface[1].desc.bInterfaceClass == USB_CLASS_HID) {\n        err = handle_control_interface(intf, card);\n        if (err < 0) {\n            snd_card_free(card);\n            return err;\n        }\n    }\n\n    /* Register the card with ALSA */\n    err = snd_card_register(card);\n    if (err < 0) {\n        snd_card_free(card);\n        return err;\n    }\n\n    usb_set_intfdata(intf, card);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+int decode_lazy_structure(char const* start, char const* end, lazy_entry& ret, error_code& ec, int* error_pos, int depth_limit, int item_limit) {
+    std::stack<lazy_entry*> stack;
+    stack.push(&ret);
+    const char* current = start;
+
+    int depth = 0;
+    int items = 0;
+
+    while (current < end && stack.size() > 0) {
+        if (depth >= depth_limit) {
+            ec = error_code::depth_limit_exceeded;
+            if (error_pos) *error_pos = static_cast<int>(current - start);
+            return static_cast<int>(ec);
+        }
+
+        if (items >= item_limit) {
+            ec = error_code::item_limit_exceeded;
+            if (error_pos) *error_pos = static_cast<int>(current - start);
+            return static_cast<int>(ec);
+        }
+
+        switch (*current) {
+            case 'd': {
+                lazy_entry dict = lazy_entry::make_dict();
+                stack.top()->as_dict().insert(std::make_pair(std::string(), dict));
+                stack.push(&dict);
+                ++depth;
+                ++current;
+                break;
+            }
+            case 'l': {
+                lazy_entry list = lazy_entry::make_list();
+                stack.top()->as_list().push_back(list);
+                stack.push(&list);
+                ++depth;
+                ++current;
+                break;
+            }
+            case 'i': {
+                ++current;
+                const char* num_start = current;
+                while (current < end && isdigit(*current)) {
+                    ++current;
+                }
+                if (current == end || *current != 'e') {
+                    ec = error_code::invalid_integer;
+                    if (error_pos) *error_pos = static_cast<int>(current - start);
+                    return static_cast<int>(ec);
+                }
+                std::string num_str(num_start, current - num_start);
+                lazy_entry integer = lazy_entry::make_integer(std::stoll(num_str));
+                stack.top()->as_list().push_back(integer);
+                ++items;
+                ++current;
+                break;
+            }
+            case 'e': {
+                stack.pop();
+                --depth;
+                ++current;
+                break;
+            }
+            default: {
+                if (isdigit(*current)) {
+                    const char* str_start = current;
+                    while (current < end && isdigit(*current)) {
+                        ++current;
+                    }
+                    if (current == end || *current != ':') {
+                        ec = error_code::invalid_string;
+                        if (error_pos) *error_pos = static_cast<int>(current - start);
+                        return static_cast<int>(ec);
+                    }
+                    std::string length_str(str_start, current - str_start);
+                    int length = std::stoi(length_str);
+                    if (static_cast<int>(end - current) < length + 1) {
+                        ec = error_code::unexpected_end_of_input;
+                        if (error_pos) *error_pos = static_cast<int>(current - start);
+                        return static_cast<int>(ec);
+                    }
+                    std::string value(current + 1, length);
+                    lazy_entry string = lazy_entry::make_string(value);
+                    stack.top()->as_list().push_back(string);
+                    ++items;
+                    current += length + 1;
+                } else {
+                    ec = error_code::invalid_token;
+                    if (error_pos) *error_pos = static_cast<int>(current - start);
+                    return static_cast<int>(ec);
+                }
+                break;
+            }
+        }
+    }
+
+    if (current != end) {
+        ec = error_code::unexpected_data;
+        if (error_pos) *error_pos = static_cast<int>(current - start);
+        return static_cast<int>(ec);
+    }
+
+    if (stack.size() != 1) {
+        ec = error_code::mismatched_structure;
+        if (error_pos) *error_pos = static_cast<int>(current - start);
+        return static_cast<int>(ec);
+    }
+
+    ec = error_code::success;
+    return 0;
+}

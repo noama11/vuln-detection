@@ -1,0 +1,62 @@
+{
+  "case_id": "C_149__1",
+  "sample_id": "D/C/149",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-4943",
+  "cve_summary": "The PPPoL2TP feature in net/l2tp/l2tp_ppp.c in the Linux kernel through 3.15.6 allows local users to gain privileges by leveraging data-structure differences between an l2tp socket and an inet socket.",
+  "changed_file": "net/l2tp/l2tp_ppp.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves socket options for a PPPoL2TP socket.\n\nParameters: \nsock (struct socket *): Pointer to the socket from which options are retrieved.\nlevel (int): The level at which the option resides, expected to be SOL_PPPOL2TP.\noptname (int): The name of the option to retrieve.\noptval (char __user *): Pointer to user space where the option value will be stored.\noptlen (int __user *): Pointer to user space where the length of the option value will be stored.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the provided level is valid. It retrieves the length of the option and ensures it is non-negative. It then checks if the socket is connected and retrieves the session context. Depending on the session ID, it either retrieves options for the tunnel or the session. Finally, it copies the option value back to user space and updates the length, returning appropriate error codes as needed.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "check socket is connected",
+        "performed_by_count": 3,
+        "why_it_matters": "If the socket is not connected, the session pointer may be invalid, leading to a use-after-free or null-pointer dereference when accessing session data."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: validating the socket's connection state before proceeding. Most independent implementations check for a connected state (e.g., via `sk->sk_state` or `sock->state`) before retrieving session data. The target skips this check and instead relies on `sk->sk_user_data` and `pppol2tp_sock_to_session`, which may not be sufficient to ensure the socket is in a valid connected state. This could lead to dereferencing invalid pointers if the socket is not properly connected.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "check socket is connected",
+        "performed_by_count": 3,
+        "why_it_matters": "If the socket is not connected, retrieving session or tunnel options could access invalid or uninitialized data, leading to memory-safety issues or incorrect behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a consensus defensive step: validating the socket's connection state before proceeding. Most independent implementations check for a connected state (e.g., via `sk->sk_state` or `sock->state`), but the target only checks for `sk->sk_user_data` and does not explicitly verify the socket is in a connected state. This could allow the function to proceed on an unconnected socket, leading to invalid session or tunnel operations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

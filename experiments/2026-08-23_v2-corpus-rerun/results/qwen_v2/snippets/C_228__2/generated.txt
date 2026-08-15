@@ -1,0 +1,81 @@
+int path_component_to_string(struct super_block *sb, unsigned char *from, int fromlen, unsigned char *to, int tolen) {
+    int i = 0;
+    int j = 0;
+
+    if (tolen <= 0 || fromlen <= 0) {
+        return -EINVAL;
+    }
+
+    while (i < fromlen && j < tolen - 1) {
+        unsigned char c = from[i];
+
+        if (c == '\0') {
+            // Null character in input, treat as end of component
+            break;
+        } else if (c == '/') {
+            // Handle directory separator
+            if (j < tolen - 1) {
+                to[j++] = '/';
+            } else {
+                return -ENAMETOOLONG;
+            }
+        } else if (c == '.') {
+            // Handle directory indicator
+            if (i + 1 < fromlen && from[i + 1] == '/') {
+                // Skip './'
+                i++;
+                continue;
+            } else if (i + 2 < fromlen && from[i + 1] == '.' && from[i + 2] == '/') {
+                // Handle '../'
+                if (j > 0) {
+                    // Remove last component
+                    while (j > 0 && to[j - 1] != '/') {
+                        j--;
+                    }
+                    if (j > 0) {
+                        j--; // Skip the slash
+                    }
+                    i += 2;
+                    continue;
+                } else {
+                    return -EINVAL;
+                }
+            } else {
+                // Regular dot
+                if (j < tolen - 1) {
+                    to[j++] = '.';
+                } else {
+                    return -ENAMETOOLONG;
+                }
+            }
+        } else if (c == '\n') {
+            // Handle symlink
+            if (j < tolen - 1) {
+                to[j++] = '@';
+            } else {
+                return -ENAMETOOLONG;
+            }
+        } else if (c >= 32 && c < 127) {
+            // Printable ASCII character
+            if (j < tolen - 1) {
+                to[j++] = c;
+            } else {
+                return -ENAMETOOLONG;
+            }
+        } else {
+            // Invalid character
+            return -EINVAL;
+        }
+
+        i++;
+    }
+
+    // Null-terminate the output string
+    if (j < tolen) {
+        to[j] = '\0';
+    } else {
+        return -ENAMETOOLONG;
+    }
+
+    return 0;
+}

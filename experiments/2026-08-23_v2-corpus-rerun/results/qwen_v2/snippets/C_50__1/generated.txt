@@ -1,0 +1,33 @@
+void kvm_recalculate_apic_map(struct kvm *kvm) {
+    struct kvm_apic_map *new_map;
+    struct kvm_vcpu *vcpu;
+    int i;
+
+    new_map = kzalloc(sizeof(*new_map), GFP_KERNEL);
+    if (!new_map)
+        return;
+
+    spin_lock(&kvm->apic_map_lock);
+
+    new_map->max_apic_id = 0;
+    new_map->logical_id_to_apic_id = 0;
+
+    for (i = 0; i < KVM_MAX_VCPUS; i++) {
+        vcpu = kvm_get_vcpu(kvm, i);
+        if (!vcpu)
+            continue;
+
+        if (vcpu->arch.apic->base & APIC_XAPIC) {
+            new_map->phys_id_to_apic_id[vcpu->vcpu_id] = vcpu->arch.apic->id;
+            new_map->max_apic_id = max(new_map->max_apic_id, vcpu->arch.apic->id);
+        } else {
+            new_map->phys_id_to_apic_id[vcpu->vcpu_id] = vcpu->arch.apic->id;
+            new_map->max_apic_id = max(new_map->max_apic_id, vcpu->arch.apic->id);
+        }
+    }
+
+    kvm->apic_map = new_map;
+    spin_unlock(&kvm->apic_map_lock);
+
+    kvm_ioapic_scan_all(kvm);
+}

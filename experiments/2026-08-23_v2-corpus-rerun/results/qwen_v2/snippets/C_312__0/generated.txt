@@ -1,0 +1,78 @@
+int powermate_probe(struct usb_interface *intf, const struct usb_device_id *id) {
+    struct usb_host_interface *iface_desc;
+    struct usb_endpoint_descriptor *endpoint;
+    struct powermate_dev *dev;
+    int retval = -ENOMEM;
+
+    iface_desc = usb_ifnum_to_if(intf, 0);
+    if (!iface_desc)
+        return -ENODEV;
+
+    dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+    if (!dev)
+        return -ENOMEM;
+
+    dev->udev = usb_get_dev(interface_to_usbdev(intf));
+    dev->interface = intf;
+
+    endpoint = &iface_desc->endpoint[0].desc;
+    if (!usb_endpoint_is_int_in(endpoint)) {
+        dev_err(&intf->dev, "Invalid endpoint\n");
+        goto error;
+    }
+
+    dev->interrupt = usb_alloc_urb(0, GFP_KERNEL);
+    if (!dev->interrupt)
+        goto error;
+
+    dev->data = usb_buffer_alloc(dev->udev, POWERMATE_DATA_SIZE, GFP_KERNEL, &dev->dma);
+    if (!dev->data)
+        goto error;
+
+    usb_fill_int_urb(dev->interrupt, dev->udev, usb_rcvintpipe(dev->udev, endpoint->bEndpointAddress),
+                     dev->data, POWERMATE_DATA_SIZE, powermate_irq, dev, endpoint->bInterval);
+
+    dev->input = input_allocate_device();
+    if (!dev->input)
+        goto error;
+
+    dev->input->evbit[0] = BIT_MASK(EV_REL) | BIT_MASK(EV_KEY);
+    dev->input->keybit[BIT_WORD(KEY_VOLUMEDOWN)] |= BIT_MASK(KEY_VOLUMEDOWN);
+    dev->input->keybit[BIT_WORD(KEY_VOLUMEUP)] |= BIT_MASK(KEY_VOLUMEUP);
+    dev->input->relbit[0] |= BIT_MASK(REL_WHEEL);
+
+    dev->input->name = "Logitech PowerMate";
+    dev->input->phys = "input/powermate";
+    dev->input->id.bustype = BUS_USB;
+    dev->input->id.vendor = le16_to_cpu(dev->udev->descriptor.idVendor);
+    dev->input->id.product = le16_to_cpu(dev->udev->descriptor.idProduct);
+    dev->input->id.version = 0x0100;
+    dev->input->dev.parent = &intf->dev;
+
+    usb_set_intfdata(intf, dev);
+
+    if (input_register_device(dev->input)) {
+        dev_err(&intf->dev, "Failed to register input device\n");
+        goto error;
+    }
+
+    usb_fill_int_urb(dev->interrupt, dev->udev, usb_rcvintpipe(dev->udev, endpoint->bEndpointAddress),
+                     dev->data, POWERMATE_DATA_SIZE, powermate_irq, dev, endpoint->bInterval);
+
+    if (usb_submit_urb(dev->interrupt, GFP_KERNEL) < 0) {
+        dev_err(&intf->dev, "Failed to submit URB\n");
+        goto error_unregister;
+    }
+
+    return 0;
+
+error_unregister:
+    input_unregister_device(dev->input);
+error:
+    if (dev->interrupt)
+        usb_free_urb(dev->interrupt);
+    if (dev->data)
+        usb_buffer_free(dev->udev, POWERMATE_DATA_SIZE, dev->data, dev->dma);
+    kfree(dev);
+    return retval;
+}

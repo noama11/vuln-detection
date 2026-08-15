@@ -1,0 +1,31 @@
+void restart_scsi_dma(void *opaque) {
+    SCSIDiskState *s = (SCSIDiskState *)opaque;
+    SCSIRequest *req;
+
+    if (s->bh) {
+        qemu_bh_delete(s->bh);
+        s->bh = NULL;
+    }
+
+    QTAILQ_FOREACH(req, &s->requests, next) {
+        if (req->retry) {
+            req->retry = false;
+            switch (req->type) {
+                case SCSI_REQ_READ:
+                    scsi_read_data(req);
+                    break;
+                case SCSI_REQ_WRITE:
+                    scsi_write_data(req);
+                    break;
+                case SCSI_REQ_FLUSH:
+                    scsi_emulate_command(req);
+                    break;
+                default:
+                    break;
+            }
+            if (req->status == SCSI_STATUS_OK) {
+                scsi_req_complete(req, 0);
+            }
+        }
+    }
+}

@@ -1,0 +1,95 @@
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <grp.h>
+#include <systemd/sd-bus.h>
+
+enum nss_status {
+    NSS_STATUS_SUCCESS,
+    NSS_STATUS_NOTFOUND,
+    NSS_STATUS_UNAVAIL,
+    NSS_STATUS_TRYAGAIN
+};
+
+enum nss_status get_group_info(const char* name, struct group* gr, char* buffer, size_t buflen, int* errnop) {
+    if (!name || !gr || !buffer || buflen == 0 || !errnop) {
+        *errnop = EINVAL;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    sd_bus* bus = NULL;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message* reply = NULL;
+    char* machine_name = NULL;
+    char* group_id = NULL;
+
+    // Extract machine name and group ID from the input name
+    // (Implementation of extraction logic is omitted for brevity)
+
+    int r = sd_bus_default_system(&bus);
+    if (r < 0) {
+        *errnop = -r;
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    r = sd_bus_call_method(
+        bus,
+        "org.freedesktop.machine1",
+        "/org/freedesktop/machine1",
+        "org.freedesktop.machine1.Manager",
+        "MapGroup",
+        &error,
+        &reply,
+        "ss", machine_name, group_id
+    );
+
+    if (r < 0) {
+        *errnop = -r;
+        sd_bus_error_free(&error);
+        sd_bus_unref(bus);
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    const char* group_name = NULL;
+    char** members = NULL;
+    gid_t gid = 0;
+
+    r = sd_bus_message_read(reply, "(suga)", &group_name, &gid, &members);
+    if (r < 0) {
+        *errnop = -r;
+        sd_bus_message_unref(reply);
+        sd_bus_unref(bus);
+        return NSS_STATUS_UNAVAIL;
+    }
+
+    size_t needed = strlen(group_name) + 1;
+    for (char** m = members; m && *m; m++) {
+        needed += strlen(*m) + 1;
+    }
+
+    if (needed > buflen) {
+        *errnop = ERANGE;
+        sd_bus_message_unref(reply);
+        sd_bus_unref(bus);
+        return NSS_STATUS_TRYAGAIN;
+    }
+
+    strcpy(buffer, group_name);
+    char* p = buffer + strlen(group_name) + 1;
+    gr->gr_name = buffer;
+    gr->gr_gid = gid;
+    gr->gr_mem = members;
+
+    for (char** m = members; m && *m; m++) {
+        strcpy(p, *m);
+        p += strlen(p) + 1;
+    }
+
+    gr->gr_passwd = "*";
+
+    sd_bus_message_unref(reply);
+    sd_bus_unref(bus);
+
+    *errnop = 0;
+    return NSS_STATUS_SUCCESS;
+}

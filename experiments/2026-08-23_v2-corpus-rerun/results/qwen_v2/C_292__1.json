@@ -1,0 +1,56 @@
+{
+  "case_id": "C_292__1",
+  "sample_id": "D/C/292",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-4805",
+  "cve_summary": "Use-after-free vulnerability in drivers/net/ppp/ppp_generic.c in the Linux kernel before 4.5.2 allows local users to cause a denial of service (memory corruption and system crash, or spinlock) or possibly have unspecified other impact by removing a network namespace, related to the ppp_register_net_channel and ppp_unregister_channel functions.",
+  "changed_file": "drivers/net/ppp/ppp_generic.c",
+  "docstring": "Summary: Unregisters a PPP channel and cleans up associated resources.\n\nParameters: \n- chan (struct ppp_channel*): Pointer to the PPP channel to be unregistered.\n\nReturns: None\n\nLogic: The function first checks if the provided channel is valid. If valid, it sets the channel's PPP pointer to NULL and ensures that any ongoing operations are completed by acquiring a write lock. It then disconnects the channel, removes it from the list of all channels, and decrements the reference count of the channel's file structure. If the reference count reaches zero, it destroys the channel. Additionally, it wakes up any processes waiting on the channel's file.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void unregister_ppp_channel(struct ppp_channel *chan) {\n    if (!chan)\n        return;\n\n    chan->ppp = NULL;\n\n    write_lock(&chan->lock);\n\n    if (chan->file) {\n        ppp_disconnect_channel(chan);\n        list_del(&chan->list);\n        fput_light(chan->file, 1);\n\n        if (atomic_dec_and_test(&chan->file->f_count))\n            ppp_destroy_channel(chan);\n\n        wake_up_all(&chan->file->wait);\n    }\n\n    write_unlock(&chan->lock);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their locking mechanisms and the way they handle the channel's file structure. The candidate implementation uses a write lock on `chan->lock` and performs operations directly on `chan->file`, while the reference implementation uses a combination of `down_write`, `spin_lock_bh`, and `spin_unlock_bh` on different locks and structures. These differences could lead to different behaviors in concurrent or adversarial scenarios, particularly in how they manage synchronization and resource cleanup, which may be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of the channel's lock and the associated data structures. The candidate implementation uses a write lock on the channel itself and performs operations under that lock, while the reference implementation uses a combination of a channel semaphore and spinlocks on a separate structure (pch). Additionally, the reference implementation includes operations on a network structure and a different wake-up mechanism. These differences could lead to different synchronization behaviors and race conditions, which are security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

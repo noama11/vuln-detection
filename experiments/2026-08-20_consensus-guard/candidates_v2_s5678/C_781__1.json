@@ -1,0 +1,34 @@
+{
+  "case_id": "C_781__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int ext4_ext_grow_in_inode(handle_t *handle, struct inode *inode, unsigned int flags) {\n    struct buffer_head *bh = NULL;\n    struct ext4_ext_path *path = NULL;\n    struct ext4_extent_header *eh;\n    ext4_lblk_t goal;\n    int error = 0;\n\n    goal = ext4_ext_get_goal(inode);\n\n    bh = ext4_alloc_block(handle, goal, flags, &error);\n    if (!bh) {\n        return error;\n    }\n\n    path = kmalloc(sizeof(struct ext4_ext_path) * (EXT4_MAX_EXTENT_DEPTH + 1), GFP_NOFS);\n    if (!path) {\n        brelse(bh);\n        return -ENOMEM;\n    }\n\n    lock_buffer(bh);\n    error = journal_get_write_access(handle, bh);\n    if (error) {\n        unlock_buffer(bh);\n        kfree(path);\n        brelse(bh);\n        return error;\n    }\n\n    error = ext4_ext_move_blocks(inode, bh, path, flags);\n    if (error) {\n        journal_abort_handle(handle);\n        unlock_buffer(bh);\n        kfree(path);\n        brelse(bh);\n        return error;\n    }\n\n    eh = ext4_ext_header(bh);\n    eh->eh_depth = 0;\n    eh->eh_max = EXT4_EXTENT_HEADER_MAX;\n\n    ext4_inode_set(inode, EXT4_I(inode)->i_cached_extent);\n    mark_inode_dirty(inode);\n\n    unlock_buffer(bh);\n    kfree(path);\n    brelse(bh);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int ext4_ext_grow(struct inode *inode, handle_t *handle, unsigned int flags)\n{\n    struct buffer_head *bh = NULL;\n    int error = 0;\n    struct ext4_ext_header *eh;\n    ext4_lblk_t goal;\n\n    goal = ext4_ext_get_depth(inode);\n    bh = ext4_alloc_block(handle, goal, flags, &error);\n    if (!bh || error)\n        return error;\n\n    lock_buffer(bh);\n    ext4_journal_get_write_access(handle, bh, flags);\n    if (ext4_ext_move_extents(inode, bh, &error) < 0)\n        goto out;\n\n    eh = ext4_ext_header(bh);\n    eh->eh_magic = cpu_to_le16(EXT4_EXT_MAGIC);\n    eh->eh_depth = 0;\n    eh->eh_entries = 0;\n    eh->eh_max = cpu_to_le16((EXT4_BLOCK_SIZE(inode->i_sb) >> 2) - 2);\n\n    ext4_ext_update_inode(inode, bh, flags);\n    ext4_set_inode_flags(inode);\n    mark_inode_dirty(inode);\n\nout:\n    unlock_buffer(bh);\n    brelse(bh);\n    return error;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int ext4_ext_grow(struct inode *inode, handle_t *handle, unsigned int flags)\n{\n    int ret = 0;\n    struct buffer_head *bh = NULL;\n    struct ext4_extent_header *eh;\n    struct ext4_extent *ex;\n    ext4_lblk_t goal;\n\n    goal = ext4_ext_get_goal(inode);\n    bh = ext4_alloc_block(handle, goal, flags, &ret);\n    if (!bh)\n        return ret;\n\n    lock_buffer(bh);\n    ext4_journal_get_write_access(handle, bh, flags);\n    if (!ret)\n        ret = ext4_ext_move_extents(inode, bh, flags);\n\n    if (!ret) {\n        eh = ext4_ext_header(bh);\n        ext4_ext_init_header(inode, eh);\n        ex = &eh->eh_entries[0];\n        ext4_ext_insert(inode, ex, goal);\n        inode->i_blocks += 1;\n        mark_inode_dirty(inode);\n    }\n\n    ext4_journal_put_write_access(handle, bh);\n    unlock_buffer(bh);\n    brelse(bh);\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int ext4_ext_grow(struct inode *inode, handle_t *handle, unsigned int flags) {\n    struct buffer_head *bh = NULL;\n    int ret = 0;\n    struct ext4_ext_path *path = NULL;\n    struct ext4_extent_header *eh;\n    ext4_lblk_t goal;\n\n    goal = ext4_ext_find_goal(inode, 0);\n\n    bh = ext4_getblk(NULL, inode, goal, flags);\n    if (IS_ERR(bh)) {\n        ret = PTR_ERR(bh);\n        goto out;\n    }\n\n    lock_buffer(bh);\n    ret = ext4_journal_get_write_access(handle, bh);\n    if (ret < 0)\n        goto unlock_out;\n\n    path = kzalloc(sizeof(struct ext4_ext_path) * (EXT4_MAX_EXTENT_DEPTH + 1), GFP_NOFS);\n    if (!path) {\n        ret = -ENOMEM;\n        goto unlock_out;\n    }\n\n    ret = ext4_ext_search(inode, path, 0);\n    if (ret < 0)\n        goto out_free;\n\n    eh = ext4_extent_header(bh);\n    eh->eh_magic = cpu_to_le16(EXT4_EXTENT_MAGIC);\n    eh->eh_depth = 0;\n    eh->eh_entries = 0;\n    eh->eh_max = cpu_to_le16((EXT4_BLOCK_SIZE(inode->i_sb) - sizeof(*eh)) / sizeof(struct ext4_extent));\n\n    memcpy(bh->b_data, path->p_extents, path->p_count * sizeof(struct ext4_extent));\n    eh->eh_entries = cpu_to_le16(path->p_count);\n\n    unlock_buffer(bh);\n    ext4_mark_inode_dirty(handle, inode);\n    ext4_free_path(path);\n\n    return 0;\n\nunlock_out:\n    unlock_buffer(bh);\nout_free:\n    kfree(path);\nout:\n    brelse(bh);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int ext4_ext_grow_inodes(handle_t *handle, struct inode *inode, unsigned int flags)\n{\n    int ret = 0;\n    struct buffer_head *bh = NULL;\n    struct ext4_ext_header *eh;\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    ext4_lblk_t goal;\n\n    /* Determine the goal block for the new extent based on depth */\n    goal = ext4_ext_get_depth(inode);\n\n    /* Allocate a new block */\n    bh = ext4_alloc_block(handle, goal, flags);\n    if (!bh) {\n        ret = -ENOSPC;\n        goto out;\n    }\n\n    /* Lock the buffer and prepare for journal access */\n    lock_buffer(bh);\n    ret = ext4_journal_get_write_access(handle, bh);\n    if (ret) {\n        unlock_buffer(bh);\n        goto out_bh;\n    }\n\n    /* Move existing extent data to the new block */\n    memcpy(bh->b_data, ei->i_ext.ext, sizeof(ei->i_ext.ext));\n    ei->i_ext.ext = bh->b_data;\n\n    /* Initialize the extent header */\n    eh = ext4_ext_header(bh);\n    eh->eh_magic = cpu_to_le16(EXT4_EXT_MAGIC);\n    eh->eh_depth = cpu_to_le16(1);\n    eh->eh_entries = cpu_to_le16(EXT4_EXT_INIT_ENTRIES);\n\n    /* Mark the inode as dirty */\n    mark_inode_dirty(inode);\n\n    /* Unlock the buffer and release it */\n    unlock_buffer(bh);\n    brelse(bh);\n\nout:\n    return ret;\n\nout_bh:\n    brelse(bh);\n    goto out;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

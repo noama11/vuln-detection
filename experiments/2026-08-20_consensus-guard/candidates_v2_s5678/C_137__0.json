@@ -1,0 +1,34 @@
+{
+  "case_id": "C_137__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void trace_sys_enter(void *data, struct pt_regs *regs, long id) {\n    int syscall_nr = regs->syscall;\n    struct ftrace_event_file *file;\n    struct ftrace_raw_syscalls *entry;\n\n    if (syscall_nr < 0 || syscall_nr >= __NR_syscalls)\n        return;\n\n    file = get_syscall_event_file(syscall_nr, 0);\n    if (!file || !file->enabled)\n        return;\n\n    entry = ring_buffer_alloc_event(file->buffer, sizeof(*entry), file);\n    if (!entry)\n        return;\n\n    entry->id = syscall_nr;\n    entry->nr = syscall_nr;\n    entry->args[0] = regs->di;\n    entry->args[1] = regs->si;\n    entry->args[2] = regs->dx;\n    entry->args[3] = regs->cx;\n    entry->args[4] = regs->r8;\n    entry->args[5] = regs->r9;\n\n    ring_buffer_commit_event(file->buffer, entry);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void handle_syscall_entry(void *data, struct pt_regs *regs, long id) {\n    struct ftrace_event_file *file;\n    struct ftrace_event_call *call;\n    struct ring_buffer *buffer;\n    struct ring_buffer_event *event;\n    void *entry;\n\n    unsigned long flags;\n    int pc;\n\n    id = (long) regs->ip;\n\n    if (!id)\n        return;\n\n    call = find_event_call(id);\n    if (!call || !call->enabled)\n        return;\n\n    file = data;\n    buffer = file->ring_buffer;\n    flags = raw_local_save_flags();\n    pc = preempt_count();\n\n    event = ring_buffer_lock_reserve(buffer, sizeof(*entry));\n    if (!event)\n        return;\n\n    entry = ring_buffer_event_data(event);\n    *(long *)entry = id;\n    memcpy((unsigned char *)entry + sizeof(long), &regs->di, sizeof(regs->di));\n    memcpy((unsigned char *)entry + sizeof(long) + sizeof(regs->di), &regs->si, sizeof(regs->si));\n    memcpy((unsigned char *)entry + sizeof(long) + sizeof(regs->di) + sizeof(regs->si), &regs->dx, sizeof(regs->dx));\n    memcpy((unsigned char *)entry + sizeof(long) + sizeof(regs->di) + sizeof(regs->si) + sizeof(regs->dx), &regs->cx, sizeof(regs->cx));\n    memcpy((unsigned char *)entry + sizeof(long) + sizeof(regs->di) + sizeof(regs->si) + sizeof(regs->dx) + sizeof(regs->cx), &regs->r8, sizeof(regs->r8));\n    memcpy((unsigned char *)entry + sizeof(long) + sizeof(regs->di) + sizeof(regs->si) + sizeof(regs->dx) + sizeof(regs->cx) + sizeof(regs->r8), &regs->r9, sizeof(regs->r9));\n\n    ring_buffer_unlock_commit(buffer, event);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void trace_sys_enter(void *data, struct pt_regs *regs, long id)\n{\n    int idx = id / FTRACE_SYSCALLS_PER_EVENT;\n    struct ftrace_event_file *file = &syscall_events[idx];\n    struct trace_entry *entry;\n    unsigned long flags, premp;\n    struct ring_buffer_event *event;\n    struct ring_buffer *buffer;\n\n    if (!file->enabled)\n        return;\n\n    entry = (struct trace_entry *)__get_cpu_var(trace_buffer_entry);\n    if (!entry)\n        return;\n\n    entry->type = TRACE_SYSCALL_ENTER;\n    entry->syscall_id = id;\n    entry->args = regs;\n\n    buffer = file->ring_buffer;\n    event = __ring_buffer_lock_reserve(buffer, sizeof(*entry), flags);\n    if (!event)\n        return;\n\n    ring_buffer_put_entry(event, entry);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void handle_syscall_entry(void *data, struct pt_regs *regs, long id)\n{\n    int syscall_number = regs->ax;\n    struct ftrace_event_file *event_file;\n    struct trace_entry *entry;\n    unsigned long flags, preempt_count;\n\n    if (syscall_number < 0 || syscall_number >= NR_syscalls)\n        return;\n\n    event_file = get_syscall_event_file(syscall_number);\n    if (!event_file || !event_file->enabled)\n        return;\n\n    flags = raw_local_save_flags();\n    preempt_count = preempt_count();\n\n    entry = trace_buffer_reserve(data, event_file, sizeof(*entry) + sizeof(u64));\n    if (!entry)\n        return;\n\n    entry->type = TRACE_SYSCALL_ENTRY;\n    entry->pid = task_pid_vnr(current);\n\n    *(u64 *)((void *)entry + sizeof(*entry)) = syscall_number;\n\n    for (int i = 0; i < 6; i++) {\n        *(u64 *)((void *)entry + sizeof(*entry) + sizeof(u64) + i * sizeof(u64)) = regs->di + i;\n    }\n\n    trace_buffer_commit(data, event_file, entry, sizeof(*entry) + 7 * sizeof(u64));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void handle_syscall_entry(void *data, struct pt_regs *regs, long id) {\n    struct ftrace_event_file *file;\n    struct ftrace_raw_syscall *entry;\n    unsigned long flags;\n    int cnt;\n\n    id = (long) syscall_metadata(id);\n    if (!id)\n        return;\n\n    file = find_event_file(TRACE_SUBSYSTEM_SYSCALLS, \"sys_enter\");\n    if (!file || !file->enabled)\n        return;\n\n    flags = hardirq_save();\n    cnt = preempt_count();\n\n    entry = __trace_wakeup(file, 0);\n    if (entry) {\n        __trace_iter_do_update(entry, file, regs, id);\n        __trace_commit(entry);\n    }\n\n    hardirq_restore(flags);\n    preempt_count_set(cnt);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

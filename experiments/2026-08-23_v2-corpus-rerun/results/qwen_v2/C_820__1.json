@@ -1,0 +1,56 @@
+{
+  "case_id": "C_820__1",
+  "sample_id": "D/C/820",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-9289",
+  "cve_summary": "In the Linux kernel before 4.1.4, a buffer overflow occurs when checking userspace params in drivers/media/dvb-frontends/cx24116.c. The maximum size for a DiSEqC command is 6, according to the userspace API. However, the code allows larger values such as 23.",
+  "changed_file": "drivers/media/dvb-frontends/cx24116.c",
+  "docstring": "Summary:  \nSends a DiSEqC message to a satellite device through the specified frontend.\n\nParameters:  \nfe (struct dvb_frontend *): Pointer to the DVB frontend structure.  \nd (struct dvb_diseqc_master_cmd *): Pointer to the DiSEqC master command structure containing the message to be sent.\n\nReturns:  \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic:  \nThe function first validates the length of the DiSEqC message. If the length is valid, it logs the message if debugging is enabled. It then prepares the message for transmission, including setting the command length and toneburst type. The function waits for the LNB to be ready, introduces a delay for voltage stabilization, and executes the command to send the message. Finally, it waits for the message to be sent, considering the message length and toneburst type, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int dvb_diseqc_send_master_cmd(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)\n{\n\tint i, ret = 0;\n\tu8 len = d->msg[0] & 0x0f;\n\n\tif (len < 1 || len > 5) {\n\t\tdprintk(1, \"DiSEqC: invalid message length\\n\");\n\t\treturn -EINVAL;\n\t}\n\n\tif (dvb_debug & 4) {\n\t\tdprintk(1, \"DiSEqC: sending master command: \");\n\t\tfor (i = 0; i <= len; i++)\n\t\t\tdprintk(1, \"%02x \", d->msg[i]);\n\t\tdprintk(1, \"\\n\");\n\t}\n\n\td->msg[1] |= 0x30; /* set command length */\n\tif (d->msg[0] & 0x10)\n\t\td->msg[1] |= 0x40; /* set toneburst */\n\n\t/* wait for LNB to be ready */\n\tmsleep(10);\n\n\t/* delay for voltage stabilization */\n\tudelay(100);\n\n\t/* send the command */\n\tfor (i = 0; i <= len; i++) {\n\t\tret = fe->ops.send_diseqc(fe, d->msg[i]);\n\t\tif (ret < 0)\n\t\t\treturn ret;\n\t}\n\n\t/* wait for message to be sent */\n\tif (d->msg[0] & 0x10)\n\t\tmsleep(10); /* toneburst */\n\telse\n\t\tmsleep(5); /* no toneburst */\n\n\treturn 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they handle the DiSEqC message length and transmission. The candidate implementation extracts the message length from the first byte of the message (`d->msg[0] & 0x0f`) and validates it against a fixed range (1 to 5). In contrast, the reference implementation uses a separate `d->msg_len` field and validates it against a hardware-specific constant (`CX24116_ARGLEN - CX24116_DISEQC_MSGOFS`). Additionally, the candidate implementation sends the message byte-by-byte using `fe->ops.send_diseqc`, while the reference implementation copies the message into a command structure and executes it as a single command. These differences could lead to different behaviors for certain inputs, particularly if the message length is not encoded in the first byte or if the frontend expects a different transmission format. This is a functional mismatch that could affect correct operation of the frontend.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ significantly in their approach to sending DiSEqC messages. The candidate implementation validates the message length using a bitmask and checks if it is between 1 and 5, while the reference implementation validates the message length by comparing it to the size of the message buffer. Additionally, the candidate implementation directly sends the message bytes using the frontend's send_diseqc function, while the reference implementation copies the message into a command structure and executes it via a separate command execution function. These differences suggest a functional mismatch in how the message is processed and sent, which could lead to different behaviors for certain inputs.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

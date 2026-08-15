@@ -1,0 +1,50 @@
+size_t WritePSDChannel(const PSDInfo *psd_info, const ImageInfo *image_info,
+                       Image *image, Image *next_image, QuantumType quantum_type,
+                       unsigned char *compact_pixels, MagickOffsetType size_offset,
+                       MagickBooleanType separate, CompressionType compression,
+                       ExceptionInfo *exception) {
+  size_t bytes_written = 0;
+  MagickBooleanType status = MagickTrue;
+  unsigned char *pixels = NULL;
+  size_t rows = image->rows;
+  size_t columns = image->columns;
+  size_t depth = image->depth;
+  size_t length = 0;
+
+  if (compression == ZipCompression || compression == RLECompression) {
+    pixels = (unsigned char *) AcquireMemory(rows * columns * sizeof(*pixels));
+    if (!pixels) {
+      ThrowBinaryException(ResourceLimitError, "MemoryAllocationFailed", image_info->filename);
+      return 0;
+    }
+  }
+
+  for (size_t y = 0; y < rows; y++) {
+    ExportPixelPacket(image, GetVirtualPixels(next_image, 0, y, columns, 1, exception), pixels + y * columns, columns, quantum_type);
+
+    if (compression == RLECompression) {
+      length = CompressRLE(pixels + y * columns, compact_pixels + y * columns, columns, depth);
+    } else if (compression == ZipCompression) {
+      length = CompressZIP(pixels + y * columns, compact_pixels + y * columns, columns, depth);
+    } else {
+      (void) memcpy(compact_pixels + y * columns, pixels + y * columns, columns * sizeof(*pixels));
+      length = columns;
+    }
+
+    bytes_written += length;
+    if (WriteBlobMemory(image, length, compact_pixels + y * columns) != MagickTrue) {
+      status = MagickFalse;
+      break;
+    }
+  }
+
+  if (pixels) {
+    pixels = RelinquishMemory(pixels);
+  }
+
+  if (!status) {
+    bytes_written = 0;
+  }
+
+  return bytes_written;
+}

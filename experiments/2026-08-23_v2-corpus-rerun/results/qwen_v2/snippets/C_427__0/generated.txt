@@ -1,0 +1,85 @@
+#include <windows.h>
+#include <MagickCore/MagickCore.h>
+
+void CaptureScreenContent() {
+    // Initialize image pointer
+    Image *image = NULL;
+
+    // Enumerate display devices
+    DISPLAY_DEVICEW display_device = { sizeof(DISPLAY_DEVICEW) };
+    int display_index = 0;
+
+    while (EnumDisplayDevicesW(NULL, display_index, &display_device, 0)) {
+        if (display_device.StateFlags & DISPLAY_DEVICE_ACTIVE) {
+            // Create device context for the display
+            HDC hdc_screen = CreateDCW(L"DISPLAY", display_device.DeviceName, NULL, NULL);
+            if (!hdc_screen) continue;
+
+            // Get display dimensions
+            int width = GetDeviceCaps(hdc_screen, HORZRES);
+            int height = GetDeviceCaps(hdc_screen, VERTRES);
+
+            // Create compatible DC and bitmap
+            HDC hdc_mem = CreateCompatibleDC(hdc_screen);
+            HBITMAP hbitmap = CreateCompatibleBitmap(hdc_screen, width, height);
+            SelectObject(hdc_mem, hbitmap);
+
+            // Copy screen content to the bitmap
+            BitBlt(hdc_mem, 0, 0, width, height, hdc_screen, 0, 0, SRCCOPY);
+
+            // Convert bitmap to Magick image
+            image = AcquireImage();
+            image->columns = width;
+            image->rows = height;
+            image->depth = 8;
+
+            // Allocate pixel cache
+            if (AllocateImagePixels(image) == MagickFalse) {
+                // Handle allocation error
+                DeleteObject(hbitmap);
+                DeleteDC(hdc_mem);
+                DeleteDC(hdc_screen);
+                ThrowMagickException(0, MagickPath, 0, "Memory allocation failed", 0);
+            }
+
+            // Copy pixel data from DC to image
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    COLORREF color = GetPixel(hdc_mem, x, y);
+                    PixelIndex index = (PixelIndex) (GetRValue(color));
+                    PixelPacket *pixel = GetAuthenticPixelInfo(image, x, y, &image->exception);
+                    pixel->red = (Quantum) ScaleCharToQuantum((unsigned char) GetRValue(color));
+                    pixel->green = (Quantum) ScaleCharToQuantum((unsigned char) GetGValue(color));
+                    pixel->blue = (Quantum) ScaleCharToQuantum((unsigned char) GetBValue(color));
+                    pixel->opacity = OpaqueOpacity;
+                }
+            }
+
+            // Update image data in memory
+            if (QueueAuthenticPixels(image, 0, 0, width, height, &image->exception) == MagickFalse) {
+                // Handle pixel queue error
+                DeleteObject(hbitmap);
+                DeleteDC(hdc_mem);
+                DeleteDC(hdc_screen);
+                DestroyImage(image);
+                ThrowMagickException(0, MagickPath, 0, "Failed to queue pixels", 0);
+            }
+
+            if (SyncAuthenticPixels(image, &image->exception) == MagickFalse) {
+                // Handle pixel sync error
+                DeleteObject(hbitmap);
+                DeleteDC(hdc_mem);
+                DeleteDC(hdc_screen);
+                DestroyImage(image);
+                ThrowMagickException(0, MagickPath, 0, "Failed to sync pixels", 0);
+            }
+
+            // Clean up resources
+            DeleteObject(hbitmap);
+            DeleteDC(hdc_mem);
+            DeleteDC(hdc_screen);
+        }
+
+        display_index++;
+    }
+}

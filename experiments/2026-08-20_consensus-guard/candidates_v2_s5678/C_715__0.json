@@ -1,0 +1,34 @@
+{
+  "case_id": "C_715__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int port;\n\n    spin_lock(&i8042_lock);\n    status = inb_p(0x64);\n    data = inb_p(0x60);\n\n    if (status & 0x80) {\n        /* MUX error or timeout */\n        spin_unlock(&i8042_lock);\n        return IRQ_NONE;\n    }\n\n    port = i8042_get_port_from_status(status);\n    if (port < 0) {\n        spin_unlock(&i8042_lock);\n        return IRQ_NONE;\n    }\n\n    if (i8042_filter[port](data)) {\n        spin_unlock(&i8042_lock);\n        return IRQ_NONE;\n    }\n\n    i8042_pass_data(data, port);\n    spin_unlock(&i8042_lock);\n\n    return IRQ_HANDLED;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n    struct serio *port;\n\n    spin_lock(&i8042_lock);\n    status = inb(I8042_STATUS);\n    if (status & I8042_OBF) {\n        data = inb(I8042_DATA);\n        handled = 1;\n\n        if (status & (I8042_MUXERR | I8042_TIMEOUT)) {\n            i8042_flush();\n            handled = 0;\n        } else {\n            port = i8042_get_port();\n            if (port && !i8042_filter(data))\n                serio_interrupt(port, data, 0);\n        }\n    }\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n\n    spin_lock(&i8042_lock);\n    status = inb_p(PortStatus);\n    if (status & 0x80) {\n        data = inb_p(DataPort);\n\n        if (status & 0x01) {\n            /*MUX error or timeout*/\n        } else {\n            int i;\n            for (i = 0; i < 4; i++) {\n                if (i8042_ports[i].handler && (i8042_ports[i].str & 0x0f) == (data & 0x0f)) {\n                    if (i8042_filter && i8042_filter(data)) {\n                        serio_interrupt(&i8042_ports[i], data, 0);\n                        handled = 1;\n                    }\n                }\n            }\n        }\n    }\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    struct serio *port;\n\n    spin_lock(&i8042_lock);\n\n    status = inb_p(STATUS_PORT);\n    if (status & (ST_PARITY | ST_TIMEOUT))\n        goto out;\n\n    if (status & ST_MOUSE_INT)\n        port = i8042_mouse_port;\n    else\n        port = i8042_kbd_port;\n\n    data = inb_p(DATA_PORT);\n\n    if (i8042_filter && i8042_filter(data, port))\n        goto out;\n\n    serio_interrupt(port, data, 0);\n\nout:\n    spin_unlock(&i8042_lock);\n\n    return IRQ_HANDLED;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n\n    spin_lock(&i8042_lock);\n\n    status = inb_p(STATUS_PORT);\n    if (status & OBF) {\n        data = inb_p(DATA_PORT);\n\n        if (status & (MUXERR | TIMEOUT)) {\n            if (status & MUXERR)\n                printk(KERN_ERR \"i8042: MUX error\\n\");\n            if (status & TIMEOUT)\n                printk(KERN_ERR \"i8042: Timeout error\\n\");\n        } else {\n            int port;\n\n            port = i8042_mux_port(status);\n            if (port >= 0 && port < i8042_num_ports) {\n                struct serio *serio = &i8042_ports[port];\n                if (!serio->drv)\n                    i8042_filter(serio, data);\n                else\n                    serio_interrupt(serio, data, 0);\n                handled = 1;\n            }\n        }\n    }\n\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_99__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void wait_for_drain_edgeport(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty;\n    wait_queue_t wait;\n    unsigned long time_limit;\n    unsigned int drain_time = 0;\n    int disconn = 0;\n\n    if (!port || !port->port)\n        return;\n\n    tty = port->port->tty;\n    if (!tty)\n        return;\n\n    init_waitqueue_entry(&wait, current);\n\n    time_limit = jiffies + timeout;\n\n    add_wait_queue(&tty->write_wait, &wait);\n\n    while (!disconn && time_before(jiffies, time_limit)) {\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        if (port->disconnected)\n            disconn = 1;\n\n        if (disconn || !tty->chars_in_buffer(tty))\n            break;\n\n        spin_unlock(&port->port_lock);\n        schedule_timeout(timeout);\n        spin_lock(&port->port_lock);\n    }\n\n    set_current_state(TASK_RUNNING);\n    remove_wait_queue(&tty->write_wait, &wait);\n\n    if (flush)\n        tty->flush_chars(tty);\n\n    if (port->baud_rate > 0)\n        drain_time = (port->baud_rate / 10);\n\n    if (drain_time > 0)\n        schedule_timeout(msecs_to_jiffies(drain_time));\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void edgeport_drain_data(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty;\n    unsigned long orig_jiffies = jiffies;\n    unsigned long time_limit;\n    int discon;\n    DECLARE_WAITQUEUE(wait, current);\n\n    if (!port)\n        return;\n\n    tty = port->tty;\n    if (!tty)\n        return;\n\n    time_limit = jiffies + timeout;\n\n    add_wait_queue(&tty->write_wait, &wait);\n    set_current_state(TASK_INTERRUPTIBLE);\n\n    while (1) {\n        unsigned long timeout_val;\n\n        spin_lock_irq(&port->lock);\n        discon = port->disconnected;\n        spin_unlock_irq(&port->lock);\n\n        if (discon)\n            break;\n\n        if (time_after(jiffies, time_limit))\n            break;\n\n        if (tty_chars_in_buffer(tty) == 0)\n            break;\n\n        timeout_val = time_limit - jiffies;\n        schedule_timeout(timeout_val);\n    }\n\n    set_current_state(TASK_RUNNING);\n    remove_wait_queue(&tty->write_wait, &wait);\n\n    if (flush)\n        tty_flush(tty, 0);\n\n    timeout = port->baud_rate ? (port->baud_rate + 999999) / 1000000 : 0;\n    timeout = max(timeout, 1UL);\n\n    while (1) {\n        unsigned long timeout_val;\n\n        spin_lock_irq(&port->lock);\n        discon = port->disconnected;\n        spin_unlock_irq(&port->lock);\n\n        if (discon)\n            break;\n\n        if (time_after(jiffies, time_limit))\n            break;\n\n        timeout_val = min(time_limit - jiffies, timeout * 2);\n        schedule_timeout(timeout_val);\n    }\n\n    tty->low_latency = 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void edgeport_drain(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n\tstruct tty_struct *tty;\n\tDECLARE_WAIT_QUEUE_HEAD_ONSTACK(wait);\n\tunsigned long start_jiffies;\n\tunsigned long baud_rate;\n\tint disconn;\n\tint drain_complete = 0;\n\n\tif (!port || !port->tport)\n\t\treturn;\n\n\ttty = port->tport->tty;\n\tif (!tty)\n\t\treturn;\n\n\tstart_jiffies = jiffies;\n\tdisconn = 0;\n\n\twhile (!disconn && !drain_complete && time_before(jiffies, start_jiffies + timeout)) {\n\t\tunsigned long flags;\n\n\t\tspin_lock_irqsave(&port->lock, flags);\n\n\t\tif (port->disconnected) {\n\t\t\tdisconn = 1;\n\t\t} else {\n\t\t\tif (port->tx_bytes == 0)\n\t\t\t\tdrain_complete = 1;\n\t\t}\n\n\t\tspin_unlock_irqrestore(&port->lock, flags);\n\n\t\tif (!drain_complete && !disconn)\n\t\t\tschedule_timeout_uninterruptible(1);\n\t}\n\n\tif (flush)\n\t\tport->tx_bytes = 0;\n\n\tbaud_rate = port->baud_rate ?: 9600;\n\tif (baud_rate > 0)\n\t\tschedule_timeout_uninterruptible((208 * HZ) / baud_rate);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void edgeport_drain(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n\tstruct tty_struct *tty;\n\tDECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq);\n\tunsigned long orig_jiffies = jiffies;\n\tunsigned long time_limit = jiffies + timeout;\n\tunsigned long flags;\n\tint draining = 1;\n\n\ttty = port->port.tty;\n\tif (!tty)\n\t\treturn;\n\n\tadd_wait_queue(&wq, &current);\n\tset_current_state(TASK_INTERRUPTIBLE);\n\n\twhile (draining) {\n\t\tif (signal_pending(current))\n\t\t\tbreak;\n\n\t\tspin_lock_irqsave(&port->lock, flags);\n\t\tif (port->disconnected) {\n\t\t\tspin_unlock_irqrestore(&port->lock, flags);\n\t\t\tbreak;\n\t\t}\n\n\t\tif (time_after(jiffies, time_limit))\n\t\t\tbreak;\n\n\t\tif (port->tx_bytes == 0)\n\t\t\tdraining = 0;\n\t\tspin_unlock_irqrestore(&port->lock, flags);\n\n\t\tschedule_timeout(1);\n\t}\n\tset_current_state(TASK_RUNNING);\n\tremove_wait_queue(&wq, &current);\n\n\tif (flush && tty && tty->driver && tty->driver->flush_buffer)\n\t\ttty->driver->flush_buffer(tty);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void wait_for_drain_edgeport(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty;\n    DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wait);\n    unsigned long end_time;\n    int disconnecting = 0;\n    unsigned int count;\n    unsigned int baud_rate;\n    long timeout_jiffies;\n\n    if (!port)\n        return;\n\n    tty = port->tty;\n    if (!tty)\n        return;\n\n    end_time = jiffies + timeout;\n\n    spin_lock_irq(&port->lock);\n    count = port->xmit_cnt;\n    spin_unlock_irq(&port->lock);\n\n    while (count > 0 && time_before(jiffies, end_time)) {\n        spin_lock_irq(&port->lock);\n        if (port->disconnecting)\n            disconnecting = 1;\n        spin_unlock_irq(&port->lock);\n\n        if (disconnecting)\n            break;\n\n        if (flush) {\n            spin_lock_irq(&port->lock);\n            port->xmit_cnt = 0;\n            spin_unlock_irq(&port->lock);\n            break;\n        }\n\n        schedule_timeout_uninterruptible(msecs_to_jiffies(10));\n        spin_lock_irq(&port->lock);\n        count = port->xmit_cnt;\n        spin_unlock_irq(&port->lock);\n    }\n\n    if (flush) {\n        spin_lock_irq(&port->lock);\n        port->xmit_cnt = 0;\n        spin_unlock_irq(&port->lock);\n    }\n\n    spin_lock_irq(&port->lock);\n    if (!port->disconnecting) {\n        baud_rate = port->baud_rate;\n        if (baud_rate != 0) {\n            timeout_jiffies = ((1000 * port->xmit_cnt * 8) / baud_rate) * HZ;\n            if (timeout_jiffies > 0)\n                schedule_timeout_uninterruptible(timeout_jiffies);\n        }\n    }\n    spin_unlock_irq(&port->lock);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

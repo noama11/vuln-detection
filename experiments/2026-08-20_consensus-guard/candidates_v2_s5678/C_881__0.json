@@ -1,0 +1,34 @@
+{
+  "case_id": "C_881__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int kvm_set_one_core_register(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\n{\n    int ret = 0;\n    unsigned int id = reg->id;\n    void *val = (void *)(long)reg->addr;\n    int offset = kvm_register_offset(id);\n    int size = kvm_register_size(id);\n\n    if (offset < 0 || size <= 0) {\n        ret = -ENOENT;\n        goto out;\n    }\n\n    if ((unsigned long)val + size > current->mm->task_size) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    if (copy_from_user(vcpu->run->kvm_run_data + offset, val, size)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    if (id == KVM_REG_ARM_CORE_PSTATE) {\n        u64 pstate;\n        copy_from_user(&pstate, val, sizeof(pstate));\n        if (pstate & ~(ARM_CORE_PSTATE_MASK)) {\n            ret = -EINVAL;\n            goto out;\n        }\n        vcpu->arch.pstate = pstate;\n    }\n\n    vcpu->arch.regs[offset / sizeof(u64)] = *(u64 *)((u8 *)vcpu->arch.regs + offset);\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int kvm_set_one_core_register(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\n{\n    int ret = 0;\n    void *val = (void *)(long)reg->addr;\n    unsigned int id = reg->id & KVM_REG_MASK;\n    int offset = kvm_reg_offset(id);\n\n    if (offset < 0)\n        return -ENOENT;\n\n    if (!kvm_reg_size(id) || kvm_reg_size(id) > sizeof(long))\n        return -EINVAL;\n\n    if (copy_from_user(&vcpu->tmp, val, sizeof(vcpu->tmp)))\n        return -EFAULT;\n\n    if (id == KVM_REG_X86_PSR) {\n        if ((vcpu->tmp & KVM_PSR_MODE_MASK) != KVM_PSR_MODE_LEGACY) {\n            if (kvm_check_cap(KVM_CAP_PV_EOI) && vcpu->tmp & KVM_PSR_PV_EOI)\n                vcpu->pv_eoi_enabled = true;\n            else\n                ret = -EINVAL;\n        }\n    }\n\n    switch (id) {\n        case KVM_REG_X86_PSR:\n            vcpu->arch.regs[VCPU_REGS_PSR] = vcpu->tmp;\n            break;\n        default:\n            if (offset >= 0 && offset < sizeof(vcpu->arch.regs))\n                *(unsigned long *)((void *)(&vcpu->arch.regs) + offset) = vcpu->tmp;\n            else\n                ret = -ENOENT;\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int kvm_set_one_core_reg(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\n{\n    int ret = 0;\n    void *kaddr;\n    unsigned int offset;\n\n    switch (reg->id) {\n    case KVM_REG_ARM_CORE_REG(0 ... N):\n        offset = calculate_offset(reg->id);\n        if (offset == 0)\n            return -ENOENT;\n        break;\n    default:\n        return -ENOENT;\n    }\n\n    if (offset >= sizeof(vcpu->arch.core_reg))\n        return -EINVAL;\n\n    kaddr = (void *)&vcpu->arch.core_reg + offset;\n    if (copy_from_user(kaddr, (void __user *)(unsigned long)reg->addr, reg->bytes))\n        return -EFAULT;\n\n    if (reg->id == KVM_REG_ARM_CORE_PSTATE) {\n        unsigned long pstate = *(unsigned long *)kaddr;\n        if (pstate & ~(KVM_PSTATE_MASK))\n            return -EINVAL;\n        if ((pstate & PSR_MODE_MASK) != PSR_MODE_EL1)\n            return -EPERM;\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int kvm_set_one_core_register(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\n{\n    int r = 0;\n    void *val;\n\n    if (reg->id < KVM_REG_CORE || reg->id >= KVM_REG_CORE_NEXT)\n        return -ENOENT;\n\n    val = memdup_user((const void __user *)(unsigned long)reg->addr, sizeof(long));\n    if (IS_ERR(val))\n        return PTR_ERR(val);\n\n    if (reg->id == KVM_REG_PSR) {\n        unsigned long psr = *(unsigned long *)val;\n\n        if (psr & KVM_PSR_RESERVED_MASK) {\n            r = -EINVAL;\n            goto out;\n        }\n\n        if ((psr & KVM_PSR_MODE_MASK) != vcpu->mode) {\n            r = -EINVAL;\n            goto out;\n        }\n    }\n\n    switch (reg->id) {\n        case KVM_REG_PSR:\n            vcpu->guest_regs.psr = *(unsigned long *)val;\n            break;\n        case KVM_REG_IP:\n            vcpu->guest_regs.rip = *(unsigned long *)val;\n            break;\n        case KVM_REG_SP:\n            vcpu->guest_regs.rsp = *(unsigned long *)val;\n            break;\n        default:\n            r = -ENOENT;\n            goto out;\n    }\n\nout:\n    kfree(val);\n    return r;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int kvm_set_one_core_register(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)\n{\n    int offset;\n    int ret = 0;\n    void *val;\n\n    offset = kvm_get_register_offset(reg->id);\n    if (offset < 0)\n        return -ENOENT;\n\n    val = (char *)vcpu + offset;\n    if (copy_from_user(val, (void __user *)reg->addr, reg->size)) {\n        return -EFAULT;\n    }\n\n    if (reg->id == KVM_REG_ARM_PSTATE) {\n        unsigned long pstate = *(unsigned long *)val;\n\n        if (pstate & ~KVM_PSTATE_MASK)\n            return -EINVAL;\n\n        if ((pstate & KVM_PSTATE_MODE_MASK) != KVM_PSTATE_MODE_EL1 &&\n            (pstate & KVM_PSTATE_MODE_MASK) != KVM_PSTATE_MODE_EL2 &&\n            (pstate & KVM_PSTATE_MODE_MASK) != KVM_PSTATE_MODE_EL3)\n            return -EINVAL;\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

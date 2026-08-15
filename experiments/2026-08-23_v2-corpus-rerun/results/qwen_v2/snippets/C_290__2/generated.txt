@@ -1,0 +1,63 @@
+void generateXBM(gdImagePtr image, char* file_name, int fg, gdIOCtx* out) {
+    int width = image->sx;
+    int height = image->sy;
+    int i, j;
+    unsigned char* pixels = (unsigned char*)malloc((width * height + 7) / 8);
+    char* base_name = file_name;
+    int name_len = 0;
+
+    /* Find the base name by stripping the directory part */
+    while (*file_name) {
+        if (*file_name == '/') {
+            base_name = file_name + 1;
+            name_len = 0;
+        } else {
+            name_len++;
+        }
+        file_name++;
+    }
+
+    /* Replace invalid characters in the base name with underscores */
+    for (i = 0; i < name_len; i++) {
+        if (!isalnum(base_name[i])) {
+            base_name[i] = '_';
+        }
+    }
+
+    /* Generate pixel data */
+    for (i = 0; i < height; i++) {
+        int y = height - i - 1;
+        for (j = 0; j < width; j++) {
+            int idx = (i * width + j) / 8;
+            int bit = 7 - (j % 8);
+            if (gdImageGetPixel(image, j, y) == fg) {
+                pixels[idx] |= (1 << bit);
+            }
+        }
+    }
+
+    /* Output the XBM header */
+    char header[256];
+    snprintf(header, sizeof(header), "#define %s_width %d\n#define %s_height %d\n", base_name, width, base_name, height);
+    gdPutBuf(out, (void*)header, strlen(header));
+
+    /* Output the pixel data */
+    snprintf(header, sizeof(header), "static unsigned char %s_bits[] = {\n  ", base_name);
+    gdPutBuf(out, (void*)header, strlen(header));
+
+    int bytes = (width + 7) / 8;
+    for (i = 0; i < height; i++) {
+        for (j = 0; j < bytes; j++) {
+            char line[32];
+            snprintf(line, sizeof(line), "0x%02X, ", pixels[i * bytes + j]);
+            gdPutBuf(out, (void*)line, strlen(line));
+            if ((i * bytes + j + 1) % 8 == 0) {
+                gdPutBuf(out, (void*)"\n  ", 2);
+            }
+        }
+    }
+
+    gdPutBuf(out, (void*)"\n};\n", 5);
+
+    free(pixels);
+}

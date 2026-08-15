@@ -1,0 +1,34 @@
+{
+  "case_id": "C_83__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "sctp_disposition_t sctp_handle_dup_cookie_echo(\n    struct net *net,\n    const struct sctp_endpoint *ep,\n    const struct sctp_association *asoc,\n    sctp_subtype_t type,\n    void *arg,\n    sctp_cmd_seq_t *commands)\n{\n    sctp_chunk_t *chunk = (sctp_chunk_t *)arg;\n    sctp_cookie_echo_t *cookie;\n    sctp_disposition_t disposition = SCTP_DISPOSITION_CONSUME;\n    int error;\n\n    if (chunk->chunk_hdr->length < sizeof(sctp_cookie_echo_t) + sizeof(sctp_param_hdr_t)) {\n        return SCTP_DISPOSITION_DROP;\n    }\n\n    cookie = (sctp_cookie_echo_t *)chunk->skb->data;\n\n    if (sctp_unpack_state_cookie(asoc, cookie->cookie, ntohs(cookie->cookie->length), &error) < 0) {\n        if (error == -ENOMEM) {\n            disposition = SCTP_DISPOSITION_NOMEM;\n        } else if (asoc->c.sinit_num_ostreams == 0) {\n            sctp_cmd_init(commands, SCTP_CMD_INIT, SCTP_SUCCESS);\n        } else {\n            disposition = SCTP_DISPOSITION_DROP;\n        }\n        return disposition;\n    }\n\n    if (asoc->c.sctp_vtag != ntohs(chunk->subh->cookie_hdr->verification_tag)) {\n        sctp_cmd_init(commands, SCTP_CMD_RESTART_ASSOC, SCTP_SUCCESS);\n    } else {\n        sctp_cmd_init(commands, SCTP_CMD_HB, SCTP_SUCCESS);\n    }\n\n    return disposition;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "sctp_disposition_t sctp_handle_cookie_echo_dup(struct net *net, const struct sctp_endpoint *ep,\n                                              const struct sctp_association *asoc,\n                                              sctp_subtype_t type, void *arg,\n                                              sctp_cmd_seq_t *commands)\n{\n    sctp_chunk_t *chunk = (sctp_chunk_t *)arg;\n    sctp_cookie_echo_t *cookie_echo;\n    sctp_disposition_t retval = SCTP_DISPOSITION_CONSUME;\n    int error = 0;\n\n    if (chunk->skb->len < sizeof(*cookie_echo)) {\n        return SCTP_DISPOSITION_BAD;\n    }\n\n    cookie_echo = (sctp_cookie_echo_t *)chunk->skb->data;\n\n    if (sctp_unpack_cookie(net, ep, asoc, cookie_echo, chunk->skb->len) < 0) {\n        return SCTP_DISPOSITION_NOMEM;\n    }\n\n    if (asoc->verified_tag != sctp_get_tag_from_cookie(cookie_echo)) {\n        sctp_cmd_sf(commands, SCTP_CMD_COOKIE_ECHO_COLLISION, SCTP_NULL);\n        return SCTP_DISPOSITION_NOMEM;\n    }\n\n    if (asoc->state != SCTP_STATE_COOKIE_ECHOED) {\n        sctp_cmd_sf(commands, SCTP_CMD_NEW_ASOC, SCTP_NULL);\n    }\n\n    return retval;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "sctp_disposition_t sctp_handle_cookie_echo(struct net *net, const struct sctp_endpoint *ep,\n                                          const struct sctp_association *asoc, sctp_subtype_t type,\n                                          void *arg, sctp_cmd_seq_t *commands)\n{\n    sctp_chunkhdr_t *chunk = arg;\n    sctp_cookie_echo_t *cookie;\n    sctp_disposition_t disposition = SCTP_DISPOSITION_CONSUME;\n    int error = 0;\n\n    if (ntohs(chunk->length) < sizeof(sctp_cookie_echo_t)) {\n        return SCTP_DISPOSITION_BAD;\n    }\n\n    cookie = (sctp_cookie_echo_t *)((uint8_t *)chunk + sizeof(sctp_chunkhdr_t));\n\n    if (!asoc->state_cookie || (ntohl(asoc->state_cookie->magic) != SCTP_COOKIE_MAGIC)) {\n        return SCTP_DISPOSITION_DROP;\n    }\n\n    if (ntohl(asoc->state_cookie->v_tag) != asoc->verified_tag) {\n        sctp_cmd_insert(commands, SCTP_CMD_COOKIE_ECHO_VTAG_MISMATCH);\n        disposition = SCTP_DISPOSITION_RETRY;\n        return disposition;\n    }\n\n    if (asoc->state == SCTP_STATE_COOKIE_ECHOED) {\n        return SCTP_DISPOSITION_DROP;\n    }\n\n    sctp_cmd_insert(commands, SCTP_CMD_COOKIE_ECHO_PROCESS);\n\n    return disposition;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "sctp_disposition_t sctp_handle_dup_echo(struct net *net, const struct sctp_endpoint *ep,\n                                        const struct sctp_association *asoc,\n                                        sctp_subtype_t type, void *arg,\n                                        sctp_cmd_seq_t *commands) {\n    sctp_chunk_t *chunk = arg;\n    sctp_disposition_t disposition = SCTP_DISPOSITION_CONSUME;\n    int error = 0;\n\n    if (!chunk || chunk->chunk_hdr->length < sizeof(sctp_cookie_echo_chunk_t)) {\n        return SCTP_DISPOSITION_BAD;\n    }\n\n    if (sctp_unpack_cookie(net, ep, asoc, chunk) < 0) {\n        sctp_cmd_seq_add(commands, SCTP_CMD_ERROR, NULL);\n        return SCTP_DISPOSITION_NOMEM;\n    }\n\n    if (asoc->peer.peer_verified) {\n        if (asoc->peer.primary_path && asoc->peer.primary_path->rwnd != 0) {\n            sctp_cmd_seq_add(commands, SCTP_CMD_INIT_RESTART, NULL);\n        } else {\n            sctp_cmd_seq_add(commands, SCTP_CMD_REPORT_ERROR, NULL);\n            disposition = SCTP_DISPOSITION_DISCARD;\n        }\n    } else {\n        sctp_cmd_seq_add(commands, SCTP_CMD_COOKIE_ECHO, NULL);\n    }\n\n    return disposition;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "sctp_disposition_t sctp_handle_dup_cookie_echo(struct net *net,\n                                              const struct sctp_endpoint *ep,\n                                              const struct sctp_association *asoc,\n                                              sctp_subtype_t type,\n                                              void *arg,\n                                              sctp_cmd_seq_t *commands)\n{\n    sctp_chunk_t *chunk = (sctp_chunk_t *)arg;\n    sctp_disposition_t disposition = SCTP_DISPOSITION_CONSUME;\n    int error = 0;\n\n    if (!chunk || chunk->chunk_hdr->length < sizeof(sctp_cookie_echo_chunk_t)) {\n        return SCTP_DISPOSITION_BAD;\n    }\n\n    /* Decode the chunk and attempt to unpack the state cookie */\n    if (!sctp_unpack_cookie(net, ep, asoc, chunk)) {\n        disposition = SCTP_DISPOSITION_NOMEM;\n        goto out;\n    }\n\n    /* Compare verification tags and handle association restart or collision */\n    if (asoc->c.peer.init_tag != chunk->subh.cookie_echo_hdr->verification_tag) {\n        sctp_cmd_t cmd;\n        sctp_cmd_init(&cmd, SCTP_CMD_COOKIE_ECHO_MISMATCH, asoc);\n        sctp_cmd_seq_add(commands, &cmd);\n        disposition = SCTP_DISPOSITION_NOMEM;\n    }\n\nout:\n    return disposition;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

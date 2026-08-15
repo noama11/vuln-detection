@@ -1,0 +1,60 @@
+int usb_init_device(struct usb_interface *intf, const struct usb_device_id *id) {
+    struct host_config *host_config;
+    struct device_config *device_config;
+    struct device *device;
+    int ret;
+
+    host_config = kmalloc(sizeof(*host_config), GFP_KERNEL);
+    if (!host_config)
+        return -ENOMEM;
+
+    device_config = kmalloc(sizeof(*device_config), GFP_KERNEL);
+    if (!device_config) {
+        kfree(host_config);
+        return -ENOMEM;
+    }
+
+    ret = usb_control_msg(usb_get_dev(intf->usb_dev), USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
+                          USB_REQ_SET_CONFIGURATION, 0, 0, host_config, sizeof(*host_config), 1000);
+    if (ret < 0) {
+        kfree(host_config);
+        kfree(device_config);
+        return ret;
+    }
+
+    ret = usb_get_config_descriptor(intf->cur_altsetting->desc.bConfigurationValue, device_config);
+    if (ret < 0) {
+        kfree(host_config);
+        kfree(device_config);
+        return ret;
+    }
+
+    if (device_config->bNumInterfaces > MAX_INTERFACES) {
+        kfree(host_config);
+        kfree(device_config);
+        return -EINVAL;
+    }
+
+    device = kmalloc(sizeof(*device), GFP_KERNEL);
+    if (!device) {
+        kfree(host_config);
+        kfree(device_config);
+        return -ENOMEM;
+    }
+
+    device->host_config = host_config;
+    device->device_config = device_config;
+    device->can_dev = alloc_can_dev();
+    if (!device->can_dev) {
+        kfree(host_config);
+        kfree(device_config);
+        kfree(device);
+        return -ENOMEM;
+    }
+
+    init_can_dev(device->can_dev);
+
+    usb_set_intfdata(intf, device);
+
+    return 0;
+}

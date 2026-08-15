@@ -1,0 +1,34 @@
+{
+  "case_id": "C_110__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int vhost_dev_addr_to_iov(struct vhost_dev *dev, u64 addr, u32 len,\n                          struct iovec iov[], int iov_size) {\n    int count = 0;\n    struct vhost_memory *mem = &dev->mem;\n    struct vhost_memory_region *reg;\n    int i;\n\n    if (!mem->regions)\n        return -EFAULT;\n\n    vhost_dev_lock_read(dev);\n\n    for (i = 0; i < mem->nregions; i++) {\n        reg = &mem->regions[i];\n\n        if (addr >= reg->guest_addr &&\n            addr + len <= reg->guest_addr + reg->size) {\n            iov[count].iov_base = (void *)(uintptr_t)(addr + reg->userspace_addr -\n                                                       reg->guest_addr);\n            iov[count].iov_len = len;\n            count++;\n            break;\n        } else if (addr >= reg->guest_addr &&\n                   addr + len > reg->guest_addr + reg->size) {\n            iov[count].iov_base = (void *)(uintptr_t)(addr + reg->userspace_addr -\n                                                       reg->guest_addr);\n            iov[count].iov_len = reg->guest_addr + reg->size - addr;\n            count++;\n\n            if (count >= iov_size)\n                break;\n\n            len -= iov[count - 1].iov_len;\n            addr += iov[count - 1].iov_len;\n            i--;\n        } else {\n            continue;\n        }\n    }\n\n    vhost_dev_unlock_read(dev);\n\n    if (i < mem->nregions)\n        return -EFAULT;\n\n    if (addr != addr + len)\n        return -EFAULT;\n\n    return count;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int vhost_get_iov(struct vhost_dev *dev, u64 addr, u32 len,\n                  struct iovec iov[], int iov_size)\n{\n    int nr_iov = 0;\n    void *vaddr;\n    size_t vlen;\n\n    if (!dev || !iov || iov_size <= 0)\n        return -EINVAL;\n\n    vhost_dev_lock_read(dev);\n\n    while (len > 0) {\n        if (nr_iov >= iov_size) {\n            vhost_dev_unlock_read(dev);\n            return -ENOBUFS;\n        }\n\n        if (vhost_dev_translate(dev, addr, &vaddr, &vlen)) {\n            vhost_dev_unlock_read(dev);\n            return -EFAULT;\n        }\n\n        iov[nr_iov].iov_base = vaddr;\n        iov[nr_iov].iov_len = min(len, vlen);\n\n        addr += iov[nr_iov].iov_len;\n        len -= iov[nr_iov].iov_len;\n        nr_iov++;\n    }\n\n    vhost_dev_unlock_read(dev);\n    return nr_iov;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int vhost_get_vhost_dev_iov(struct vhost_dev *dev, u64 addr, u32 len,\n                            struct iovec iov[], int iov_size)\n{\n    int n = 0;\n    struct vhost_memory *mem = &dev->memory;\n    int i;\n\n    if (!dev || !mem || !iov || iov_size <= 0)\n        return -EINVAL;\n\n    vhost_dev_lock_read(dev);\n\n    for (i = 0; i < mem->nreg && addr < addr + len; i++) {\n        struct vhost_mem_region *reg = &mem->regions[i];\n        u64 reg_start = reg->guest_phys_addr;\n        u64 reg_end = reg->guest_phys_addr + reg->size;\n        u64 start = max(addr, reg_start);\n        u64 end = min(addr + len, reg_end);\n        u64 offset = start - reg_start;\n\n        if (start >= end)\n            continue;\n\n        iov[n].iov_base = reg->userspace_addr + offset;\n        iov[n].iov_len = end - start;\n\n        if (++n >= iov_size) {\n            vhost_dev_unlock_read(dev);\n            return -EFAULT;\n        }\n    }\n\n    vhost_dev_unlock_read(dev);\n\n    if (n == 0)\n        return -EFAULT;\n\n    return n;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int vhost_dev_translate_address(struct vhost_dev *dev, u64 addr, u32 len,\n                                struct iovec iov[], int iov_size)\n{\n    int count = 0;\n    u64 offset = 0;\n\n    if (!dev || !iov || iov_size <= 0)\n        return -EINVAL;\n\n    vhost_dev_lock_read(dev);\n\n    while (offset < len) {\n        struct vhost_memory *mem = dev->memory;\n        struct vhost_mem_region *region;\n        u64 region_start, region_end;\n\n        if (!mem || !mem->regions || mem->nregions == 0) {\n            vhost_dev_unlock_read(dev);\n            return -EFAULT;\n        }\n\n        region = NULL;\n        for (size_t i = 0; i < mem->nregions; i++) {\n            region_start = (u64)(uintptr_t)mem->regions[i].guest_phys_addr;\n            region_end = region_start + mem->regions[i].size;\n\n            if (addr + offset >= region_start && addr + offset < region_end) {\n                region = &mem->regions[i];\n                break;\n            }\n        }\n\n        if (!region) {\n            vhost_dev_unlock_read(dev);\n            return -EFAULT;\n        }\n\n        u64 start = addr + offset;\n        u64 end = start + (region_end - start);\n        u64 vec_len = end - start;\n\n        if (count >= iov_size) {\n            vhost_dev_unlock_read(dev);\n            return -ENOMEM;\n        }\n\n        iov[count].iov_base = (void *)((uintptr_t)region->userspace_addr +\n                                       (start - region->guest_phys_addr));\n        iov[count].iov_len = vec_len;\n        count++;\n        offset += vec_len;\n    }\n\n    vhost_dev_unlock_read(dev);\n    return count;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int vhost_dev_get iov (struct vhost_dev *dev, u64 addr, u32 len,\n                       struct iovec iov[], int iov_size)\n{\n    int ret = 0;\n    int i = 0;\n\n    if (!dev || !iov || iov_size <= 0)\n        return -EINVAL;\n\n    vhost_dev_lock_read(dev);\n\n    while (len > 0 && i < iov_size) {\n        struct vhost_memory *mem = dev->mem;\n        struct vhost_memory_region *reg;\n        unsigned int nreg;\n        unsigned long offset;\n        void *ptr;\n        size_t size;\n\n        reg = find_memory_region(mem, addr, &offset, &nreg);\n        if (!reg)\n            return -EFAULT;\n\n        size = min(len, reg->size - offset);\n        ptr = reg->userspace_addr + offset;\n\n        iov[i].iov_base = ptr;\n        iov[i].iov_len = size;\n        i++;\n        ret++;\n\n        addr += size;\n        len -= size;\n    }\n\n    vhost_dev_unlock_read(dev);\n\n    if (len > 0)\n        return -ENOBUFS;\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

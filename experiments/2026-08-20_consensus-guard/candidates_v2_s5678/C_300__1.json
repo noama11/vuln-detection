@@ -1,0 +1,34 @@
+{
+  "case_id": "C_300__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int receive_ipv6_message(int sockfd, void *buf, size_t *buflen, int flags, struct in6_addr *addr, uint32_t *ifindex, int *hoplimit) {\n    struct msghdr msg;\n    unsigned char cmsgbuf[CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int))];\n    struct iovec iov;\n\n    iov.iov_base = buf;\n    iov.iov_len = *buflen;\n\n    msg.msg_name = addr;\n    msg.msg_namelen = sizeof(*addr);\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = cmsgbuf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n    msg.msg_flags = 0;\n\n    ssize_t len = recvmsg(sockfd, &msg, flags);\n    if (len < 0) {\n        return -1;\n    }\n\n    *buflen = len;\n\n    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo *pktinfo = (struct in6_pktinfo *)CMSG_DATA(cmsg);\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int *)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int receive_message(int sockfd, void *buf, size_t *buflen, int flags,\n                    struct in6_addr *addr, uint32_t *ifindex, int *hoplimit) {\n    struct msghdr msg = {0};\n    union {\n        char buf[CMSG_SPACE(sizeof(struct in6_pktinfo))];\n        struct cmsghdr align;\n    } cmsgbuf = {0};\n    struct iovec iov;\n\n    iov.iov_base = buf;\n    iov.iov_len = *buflen;\n    msg.msg_name = addr;\n    msg.msg_namelen = sizeof(*addr);\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = cmsgbuf.buf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n\n    ssize_t len = recvmsg(sockfd, &msg, flags);\n    if (len < 0)\n        return -1;\n\n    *buflen = len;\n    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;\n         cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo *pktinfo = CMSG_DATA(cmsg);\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int *)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <sys/socket.h>\n#include <netinet/in.h>\n#include <stdint.h>\n#include <string.h>\n\nint receive_message_with_info(int sockfd, void *buf, size_t *buflen, int flags,\n                                struct in6_addr *addr, uint32_t *ifindex, int *hoplimit) {\n    struct msghdr msg = {0};\n    union {\n        struct cmsghdr cmsghdr;\n        char control[CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int))];\n    } cmsgu;\n    struct iovec iov[1];\n\n    iov[0].iov_base = buf;\n    iov[0].iov_len = *buflen;\n    msg.msg_iov = iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = cmsgu.control;\n    msg.msg_controllen = sizeof(cmsgu.control);\n\n    ssize_t ret = recvmsg(sockfd, &msg, flags);\n    if (ret < 0) {\n        return -1;\n    }\n\n    *buflen = ret;\n\n    struct cmsghdr *cmsg;\n    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo *pktinfo = (struct in6_pktinfo *)CMSG_DATA(cmsg);\n                memcpy(addr, &pktinfo->ipi6_addr, sizeof(struct in6_addr));\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int *)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int receive_ipv6_message(int sockfd, void *buf, size_t *buflen, int flags,\n                         struct in6_addr *addr, uint32_t *ifindex, int *hoplimit) {\n    struct msghdr msg = {0};\n    union {\n        char buf[CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int))];\n    } cmsgbuf = {0};\n    struct iovec iov;\n\n    iov.iov_base = buf;\n    iov.iov_len = *buflen;\n    msg.msg_name = addr;\n    msg.msg_namelen = sizeof(*addr);\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = cmsgbuf.buf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n\n    ssize_t len = recvmsg(sockfd, &msg, flags);\n    if (len < 0)\n        return -1;\n\n    *buflen = len;\n    struct cmsghdr *cmsg;\n\n    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo *pktinfo = (struct in6_pktinfo *)CMSG_DATA(cmsg);\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int *)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <sys/socket.h>\n#include <netinet/in.h>\n#include <netinet/ip6.h>\n#include <string.h>\n\nint receive_message_with_info(int sockfd, void *buf, size_t *buflen, int flags,\n                              struct in6_addr *addr, uint32_t *ifindex, int *hoplimit) {\n    struct msghdr msg;\n    union {\n        struct cmsghdr cm;\n        char control[CMSG_SPACE(sizeof(struct in6_pktinfo)) +\n                     CMSG_SPACE(sizeof(int))];\n    } cmsgbuf;\n    struct iovec iov;\n\n    iov.iov_base = buf;\n    iov.iov_len = *buflen;\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = &cmsgbuf;\n    msg.msg_controllen = sizeof(cmsgbuf);\n    msg.msg_flags = 0;\n\n    ssize_t recv_len = recvmsg(sockfd, &msg, flags);\n    if (recv_len < 0)\n        return -1;\n\n    *buflen = recv_len;\n\n    struct cmsghdr *cmsg;\n    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {\n        if (cmsg->cmsg_level == IPPROTO_IPV6) {\n            if (cmsg->cmsg_type == IPV6_PKTINFO) {\n                struct in6_pktinfo *pktinfo = (struct in6_pktinfo *)CMSG_DATA(cmsg);\n                *addr = pktinfo->ipi6_addr;\n                *ifindex = pktinfo->ipi6_ifindex;\n            } else if (cmsg->cmsg_type == IPV6_HOPLIMIT) {\n                *hoplimit = *(int *)CMSG_DATA(cmsg);\n            }\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

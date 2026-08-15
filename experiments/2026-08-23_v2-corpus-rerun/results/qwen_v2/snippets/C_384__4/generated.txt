@@ -1,0 +1,52 @@
+OPJ_BOOL write_jpeg2000_tile_parts(opj_j2k_t *p_j2k, OPJ_BYTE *p_data, OPJ_UINT32 *p_data_written,
+                                   OPJ_UINT32 p_total_data_size, opj_stream_private_t *p_stream,
+                                   struct opj_event_mgr *p_manager) {
+    OPJ_UINT32 tile_index = 0;
+    OPJ_UINT32 tile_parts = 0;
+    OPJ_UINT32 current_part = 0;
+    OPJ_UINT32 bytes_written = 0;
+    OPJ_BOOL success = OPJ_TRUE;
+
+    if (!p_j2k || !p_data || !p_data_written || !p_stream) {
+        return OPJ_FALSE;
+    }
+
+    tile_parts = p_j2k->cstr_info->number_of_tile_parts;
+
+    for (current_part = 0; current_part < tile_parts && success; ++current_part) {
+        OPJ_UINT32 tile_part_size = p_j2k->cstr_info->tile_part_data[current_part].data_size;
+        OPJ_BYTE *tile_part_data = p_j2k->cstr_info->tile_part_data[current_part].data;
+
+        if (bytes_written + tile_part_size > p_total_data_size) {
+            return OPJ_FALSE;
+        }
+
+        if (!opj_stream_write(p_stream, tile_part_data, tile_part_size)) {
+            success = OPJ_FALSE;
+            break;
+        }
+
+        bytes_written += tile_part_size;
+
+        if (current_part == 0) {
+            if (!write_sot_marker(p_j2k, p_stream, p_manager)) {
+                success = OPJ_FALSE;
+                break;
+            }
+        }
+
+        if (!write_sod_marker(p_j2k, p_stream, p_manager)) {
+            success = OPJ_FALSE;
+            break;
+        }
+
+        if (p_j2k->cinema_mode) {
+            handle_cinema_format(p_j2k, p_stream, p_manager);
+        }
+
+        ++tile_index;
+    }
+
+    *p_data_written = bytes_written;
+    return success;
+}

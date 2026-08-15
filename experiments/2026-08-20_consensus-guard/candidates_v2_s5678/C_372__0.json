@@ -1,0 +1,34 @@
+{
+  "case_id": "C_372__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id)\n{\n    struct lego_usb_tower_dev *dev;\n    int retval = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return retval;\n\n    mutex_init(&dev->lock);\n\n    dev->interface = interface;\n    dev->udev = usb_get_dev(interface_to_usbdev(interface));\n\n    usb_set_intfdata(interface, dev);\n\n    if (usb_find_endpoint_info(dev->udev, &dev->ep_in, &dev->ep_out) < 0) {\n        dev_err(&dev->udev->dev, \"Failed to find endpoint info.\\n\");\n        goto error;\n    }\n\n    if (lego_usb_tower_get_firmware_version(dev) < 0) {\n        dev_err(&dev->udev->dev, \"Failed to get firmware version.\\n\");\n        goto error;\n    }\n\n    return 0;\n\nerror:\n    usb_set_intfdata(interface, NULL);\n    usb_put_dev(dev->udev);\n    kfree(dev);\n    return retval;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id) {\n    struct lego_usb_tower_dev *dev;\n    int retval = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        goto error;\n\n    spin_lock_init(&dev->lock);\n\n    dev->interface = interface;\n    dev->udev = usb_get_dev(interface_to_usbdev(interface));\n\n    usb_set_intfdata(interface, dev);\n\n    if (lego_usb_tower_setup_endpoints(dev)) {\n        dev_err(&interface->dev, \"failed to setup endpoints\\n\");\n        goto error;\n    }\n\n    if (lego_usb_tower_get_firmware_version(dev)) {\n        dev_err(&interface->dev, \"failed to get firmware version\\n\");\n        goto error;\n    }\n\n    if (lego_usb_tower_register_device(dev)) {\n        dev_err(&interface->dev, \"failed to register device\\n\");\n        goto error;\n    }\n\n    return 0;\n\nerror:\n    lego_usb_tower_cleanup(dev);\n    kfree(dev);\n    return retval;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id) {\n    int result;\n    struct usb_device *udev;\n    struct lego_usb_tower_device *dev;\n\n    udev = interface_to_usbdev(interface);\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    spin_lock_init(&dev->lock);\n\n    result = usb_find_common_endpoints(interface, &dev->ep_in, &dev->ep_out, NULL, NULL);\n    if (result < 0) {\n        kfree(dev);\n        return result;\n    }\n\n    result = usb_string(udev, udev->descriptor.iManufacturer, dev->manufacturer, sizeof(dev->manufacturer));\n    if (!result)\n        dev->has_manufacturer = true;\n\n    result = usb_string(udev, udev->descriptor.iProduct, dev->product, sizeof(dev->product));\n    if (!result)\n        dev->has_product = true;\n\n    result = usb_string(udev, udev->descriptor.iSerialNumber, dev->serial, sizeof(dev->serial));\n    if (!result)\n        dev->has_serial = true;\n\n    dev->interface = interface;\n    usb_set_intfdata(interface, dev);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int lego_usb_tower_probe(struct usb_interface *interface, const struct usb_device_id *id) {\n    int result;\n    struct lego_usb_tower_device *dev;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    dev->interface = interface;\n    usb_set_intfdata(interface, dev);\n\n    dev->usb_dev = usb_get_dev(interface_to_usbdev(interface));\n    usb_fill_int_urb(&dev->urb, dev->usb_dev, usb_rcvintpipe(dev->usb_dev, 1),\n                     dev->in_buffer, LEGO_USB_TOWER_BUFFER_SIZE,\n                     lego_usb_tower_irq, dev, dev->int_interval);\n\n    result = usb_submit_urb(&dev->urb, GFP_KERNEL);\n    if (result) {\n        kfree(dev);\n        return result;\n    }\n\n    result = lego_usb_tower_get_firmware_version(dev);\n    if (result < 0) {\n        usb_unlink_urb(&dev->urb);\n        kfree(dev);\n        return result;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id)\n{\n    int result = 0;\n    struct lego_usb_tower_dev *dev = NULL;\n    struct usb_device *usb_dev = NULL;\n    struct usb_endpoint_descriptor *ep_desc = NULL;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    usb_dev = interface_to_usbdev(interface);\n    if (!usb_dev) {\n        result = -ENODEV;\n        goto free_dev;\n    }\n\n    dev->interface = interface;\n    dev->usb_dev = usb_dev;\n\n    dev->buf = usb_buffer_alloc(usb_dev, LEGO_USB_TOWER_BUFFER_SIZE, GFP_KERNEL, &dev->dma_addr);\n    if (!dev->buf) {\n        result = -ENOMEM;\n        goto free_dev;\n    }\n\n    spin_lock_init(&dev->lock);\n\n    for (int i = 0; i < USB_DIR_COUNT; i++) {\n        ep_desc = &usb_dev->ep[i].desc;\n        if ((ep_desc->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_OUT)\n            dev->out_endpoint = &usb_dev->ep[i];\n        else if ((ep_desc->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN)\n            dev->in_endpoint = &usb_dev->ep[i];\n    }\n\n    if (!dev->out_endpoint || !dev->in_endpoint) {\n        result = -ENODEV;\n        goto free_buffers;\n    }\n\n    result = usb_register_dev(interface, &lego_usb_tower_class);\n    if (result < 0) {\n        dev_err(&interface->dev, \"Failed to register USB device: %d\\n\", result);\n        goto free_buffers;\n    }\n\n    result = lego_usb_tower_get_fw_version(dev);\n    if (result < 0) {\n        dev_err(&interface->dev, \"Failed to get firmware version: %d\\n\", result);\n        goto unregister_dev;\n    }\n\n    usb_set_intfdata(interface, dev);\n    return 0;\n\nunregister_dev:\n    usb_deregister_dev(interface, &lego_usb_tower_class);\nfree_buffers:\n    usb_buffer_free(usb_dev, LEGO_USB_TOWER_BUFFER_SIZE, dev->buf, dev->dma_addr);\nfree_dev:\n    kfree(dev);\n    return result;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

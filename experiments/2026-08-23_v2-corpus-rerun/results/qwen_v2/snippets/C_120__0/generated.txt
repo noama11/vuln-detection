@@ -1,0 +1,35 @@
+ssize_t socket_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+{
+    struct socket *sock = file->private_data;
+    struct sk_buff *skb;
+    int err = 0;
+    ssize_t ret = 0;
+
+    if (sock->type & SOCK_NONBLOCK) {
+        if (skb_queue_empty(&sock->sk->sk_receive_queue))
+            return -EAGAIN;
+    }
+
+    if (!buf || count == 0)
+        return -EINVAL;
+
+    skb = skb_dequeue(&sock->sk->sk_receive_queue);
+    if (!skb)
+        return -EAGAIN;
+
+    if (skb->len > count) {
+        ret = -EINVAL;
+        goto out;
+    }
+
+    if (copy_to_user(buf, skb->data, skb->len)) {
+        ret = -EFAULT;
+        goto out;
+    }
+
+    ret = skb->len;
+
+out:
+    kfree_skb(skb);
+    return ret;
+}

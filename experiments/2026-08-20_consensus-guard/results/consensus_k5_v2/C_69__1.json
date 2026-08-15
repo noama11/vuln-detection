@@ -1,0 +1,62 @@
+{
+  "case_id": "C_69__1",
+  "sample_id": "D/C/69",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3235",
+  "cve_summary": "net/tipc/socket.c in the Linux kernel before 3.9-rc7 does not initialize a certain data structure and a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/tipc/socket.c",
+  "docstring": "Summary:  \nReceives a message from a socket, handling various states and conditions, including timeouts and message validity.\n\nParameters:  \niocb (struct kiocb*): The I/O control block associated with the operation.  \nsock (struct socket*): The socket from which to receive the message.  \nm (struct msghdr*): The message header to populate with received data.  \nbuf_len (size_t): The length of the buffer for the message data.  \nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns:  \nint: The number of bytes received, or a negative error code indicating failure.\n\nLogic:  \nThe function first checks for invalid requests and locks the socket. It handles various socket states, waits for messages if the receive queue is empty, and processes the first message in the queue. It captures the sender's address and ancillary data, then copies the message data to the provided buffer, adjusting for size constraints. If the message is empty or errored, it handles those cases accordingly. Finally, it updates the socket state and releases the lock before returning the result.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "null check for m (message header)",
+        "performed_by_count": 4,
+        "why_it_matters": "If m is null, dereferencing it in set_orig_addr or skb_copy_datagram_iovec would cause a null-pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several defensive steps, such as checking for `buf_len == 0` and handling socket state transitions. However, it omits a majority-consensus step: validating the presence and non-nullness of the `m` (message header) pointer, which is checked in 4 out of 5 independent implementations. This omission could lead to a null-pointer dereference if `m` is null.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check for receive queue before dequeue",
+        "performed_by_count": 4,
+        "why_it_matters": "If the receive queue is empty or invalid, the target may attempt to access or process an invalid or null buffer, leading to a potential null-pointer dereference or memory-safety issue."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several defensive steps, such as checking for an empty buffer length and handling socket state transitions. However, it omits a majority-consensus step: validating the presence of the socket's receive queue before attempting to dequeue a message. Most independent implementations explicitly check for the presence of a receive queue or a buffer before proceeding, which the target does not do in all cases.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

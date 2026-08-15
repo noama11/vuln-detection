@@ -1,0 +1,34 @@
+{
+  "case_id": "C_192__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct kioctx *ioctx_alloc(unsigned nr_events)\n{\n    struct kioctx *ctx;\n    int err;\n\n    if (nr_events >= (UINT_MAX / sizeof(struct io_event)))\n        return ERR_PTR(-EINVAL);\n\n    /* Adjust the number of events based on CPU distribution */\n    nr_events = max_t(unsigned, nr_events, 1);\n\n    ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);\n    if (!ctx)\n        return ERR_PTR(-ENOMEM);\n\n    spin_lock_init(&ctx->ctx_lock);\n    init_waitqueue_head(&ctx->wait);\n\n    err = 0;\n    if (atomic_inc_return(&nr_async_ios) > max_async_ios) {\n        err = -ENOMEM;\n        atomic_dec(&nr_async_ios);\n    }\n\n    if (err) {\n        kfree(ctx);\n        return ERR_PTR(err);\n    }\n\n    ctx->nr_events = nr_events;\n    ctx->events = kmalloc_array(nr_events, sizeof(struct io_event), GFP_KERNEL);\n    if (!ctx->events) {\n        err = -ENOMEM;\n        atomic_dec(&nr_async_ios);\n        kfree(ctx);\n        return ERR_PTR(err);\n    }\n\n    return ctx;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct kioctx *ioctx_alloc(unsigned nr_events)\n{\n    struct kioctx *ctx;\n    int err;\n\n    if (nr_events >= (UINT_MAX / sizeof(struct io_event)))\n        return ERR_PTR(-EINVAL);\n\n    /* Adjust the number of events */\n    nr_events = max_t(unsigned, nr_events, 1);\n    nr_events = min_t(unsigned, nr_events, KIO_MAX_EVENTS);\n\n    ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);\n    if (!ctx)\n        return ERR_PTR(-ENOMEM);\n\n    atomic_set(&ctx->users, 1);\n    atomic_set(&ctx->dead, 0);\n    init_waitqueue_head(&ctx->wait);\n    spin_lock_init(&ctx->ctx_lock);\n    init_waitqueue_head(&ctx->ring_wait);\n\n    ctx->events = kcalloc(nr_events, sizeof(struct io_event), GFP_KERNEL);\n    if (!ctx->events) {\n        err = -ENOMEM;\n        goto err_free;\n    }\n\n    if (percpu_counter_compare_and_bounded_inc(&nr_kioctx, UINT_MAX) < 0) {\n        err = -ENOMEM;\n        goto err_free_events;\n    }\n\n    return ctx;\n\nerr_free_events:\n    kfree(ctx->events);\nerr_free:\n    kfree(ctx);\n    return ERR_PTR(err);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/slab.h>\n#include <linux/spinlock.h>\n#include <linux/wait.h>\n\nstruct kioctx {\n    spinlock_t lock;\n    wait_queue_head_t wait;\n    unsigned nr_events;\n};\n\nstruct kioctx *ioctx_alloc(unsigned nr_events) {\n    struct kioctx *ctx;\n    unsigned adjusted_events;\n\n    adjusted_events = nr_events;\n    /* Adjust for CPU distribution and overflow as per logic */\n    if (adjusted_events < nr_events)\n        return ERR_PTR(-ENOMEM);\n\n    ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);\n    if (!ctx)\n        return ERR_PTR(-ENOMEM);\n\n    spin_lock_init(&ctx->lock);\n    init_waitqueue_head(&ctx->wait);\n    ctx->nr_events = adjusted_events;\n\n    return ctx;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <linux/slab.h>\n#include <linux/spinlock.h>\n#include <linux/wait.h>\n#include <linux/mutex.h>\n#include <linux/atomic.h>\n\nstruct kioctx {\n    unsigned int nr_events;\n    spinlock_t lock;\n    wait_queue_head_t wait;\n    atomic_t users;\n};\n\n#define MAX_KIOCTX 1024\nstatic atomic_t global_kioctx_count = ATOMIC_INIT(0);\n\nstruct kioctx *ioctx_alloc(unsigned int nr_events) {\n    struct kioctx *ctx;\n    int err = 0;\n\n    if (atomic_read(&global_kioctx_count) >= MAX_KIOCTX)\n        return ERR_PTR(-ENFILE);\n\n    ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);\n    if (!ctx)\n        return ERR_PTR(-ENOMEM);\n\n    nr_events = min(nr_events, (unsigned)(-1) / sizeof(struct io_event));\n    if (nr_events < 8)\n        nr_events = 8;\n\n    spin_lock_init(&ctx->lock);\n    init_waitqueue_head(&ctx->wait);\n    atomic_set(&ctx->users, 1);\n    ctx->nr_events = nr_events;\n\n    if (err) {\n        kfree(ctx);\n        return ERR_PTR(err);\n    }\n\n    atomic_inc(&global_kioctx_count);\n\n    return ctx;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/slab.h>\n#include <linux/spinlock.h>\n#include <linux/wait.h>\n#include <linux/uio.h>\n\nstruct kioctx {\n    spinlock_t lock;\n    wait_queue_head_t wait;\n    unsigned nr_events;\n};\n\nstruct kioctx *ioctx_alloc(unsigned nr_events)\n{\n    struct kioctx *ctx;\n    unsigned adjusted_events;\n    int cpu, err;\n\n    /* Adjust the number of events for CPU distribution */\n    adjusted_events = nr_events;\n    if (adjusted_events < NR_CPUS)\n        adjusted_events = NR_CPUS;\n\n    /* Allocate memory for the I/O context */\n    ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);\n    if (!ctx)\n        return ERR_PTR(-ENOMEM);\n\n    spin_lock_init(&ctx->lock);\n    init_waitqueue_head(&ctx->wait);\n    ctx->nr_events = adjusted_events;\n\n    /* Check system-wide limits */\n    if (atomic_read(&nr_async_ioctx) + 1 > max_async_ioctx) {\n        kfree(ctx);\n        return ERR_PTR(-EAGAIN);\n    }\n\n    atomic_inc(&nr_async_ioctx);\n\n    return ctx;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

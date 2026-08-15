@@ -1,0 +1,56 @@
+{
+  "case_id": "C_261__0",
+  "sample_id": "D/C/261",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7916",
+  "cve_summary": "Race condition in the environ_read function in fs/proc/base.c in the Linux kernel before 4.5.4 allows local users to obtain sensitive information from kernel memory by reading a /proc/*/environ file during a process-setup time interval in which environment-variable copying is incomplete.",
+  "changed_file": "fs/proc/base.c",
+  "docstring": "/**\n * Summary: Reads environment variables from a process's memory into a user buffer.\n * \n * Parameters:\n * file (struct file *): Pointer to the file structure representing the process.\n * buf (char __user *): Pointer to the user buffer where the environment variables will be copied.\n * count (size_t): The maximum number of bytes to read from the environment.\n * ppos (loff_t *): Pointer to the current position in the environment variables.\n * \n * Returns: ssize_t - The number of bytes read on success, or a negative error code on failure.\n * \n * Logic: The function checks if the process has an environment to read. It allocates a temporary page for reading, increments the process's user count, and acquires a read lock on the memory map. It then reads the environment variables in chunks, copying them to the user buffer until the specified count is reached or there are no more variables to read. Finally, it updates the position pointer and releases resources before returning the number of bytes read or an error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t read_env_vars(struct file *file, char __user *buf, size_t count, loff_t *ppos) {\n    struct mm_struct *mm = file->f_mapping->host->mm;\n    char *tmp_page;\n    ssize_t total_read = 0;\n    int ret;\n\n    if (!mm || !mm->env_size)\n        return -EINVAL;\n\n    tmp_page = (char *)__get_free_page(GFP_KERNEL);\n    if (!tmp_page)\n        return -ENOMEM;\n\n    down_read(&mm->mmap_lock);\n\n    while (total_read < count && *ppos < mm->env_size) {\n        size_t bytes_to_read = min(count - total_read, PAGE_SIZE);\n        ret = read_env_chunk(mm, *ppos, tmp_page, bytes_to_read);\n        if (ret <= 0)\n            break;\n\n        if (copy_to_user(buf + total_read, tmp_page, ret)) {\n            ret = -EFAULT;\n            break;\n        }\n\n        *ppos += ret;\n        total_read += ret;\n    }\n\n    up_read(&mm->mmap_lock);\n    free_page((unsigned long)tmp_page);\n\n    return total_read ? total_read : ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their logic for reading environment variables from a process's memory. The candidate implementation uses `mm->env_size` to determine the size of the environment and reads in a loop until `count` is reached or the environment size is exhausted. The reference implementation uses `env_start` and `env_end` to determine the environment bounds and reads until the end of the environment or the requested `count` is reached. The candidate implementation lacks the `mmput(mm)` call, which could lead to a memory leak if the `mm` structure is not properly released. This is a security-relevant difference as it could lead to resource exhaustion under certain conditions.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for reading environment variables. The candidate implementation uses `mm->env_size` to determine the environment size and reads directly from the environment using a `read_env_chunk` function, while the reference implementation uses `mm->env_start` and `mm->env_end` to compute the environment bounds and reads via `access_remote_vm`. Additionally, the candidate implementation returns `-EINVAL` when no environment is present, while the reference returns `0`. These differences could lead to different behaviors for malformed or edge-case inputs, such as processes with no environment or unusual memory layouts. The reference implementation also includes a call to `mmput(mm)`, which the candidate implementation lacks, potentially leading to resource leaks.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

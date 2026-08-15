@@ -1,0 +1,62 @@
+{
+  "case_id": "C_169__1",
+  "sample_id": "D/C/169",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the nested netlink attribute from a given socket buffer context.\n\nParameters: \nctx (u64): The context of the socket buffer.\nA (u64): The offset in the socket buffer where the netlink attribute starts.\nX (u64): The type of nested netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the nested netlink attribute from the start of the socket buffer, or 0 if not found or if any validation fails.\n\nLogic: The function first checks if the socket buffer is non-linear and if its length is sufficient for the netlink attribute. It then verifies that the specified offset A is valid and that the attribute length does not exceed the remaining data. If these checks pass, it attempts to find the nested attribute of type X and returns its offset; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 5,
+    "consensus_exposure": 2,
+    "net_exposure": 3,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "check A is within skb->data bounds",
+        "performed_by_count": 4,
+        "why_it_matters": "If A is invalid or out of bounds, accessing skb->data[A] could cause a buffer overflow or crash."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: validating that the offset A is within the bounds of the socket buffer data. While most independent implementations check that A is valid and does not exceed the buffer length, the target only checks that A is less than the buffer length minus the nlattr header size, which is insufficient to prevent out-of-bounds access. This omission could lead to memory-safety issues if A is invalid.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 0,
+    "net_exposure": 6,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "validate A against skb->len before accessing skb->data[A]",
+        "performed_by_count": 4,
+        "why_it_matters": "If A is invalid or out of bounds, accessing skb->data[A] could cause a memory-safety issue."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a consensus step of validating the base offset A against the skb->len before accessing skb->data[A]. This could lead to out-of-bounds memory access if A is invalid. The majority of the independent implementations include this check, but the target does not.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

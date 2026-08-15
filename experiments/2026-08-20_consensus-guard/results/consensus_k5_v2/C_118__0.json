@@ -1,0 +1,62 @@
+{
+  "case_id": "C_118__0",
+  "sample_id": "D/C/118",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6538",
+  "cve_summary": "The copy_to_user_auth function in net/xfrm/xfrm_user.c in the Linux kernel before 3.6 uses an incorrect C library function for copying a string, which allows local users to obtain sensitive information from kernel heap memory by leveraging the CAP_NET_ADMIN capability.",
+  "changed_file": "net/xfrm/xfrm_user.c",
+  "docstring": "Summary: Copies authentication algorithm data from a user-defined structure to a netlink socket buffer.\n\nParameters: \nauth (struct xfrm_algo_auth*): Pointer to the authentication algorithm structure containing algorithm name and key.\nskb (struct sk_buff*): Pointer to the socket buffer where the data will be copied.\n\nReturns: int: Returns 0 on success or -EMSGSIZE if the netlink attribute cannot be reserved.\n\nLogic: The function reserves space in the socket buffer for a netlink attribute of type XFRMA_ALG_AUTH. If successful, it copies the algorithm name and key from the provided authentication structure to the reserved space in the socket buffer, setting the key length accordingly. If the reservation fails, it returns an error code indicating the message size issue.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "key length validation",
+        "performed_by_count": 3,
+        "why_it_matters": "If the key length is untrusted and not bounded, the memcpy could overflow the destination buffer, leading to memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: validating or sanitizing the length of the key before copying it. This could lead to a buffer overflow if the key length is not properly bounded.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "bounded string copy for algorithm name",
+        "performed_by_count": 3,
+        "why_it_matters": "If the auth->alg_name is longer than the destination buffer, strncpy could write beyond the allocated space, leading to a buffer overflow."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: validating and sanitizing the length of untrusted input before copying it. Specifically, it uses strncpy without limiting the source length, which could lead to truncation or partial writes if the source string is malformed or too long. A majority of the independent implementations use safer methods like nla_put_string or fixed-size copies with explicit bounds.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

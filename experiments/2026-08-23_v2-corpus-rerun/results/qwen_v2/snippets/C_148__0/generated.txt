@@ -1,0 +1,49 @@
+int resolve_last_component(struct nameidata *nd, struct path *path) {
+    int err;
+
+    if (nd->flags & LOOKUP_RCU) {
+        struct dentry *dentry;
+
+        dentry = lookup_dentry(nd);
+        if (IS_ERR_OR_NULL(dentry))
+            return PTR_ERR(dentry);
+
+        path->dentry = dentry;
+        path->mnt = nd->path.mnt;
+        return 0;
+    }
+
+    err = mnt_want_write(nd->path.mnt);
+    if (err)
+        return err;
+
+    path->dentry = d_lookup(nd->path.dentry, nd->last.name, nd->last.len);
+    if (path->dentry) {
+        path->mnt = nd->path.mnt;
+        mnt_drop_write(nd->path.mnt);
+        return 0;
+    }
+
+    path->dentry = d_alloc_name(nd->path.dentry, nd->last.name);
+    if (!path->dentry) {
+        mnt_drop_write(nd->path.mnt);
+        return -ENOMEM;
+    }
+
+    path->dentry->d_name.len = nd->last.len;
+    path->dentry->d_name.hash = full_name_hash(nd->last.name, nd->last.len);
+    path->dentry->d_parent = nd->path.dentry;
+    path->dentry->d_sb = nd->path.dentry->d_sb;
+    path->dentry->d_op = nd->path.dentry->d_op;
+    path->dentry->d_fsdata = NULL;
+
+    err = nd->path.dentry->d_inode->i_op->lookup(nd->path.dentry->d_inode, path->dentry);
+    if (err) {
+        dput(path->dentry);
+        mnt_drop_write(nd->path.mnt);
+        return err;
+    }
+
+    path->mnt = nd->path.mnt;
+    return 0;
+}

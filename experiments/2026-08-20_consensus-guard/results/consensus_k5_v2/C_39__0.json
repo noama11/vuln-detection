@@ -1,0 +1,67 @@
+{
+  "case_id": "C_39__0",
+  "sample_id": "D/C/39",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-1759",
+  "cve_summary": "Integer overflow in the sys_oabi_semtimedop function in arch/arm/kernel/sys_oabi-compat.c in the Linux kernel before 2.6.39 on the ARM platform, when CONFIG_OABI_COMPAT is enabled, allows local users to gain privileges or cause a denial of service (heap memory corruption) by providing a crafted argument and leveraging a race condition.",
+  "changed_file": "arch/arm/kernel/sys_oabi-compat.c",
+  "docstring": "Summary: This function implements the system call for performing semaphore operations with a timeout.\n\nParameters:\n- semid (int): Identifier for the semaphore set.\n- tsops (struct oabi_sembuf __user *): Pointer to an array of semaphore operations.\n- nsops (unsigned): Number of semaphore operations to perform.\n- timeout (const struct timespec __user *): Pointer to a timespec structure specifying the timeout duration.\n\nReturns: \n- long: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first checks the validity of the number of operations. It allocates memory for the semaphore operations and retrieves user data into kernel space. If a timeout is provided, it copies the timeout value. The function then calls the underlying semaphore operation function, handling memory protection appropriately. Finally, it frees the allocated memory and returns the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check for maximum number of operations (SEMOPM)",
+        "performed_by_count": 3,
+        "why_it_matters": "If an attacker provides an extremely large value for nsops, the target will allocate a large amount of memory, potentially leading to resource exhaustion or denial of service."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a check for the maximum number of operations (SEMOPM) that the majority of the independent implementations perform. This check is important to prevent excessive memory allocation and potential resource exhaustion on hostile input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check that nsops is not zero",
+        "performed_by_count": 4,
+        "why_it_matters": "If nsops is zero, the target allocates memory for an array of size zero and then attempts to copy data from a null pointer, which could lead to undefined behavior or memory corruption."
+      },
+      {
+        "step": "Check that nsops does not exceed SEMOPM",
+        "performed_by_count": 4,
+        "why_it_matters": "If nsops exceeds SEMOPM, the target may allocate more memory than allowed by system limits, potentially leading to resource exhaustion or denial of service."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation uses __get_user_error for copying each sembuf field individually, which is equivalent to a bounds-checked copy_from_user. However, it does not perform a bounds check on the total size of the tsops array before allocating memory for sops. The majority of the independent implementations check that nsops is not zero and does not exceed SEMOPM before proceeding. The target also lacks a check for the case where nsops is zero, which is handled by most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_294__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int replace_map_pointers(struct verifier_env *env) {\n    int i;\n    struct bpf_insn *insn;\n    struct bpf_map *map;\n    int err;\n\n    for (i = 0; i < env->prog->len; i++) {\n        insn = &env->prog->insnsi[i];\n\n        if (insn->code != (BPF_LDX | BPF_IMM | BPF_DW) && insn->code != (BPF_STX | BPF_IMM | BPF_DW))\n            continue;\n\n        if (insn->src_reg != BPF_PSEUDO_MAP_FD)\n            continue;\n\n        if (i + 1 >= env->prog->len)\n            return -EINVAL;\n\n        map = bpf_map_get_from_fd(insn->off);\n        if (IS_ERR_OR_NULL(map))\n            return PTR_ERR(map);\n\n        if (env->used_maps >= MAX_USED_MAPS) {\n            bpf_map_put(map);\n            return -EMFILE;\n        }\n\n        insn->off = (unsigned long)map;\n        env->used_maps++;\n        env->maps[env->used_maps - 1] = map;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int replace_map_pointers(struct verifier_env *env) {\n    struct bpf_insn *insn;\n    struct bpf_map *map;\n    int i, fd, err;\n    u32 insn_idx;\n\n    for (i = 0; i < env->prog->len; i++) {\n        insn = &env->prog->insnsi[i];\n        insn_idx = i;\n\n        if (insn->code == (BPF_LDX | BPF_MEM)) {\n            if (insn->off != 0)\n                return -EINVAL;\n        }\n\n        if ((insn->code == (BPF_LD | BPF_IMM | BPF_DW)) &&\n            (insn->src_reg == BPF_PSEUDO_MAP_FD)) {\n            fd = insn->imm;\n            map = find_map_by_fd(fd);\n            if (!map)\n                return -ENOENT;\n\n            if (env->used_maps >= MAX_USED_MAPS)\n                return -ENOMEM;\n\n            insn->src_reg = 0;\n            insn->off = 0;\n            insn->imm = 0;\n\n            insn = &env->prog->insnsi[i + 1];\n            insn->code = (BPF_LDX | BPF_MEM);\n            insn->dst_reg = BPF_REG_2;\n            insn->src_reg = 0;\n            insn->off = 0;\n            insn->imm = (unsigned long)map;\n\n            env->used_maps++;\n            env->maps[env->used_maps - 1] = map;\n            bpf_map_inc_ref(map);\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int replace_map_pointers(struct verifier_env *env) {\n    int i;\n    struct bpf_insn *insn;\n    struct bpf_map *map;\n    int err;\n\n    for (i = 0; i < env->prog->len; i++) {\n        insn = &env->prog->insnsi[i];\n\n        if (BPF_CLASS(insn->code) != BPF_LD && BPF_CLASS(insn->code) != BPF_LDX &&\n            BPF_CLASS(insn->code) != BPF_ST && BPF_CLASS(insn->code) != BPF_STX)\n            continue;\n\n        if (insn->code == (BPF_LD | BPF_IMM | BPF_DW)) {\n            if (!is_pseudo_map_fd(insn->src_reg))\n                continue;\n\n            map = get_bpf_map_from_fd(insn->imm);\n            if (!map)\n                return -ENOENT;\n\n            if (env->used_maps_count >= MAX_USED_MAPS) {\n                bpf_map_put(map);\n                return -EBUSY;\n            }\n\n            insn->off = (u32)map;\n            insn->imm = (u32)((u64)map >> 32);\n            insn->src_reg = 0;  // No longer a pseudo fd\n            insn->code = BPF_LDX | BPF_MEM | BPF_DW;\n\n            env->used_maps[env->used_maps_count++] = map;\n        } else {\n            // For BPF_STX and similar, check reserved fields for misuse\n            if (insn->off != 0 || insn->imm != 0)\n                return -EINVAL;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int replace_map_pointers(struct verifier_env *env) {\n    int i;\n    struct bpf_insn *insn;\n    struct bpf_map *map;\n    int err;\n\n    for (i = 0; i < env->prog->len; i++) {\n        insn = &env->prog->insnsi[i];\n\n        if (BPF_CLASS(insn->code) != BPF_LD && BPF_CLASS(insn->code) != BPF_LDX &&\n            BPF_CLASS(insn->code) != BPF_ST && BPF_CLASS(insn->code) != BPF_STX)\n            continue;\n\n        if ((BPF_CLASS(insn->code) == BPF_LD || BPF_CLASS(insn->code) == BPF_LDX) &&\n            BPF_MODE(insn->code) == BPF_IMM && BPF_SIZE(insn->code) == BPF_DW) {\n            int fd = insn->off;\n\n            if (fd < 0)\n                return -EINVAL;\n\n            map = find_map_from_fd(fd);\n            if (!map)\n                return -ENOENT;\n\n            if (env->used_maps >= MAX_USED_MAPS)\n                return -ENOMEM;\n\n            insn->off = (unsigned long)map;\n            env->prog->aux->maps[env->used_maps++] = map;\n            bpf_map_inc_ref(map);\n        } else if (BPF_CLASS(insn->code) == BPF_STX && insn->off == 0) {\n            // Check reserved field for invalid usage\n            if (insn->imm)\n                return -EINVAL;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int replace_map_fds_with_pointers(struct verifier_env *env) {\n    int i;\n    struct bpf_insn *insn;\n    struct bpf_map *map;\n    int fd;\n\n    for (i = 0; i < env->prog->len; i++) {\n        insn = &env->prog->insnsi[i];\n\n        if (BPF_CLASS(insn->code) != BPF_LDX && BPF_CLASS(insn->code) != BPF_STX) {\n            continue;\n        }\n\n        if (BPF_MODE(insn->code) != BPF_MEM && BPF_MODE(insn->code) != BPF_XADD) {\n            continue;\n        }\n\n        if (BPF_SIZE(insn->code) != BPF_DW) {\n            continue;\n        }\n\n        if (insn->jt != 0 || insn->jf != 0) {\n            return -EINVAL;\n        }\n\n        fd = insn->off;\n        if (fd < 0 || fd >= MAX_MAPS) {\n            return -EINVAL;\n        }\n\n        if (env->used_maps_count >= MAX_USED_MAPS) {\n            return -ENOMEM;\n        }\n\n        map = find_bpf_map_by_fd(fd);\n        if (!map) {\n            return -ENOENT;\n        }\n\n        if (map->refcnt == 0) {\n            return -EINVAL;\n        }\n\n        insn->off = (unsigned long)map;\n        env->used_maps[env->used_maps_count++] = map;\n        map->refcnt++;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_705__2",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void pagevec_unmark_locks(struct pagevec *pvec, struct zone *zone) {\n    int i, unlocked = 0;\n    struct page *backup[PAGEVEC_SIZE];\n    int bidx = 0;\n\n    /* Phase 1: Isolate pages and prepare backup vector */\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        struct page *page = pvec->pages[i];\n        if (PageLocked(page)) {\n            unlock_page(page);\n            unlocked++;\n        } else {\n            backup[bidx++] = page;\n        }\n    }\n\n    /* Phase 2: Unlock and manage state for pages */\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        struct page *page = pvec->pages[i];\n        if (!PageLocked(page)) {\n            if (page_count(page) == 1)\n                __put_page(page);\n            else\n                put_page(page);\n        }\n    }\n\n    /* Phase 3: Process fast path putback */\n    for (i = 0; i < bidx; i++) {\n        struct page *page = backup[i];\n        if (page_count(page) == 1)\n            __put_page(page);\n        else\n            put_page(page);\n    }\n\n    /* Update zone state if needed */\n    if (unlocked)\n        zone->pages_unlocked += unlocked;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void pagevec_release(struct pagevec *pvec, struct zone *zone) {\n    struct page *page;\n    int i, nr_unlocked = 0;\n\n    for (i = 0; i < pvec->nr_pages; i++) {\n        page = pvec->pages[i];\n\n        if (PageLocked(page)) {\n            UnlockPage(page);\n            nr_unlocked++;\n        } else {\n            pvec->pages[i] = NULL;\n        }\n    }\n\n    if (nr_unlocked > 0) {\n        for (i = 0; i < pvec->nr_pages; i++) {\n            page = pvec->pages[i];\n            if (page != NULL) {\n                if (page->count == 1) {\n                    page->count = 0;\n                } else {\n                    page->count--;\n                }\n            }\n        }\n    }\n\n    for (i = 0; i < pvec->nr_pages; i++) {\n        page = pvec->pages[i];\n        if (page != NULL) {\n            zone->free_pages += 1;\n            page->zone = zone;\n        }\n    }\n\n    pvec->nr_pages = 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void pagevec_unlock(struct pagevec *pvec, struct zone *zone) {\n    struct page *page;\n    int i;\n    struct pagevec backup_pvec;\n    int backup_count = 0;\n\n    /* Phase 1: Isolate pages and prepare backup */\n    pagevec_init(&backup_pvec);\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        page = pvec->pages[i];\n        if (PageLocked(page)) {\n            continue;\n        }\n        if (backup_count < PAGEVEC_SIZE) {\n            backup_pvec.pages[backup_count++] = page;\n        }\n    }\n\n    /* Adjust the count of unlocked pages */\n    for (i = 0; i < backup_count; i++) {\n        page = backup_pvec.pages[i];\n        unlock_page(page);\n    }\n\n    /* Phase 2: Unlock pages and manage state */\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        page = pvec->pages[i];\n        if (PageLocked(page)) {\n            unlock_page(page);\n            atomic_dec(&zone->pages_locked);\n        }\n    }\n\n    /* Phase 3: Process fast path putback */\n    for (i = 0; i < backup_count; i++) {\n        page = backup_pvec.pages[i];\n        __free_page(page);\n    }\n\n    pagevec_reinit(pvec);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void pagevec_release(struct pagevec *pvec, struct zone *zone)\n{\n    struct page *page;\n    int i, j = 0;\n\n    for (i = 0; i < pvec->nr_pages; i++) {\n        page = pvec->pages[i];\n        if (PageLocked(page)) {\n            unlock_page(page);\n        } else {\n            pvec->pages[j++] = page;\n        }\n    }\n\n    pvec->nr_pages = j;\n\n    for (i = 0; i < pvec->nr_pages; i++) {\n        page = pvec->pages[i];\n        if (page_count(page) == 1) {\n            __put_page(page);\n        } else {\n            put_page(page);\n        }\n    }\n\n    for (i = 0; i < pvec->nr_pages; i++) {\n        page = pvec->pages[i];\n        if (PageLRU(page)) {\n            zone->nr_lru_pages--;\n        }\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void release_pages_and_unlock(struct pagevec *pvec, struct zone *zone) {\n    struct page *page;\n    int i;\n    int unlock_count = 0;\n    struct page *backup[PAGEVEC_SIZE];\n    int backup_index = 0;\n\n    /* Phase 1: Isolate pages that are locked and prepare a backup vector */\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        page = pvec->pages[i];\n        if (PageLocked(page)) {\n            unlock_count++;\n        } else {\n            backup[backup_index++] = page;\n        }\n    }\n\n    /* Phase 2: Unlock pages and manage their state */\n    for (i = 0; i < pagevec_count(pvec); i++) {\n        page = pvec->pages[i];\n        if (PageLocked(page)) {\n            unlock_page(page);\n            zone->pages_locked--;\n        }\n    }\n\n    /* Phase 3: Process fast path putback for non-locked pages */\n    for (i = 0; i < backup_index; i++) {\n        page = backup[i];\n        __page_cache_release(page);\n        zone->free_pages++;\n    }\n\n    pagevec_reinit(pvec);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include "lept.h"  // Assuming this is the header for l_int32 and related functions
+
+l_int32 generate_html_viewer(const char* dirin, const char* dirout, const char* rootname, l_int32 thumbwidth, l_int32 viewwidth) {
+    // Validate input parameters
+    if (!dirin || !dirout || !rootname || thumbwidth <= 0 || viewwidth <= 0) {
+        return 1; // Error code for invalid parameters
+    }
+
+    // Create output directory if it doesn't exist
+    struct stat st = {0};
+    if (stat(dirout, &st) == -1) {
+        if (mkdir(dirout, 0777) == -1) {
+            return 2; // Error code for directory creation failure
+        }
+    }
+
+    // Open input directory
+    DIR* dir = opendir(dirin);
+    if (!dir) {
+        return 3; // Error code for directory opening failure
+    }
+
+    // Read image filenames from the input directory
+    struct dirent* entry;
+    char** filenames = NULL;
+    l_int32 count = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Filter for image files (e.g., .jpg, .png)
+        if (strstr(entry->d_name, ".jpg") || strstr(entry->d_name, ".png")) {
+            filenames = (char**)realloc(filenames, (count + 1) * sizeof(char*));
+            filenames[count] = strdup(entry->d_name);
+            count++;
+        }
+    }
+
+    closedir(dir);
+
+    if (count == 0) {
+        free(filenames);
+        return 4; // Error code for no image files found
+    }
+
+    // Generate HTML content
+    char html_main[1024];
+    char html_links[1024];
+
+    // Construct HTML for the main viewer
+    snprintf(html_main, sizeof(html_main), "<html><body><h1>%s</h1>", rootname);
+    for (l_int32 i = 0; i < count; i++) {
+        char thumb_path[1024];
+        char view_path[1024];
+        char filename[1024];
+        char base[1024];
+
+        // Generate base name from filename
+        strncpy(base, filenames[i], sizeof(base));
+        base[strlen(base) - 4] = '\0'; // Remove .jpg or .png
+
+        // Generate thumbnail and viewable image paths
+        snprintf(thumb_path, sizeof(thumb_path), "%s/%s_thumb.jpg", dirout, base);
+        snprintf(view_path, sizeof(view_path), "%s/%s_view.jpg", dirout, base);
+
+        // Generate thumbnail and viewable images (placeholder for actual image processing)
+        // In a real implementation, you would use image processing libraries to generate these.
+
+        // Construct HTML for the main viewer
+        snprintf(filename, sizeof(filename), "%s/%s", dirin, filenames[i]);
+        snprintf(html_main + strlen(html_main), sizeof(html_main) - strlen(html_main),
+                 "<p><img src=\"%s\" width=\"%d\"/><br/>"
+                 "<a href=\"%s\" target=\"_blank\">View</a></p>",
+                 thumb_path, thumbwidth, view_path);
+    }
+    strcat(html_main, "</body></html>");
+
+    // Construct HTML for the links
+    snprintf(html_links, sizeof(html_links), "<html><body><h1>%s Links</h1>", rootname);
+    for (l_int32 i = 0; i < count; i++) {
+        char base[1024];
+        char link[1024];
+
+        // Generate base name from filename
+        strncpy(base, filenames[i], sizeof(base));
+        base[strlen(base) - 4] = '\0'; // Remove .jpg or .png
+
+        // Construct link
+        snprintf(link, sizeof(link), "%s/%s_view.jpg", dirout, base);
+
+        // Add link to HTML
+        snprintf(html_links + strlen(html_links), sizeof(html_links) - strlen(html_links),
+                 "<p><a href=\"%s\" target=\"_blank\">%s</a></p>", link, filenames[i]);
+    }
+    strcat(html_links, "</body></html>");
+
+    // Write HTML files
+    char main_path[1024];
+    char links_path[1024];
+
+    snprintf(main_path, sizeof(main_path), "%s/%s.html", dirout, rootname);
+    snprintf(links_path, sizeof(links_path), "%s/%s_links.html", dirout, rootname);
+
+    FILE* main_file = fopen(main_path, "w");
+    if (!main_file) {
+        free(filenames);
+        return 5; // Error code for file opening failure
+    }
+    fprintf(main_file, "%s", html_main);
+    fclose(main_file);
+
+    FILE* links_file = fopen(links_path, "w");
+    if (!links_file) {
+        free(filenames);
+        return 6; // Error code for file opening failure
+    }
+    fprintf(links_file, "%s", html_links);
+    fclose(links_file);
+
+    // Free memory
+    for (l_int32 i = 0; i < count; i++) {
+        free(filenames[i]);
+    }
+    free(filenames);
+
+    return 0; // Success
+}

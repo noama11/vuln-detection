@@ -1,0 +1,56 @@
+{
+  "case_id": "C_374__1",
+  "sample_id": "D/C/374",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-14954",
+  "cve_summary": "The waitid implementation in kernel/exit.c in the Linux kernel through 4.13.4 accesses rusage data structures in unintended cases, which allows local users to obtain sensitive information, and bypass the KASLR protection mechanism, via a crafted system call.",
+  "changed_file": "kernel/exit.c",
+  "docstring": "Summary: This function implements a compatibility syscall for waiting on a process, retrieving information about its termination status.\n\nParameters:\n- which (int): Specifies the type of wait operation.\n- pid (compat_pid_t): The process ID to wait for.\n- infop (struct compat_siginfo __user *): Pointer to a user-space structure to store signal information.\n- options (int): Options for the wait operation.\n- uru (struct compat_rusage __user *): Pointer to a user-space structure to store resource usage information.\n\nReturns: int - Returns 0 on success, or a negative error code on failure.\n\nLogic: The function calls `kernel_waitid` to wait for the specified process and retrieve its status. If successful, it populates the user-space `infop` structure with signal information and resource usage data if requested. It handles potential errors during data copying to user space and ensures proper access control for user memory. If `infop` is NULL, it skips populating signal information. The function also manages error handling for user access violations.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int compat_waitid(int which, compat_pid_t pid, struct compat_siginfo __user *infop, int options, struct compat_rusage __user *uru)\n{\n    struct compat_siginfo info;\n    int ret;\n\n    ret = kernel_waitid(which, pid, &info, options, uru);\n    if (ret < 0)\n        return ret;\n\n    if (infop) {\n        if (copy_to_user(infop, &info, sizeof(info)))\n            return -EFAULT;\n    }\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they handle the `infop` structure. The candidate implementation copies the entire `compat_siginfo` structure to user space using `copy_to_user`, while the reference implementation manually writes specific fields using `unsafe_put_user`. Additionally, the reference implementation includes logic for handling `uru` (resource usage) and a `signo` (signal number) that the candidate implementation does not. These differences are reachable via normal inputs and could lead to different observable behaviors, particularly in how signal information is structured and returned. The reference implementation also includes explicit user access control (`user_access_begin/end`) and error handling for individual field writes, which may affect robustness and security.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation only copies the full `compat_siginfo` structure to user space if `infop` is non-NULL, while the reference implementation conditionally writes only a subset of the `siginfo` fields directly to user memory using `unsafe_put_user`, including a hardcoded `si_signo` of `SIGCHLD`. This results in different behaviors for the `infop` structure, particularly in the `si_signo` field and potentially other fields. These differences are not security-relevant but represent a functional mismatch in the output format.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

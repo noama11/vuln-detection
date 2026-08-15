@@ -1,0 +1,56 @@
+{
+  "case_id": "C_657__0",
+  "sample_id": "D/C/657",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "radareorg/radare2",
+  "cve_id": "CVE-2018-11380",
+  "cve_summary": "The parse_import_ptr() function in radare2 2.5.0 allows remote attackers to cause a denial of service (heap-based out-of-bounds read and application crash) via a crafted Mach-O file.",
+  "changed_file": "libr/bin/format/mach0/mach0.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Parses an import pointer from a given binary object and updates the relocation  \n * structure based on the symbol index provided.  \n *  \n * Parameters:  \n * bin (struct MACH0_(obj_t)*): Pointer to the binary object containing symbol table.  \n * reloc (struct reloc_t*): Pointer to the relocation structure to be updated.  \n * idx (int): Index of the symbol in the symbol table to parse.  \n *  \n * Returns:  \n * bool: Returns true if the import pointer was successfully parsed and updated,  \n * otherwise returns false.  \n *  \n * Logic:  \n * The function first checks if the index is valid. It determines the symbol type  \n * based on the descriptor and sets the relocation type according to the word size.  \n * It then iterates through the sections of the binary to find the corresponding  \n * indirect symbol and updates the relocation structure with the offset and address.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "bool parse_import_ptr(struct MACH0_(obj_t)* bin, struct reloc_t* reloc, int idx) {\n    if (idx < 0 || idx >= bin->symtab->nsyms) {\n        return false;\n    }\n\n    uint8_t desc = bin->symtab->desc[idx];\n    uint32_t sym_type = (desc >> 4) & 0xF;\n    if (sym_type != N_POINT) {\n        return false;\n    }\n\n    reloc->type = (bin->file->header->filetype == MH_OBJECT) ? R_MACHO_IMPORT32 : R_MACHO_IMPORT64;\n\n    for (int i = 0; i < bin->file->header->ncmds; i++) {\n        struct segment_command* seg = (struct segment_command*)MACH0_(get_segment)(bin, i);\n        if (!seg) {\n            continue;\n        }\n\n        for (int j = 0; j < seg->nsects; j++) {\n            struct section* sect = (struct section*)MACH0_(get_section)(bin, i, j);\n            if (!sect) {\n                continue;\n            }\n\n            if (sect->reserved1 == idx) {\n                reloc->offset = sect->offset;\n                reloc->addr = sect->addr;\n                return true;\n            }\n        }\n    }\n\n    return false;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they determine the relocation type and how they search for the indirect symbol. The candidate implementation uses a hardcoded relocation type based on the file type, while the reference implementation uses a switch-case based on the wordsize. Additionally, the candidate implementation iterates through segments and sections to find the reserved1 field matching the index, while the reference implementation directly checks for sections with the correct section type and searches the indirect symbol table. These differences can lead to different behaviors for malformed or edge-case inputs, particularly in how the relocation type is determined and how the symbol is located. This could affect the correctness of the relocation structure and is not clearly security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for determining the symbol type and updating the relocation structure. The candidate implementation checks for a specific bit in the symbol descriptor to determine symbol type, while the reference implementation uses the REFERENCE_TYPE flag. Additionally, the candidate implementation iterates through sections to find a matching reserved1 field, while the reference implementation uses indirect symbol tables. These differences can lead to different behaviors for certain inputs, particularly in how symbol types and offsets are determined, which may affect the correctness of the relocation structure. This is likely to be security-relevant as it involves symbol parsing and relocation, which are critical for binary analysis and memory safety.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

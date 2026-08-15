@@ -1,0 +1,34 @@
+{
+  "case_id": "C_715__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    struct serio *port;\n    irqreturn_t ret = IRQ_NONE;\n\n    spin_lock(&i8042_lock);\n\n    status = inb(I8042_STATUS);\n\n    if (status & I8042_IBF) {\n        data = inb(I8042_DATA);\n\n        if (status & I8042_MUX) {\n            if (i8042_mux_data(data))\n                ret = IRQ_HANDLED;\n        } else {\n            port = i8042_get_port();\n            if (port && i8042_filter(data)) {\n                serio_interrupt(port, data, 0);\n                ret = IRQ_HANDLED;\n            }\n        }\n\n        if (status & I8042_TIMEOUT)\n            i8042_handle_timeout();\n        if (status & I8042_MUX_ERROR)\n            i8042_handle_mux_error();\n    }\n\n    spin_unlock(&i8042_lock);\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    struct i8042 *i8042 = dev_id;\n\n    spin_lock(&i8042->lock);\n\n    status = inb(I8042_STATUS);\n\n    if (!(status & I8042_STR_OBF))\n        goto out_unlock;\n\n    data = inb(I8042_DATA);\n\n    if (status & I8042_STB_MUX) {\n        if (i8042->mux_state == I8042_MUX_IDLE) {\n            i8042->mux_state = I8042_MUX_EXPECTING_ADDR;\n            i8042->mux_current_address = data;\n        } else if (i8042->mux_state == I8042_MUX_EXPECTING_ADDR) {\n            i8042->mux_state = I8042_MUX_IDLE;\n            if (data & 0x80) {\n                printk(KERN_ERR \"i8042: MUX timeout or error\\n\");\n            }\n        } else {\n            i8042->mux_state = I8042_MUX_IDLE;\n        }\n        goto out_unlock;\n    }\n\n    if (i8042->mux_state != I8042_MUX_IDLE)\n        goto out_unlock;\n\n    if (status & (I8042_STB_TIMEOUT | I8042_STB_PARITY))\n        goto out_unlock;\n\n    if (i8042->data_filter(data) != 0)\n        goto out_unlock;\n\n    if (i8042->port0 && i8042->port0->write)\n        i8042->port0->write(i8042->port0, data);\n\nout_unlock:\n    spin_unlock(&i8042->lock);\n    return IRQ_HANDLED;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n\n    spin_lock(&i8042_lock);\n\n    status = inb_p(STATUS_PORT);\n\n    if (status & OBF) {\n        data = inb_p(DATA_PORT);\n\n        if (status & (MUXERR | TIMEOUT)) {\n            i8042_flush_data();\n            i8042_flush_stray();\n        } else {\n            int port = i8042_get_port(status);\n            if (port >= 0) {\n                i8042_filter(port, data);\n                serio_interrupt(port, data);\n                handled = 1;\n            }\n        }\n    }\n\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n\n    spin_lock(&i8042_lock);\n\n    status = inb_p(PKBDAT_PORT);\n    data = inb_p(PKBDAT_PORT);\n\n    if ((status & 0x80) || i8042_data.timeout) {\n        i8042_data.timeout = 0;\n        spin_unlock(&i8042_lock);\n        return IRQ_NONE;\n    }\n\n    if (i8042_data.mux) {\n        if (i8042_data.mux_port) {\n            i8042_data.mux_port->write(i8042_data.mux_port, data);\n            handled = 1;\n        }\n    } else {\n        if (i8042_data.serio)\n            serio_interrupt(i8042_data.serio, data, 0);\n        handled = 1;\n    }\n\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "irqreturn_t i8042_interrupt(int irq, void *dev_id)\n{\n    unsigned char status, data;\n    int handled = 0;\n\n    spin_lock(&i8042_lock);\n\n    status = inb_p(STATUS_PORT);\n\n    if (status & OBF) {\n        data = inb_p(DATA_PORT);\n\n        if (status & (MUXERR | TIMEOUT)) {\n            if (status & MUXERR)\n                printk(KERN_WARNING \"i8042: MUX error\\n\");\n            if (status & TIMEOUT)\n                printk(KERN_WARNING \"i8042: Timeout error\\n\");\n        } else if (status & (PORTA | PORTB)) {\n            int port = (status & PORTB) ? 1 : 0;\n\n            if (i8042_mux_present)\n                i8042_mux_translate(data, port);\n\n            if (i8042_filter(data, port))\n                serio_interrupt(data, port);\n            else\n                handled = 1;\n        }\n\n        if (handled)\n            i8042_ack();\n    }\n\n    spin_unlock(&i8042_lock);\n\n    return handled ? IRQ_HANDLED : IRQ_NONE;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "C_535__0",
+  "sample_id": "D/C/535",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-10061",
+  "cve_summary": "The ReadGROUP4Image function in coders/tiff.c in ImageMagick before 7.0.1-10 does not check the return value of the fputc function, which allows remote attackers to cause a denial of service (crash) via a crafted image file.",
+  "changed_file": "coders/tiff.c",
+  "docstring": "```plaintext\nSummary: \nReads a Group 4 image from a specified file and writes it as a TIFF image file.\n\nParameters: \nimage_info (const ImageInfo *): Information about the image to be read.\nexception (ExceptionInfo *): Structure to capture any exceptions that occur during processing.\n\nReturns: \nImage *: A pointer to the read Image structure, or NULL if an error occurs.\n\nLogic: \nThe function first validates the input parameters and opens the image file. It writes the necessary TIFF headers and image data to a temporary file. After writing, it reads the TIFF image back into memory and populates the filename and format fields of the Image structure. If any errors occur during file operations, appropriate exceptions are thrown, and resources are cleaned up before returning NULL. The function ensures that the image is correctly formatted and ready for further processing.\n```",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 3,
+    "n_steps_majority": 3,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Validation of AcquireUniqueFileResource result",
+        "performed_by_count": 3,
+        "why_it_matters": "If the file resource cannot be acquired, the target proceeds to use a null file pointer, leading to undefined behavior."
+      },
+      {
+        "step": "Error handling for AcquireImage",
+        "performed_by_count": 4,
+        "why_it_matters": "If AcquireImage fails, the target proceeds to use the null image pointer, leading to undefined behavior."
+      },
+      {
+        "step": "Proper cleanup of resources in all error paths",
+        "performed_by_count": 4,
+        "why_it_matters": "The target does not consistently close files or destroy images in error paths, leading to potential resource leaks."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation does not perform a majority of the defensive steps seen in the independent implementations, including proper validation of the `AcquireUniqueFileResource` result, error handling for `AcquireImage`, and proper cleanup of resources in all error paths. These omissions could lead to resource leaks or undefined behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "bounds check on bytes written to temporary file",
+        "performed_by_count": 4,
+        "why_it_matters": "If the number of bytes written to the temporary file is incomplete or incorrect, the resulting TIFF file may be malformed, leading to errors when reading it back."
+      },
+      {
+        "step": "validation of ReadTIFFImage result",
+        "performed_by_count": 4,
+        "why_it_matters": "If the call to ReadTIFFImage fails, the target returns an invalid image, which could lead to undefined behavior or crashes in downstream code."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a bounds check on the number of bytes written to the temporary file when writing TIFF headers and image data, which could lead to incomplete or malformed output. Additionally, it does not validate the success of the `ReadTIFFImage` call after reading the temporary file, which could result in an invalid or corrupted image being returned. These steps are performed by a majority of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

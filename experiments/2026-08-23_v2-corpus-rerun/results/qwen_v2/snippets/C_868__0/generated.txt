@@ -1,0 +1,43 @@
+int parse_pkt_line(git_pkt **head, const char *line, const char **out, size_t bufflen) {
+    if (bufflen < 4)
+        return -1; // Not enough data to parse packet length
+
+    int len = 0;
+    for (int i = 0; i < 4; i++) {
+        char c = line[i];
+        if (c < '0' || c > '9')
+            return -1; // Invalid packet length
+        len = len * 10 + (c - '0');
+    }
+
+    if (len == 0) {
+        *out = line + 4;
+        return 0; // End of packet stream
+    }
+
+    if (bufflen < 4 + len)
+        return -1; // Incomplete packet data
+
+    if (line[4] == 'd') {
+        // Data packet
+        int ret = handle_pkt_data(head, line + 5, len - 1);
+        if (ret < 0)
+            return ret;
+    } else if (line[4] == 'S' || line[4] == 'A' || line[4] == 'B') {
+        // Sideband packet
+        int ret = handle_pkt_sideband(head, line[4], line + 5, len - 1);
+        if (ret < 0)
+            return ret;
+    } else if (line[4] == 'O') {
+        // Acknowledgment packet
+        int ret = handle_pkt_ack(head, line + 5, len - 1);
+        if (ret < 0)
+            return ret;
+    } else {
+        // Unknown packet type
+        return -1;
+    }
+
+    *out = line + 4 + len;
+    return 0;
+}

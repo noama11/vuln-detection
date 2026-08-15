@@ -1,0 +1,34 @@
+{
+  "case_id": "C_84__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sock_read_data(struct sock *sk, read_descriptor_t *desc, sk_read_actor_t recv_actor)\n{\n    int copied = 0;\n    struct sk_buff *skb;\n    const struct skb_shared_info *shi;\n    int inq;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    while ((skb = skb_peek(sk->sk_receive_queue)) != NULL) {\n        int offset = 0;\n        int len;\n\n        len = skb->len - skb->data_len;\n        if (len <= 0)\n            return -EINVAL;\n\n        shi = skb_shinfo(skb);\n        inq = len;\n\n        while (offset < len) {\n            int copy = len - offset;\n            int err;\n\n            if (copy > (int)desc->count)\n                copy = desc->count;\n\n            if (copy <= 0)\n                break;\n\n            if (shi->nr_frags) {\n                if (skb_copy_datagram_from_skb(desc->buf, desc->pos, skb, offset, copy))\n                    return -EFAULT;\n            } else {\n                if (skb_copy_datagram_iovec(skb, offset, desc->iov, desc->iov_offset, copy))\n                    return -EFAULT;\n            }\n\n            desc->pos += copy;\n            desc->count -= copy;\n            offset += copy;\n            copied += copy;\n        }\n\n        if (copied)\n            __skb_unlink(skb, &sk->sk_receive_queue);\n\n        if (desc->count == 0)\n            break;\n    }\n\n    if (copied)\n        tcp_adjust_rcv_space(sk, copied);\n\n    return copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sock_read(struct sock *sk, read_descriptor_t *desc, sk_read_actor_t recv_actor)\n{\n    int copied = 0;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    while (1) {\n        struct sk_buff *skb;\n        const struct skb_shared_info *shinfo;\n        int frag_idx;\n        int copy;\n\n        skb = skb_peek(&sk->sk_receive_queue);\n        if (!skb)\n            break;\n\n        shinfo = skb_shinfo(skb);\n        for (frag_idx = 0; frag_idx < shinfo->nr_frags; ) {\n            const skb_frag_t *frag;\n            int end;\n            u32 offset;\n            int err;\n\n            frag = &shinfo->frags[frag_idx];\n            offset = 0;\n            end = skb_frag_size(frag);\n\n            copy = min_t(int, end, desc->count);\n\n            if (copy <= 0)\n                break;\n\n            err = recv_actor(desc, skb, (int)offset, copy);\n            if (err < 0) {\n                if (!copied)\n                    return err;\n                return (copied > 0) ? copied : err;\n            }\n\n            copied += copy;\n            desc->count -= copy;\n            offset += copy;\n            frag_idx++;\n        }\n\n        if (skb->len <= desc->count)\n            continue;\n\n        copy = min_t(int, skb->len, desc->count);\n        int err = recv_actor(desc, skb, 0, copy);\n        if (err < 0) {\n            if (!copied)\n                return err;\n            return (copied > 0) ? copied : err;\n        }\n\n        copied += copy;\n        desc->count -= copy;\n    }\n\n    return copied ? copied : -EFAULT;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sock_read_data(struct sock *sk, read_descriptor_t *desc, sk_read_actor_t recv_actor)\n{\n    int copied = 0;\n    struct sk_buff *skb;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    while ((skb = skb_dequeue(&sk->sk_receive_queue)) != NULL) {\n        const unsigned char *from;\n        int len = skb->len;\n        unsigned int offset = 0;\n\n        while (len > 0) {\n            int copy = min(len, desc->count);\n            from = skb->data + offset;\n\n            if (copy < 0)\n                break;\n\n            if (copy > 0) {\n                int err = recv_actor(desc, from, copy, 0);\n                if (err < 0) {\n                    if (!copied)\n                        copied = err;\n                    break;\n                }\n                copied += copy;\n                desc->count -= copy;\n                offset += copy;\n                len -= copy;\n            }\n        }\n\n        if (skb->len - offset)\n            skb_pull(skb, offset);\n        else\n            kfree_skb(skb);\n    }\n\n    tcp_rcv_space_adjust(sk);\n    return copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sock_read(struct sock *sk, read_descriptor_t *desc, sk_read_actor_t recv_actor)\n{\n    int copied = 0;\n    struct sk_buff *skb;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    while ((skb = tcp_recv_skb(sk)) != NULL) {\n        int len = skb->len;\n        int offset = 0;\n\n        while (offset < len) {\n            int seg_len = len - offset;\n            int err;\n\n            err = recv_actor(desc, skb->data + offset, seg_len);\n            if (err < 0) {\n                if (!copied)\n                    copied = err;\n                break;\n            }\n\n            copied += err;\n            offset += err;\n        }\n\n        tcp_clean_rbuf(sk);\n        tcp_space(sk);\n    }\n\n    return copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int tcp_read_sock(struct sock *sk, read_descriptor_t *desc, sk_read_actor_t recv_actor)\n{\n    int copied = 0;\n    struct sk_buff *skb, *head_skb = NULL;\n    unsigned int copied_seq, target;\n    int err = 0;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    copied_seq = sk->sk_rcv_nxt;\n    target = desc->count;\n\n    while (copied < target) {\n        skb = skb_peek(&sk->sk_receive_queue);\n        if (!skb)\n            break;\n\n        if (TCP_SKB_CB(skb)->seq == copied_seq) {\n            int skb_len = skb->len;\n\n            if (skb_len) {\n                if (skb == head_skb)\n                    head_skb = NULL;\n\n                if ((err = recv_actor(desc, skb->data, skb_len)) < 0)\n                    break;\n\n                copied += err;\n                copied_seq += err;\n            }\n        } else if (TCP_SKB_CB(skb)->seq < copied_seq) {\n            if ((TCP_SKB_CB(skb)->end_seq - TCP_SKB_CB(skb)->seq) <= (copied_seq - TCP_SKB_CB(skb)->seq)) {\n                __skb_unlink(skb, &sk->sk_receive_queue);\n                kfree_skb(skb);\n            } else {\n                skb_split(skb, copied_seq - TCP_SKB_CB(skb)->seq, GFP_ATOMIC);\n            }\n        } else {\n            break;\n        }\n    }\n\n    if (copied)\n        tcp_rcv_space_adjust(sk, copied);\n\n    sk->sk_rcv_nxt = copied_seq;\n\n    return copied ? copied : err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

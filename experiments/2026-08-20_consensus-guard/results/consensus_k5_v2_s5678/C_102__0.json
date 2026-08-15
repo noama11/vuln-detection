@@ -1,0 +1,62 @@
+{
+  "case_id": "C_102__0",
+  "sample_id": "D/C/102",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1767",
+  "cve_summary": "Use-after-free vulnerability in the shmem_remount_fs function in mm/shmem.c in the Linux kernel before 3.7.10 allows local users to gain privileges or cause a denial of service (system crash) by remounting a tmpfs filesystem without specifying a required mpol (aka mempolicy) mount option.",
+  "changed_file": "mm/shmem.c",
+  "docstring": "Summary: This function remounts a shared memory filesystem with new configuration options.\n\nParameters:\n- sb (struct super_block *): Pointer to the super block representing the filesystem.\n- flags (int *): Pointer to an integer that holds flags for the remount operation.\n- data (char *): String containing options for the remount configuration.\n\nReturns: \n- int: Returns 0 on success, or -EINVAL if the remount operation fails due to invalid parameters.\n\nLogic: The function first parses the options provided in the `data` string into a temporary configuration structure. It then acquires a lock to safely check and update the filesystem's inode and block usage against the new limits. If the new configuration is valid, it updates the filesystem's maximum blocks and inodes, and potentially updates the memory policy if specified. Finally, it releases the lock and returns the appropriate error code or success indicator.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check new max_blocks and max_inodes against current usage",
+        "performed_by_count": 4,
+        "why_it_matters": "If the new configuration reduces the max_blocks or max_inodes below the current usage, it could lead to invalid state or resource exhaustion."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that is performed by a majority of the independent implementations: checking that the new configuration's max_blocks and max_inodes are not less than the current usage before applying the new configuration. This check is performed in all but one of the independent implementations, and the target does not perform it in the same way.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check new limits are not less than current usage",
+        "performed_by_count": 4,
+        "why_it_matters": "If the new configuration's max_inodes or max_blocks is less than the current usage, applying it could result in an invalid state where the filesystem is overcommitted."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that is performed by a majority of the independent implementations: checking that the new configuration's max_inodes and max_blocks are not less than the current usage before applying the new configuration. This check is performed by four out of five independent implementations, but the target does not perform it in the same way, relying instead on a percpu_counter_compare and a different logic for inodes. This could lead to a situation where the new limits are set to values that are already exceeded, potentially causing resource exhaustion or invalid state.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

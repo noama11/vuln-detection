@@ -1,0 +1,34 @@
+{
+  "case_id": "C_205__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int ext4_orphan_add(handle_t *handle, struct inode *inode) {\n    int err = 0;\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);\n    struct ext4_super_block *es = sbi->s_es;\n\n    if (!EXT4_HAS_JOURNAL(inode->i_sb))\n        return 0;\n\n    spin_lock(&sbi->s_orphan_lock);\n    if (ei->i_orphan) {\n        spin_unlock(&sbi->s_orphan_lock);\n        return 0;\n    }\n\n    if (S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode)) {\n        err = ext4_journal_get_write_access(handle, inode->i_sb, NULL);\n        if (err) {\n            spin_unlock(&sbi->s_orphan_lock);\n            return err;\n        }\n\n        err = ext4_handle_dirty_super(handle, inode->i_sb);\n        if (err) {\n            spin_unlock(&sbi->s_orphan_lock);\n            return err;\n        }\n\n        es->s_last_orphan = cpu_to_new32(inode->i_ino);\n        ext4_set_inode_state(inode, EXT4_STATE_ORPHAN);\n        ei->i_orphan = 1;\n        list_add_tail(&ei->i_orphan_list, &sbi->s_orphan);\n    }\n    spin_unlock(&sbi->s_orphan_lock);\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int ext4_orphan_add(handle_t *handle, struct inode *inode) {\n    struct super_block *sb = inode->i_sb;\n    struct ext4_sb_info *sbi = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    int err = 0;\n    int add = 0;\n    __u32 hash;\n\n    if (is_handle_valid(handle) && sbi->s_journal) {\n        down_write(&sbi->s_orphan_lock);\n        if (!is_inode_in_orphan_list(inode)) {\n            if (is_valid_orphan_inode(inode)) {\n                err = journal_get_write_access(handle, ei->i_bh);\n                if (err == 0) {\n                    if (!has_inode_on_disk_orphan(inode)) {\n                        update_orphan_in_superblock(sb, ei->i_ino);\n                        mark_inode_dirty(handle, inode);\n                        add = 1;\n                    }\n                    list_add(&ei->i_orphan, &sbi->s_orphan);\n                }\n            }\n        }\n        up_write(&sbi->s_orphan_lock);\n        if (add && err == 0) {\n            handle->h_err = 0;\n            err = 0;\n        }\n    } else {\n        err = -EINVAL;\n    }\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int ext4_orphan_add(handle_t *handle, struct inode *inode)\n{\n    struct super_block *sb = inode->i_sb;\n    struct ext4_sb_info *sbi = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    int err = 0;\n    int hash;\n\n    if (!EXT4_HAS_JOURNAL(sb))\n        return 0;\n\n    if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode) &&\n        !S_ISLNK(inode->i_mode))\n        return 0;\n\n    hash = ext4_get_hash(inode);\n    down_write(&sbi->s_orphan_lock);\n\n    if (ei->i_hash_ino) {\n        up_write(&sbi->s_orphan_lock);\n        return 0;\n    }\n\n    err = ext4_journal_get_write_access(handle, sb, ei->i_bh, GFP_NOFS);\n    if (err) {\n        up_write(&sbi->s_orphan_lock);\n        return err;\n    }\n\n    ei->i_dtime = 0;\n    ei->i_ctime = ei->i_mtime = ei->i_atime = CURRENT_TIME;\n    ei->i_hash_ino = cpu_to_le32(hash);\n    err = ext4_handle_dirty_metadata(handle, NULL, ei->i_bh);\n    if (err) {\n        up_write(&sbi->s_orphan_lock);\n        return err;\n    }\n\n    if (sbi->s_li_info && !sbi->s_li_info->s_orphan_pending)\n        ext4_li_info_orphan_add(sbi->s_li_info);\n\n    list_add(&ei->i_orphan, &sbi->s_orphan);\n    sbi->s_orphan_count++;\n    sb->s_dirt = 1;\n\n    up_write(&sbi->s_orphan_lock);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int ext4_orphan_add(handle_t *handle, struct inode *inode)\n{\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_super_block *es = &(EXT4_SB(inode->i_sb)->s_es);\n    int err = 0;\n\n    if (!EXT4_HAS_JOURNAL(inode->i_sb))\n        return 0;\n\n    mutex_lock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n\n    if (ei->i_orphan) {\n        mutex_unlock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n        return 0;\n    }\n\n    if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode) &&\n        !S_ISLNK(inode->i_mode)) {\n        mutex_unlock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n        return -EINVAL;\n    }\n\n    err = ext4_journal_get_write_access(handle, inode->i_sb, ei->i_bh, 0);\n    if (err) {\n        mutex_unlock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n        return err;\n    }\n\n    if (es->s_orphans[0] == 0) {\n        es->s_orphans[0] = cpu_to_le32(inode->i_ino);\n        EXT4_SB(inode->i_sb)->s_dirt = 1;\n        err = ext4_handle_dirty_metadata(handle, NULL, inode->i_sb);\n        if (err) {\n            mutex_unlock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n            return err;\n        }\n    }\n\n    ei->i_orphan = 1;\n    list_add(&ei->i_orphan_list, &EXT4_SB(inode->i_sb)->s_orphan_list);\n    mutex_unlock(&EXT4_SB(inode->i_sb)->s_orphan_lock);\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int ext4_add_orphan (handle_t *handle, struct inode *inode) {\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);\n    struct ext4_orphan_list *orphan;\n    int err = 0;\n\n    if (!EXT4_HAS_JOURNAL(inode->i_sb))\n        return -EROFS;\n\n    mutex_lock(&sbi->s_orphan_lock);\n\n    if (ext4_has_feature_orphan(inode->i_sb)) {\n        if (!list_empty(&ei->i_orphan)) {\n            mutex_unlock(&sbi->s_orphan_lock);\n            return 0;\n        }\n    }\n\n    if (!S_ISDIR(inode->i_mode) && !S_ISREG(inode->i_mode) &&\n        !S_ISLNK(inode->i_mode)) {\n        mutex_unlock(&sbi->s_orphan_lock);\n        return -EINVAL;\n    }\n\n    err = ext4_journal_get_write_access(handle, inode->i_sb->s_jdev, 0);\n    if (err < 0)\n        goto out;\n\n    orphan = &sbi->s_orphan;\n    ei->i_orph = cpu_to_le32(inode->i_ino);\n    err = ext4_mark_inode_dirty(handle, inode);\n    if (err < 0)\n        goto out;\n\n    list_add(&ei->i_orphan, &orphan->list);\n    orphan->count++;\n\n    if (ext4_has_feature_orphan(inode->i_sb))\n        ext4_set_orphan(inode);\n\nout:\n    mutex_unlock(&sbi->s_orphan_lock);\n    return err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

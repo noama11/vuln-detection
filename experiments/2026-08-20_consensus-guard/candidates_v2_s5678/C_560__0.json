@@ -1,0 +1,34 @@
+{
+  "case_id": "C_560__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "static void WriteResolutionUnitsAndICCProfileHandling(void)\n{\n  WriteBlobMSBShort(image->blob, 0x0000);\n  WriteBlobMSBShort(image->blob, 0x0000);\n  WriteBlobMSBLong(image->blob, 0x00000000);\n  WriteBlobMSBLong(image->blob, 0x00000000);\n  WriteBlobMSBLong(image->blob, 0x00000000);\n  WriteBlobMSBLong(image->blob, 0x00000000);\n}\n\nstatic void RemoveICCProfileFromResourceBlock(StringInfo *profile)\n{\n  size_t length = GetStringInfoLength(profile);\n  unsigned char *data = GetStringInfoDatum(profile);\n  size_t offset = 0;\n\n  while (offset < length)\n  {\n    if (length - offset < 14)\n      break;\n\n    unsigned int type = PushLongPixel(MSBEndian, (const unsigned char *) data + offset, 0);\n    unsigned int size = PushLongPixel(MSBEndian, (const unsigned char *) data + offset + 8, 0);\n\n    if (type == 0x0000040f)\n    {\n      if (offset + size > length)\n        break;\n\n      memmove(data + offset, data + offset + size, length - (offset + size));\n      length -= size;\n      SetStringInfoLength(profile, length);\n      break;\n    }\n\n    offset += 14 + size;\n  }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void WriteResolutionUnitsAndRemoveICCProfile() {\n  WriteBlobMSBShort(image_blob, resolution_unit);\n  WriteBlobMSBShort(image_blob, x_resolution);\n  WriteBlobMSBShort(image_blob, y_resolution);\n  WriteBlobMSBLong(image_blob, width);\n  WriteBlobMSBLong(image_blob, height);\n\n  RemoveICCProfileFromResourceBlock(icc_profile);\n}\n\nstatic void RemoveICCProfileFromResourceBlock(StringInfo *profile) {\n  size_t length = GetStringInfoLength(profile);\n  unsigned char *data = GetStringInfoDatum(profile);\n  size_t offset = 0;\n\n  while (offset < length - 3) {\n    unsigned int signature = 0;\n    unsigned short version = 0;\n\n    signature = PushLongPixel(MSBEndian, signature, data + offset);\n    if (signature == 0x0000040f) {\n      version = PushShortPixel(MSBEndian, version, data + offset + 4);\n      if (version == 0x0000) {\n        size_t profile_length = PushLongPixel(MSBEndian, 0, data + offset + 8);\n        if (offset + profile_length <= length) {\n          size_t remaining = length - (offset + profile_length);\n          if (remaining > 0) {\n            memmove(data + offset, data + offset + profile_length, remaining);\n            SetStringInfoLength(profile, length - profile_length);\n            length -= profile_length;\n          } else {\n            SetStringInfoLength(profile, offset);\n          }\n        }\n      }\n    }\n    offset += 4;\n  }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "static void RemoveICCProfileFromResourceBlock(StringInfo *icc_profile) {\n    size_t length = GetStringInfoLength(icc_profile);\n    unsigned char *data = GetStringInfoDatum(icc_profile);\n    size_t i = 0;\n\n    while (i + 12 <= length) {\n        size_t offset = i + 4;\n        unsigned int signature = 0;\n        signature = (data[offset] << 24) | (data[offset + 1] << 16) |\n                    (data[offset + 2] << 8) | data[offset + 3];\n\n        if (signature == 0x0000040f) {\n            size_t profile_size = (data[i] << 24) | (data[i + 1] << 16) |\n                                  (data[i + 2] << 8) | data[i + 3];\n            if (i + profile_size > length)\n                return;\n\n            memmove(data + i, data + i + profile_size, length - i - profile_size);\n            length -= profile_size;\n            SetStringInfoLength(icc_profile, length);\n            break;\n        }\n\n        i += 12;\n    }\n}\n\nvoid WriteImageResolutionUnits() {\n    WriteBlobMSBShort(blob_info, 1); /* Resolution unit */\n    WriteBlobMSBShort(blob_info, 300); /* X resolution */\n    WriteBlobMSBShort(blob_info, 300); /* Y resolution */\n    WriteBlobMSBLong(blob_info, 1); /* Bits per sample */\n    WriteBlobMSBLong(blob_info, 0); /* Extra samples */\n    WriteBlobMSBLong(blob_info, 1); /* Sample format */\n    WriteBlobMSBLong(blob_info, 0); /* SMinSampleValue */\n    WriteBlobMSBLong(blob_info, 255); /* SMaxSampleValue */\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "static void RemoveICCProfileFromResourceBlock(StringInfo *icc_profile) {\n    size_t length;\n    unsigned int *p;\n    unsigned int signature;\n    unsigned int start;\n    size::type profile_length;\n\n    if (icc_profile == NULL)\n        return;\n\n    length = GetStringInfoLength(icc_profile);\n    p = (unsigned int *) GetStringInfoDatum(icc_profile);\n\n    for (start = 0; start < (length - 3);) {\n        signature = PushLongPixel(MSBEndian, p);\n        if (signature != 0x0000040f)\n            p++;\n        else {\n            size_t remaining;\n            unsigned char *q;\n\n            remaining = length - (start * sizeof(*p));\n            q = (unsigned char *) p + 4;\n            memmove(q - 4, q, remaining);\n            length -= 4;\n            SetStringInfoLength(icc_profile, length);\n            p = (unsigned int *) GetStringInfoDatum(icc_profile);\n            length = GetStringInfoLength(icc_profile);\n        }\n        start++;\n    }\n}\n\nvoid ProcessImageBlob() {\n    WriteBlobMSBShort(image, resolution_unit);\n    WriteBlobMSBLong(image, x_resolution);\n    WriteBlobMSBLong(image, y_resolution);\n    WriteBlobMSBShort(image, resolution);\n    WriteBlobMSBLong(image, width);\n    WriteBlobMSBLong(image, height);\n    RemoveICCProfileFromResourceBlock(icc_profile);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "static void RemoveICCProfileFromResourceBlock(StringInfo *icc_profile) {\n  if (icc_profile == NULL)\n    return;\n\n  size_t length = GetStringInfoLength(icc_profile);\n  unsigned char *data = GetStringInfoDatum(icc_profile);\n  size_t offset = 0;\n\n  while (offset < length - 3) {\n    unsigned int tag = (data[offset] << 24) | (data[offset + 1] << 16) |\n                      (data[offset + 2] << 8) | data[offset + 3];\n\n    if (tag == 0x0000040f) {\n      size_t new_length = length - 4;\n      memmove(&data[offset], &data[offset + 4], new_length - offset);\n      SetStringInfoLength(icc_profile, new_length);\n      return;\n    }\n    offset += 4;\n  }\n}\n\nvoid WriteImageResolutionUnits(Image *image) {\n  WriteBlobMSBShort(image->blob, 0x02);  // Units\n  WriteBlobMSBShort(image->blob, 0x01);  // XResolution\n  WriteBlobMSBShort(image->blob, 0x01);  // YResolution\n  WriteBlobMSBLong(image->blob, 0x0000040f);  // ResolutionX\n  WriteBlobMSBLong(image->blob, 0x0000040f);  // ResolutionY\n  RemoveICCProfileFromResourceBlock(image->icc_profile);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

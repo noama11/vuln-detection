@@ -1,0 +1,34 @@
+{
+  "case_id": "C_55__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int kvm_create_vcpu(struct kvm *kvm, u32 id) {\n    int ret;\n    struct kvm_vcpu *vcpu;\n\n    if (id >= KVM_MAX_VCPUS)\n        return -EINVAL;\n\n    if (kvm->online_vcpus >= KVM_MAX_VCPUS)\n        return -ENOSPC;\n\n    if (kvm->vcpus[id])\n        return -EEXIST;\n\n    vcpu = kzalloc(sizeof(struct kvm_vcpu), GFP_KERNEL);\n    if (!vcpu)\n        return -ENOMEM;\n\n    vcpu->kvm = kvm;\n    vcpu->vcpu_id = id;\n\n    ret = kvm_setup_vcpu(vcpu);\n    if (ret < 0)\n        goto free_vcpu;\n\n    ret = init_preemption_notifier(&vcpu->preempt_notifier, vcpu);\n    if (ret < 0)\n        goto cleanup_vcpu;\n\n    kvm->vcpus[id] = vcpu;\n    kvm->online_vcpus++;\n\n    kvm_arch_post_vcpu_creation(vcpu);\n\n    return 0;\n\ncleanup_vcpu:\n    kvm_cleanup_vcpu(vcpu);\nfree_vcpu:\n    kfree(vcpu);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int kvm_vcpu_create(struct kvm *kvm, u32 id)\n{\n\tint ret;\n\tstruct kvm_vcpu *vcpu;\n\n\tif (id >= KVM_MAX_VCPUS)\n\t\treturn -EINVAL;\n\n\tvcpu = kzalloc(sizeof(struct kvm_vcpu), GFP_KERNEL);\n\tif (!vcpu)\n\t\treturn -ENOMEM;\n\n\tvcpu->kvm = kvm;\n\tvcpu->vcpu_id = id;\n\n\tret = kvm_arch_vcpu_create(vcpu);\n\tif (ret)\n\t\tgoto free_vcpu;\n\n\tret = kvm_init_vcpu(vcpu);\n\tif (ret)\n\t\tgoto arch_cleanup;\n\n\tif (atomic_read(&kvm->online_vcpus) >= KVM_MAX_VCPUS) {\n\t\tret = -EINVAL;\n\t\tgoto arch_cleanup;\n\t}\n\n\tmutex_lock(&kvm->lock);\n\tif (kvm->vcpus[id]) {\n\t\tret = -EEXIST;\n\t\tgoto unlock;\n\t}\n\tkvm->vcpus[id] = vcpu;\n\tmutex_unlock(&kvm->lock);\n\n\tatomic_inc(&kvm->online_vcpus);\n\tkvm_arch_vcpu_postcreate(vcpu);\n\n\treturn 0;\n\nunlock:\n\tmutex_unlock(&kvm->lock);\narch_cleanup:\n\tkvm_arch_vcpu_destroy(vcpu);\nfree_vcpu:\n\tkfree(vcpu);\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int kvm_vcpu_create(struct kvm *kvm, u32 id) {\n    int ret;\n    struct kvm_vcpu *vcpu;\n\n    if (id >= KVM_MAX_VCPUS)\n        return -EINVAL;\n\n    vcpu = kvm_arch_vcpu_create(kvm, id);\n    if (IS_ERR(vcpu))\n        return PTR_ERR(vcpu);\n\n    ret = kvm_vcpu_init(vcpu);\n    if (ret) {\n        kvm_arch_vcpu_free(vcpu);\n        return ret;\n    }\n\n    spin_lock(&kvm->lock);\n    if (kvm->online_vcpus >= kvm->max_vcpus) {\n        spin_unlock(&kvm->lock);\n        kvm_vcpu_uninit(vcpu);\n        kvm_arch_vcpu_free(vcpu);\n        return -EINVAL;\n    }\n\n    if (id < KVM_MAX_VCPUS && kvm->vcpus[id]) {\n        spin_unlock(&kvm->lock);\n        kvm_vcpu_uninit(vcpu);\n        kvm_arch_vcpu_free(vcpu);\n        return -EEXIST;\n    }\n\n    kvm->vcpus[id] = vcpu;\n    kvm->online_vcpus++;\n    spin_unlock(&kvm->lock);\n\n    kvm_register_vcpu(vcpu);\n\n    kvm_arch_post_create_vcpu(vcpu);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int kvm_vcpu_create(struct kvm *kvm, u32 id)\n{\n\tint ret;\n\tstruct kvm_vcpu *vcpu;\n\n\tif (id >= KVM_MAX_VCPUS)\n\t\treturn -EINVAL;\n\n\tif (kvm->online_vcpus >= KVM_MAX_VCPUS)\n\t\treturn -EINVAL;\n\n\tvcpu = kmem_cache_zalloc(kvm_vcpu_cache, GFP_KERNEL);\n\tif (!vcpu)\n\t\treturn -ENOMEM;\n\n\tvcpu->kvm = kvm;\n\tvcpu->vcpu_id = id;\n\n\tret = kvm_vcpu_init(vcpu);\n\tif (ret < 0)\n\t\tgoto free_vcpu;\n\n\tret = kvm_create_preemption_notifier(vcpu);\n\tif (ret < 0)\n\t\tgoto deinit_vcpu;\n\n\tif (test_bit(id, kvm->vcpu_bitmap)) {\n\t\tret = -EEXIST;\n\t\tgoto destroy_preemption_notifier;\n\t}\n\n\tset_bit(id, kvm->vcpu_bitmap);\n\tkvm->online_vcpus++;\n\n\tkvm_register_vcpu(vcpu);\n\n\tkvm_arch_post_vcpu_creation(vcpu);\n\n\treturn 0;\n\ndestroy_preemption_notifier:\n\tkvm_destroy_preemption_notifier(vcpu);\ndeinit_vcpu:\n\tkvm_vcpu_deinit(vcpu);\nfree_vcpu:\n\tkmem_cache_free(kvm_vcpu_cache, vcpu);\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int kvm_vm_create_vcpu(struct kvm *kvm, u32 id) {\n    int r;\n    struct kvm_vcpu *vcpu;\n\n    if (id >= KVM_MAX_VCPUS)\n        return -EINVAL;\n\n    if (kvm->online_vcpus >= KVM_MAX_VCPUS)\n        return -ENOSPC;\n\n    vcpu = kzalloc(sizeof(struct kvm_vcpu), GFP_KERNEL);\n    if (!vcpu)\n        return -ENOMEM;\n\n    r = kvm_vcpu_setup(vcpu, kvm, id);\n    if (r)\n        goto free_vcpu;\n\n    r = setup_vcpu_preempt_notifier(vcpu);\n    if (r)\n        goto cleanup_vcpu;\n\n    if (id < kvm->online_vcpus) {\n        r = -EEXIST;\n        goto cleanup_notifier;\n    }\n\n    kvm->vcpu_list[id] = vcpu;\n    kvm->online_vcpus++;\n\n    r = kvm_arch_post_create_vcpu(vcpu);\n    if (r)\n        goto cleanup_notifier;\n\n    return 0;\n\ncleanup_notifier:\n    teardown_vcpu_preempt_notifier(vcpu);\ncleanup_vcpu:\n    kvm_vcpu_destroy(vcpu);\nfree_vcpu:\n    kfree(vcpu);\n    return r;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

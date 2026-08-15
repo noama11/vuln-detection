@@ -1,0 +1,63 @@
+MagickBooleanType ReadPSDPixelData(Image *image, size_t channels, size_t row, ssize_t type, const unsigned char *pixels, ExceptionInfo *exception) {
+    register PixelInt *p;
+    register ssize_t x;
+    ssize_t depth;
+    size_t packet_size;
+    ssize_t channel;
+    MagickBooleanType status = MagickTrue;
+
+    if (image->storage_class == PseudoClass) {
+        depth = image->depth;
+        packet_size = depth / 8 + ((depth % 8) ? 1 : 0);
+    }
+    else {
+        packet_size = 3;
+        if ((image->alpha_trait != UndefinedPixelTrait) && (channels > 3))
+            packet_size++;
+    }
+
+    p = GetPixelCache(image, row, 0, image->columns, 1, &exception);
+    if (p == (PixelInt *) NULL)
+        return MagickFalse;
+
+    for (x = 0; x < (ssize_t) image->columns; x++) {
+        for (channel = 0; channel < (ssize_t) packet_size; channel++) {
+            if (type == 0) {
+                if (image->storage_class == PseudoClass) {
+                    register ssize_t value;
+
+                    value = (ssize_t) *pixels++;
+                    if (depth <= 8)
+                        *p = (PixelInt) value;
+                    else {
+                        value = (value << 8) | *pixels++;
+                        *p = (PixelInt) value;
+                    }
+                }
+                else {
+                    register ssize_t value;
+
+                    value = (ssize_t) *pixels++;
+                    if (channel < 3)
+                        *p = ScaleCharToQuantum((unsigned char) value);
+                    else if (image->alpha_trait != UndefinedPixelTrait)
+                        *p = ScaleCharToQuantum((unsigned char) value);
+                    p++;
+                }
+            }
+            else {
+                register ssize_t value;
+
+                value = (ssize_t) *pixels++;
+                if (channel < 3)
+                    *p = ScaleShortToQuantum((unsigned short) value);
+                else if (image->alpha_trait != UndefinedPixelTrait)
+                    *p = ScaleShortToQuantum((unsigned short) value);
+                p++;
+            }
+        }
+    }
+
+    SyncPixelCache(image, exception);
+    return status;
+}

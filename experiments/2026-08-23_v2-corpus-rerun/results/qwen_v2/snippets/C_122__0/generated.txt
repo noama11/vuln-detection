@@ -1,0 +1,69 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+int apply_performance_configurations(config_fn_t fn, void* data) {
+    int total_processed = 0;
+    FILE *fp = NULL;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    // Check for exclusive configuration file
+    if (config_exclusive_filename && *config_exclusive_filename != '\0') {
+        fp = fopen(config_exclusive_filename, "r");
+        if (fp) {
+            while ((read = getline(&line, &len, fp)) != -1) {
+                if (line[read - 1] == '\n') {
+                    line[read - 1] = '\0';
+                }
+                total_processed += fn(line, data);
+            }
+            fclose(fp);
+        }
+    }
+
+    // Check for system-wide configuration file
+    fp = fopen("/etc/performance.conf", "r");
+    if (fp) {
+        while ((read = getline(&line, &len, fp)) != -1) {
+            if (line[read - 1] == '\n') {
+                line[read - 1] = '\0';
+            }
+            total_processed += fn(line, data);
+        }
+        fclose(fp);
+    }
+
+    // Check for user-specific configuration file
+    char *home = getenv("HOME");
+    if (home) {
+        size_t path_len = strlen(home) + strlen("/.performance.conf") + 1;
+        char *user_config_path = malloc(path_len);
+        if (user_config_path) {
+            snprintf(user_config_path, path_len, "%s/.performance.conf", home);
+            fp = fopen(user_config_path, "r");
+            if (fp) {
+                while ((read = getline(&line, &len, fp)) != -1) {
+                    if (line[read - 1] == '\n') {
+                        line[read - 1] = '\0';
+                    }
+                    total_processed += fn(line, data);
+                }
+                fclose(fp);
+            }
+            free(user_config_path);
+        }
+    }
+
+    if (total_processed == 0) {
+        return -1;
+    }
+
+    if (line) {
+        free(line);
+    }
+
+    return total_processed;
+}

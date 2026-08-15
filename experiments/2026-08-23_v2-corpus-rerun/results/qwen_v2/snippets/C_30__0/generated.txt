@@ -1,0 +1,50 @@
+int handle_invalid_entry(struct fuse_conn *fc, unsigned int size, struct fuse_copy_state *cs) {
+    char *name = NULL;
+    struct output_data *out = NULL;
+    int err = 0;
+
+    if (size < sizeof(*out)) {
+        err = -EINVAL;
+        goto out;
+    }
+
+    name = malloc(size);
+    if (!name) {
+        err = -ENOMEM;
+        goto out;
+    }
+
+    out = malloc(sizeof(*out));
+    if (!out) {
+        err = -ENOMEM;
+        goto free_name;
+    }
+
+    if (fuse_copy_state_read(cs, name, size, 0) != size) {
+        err = -EFAULT;
+        goto free_out;
+    }
+
+    if (strlen(name) + 1 > size) {
+        err = -EINVAL;
+        goto free_out;
+    }
+
+    out->name = name;
+    out->hash = compute_hash(name); // Assume compute_hash is a valid function
+
+    if (reverse_invalid_entry(fc, out)) {
+        err = -EIO;
+        goto free_out;
+    }
+
+    // Successfully handled
+    goto free_out;
+
+free_out:
+    free(out);
+free_name:
+    free(name);
+out:
+    return err;
+}

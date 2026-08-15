@@ -1,0 +1,34 @@
+{
+  "case_id": "C_69__2",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {\n    int copied = 0;\n    int err = 0;\n\n    if (!sock || !m || !buf_len)\n        return -EINVAL;\n\n    lock_sock(sock);\n\n    while (copied < buf_len) {\n        struct sk_buff *skb;\n        int skb_len;\n\n        skb = skb_peek(&sock->sk->sk_receive_queue);\n        if (!skb) {\n            err = wait_for_more_data(sock, flags);\n            if (err < 0)\n                break;\n            continue;\n        }\n\n        skb_len = skb->len;\n        int bytes_to_copy = min(skb_len, (int)(buf_len - copied));\n\n        err = copy_data_to_msghdr(m, skb->data, bytes_to_copy);\n        if (err < 0)\n            break;\n\n        copied += bytes_to_copy;\n        __skb_pull(skb, bytes_to_copy);\n\n        if (skb->len == 0)\n            __skb_unlink(skb, &sock->sk->sk_receive_queue);\n    }\n\n    release_sock(sock);\n\n    if (copied > 0)\n        return copied;\n    else\n        return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int receive_socket_data(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {\n    int bytes_copied = 0;\n    int result;\n    struct sk_buff *skb;\n\n    if (!sock || !m || !buf_len) {\n        return -EINVAL;\n    }\n\n    lock_sock(sock->sk);\n\n    while (buf_len > 0) {\n        skb = skb_peek(&sock->sk->sk_receive_queue);\n        if (!skb) {\n            result = sock_wait_for_data(sock, flags);\n            if (result < 0) {\n                bytes_copied = result;\n                break;\n            }\n            continue;\n        }\n\n        result = skb_copy_datagram_iovec(skb, 0, m, buf_len);\n        if (result < 0) {\n            bytes_copied = result;\n            break;\n        }\n\n        bytes_copied += result;\n        buf_len -= result;\n\n        skb_unlink(skb, &sock->sk->sk_receive_queue);\n        kfree_skb(skb);\n    }\n\n    release_sock(sock->sk);\n    return bytes_copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int receive_socket_data(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {\n    int ret = 0;\n    struct sock *sk = sock->sk;\n    size_t copied = 0;\n\n    if (!sock || !m || !buf_len) {\n        return -EINVAL;\n    }\n\n    lock_sock(sk);\n\n    while (copied < buf_len) {\n        struct sk_buff *skb = skb_peek(&sk->sk_receive_queue);\n\n        if (!skb) {\n            if (sk->sk_err || (sk->sk_shutdown & RCV_SHUTDOWN)) {\n                if (copied == 0) {\n                    ret = -sk->sk_err ? -sk->sk_err : 0;\n                }\n                break;\n            }\n\n            if (flags & MSG_DONTWAIT) {\n                ret = -EAGAIN;\n                break;\n            }\n\n            wait_for_receive(sk);\n            continue;\n        }\n\n        size_t len = min(skb->len, buf_len - copied);\n        ret = skb_copy_datagram_iovec(skb, 0, m->msg_iter.iov, len);\n\n        if (ret < 0) {\n            break;\n        }\n\n        copied += len;\n\n        if (ret == 0) {\n            break;\n        }\n\n        skb_pop(&sk->sk_receive_queue);\n    }\n\n    release_sock(sk);\n    return copied ? copied : ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *m,\n                 size_t buf_len, int flags)\n{\n    int bytes_copied = 0;\n    int err = 0;\n    size_t remaining = buf_len;\n\n    lock_sock(sock);\n\n    while (remaining > 0) {\n        struct sk_buff *skb;\n        size_t len;\n\n        skb = skb_dequeue(&sock->sk->sk_receive_queue);\n        if (!skb) {\n            err = -EAGAIN;\n            break;\n        }\n\n        len = min(skb->len, remaining);\n        err = memcpy_to_msg(m, skb->data, len);\n        if (err < 0) {\n            kfree_skb(skb);\n            break;\n        }\n\n        bytes_copied += len;\n        remaining -= len;\n        m->msg_flags = err;\n\n        kfree_skb(skb);\n\n        if (flags & MSG_WAITALL && bytes_copied < (int)buf_len) {\n            release_sock(sock);\n            sock->sk->sk_data_ready(sock->sk, 0);\n            lock_sock(sock);\n        } else {\n            break;\n        }\n    }\n\n    release_sock(sock);\n\n    if (err < 0 && bytes_copied == 0)\n        return err;\n\n    return bytes_copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int receive_socket_data(struct kiocb *iocb, struct socket *sock, struct msghdr *m,\n                        size_t buf_len, int flags) {\n    struct sock *sk = sock->sk;\n    int copied = 0;\n    int err = 0;\n\n    if (!sock->file) {\n        return -ENOTCONN;\n    }\n\n    lock_sock(sk);\n    while (copied < (int)buf_len) {\n        struct sk_buff *skb;\n        const int prev_len = copied;\n\n        skb = skb_peek(&sk->sk_receive_queue);\n        if (!skb) {\n            err = sock->ops->poll_wait(sock, m->msg_control, flags);\n            if (err < 0)\n                break;\n            if (sk->sk_err || (sk->sk_state == TCP_CLOSE)) {\n                err = sk->sk_err ? : -ENOTCONN;\n                break;\n            }\n            if (sk->sk_shutdown & RCV_SHUTDOWN)\n                break;\n            if (flags & MSG_DONTWAIT) {\n                err = -EAGAIN;\n                break;\n            }\n            release_sock(sk);\n            schedule();\n            lock_sock(sk);\n            continue;\n        }\n\n        copied = skb->len;\n        if (copied > (int)buf_len)\n            copied = (int)buf_len;\n\n        err = skb_copy_datagram_iovec(skb, 0, m->msg_iov, copied);\n        if (err) {\n            break;\n        }\n\n        sock_rfree(skb);\n        __skb_unlink(skb, &sk->sk_receive_queue);\n        kfree_skb(skb);\n        break;\n    }\n\n    release_sock(sk);\n    if (copied > 0 || (copied == 0 && prev_len == 0))\n        return copied;\n    return err ? err : -ENOMSG;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

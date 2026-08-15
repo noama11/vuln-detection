@@ -1,0 +1,62 @@
+{
+  "case_id": "C_179__0",
+  "sample_id": "D/C/179",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-1445",
+  "cve_summary": "The wanxl_ioctl function in drivers/net/wan/wanxl.c in the Linux kernel before 3.11.7 does not properly initialize a certain data structure, which allows local users to obtain sensitive information from kernel memory via an ioctl call.",
+  "changed_file": "drivers/net/wan/wanxl.c",
+  "docstring": "\"\"\"\nSummary: \nHandles ioctl requests for WAN interface settings.\n\nParameters: \ndev (struct net_device *): Pointer to the network device.\nifr (struct ifreq *): Pointer to the interface request structure.\ncmd (int): Command identifier for the ioctl operation.\n\nReturns: \nint: Returns 0 on success, negative error codes on failure (e.g., -ENOBUFS, -EFAULT, -EPERM, -EBUSY, -EINVAL).\n\nLogic: \nThe function first checks if the command is SIOCWANDEV; if not, it delegates to hdlc_ioctl. For the IF_GET_IFACE case, it prepares to return the current sync_serial_settings. If the requested size is insufficient, it updates the size and returns an error. It initializes the settings and copies them to user space. For the IF_IFACE_SYNC_SERIAL case, it checks for administrative permissions, device status, and validates the incoming settings before updating the clocking status. Any unrecognized command is also passed to hdlc_ioctl.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Bounds check before copy_to_user in IF_GET_IFACE case",
+        "performed_by_count": 4,
+        "why_it_matters": "If the user buffer is too small, copy_to_user could overwrite adjacent memory, leading to memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a bounds check when copying data to user space in the IF_GET_IFACE case. Most independent implementations perform a check to ensure the user buffer is large enough before copying data to it. The target does not perform this check before calling copy_to_user, which could lead to a buffer overflow if the user buffer is too small.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "size check before copy_from_user in IF_IFACE_SYNC_SERIAL",
+        "performed_by_count": 4,
+        "why_it_matters": "If the user-provided structure is smaller than expected, the copy_from_user call may read invalid or uninitialized data, leading to incorrect behavior or potential memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a bounds check on the size of the user-provided structure when copying data from user space in the IF_IFACE_SYNC_SERIAL case. A majority of the independent implementations perform this check to ensure the structure is of the expected size before copying, which prevents potential buffer overflow or invalid data handling. The target does not perform this check, leaving it exposed to malformed input.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

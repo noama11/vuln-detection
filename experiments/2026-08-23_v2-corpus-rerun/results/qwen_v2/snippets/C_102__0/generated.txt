@@ -1,0 +1,25 @@
+int remount_shmem(struct super_block *sb, int *flags, char *data) {
+    struct shmem_config new_config;
+    int ret = 0;
+
+    if (parse_shmem_options(data, &new_config) < 0)
+        return -EINVAL;
+
+    spin_lock(&sb->s_lock);
+
+    if (new_config.max_blocks < sb->s_bdev->bd_inode->i_blocks ||
+        new_config.max_inodes < sb->s_inodes) {
+        ret = -EINVAL;
+        goto out;
+    }
+
+    sb->s_max_blocks = new_config.max_blocks;
+    sb->s_max_inodes = new_config.max_inodes;
+
+    if (new_config.policy)
+        set_memory_policy(sb, new_config.policy);
+
+out:
+    spin_unlock(&sb->s_lock);
+    return ret;
+}

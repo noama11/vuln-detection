@@ -1,0 +1,53 @@
+int genl_register_family(struct genl_family *family) {
+    int err;
+
+    if (!family || !family->ops || !family->name)
+        return -EINVAL;
+
+    mutex_lock(&genl_mutex);
+
+    if (genl_family_find(family->name)) {
+        mutex_unlock(&genl_mutex);
+        return -EEXIST;
+    }
+
+    if (family->id == GENL_ID_GENERATE) {
+        family->id = genl_get_free_id();
+        if (family->id < 0) {
+            mutex_unlock(&genl_mutex);
+            return family->id;
+        }
+    } else if (family->id < GENL_RESERVED_START) {
+        mutex_unlock(&genl_mutex);
+        return -ERANGE;
+    }
+
+    if (family->n_attrs) {
+        family->attrs = kcalloc(family->n_attrs, sizeof(*family->attrs), GFP_KERNEL);
+        if (!family->attrs) {
+            mutex_unlock(&genl_mutex);
+            return -ENOMEM;
+        }
+    }
+
+    err = genl_validate_ops(family);
+    if (err < 0)
+        goto err_out;
+
+    err = genl_validate_mcgrps(family);
+    if (err < 0)
+        goto err_out;
+
+    list_add_tail(&family->list, &genl_families);
+    mutex_unlock(&genl_mutex);
+
+    genl_notify_family_registered(family);
+    genl_notify_mcgrps_registered(family);
+
+    return 0;
+
+err_out:
+    kfree(family->attrs);
+    mutex_unlock(&genl_mutex);
+    return err;
+}

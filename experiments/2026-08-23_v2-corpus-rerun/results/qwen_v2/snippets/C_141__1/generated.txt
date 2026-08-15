@@ -1,0 +1,45 @@
+int decrypt_data(struct ceph_crypto_key *secret, void **p, void *end, void **obuf, size_t olen) {
+    size_t data_len;
+    char *in = *p;
+    char *out = *obuf;
+    int ret;
+
+    if (in + sizeof(data_len) > end) {
+        return -EINVAL;
+    }
+
+    memcpy(&data_len, in, sizeof(data_len));
+    in += sizeof(data_len);
+
+    if (data_len > (size_t)(end - in)) {
+        return -EINVAL;
+    }
+
+    if (data_len > olen) {
+        out = malloc(data_len);
+        if (!out) {
+            return -ENOMEM;
+        }
+        *obuf = out;
+        olen = data_len;
+    }
+
+    /* Perform decryption (example assumes symmetric encryption) */
+    ret = ceph_decrypt(secret, in, data_len, out);
+    if (ret < 0) {
+        return ret;
+    }
+
+    /* Check version and magic number (example) */
+    uint32_t version, magic;
+    memcpy(&version, out, sizeof(version));
+    memcpy(&magic, out + sizeof(version), sizeof(magic));
+
+    if (version != 1 || magic != 0xCEPH) {
+        return -EINVAL;
+    }
+
+    *p = in + data_len;
+    *obuf = out;
+    return data_len;
+}

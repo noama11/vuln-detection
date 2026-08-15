@@ -1,0 +1,51 @@
+ACPI_STATUS AcpiPsCompleteOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status)
+{
+    ACPI_PARSE_OBJECT *PrevOp;
+
+    if (!WalkState || !Op)
+    {
+        return (AE_BAD_PARAMETER);
+    }
+
+    if (WalkState->Control.State != PSI_CONT)
+    {
+        return (AE_BAD_PARAMETER);
+    }
+
+    if (Status == AE_CTRL_TRANSFERRING)
+    {
+        WalkState->Control.State = PSI_CONT;
+        return (AE_OK);
+    }
+
+    if (Status == AE_CTRL_PENDING)
+    {
+        return (AE_OK);
+    }
+
+    if (WalkState->Control.AscendingCallback)
+    {
+        Status = WalkState->Control.AscendingCallback(WalkState, Op, Status);
+        if (ACPI_FAILURE(Status))
+        {
+            return (Status);
+        }
+    }
+
+    PrevOp = Op->Common.Next;
+    if (PrevOp)
+    {
+        if (PrevOp->Common.Value.Type == ACPI_PARSEOP_SCOPE)
+        {
+            if (WalkState->Control.State == PSI_CONT)
+            {
+                WalkState->Control.State = PSI_NESTED;
+            }
+
+            WalkState->Control.ScopeDepth--;
+            WalkState->Control.ScopeInfo = WalkState->Control.ScopeInfo->Prev;
+        }
+    }
+
+    return (Status);
+}

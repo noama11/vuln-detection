@@ -1,0 +1,34 @@
+{
+  "case_id": "C_353__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/key.h>\n#include <linux/errno.h>\n\nint get_dest_keyring(struct key **_dest_keyring) {\n    struct key *keyring;\n    int ret;\n\n    if (*_dest_keyring) {\n        keyring = *_dest_keyring;\n    } else {\n        keyring = current_cred()->thread_keyring;\n        if (!keyring) {\n            keyring = current_cred()->session_keyring;\n            if (!keyring) {\n                keyring = key_get(KEY_ALLOC_PROCESS_KEYRING);\n                if (IS_ERR(keyring)) {\n                    return PTR_ERR(keyring);\n                }\n            }\n        }\n    }\n\n    ret = key_task_permission(current, keyring, KEY_SEARCH | KEY_WRITE);\n    if (ret < 0) {\n        key_put(keyring);\n        return ret;\n    }\n\n    *_dest_keyring = keyring;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "#include <linux/key.h>\n#include <linux/cred.h>\n#include <linux/errno.h>\n\nint get_dest_keyring(struct key **_dest_keyring) {\n    struct key *dest_keyring = *_dest_keyring;\n    struct key *default_keyring = NULL;\n    int ret = 0;\n\n    if (dest_keyring) {\n        /* Check if the provided keyring is valid and has write access */\n        if (key_validate(dest_keyring) < 0) {\n            ret = -EINVAL;\n            goto out;\n        }\n\n        if (!key_task_permission(current_cred(), dest_keyring, KEY_LOOKUP)) {\n            ret = -EACCES;\n            goto out;\n        }\n\n        *_dest_keyring = dest_keyring;\n        return 0;\n    }\n\n    /* Attempt to find the default keyring */\n    default_keyring = find_default_keyring();\n    if (!default_keyring) {\n        ret = -ENOENT;\n        goto out;\n    }\n\n    /* Ensure the default keyring is writable */\n    if (key_validate(default_keyring) < 0) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    if (!key_task_permission(current_cred(), default_keyring, KEY_LOOKUP)) {\n        ret = -EACCES;\n        goto out;\n    }\n\n    *_dest_keyring = default_keyring;\n    return 0;\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/key.h>\n#include <linux/err.h>\n#include <linux/cred.h>\n\nint get_dest_keyring(struct key **_dest_keyring) {\n    struct key *dest_keyring = *_dest_keyring;\n    struct key *default_keyring = NULL;\n    int ret;\n\n    if (!dest_keyring) {\n        struct cred *cred = current_cred();\n        default_keyring = find_keyring_by_uid(cred->uid);\n        if (IS_ERR(default_keyring)) {\n            return PTR_ERR(default_keyring);\n        }\n        dest_keyring = default_keyring;\n    }\n\n    ret = key_validate(dest_keyring);\n    if (ret < 0) {\n        return ret;\n    }\n\n    if (!capable(CAP_SYS_ADMIN) && !key_permission(dest_keyring, KEY_NEED_WRITE)) {\n        return -EACCES;\n    }\n\n    *_dest_keyring = dest_keyring;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <linux/key.h>\n#include <linux/errno.h>\n\nint get_dest_keyring(struct key **_dest_keyring) {\n    struct key *keyring = NULL;\n    int ret = 0;\n\n    if (!_dest_keyring)\n        return -EINVAL;\n\n    /* Check if a destination keyring is provided */\n    if (*_dest_keyring) {\n        keyring = *(_dest_keyring);\n    } else {\n        /* Attempt to find a suitable default keyring based on current credentials */\n        keyring = key_for_uid(current_uid());\n        if (IS_ERR(keyring))\n            return PTR_ERR(keyring);\n    }\n\n    /* Perform permission checks to ensure write access */\n    ret = key_permission(keyring, KEY_LOOKUP);\n    if (ret < 0)\n        return ret;\n\n    /* Assign the keyring back to the destination pointer */\n    *_dest_keyring = keyring;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/key.h>\n#include <linux/errno.h>\n\nint construct_dest_keyring(struct key **_dest_keyring) {\n    struct key *dest_keyring = NULL;\n    int ret;\n\n    if (_dest_keyring == NULL)\n        return -EINVAL;\n\n    if (*_dest_keyring != NULL) {\n        dest_keyring = *(_dest_keyring);\n    } else {\n        struct cred *cred = current_cred();\n        struct key *default_keyring;\n\n        default_keyring = key_get(cred->uid);\n        if (IS_ERR(default_keyring))\n            return PTR_ERR(default_keyring);\n\n        ret = key_permission(current, default_keyring, KEY_PERM_WRITE);\n        if (ret) {\n            key_put(default_keyring);\n            return ret;\n        }\n\n        dest_keyring = default_keyring;\n    }\n\n    *(_dest_keyring) = dest_keyring;\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

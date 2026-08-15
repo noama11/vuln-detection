@@ -1,0 +1,42 @@
+int set_floppy_geometry(unsigned int cmd, struct floppy_struct *g, int drive, int type, struct block_device *bdev) {
+    if (!g || drive < 0 || drive >= N_DRIVE) {
+        return -EINVAL;
+    }
+
+    if (type != -1) {
+        if (!capable(CAP_SYS_ADMIN)) {
+            return -EPERM;
+        }
+
+        if (type < 0 || type >= N_FLOPPY_TYPE) {
+            return -EINVAL;
+        }
+
+        /* Update the floppy type and sizes */
+        g->type = type;
+        g->size = floppy_type[type].size;
+        g->sectors = floppy_type[type].sectors;
+        g->heads = floppy_type[type].heads;
+        g->track_core = floppy_type[type].track_core;
+    } else {
+        if (g->type < 0 || g->type >= N_FLOPPY_TYPE) {
+            return -EINVAL;
+        }
+
+        /* Handle disk changes and update user parameters */
+        if (disk_change(drive)) {
+            return -ENODEV;
+        }
+
+        /* Update the user parameters */
+        g->track_core = 0;
+        g->size = floppy_type[g->type].size;
+        g->sectors = floppy_type[g->type].sectors;
+        g->heads = floppy_type[g->type].heads;
+    }
+
+    /* Invalidate buffer cache to maintain consistency */
+    invalidate floppy_request_queue[drive];
+
+    return 0;
+}

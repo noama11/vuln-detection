@@ -1,0 +1,56 @@
+{
+  "case_id": "C_122__1",
+  "sample_id": "D/C/122",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-2905",
+  "cve_summary": "Untrusted search path vulnerability in the perf_config function in tools/perf/util/config.c in perf, as distributed in the Linux kernel before 3.1, allows local users to overwrite arbitrary files via a crafted config file in the current working directory.",
+  "changed_file": "tools/perf/util/config.c",
+  "docstring": "Summary: This function loads performance configuration settings from specified files based on the environment and system settings.\n\nParameters:\nfn (config_fn_t): A function pointer used to process the configuration data.\ndata (void*): A pointer to user-defined data passed to the configuration function.\n\nReturns: \nint: The number of successful configurations loaded, or -1 if no configuration files were found.\n\nLogic: The function first checks if a specific configuration file is set via the `config_exclusive_filename` variable. If so, it loads configurations from that file. It then checks for a system-wide configuration file and attempts to read it if accessible. Next, it checks for a user-specific configuration file in the user's home directory. If any configuration files are successfully read, it returns the count of successful loads; otherwise, it returns -1 indicating no configurations were found.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\n\n// Assuming config_exclusive_filename is a global variable defined elsewhere\nextern char *config_exclusive_filename;\n\n// Placeholder for the function signature\nint load_performance_configurations(config_fn_t fn, void *data) {\n    int count = 0;\n    char *home_dir = getenv(\"HOME\");\n    char system_config_path[] = \"/etc/performance.conf\";\n    char user_config_path[1024];\n\n    // Check if an exclusive configuration file is specified\n    if (config_exclusive_filename && strlen(config_exclusive_filename) > 0) {\n        if (access(config_exclusive_filename, R_OK) == 0) {\n            FILE *file = fopen(config_exclusive_filename, \"r\");\n            if (file) {\n                count += fn(file, data);\n                fclose(file);\n            }\n        }\n    }\n\n    // Check for system-wide configuration file\n    if (access(system_config_path, R_OK) == 0) {\n        FILE *file = fopen(system_config_path, \"r\");\n        if (file) {\n            count += fn(file, data);\n            fclose(file);\n        }\n    }\n\n    // Check for user-specific configuration file\n    if (home_dir && strlen(home_dir) > 0) {\n        snprintf(user_config_path, sizeof(user_config_path), \"%s/.performance.conf\", home_dir);\n        if (access(user_config_path, R_OK) == 0) {\n            FILE *file = fopen(user_config_path, \"r\");\n            if (file) {\n                count += fn(file, data);\n                fclose(file);\n            }\n        }\n    }\n\n    return (count > 0) ? count : -1;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for loading configuration files. The candidate implementation uses `access()` to check for file readability and then opens the file directly using `fopen()` and passes it to the callback function `fn`. The reference implementation, however, uses a helper function `perf_config_from_file()` which likely handles the file opening and processing internally. Additionally, the reference implementation includes a `repo_config` file check, which is not present in the candidate implementation. These differences may lead to different behaviors for certain inputs, particularly if `perf_config_from_file()` performs additional processing or error handling not present in the candidate implementation. The missing `repo_config` check is a functional difference that could affect the number of configurations loaded.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 9,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of configuration files. The candidate implementation uses `access()` to check for file readability and then opens the file to pass to the callback function `fn`. The reference implementation uses a function `perf_config_from_file()` which likely handles the file opening and processing internally. Additionally, the reference implementation uses `strdup()` and `free()` for the user configuration path, which introduces potential memory management differences. These differences could lead to different behaviors if the callback function `fn` or the `perf_config_from_file()` function has side effects or specific expectations about the file pointer. However, the overall logic of loading configurations from exclusive, system, and user files is preserved in both implementations.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

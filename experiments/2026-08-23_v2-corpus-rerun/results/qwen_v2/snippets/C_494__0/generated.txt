@@ -1,0 +1,69 @@
+int vc4_prepare_cmdlist_and_shaders(struct drm_device *dev, struct vc4_exec_info *exec)
+{
+    int ret;
+    struct vc4_dev *vc4 = to_vc4_dev(dev);
+    struct vc4_bo *bo;
+    void *cmdlist, *shaders;
+    unsigned int cmdlist_size, shader_size;
+
+    if (exec->cmdlist_size == 0 || exec->shader_record_size == 0)
+        return -EINVAL;
+
+    cmdlist_size = exec->cmdlist_size;
+    shader_size = exec->shader_record_size;
+
+    cmdlist = kvmalloc(cmdlist_size, GFP_KERNEL);
+    if (!cmdlist)
+        return -ENOMEM;
+
+    shaders = kvmalloc(shader_size, GFP_KERNEL);
+    if (!shaders) {
+        kfree(cmdlist);
+        return -ENOMEM;
+    }
+
+    if (copy_from_user(cmdlist, u64_to_user_ptr(exec->cmdlist_ptr), cmdlist_size)) {
+        ret = -EFAULT;
+        goto fail;
+    }
+
+    if (copy_from_user(shaders, u64_to_user_ptr(exec->shader_record_ptr), shader_size)) {
+        ret = -EFAULT;
+        goto fail;
+    }
+
+    ret = vc4_bo_create(dev, cmdlist_size + shader_size, 0, &bo);
+    if (ret)
+        goto fail;
+
+    ret = vc4_bo_map(bo);
+    if (ret)
+        goto fail;
+
+    memcpy(bo->vaddr, cmdlist, cmdlist_size);
+    memcpy(bo->vaddr + cmdlist_size, shaders, shader_size);
+
+    exec->bo = bo;
+    exec->cmdlist = bo->vaddr;
+    exec->shader_records = bo->vaddr + cmdlist_size;
+
+    ret = vc4_validate_cmdlist(exec->cmdlist, cmdlist_size);
+    if (ret)
+        goto fail;
+
+    ret = vc4_validate_shader_records(exec->shader_records, shader_size);
+    if (ret)
+        goto fail;
+
+    vc4_wait_for_render_complete(vc4);
+
+    kfree(cmdlist);
+    kfree(shaders);
+
+    return 0;
+
+fail:
+    kfree(cmdlist);
+    kfree(shaders);
+    return ret;
+}

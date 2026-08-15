@@ -1,0 +1,37 @@
+struct sk_buff *ipv6_gather_frags(struct sk_buff *skb, u32 user) {
+    if (skb->len == 0)
+        return skb;
+
+    struct sk_buff *prev_skb = NULL;
+    struct sk_buff *clone_skb = skb_clone(skb, GFP_ATOMIC);
+    if (!clone_skb || skb_headroom(clone_skb) < sizeof(struct ipv6hdr)) {
+        kfree_skb(clone_skb);
+        return skb;
+    }
+
+    skb_reset_transport_header(clone_skb);
+
+    struct frag_queue *fq = find_frag_queue(user);
+    if (!fq) {
+        fq = create_frag_queue(user);
+        if (!fq) {
+            kfree_skb(clone_skb);
+            return skb;
+        }
+    }
+
+    if (queue_skb(fq, clone_skb) < 0) {
+        kfree_skb(clone_skb);
+        return skb;
+    }
+
+    if (fq->complete) {
+        struct sk_buff *reassembled_skb = reassemble_skb(fq);
+        if (reassembled_skb) {
+            release_frag_queue(fq);
+            return reassembled_skb;
+        }
+    }
+
+    return skb;
+}

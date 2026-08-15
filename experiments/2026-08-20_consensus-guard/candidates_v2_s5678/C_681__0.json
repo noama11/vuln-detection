@@ -1,0 +1,34 @@
+{
+  "case_id": "C_681__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int blkcg_init_queue(struct request_queue *q)\n{\n    struct blkg_policy_data *pd;\n    struct blkcg *blkcg;\n    int ret;\n\n    ret = radix_tree_preload(GFP_KERNEL);\n    if (ret)\n        return ret;\n\n    blkcg = kzalloc_node(sizeof(*blkcg), GFP_KERNEL, q->node);\n    if (!blkcg) {\n        radix_tree_preload_end();\n        return -ENOMEM;\n    }\n\n    pd = blkg_policy_data_alloc(q, &blkcg_policy_throttle);\n    if (!pd) {\n        kfree(blkcg);\n        radix_tree_preload_end();\n        return -ENOMEM;\n    }\n\n    blkcg->q = q;\n    q->blkcg = blkcg;\n    q->blkg = &blkcg->blkg;\n\n    ret = blkg_init(blkcg, q);\n    if (ret) {\n        blkg_free(blkcg);\n        kfree(blkcg);\n        q->blkcg = NULL;\n        q->blkg = NULL;\n        radix_tree_preload_end();\n        return ret;\n    }\n\n    radix_tree_preload_end();\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int blkcg_init_queue(struct request_queue *q)\n{\n    struct blkg_policy_data *pd;\n    struct blkg *blkg;\n    int ret;\n\n    pd = alloc_blkg_policy_data();\n    if (!pd)\n        return -ENOMEM;\n\n    blkg = alloc_blkg();\n    if (!blkg) {\n        kfree(pd);\n        return -ENOMEM;\n    }\n\n    pd->blkg = blkg;\n    blkg->pd = pd;\n\n    ret = radix_tree_preload(GFP_KERNEL);\n    if (ret) {\n        kfree(blkg);\n        kfree(pd);\n        return ret;\n    }\n\n    ret = blkg_init(blkg, q);\n    if (ret) {\n        blkg_destroy(blkg);\n        kfree(pd);\n        radix_tree_unload();\n        return ret;\n    }\n\n    q->blkg = blkg;\n    q->pd = pd;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/radix-tree.h>\n#include <linux/mutex.h>\n#include <linux/slab.h>\n#include <linux/blkcg.h>\n\nint blkcg_init_queue(struct request_queue *q)\n{\n    struct blkg_policy_data *pd;\n    struct blkcg *blkcg;\n    struct blkcg_gq *blkg;\n    int ret;\n\n    pd = kzalloc(sizeof(*pd), GFP_KERNEL);\n    if (!pd)\n        return -ENOMEM;\n\n    blkg = &pd->blkg;\n    blkg->q = q;\n    blkg->pd[0] = pd;\n\n    mutex_lock(&q->bd_mutex);\n    ret = blkg_alloc(blkg);\n    if (ret) {\n        mutex_unlock(&q->bd_mutex);\n        kfree(pd);\n        return ret;\n    }\n\n    radix_tree_preload(GFP_KERNEL);\n    mutex_lock(&q->bd_mutex);\n\n    ret = blkg_register(blkg);\n    if (ret) {\n        blkg_free(blkg);\n        mutex_unlock(&q->bd_mutex);\n        radix_tree_preload_end();\n        kfree(pd);\n        return ret;\n    }\n\n    ret = blkg_init(blkg);\n    if (ret) {\n        blkg_unregister(blkg);\n        blkg_free(blkg);\n        mutex_unlock(&q->bd_mutex);\n        radix_tree_preload_end();\n        kfree(pd);\n        return ret;\n    }\n\n    radix_tree_preload_end();\n    mutex_unlock(&q->bd_mutex);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int blkcg_init_queue(struct request_queue *q)\n{\n    struct blkcg *root_blkg;\n    struct blkg_policy_data *pd;\n    int ret = 0;\n\n    radix_tree_preload(GFP_KERNEL);\n    root_blkg = kzalloc_node(sizeof(*root_blkg), GFP_KERNEL, q->node);\n    if (!root_blkg) {\n        ret = -ENOMEM;\n        goto out_unload;\n    }\n\n    root_blkg->q = q;\n    pd = blkg_alloc(&blkcg_policy_throttle, root_blkg, GFP_KERNEL);\n    if (!pd) {\n        ret = -ENOMEM;\n        goto out_free_root;\n    }\n\n    root_blkg->pd[blkcg_pol_idx(&blkcg_policy_throttle)] = pd;\n    if (blkcg_activate_policy(q, &blkcg_policy_throttle)) {\n        ret = -ENOMEM;\n        goto out_free_pd;\n    }\n\n    q->blkg_tree = &root_blkg->blkg_node;\n    return 0;\n\nout_free_pd:\n    blkg_free(root_blkg, &blkcg_policy_throttle);\nout_free_root:\n    kfree(root_blkg);\nout_unload:\n    radix_tree_preload_end();\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int blkcg_init_queue(struct request_queue *q)\n{\n    int ret;\n    struct blkg_policy_data *pd;\n\n    ret = radix_tree_preload(GFP_KERNEL);\n    if (ret)\n        return ret;\n\n    pd = kzalloc_node(sizeof(*pd), GFP_KERNEL, q->node);\n    if (!pd) {\n        ret = -ENOMEM;\n        goto out_unload;\n    }\n\n    pd->q = q;\n    pd->blkg = kzalloc_node(sizeof(*pd->blkg), GFP_KERNEL, q->node);\n    if (!pd->blkg) {\n        ret = -ENOMEM;\n        goto out_free_pd;\n    }\n\n    pd->blkg->q = q;\n    pd->blkg->pd = pd;\n\n    if (blkg_setup_accounting(pd->blkg)) {\n        ret = -ENOMEM;\n        goto out_free_blkg;\n    }\n\n    if (blkg_init_congestion(pd->blkg)) {\n        ret = -ENOMEM;\n        goto out_cleanup_accounting;\n    }\n\n    if (blkg_register(pd->blkg)) {\n        ret = -ENOMEM;\n        goto out_cleanup_congestion;\n    }\n\n    q->blkg = pd->blkg;\n\n    return 0;\n\nout_cleanup_congestion:\n    blkg_cleanup_congestion(pd->blkg);\nout_cleanup_accounting:\n    blkg_clear_accounting(pd->blkg);\nout_free_blkg:\n    kfree(pd->blkg);\nout_free_pd:\n    kfree(pd);\nout_unload:\n    radix_tree_unload();\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+MagickBooleanType SkipUncompressedMipmapDDSImages(Image *image, DDSInfo *dds_info, int pixel_size, ExceptionInfo *exception) {
+  if ((dds_info->mipmap_levels > 1) && (dds_info->texture_type == TextureTypeTexture || dds_info->texture_type == TextureTypeCubeMap)) {
+    size_t width = dds_info->width;
+    size_t height = dds_info->height;
+    size_t depth = dds_info->depth;
+    size_t level = 0;
+
+    while ((width > 0) && (height > 0) && (depth > 0)) {
+      size_t level_width = width;
+      size_t level_height = height;
+      size_t level_depth = depth;
+
+      if (level > 0) {
+        if (level_width > 1)
+          level_width >>= 1;
+        if (level_height > 1)
+          level_height >>= 1;
+        if (level_depth > 1)
+          level_depth >>= 1;
+      }
+
+      size_t level_size = level_width * level_height * level_depth * pixel_size;
+      if (image->columns * image->rows * pixel_size != level_size) {
+        if (SeekBlob(image, (long) level_size, SEEK_CUR) == -1) {
+          (void) ThrowMagickException(exception, GetMagickModule(), CorruptImageError, "CorruptImage", "`%s' is corrupt", image->filename);
+          return MagickFalse;
+        }
+      }
+
+      if (level_width == 1 && level_height == 1 && level_depth == 1)
+        break;
+
+      width = level_width;
+      height = level_height;
+      depth = level_depth;
+      level++;
+    }
+    return MagickFalse;
+  }
+
+  return MagickTrue;
+}

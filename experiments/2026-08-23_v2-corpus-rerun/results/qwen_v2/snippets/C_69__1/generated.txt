@@ -1,0 +1,63 @@
+int receive_message_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {
+    int bytes_received = 0;
+    struct sock *sk = sock->sk;
+    struct sk_buff *skb;
+
+    if (!sock || !m || !sk) {
+        return -EINVAL;
+    }
+
+    lock_sock(sk);
+
+    if (sk->sk_state == TCP_LISTEN) {
+        release_sock(sk);
+        return -EOPNOTSUPP;
+    }
+
+    while ((skb = skb_peek(&sk->sk_receive_queue)) == NULL) {
+        if (sk->sk_err || (sk->sk_shutdown & RCV_SHUTDOWN) || (flags & MSG_DONTWAIT)) {
+            release_sock(sk);
+            return (sk->sk_err ? -sk->sk_err : 0);
+        }
+
+        if (wait_for_event_interruptible(sk->sk_wq, !skb_queue_empty(&sk->sk_receive_queue))) {
+            release_sock(sk);
+            return -ERESTARTSYS;
+        }
+    }
+
+    skb = skb_dequeue(&sk->sk_receive_queue);
+    if (!skb) {
+        release_sock(sk);
+        return -EFAULT;
+    }
+
+    if (skb->len > buf_len) {
+        m->msg_flags |= MSG_TRUNC;
+        bytes_received = buf_len;
+    } else {
+        bytes_received = skb->len;
+    }
+
+    if (memcpy_to_msg(m, skb->data, bytes_received) < 0) {
+        kfree_skb(skb);
+        release_sock(sk);
+        return -EFAULT;
+    }
+
+    if (skb->pkt_type == PACKET_OTHERHOST) {
+        m->msg_flags |= MSG_TRUNC;
+    }
+
+    if (skb->ip_summed == CHECKSUM_NONE) {
+        m->msg_flags |= MSG_CSUM_NONE;
+    }
+
+    if (skb->len < 0) {
+        sk->sk_err = EPROTO;
+    }
+
+    kfree_skb(skb);
+    release_sock(sk);
+    return bytes_received;
+}

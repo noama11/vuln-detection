@@ -1,0 +1,56 @@
+{
+  "case_id": "C_414__1",
+  "sample_id": "D/C/414",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2017-12663",
+  "cve_summary": "ImageMagick 7.0.6-2 has a memory leak vulnerability in WriteMAPImage in coders/map.c.",
+  "changed_file": "coders/map.c",
+  "docstring": "Summary:  \nUnregisterMAPImage function unregisters the \"MAP\" image format from the Magick library.\n\nParameters:  \nNone\n\nReturns:  \nNone\n\nLogic:  \nThe function calls UnregisterMagickInfo with the argument \"MAP\" to remove the associated image format from the library's registry.\n\n---\n\nSummary:  \nWriteMAPImage function writes an image to a file in MAP format, including colormap bytes and pixel indexes.\n\nParameters:  \nimage_info (const ImageInfo *): Information about the image to be written.  \nimage (Image *): The image to be written.\n\nReturns:  \nMagickBooleanType: Indicates success (MagickTrue) or failure (MagickFalse) of the write operation.\n\nLogic:  \nThe function first validates the input parameters and opens the output file. It transforms the image colorspace to sRGB and allocates memory for the colormap and pixel data. It writes the colormap to the file, followed by the pixel indexes. If memory allocation fails, it throws a ResourceLimitError. The function handles both 256-color and higher color images appropriately.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "MagickBooleanType WriteMAPImage(const ImageInfo *image_info, Image *image)\n{\n  ColormapType\n    *colormap;\n\n  ExceptionInfo\n    *exception;\n\n  FILE\n    *file;\n\n  MagickBooleanType\n    status;\n\n  register ssize_t\n    i;\n\n  size_t\n    length;\n\n  StringInfo\n    *profile;\n\n  assert(image_info != (ImageInfo *) NULL);\n  assert(image != (Image *) NULL);\n  assert(image->signature == MagickSignature);\n  if (image->debug != MagickFalse)\n    (void) DebugTraceImage(\"enter\", \"WriteMAPImage\", image);\n  status = MagickTrue;\n  exception = &image->exception;\n  if ((file = fopen(image_info->filename,\"wb\")) == (FILE *) NULL)\n  {\n    (void) ThrowMagickException(exception,GetMagickModule(),FileOpenError,\n      \"Unable to open file\",\"`%s'\",image_info->filename);\n    return(MagickFalse);\n  }\n  if (image->colors > 256)\n    (void) SetImageColorspace(image,sRGBColorspace);\n  colormap = AcquireColormap(image,256);\n  if (colormap == (ColormapType *) NULL)\n  {\n    (void) fclose(file);\n    (void) ThrowMagickException(exception,GetMagickModule(),ResourceLimitError,\n      \"Unable to allocate colormap\",\"`%s'\",image_info->filename);\n    return(MagickFalse);\n  }\n  length = 256 * sizeof(PixelPacket);\n  (void) fwrite(colormap,sizeof(*colormap),length,file);\n  for (i=0; i < (ssize_t) image->rows; i++)\n  {\n    register PixelPacket\n      *p;\n\n    p = GetImagePixels(image,0,i,image->columns,1);\n    if (p == (PixelPacket *) NULL)\n      break;\n    for ( ; image->x != image->columns; image->x++)\n    {\n      register ssize_t\n        x;\n\n      for (x=0; x < (ssize_t) image->columns; x++)\n      {\n        register ssize_t\n          y;\n\n        for (y=0; y < (ssize_t) image->rows; y++)\n        {\n          register ssize_t\n            z;\n\n          for (z=0; z < (ssize_t) image->depth; z++)\n          {\n            register ssize_t\n              index;\n\n            index = (ssize_t) (GetPixelRed(image,p) * 255.0 + 0.5);\n            if (index < 0)\n              index = 0;\n            if (index > 255)\n              index = 255;\n            (void) fwrite(&index,sizeof(index),1,file);\n          }\n        }\n      }\n    }\n    if (SyncImagePixels(image) == MagickFalse)\n      break;\n  }\n  (void) fclose(file);\n  if (image->debug != MagickFalse)\n    (void) DebugTraceImage(\"exit\", \"WriteMAPImage\", image);\n  return(status);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the writing of pixel data and colormap data. The candidate implementation uses `fwrite` to write pixel indexes directly to a file, while the reference implementation uses `WriteBlob` and handles colormap and pixel data with more structured memory allocation and byte-level manipulation. Additionally, the candidate implementation has nested loops that may not correctly iterate over the image data, potentially leading to incorrect pixel index writes. These differences could result in different output files for the same input, especially for images with more than 256 colors. The issue is not security-relevant but affects the correctness of the output.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they write pixel data to the file. The candidate implementation uses nested loops with multiple levels of indirection and writes pixel data using `fwrite`, while the reference implementation uses `WriteBlob` and a more direct approach to pixel data handling. Additionally, the candidate implementation does not properly handle the pixel index calculation for images with more than 256 colors, potentially leading to incorrect pixel data being written. These differences are not security-relevant but affect the correctness of the output for certain inputs.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

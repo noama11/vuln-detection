@@ -1,0 +1,56 @@
+{
+  "case_id": "C_497__1",
+  "sample_id": "D/C/497",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-5546",
+  "cve_summary": "The freelist-randomization feature in mm/slab.c in the Linux kernel 4.8.x and 4.9.x before 4.9.5 allows local users to cause a denial of service (duplicate freelist entries and system crash) or possibly have unspecified other impact in opportunistic circumstances by leveraging the selection of a large value for a random number.",
+  "changed_file": "mm/slab.c",
+  "docstring": "\"\"\"\nSummary: Initializes the freelist state for a given memory cache.\n\nParameters:\nstate (union freelist_init_state *): Pointer to the freelist initialization state to be set up.\ncachep (struct kmem_cache *): Pointer to the memory cache structure containing cache information.\ncount (unsigned int): The number of elements in the freelist.\n\nReturns: bool: Returns true if the freelist state was initialized with a pre-computed list, false otherwise.\n\nLogic: The function first retrieves a random integer to use as a seed for randomness. If the memory cache does not have a pre-computed random sequence, it seeds the random state and sets the return value to false. If a pre-computed sequence is available, it initializes the freelist state with the sequence, sets the count of elements, and determines a random position within the list, returning true.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "bool init_freelist_state(union freelist_init_state *state, struct kmem_cache *cachep, unsigned int count) {\n    int seed = get_random_int();\n    bool ret = false;\n\n    if (!cachep->precomputed_sequence) {\n        seed_random_state(seed);\n        state->random = seed;\n    } else {\n        state->sequence = cachep->precomputed_sequence;\n        state->count = count;\n        state->pos = seed % count;\n        ret = true;\n    }\n\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the random state and the freelist initialization. The candidate implementation uses a modulo operation to set the position (`state->pos = seed % count`) and stores the seed in `state->random` when using a precomputed sequence. The reference implementation sets `state->pos` to 0 and stores the random value in `state->rand`. Additionally, the reference implementation uses a different function (`prandom_seed_state`) to seed the random state. These differences could lead to different behaviors in the freelist traversal logic, particularly in how randomness is applied, which may be relevant for security if the randomness is used for entropy or anti-prediction purposes.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the random state and the structure members used. The candidate implementation uses `state->random` to store the seed when no precomputed sequence is available, while the reference implementation uses `prandom_seed_state(&state->rnd_state, rand)` to initialize a random state. Additionally, the candidate implementation uses `sequence` and `pos` fields, while the reference uses `list` and `pos`. These differences suggest different internal structures for the `freelist_init_state` union, which could lead to different behaviors depending on how the union is used elsewhere in the codebase. This is a behavioral difference that could affect the correctness of the freelist initialization.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

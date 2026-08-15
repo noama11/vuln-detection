@@ -1,0 +1,25 @@
+void detach_mounts(struct dentry *dentry) {
+    struct mount *mnt;
+    struct hlist_node *n;
+    struct list_head *unmounted_mounts = &(struct list_head){};
+
+    lock_mount_namespace();
+    mnt = lookup_mount(dentry);
+    if (!mnt)
+        goto unlock_namespace;
+
+    lock_mount_hash();
+    hlist_for_each_entry_safe(mnt, n, &mnt->hlist, hlist) {
+        if (mnt->flags & MNT_UMOUNT) {
+            unmount_children(mnt);
+            list_add(&mnt->unmount_list, unmounted_mounts);
+        } else {
+            unmount_tree(mnt);
+        }
+    }
+    unlock_mount_hash();
+
+    release_mount(mnt);
+unlock_namespace:
+    unlock_mount_namespace();
+}

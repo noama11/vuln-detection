@@ -1,0 +1,40 @@
+Image *ExtractPostscriptImage(Image *image, const ImageInfo *image_info,
+                              MagickOffsetType PS_Offset, ssize_t PS_Size,
+                              ExceptionInfo *exception) {
+  Image *new_image = (Image *) NULL;
+  ImageInfo *clone_info = (ImageInfo *) CloneImageInfo(image_info);
+  char filename[MagickPathExtent];
+  FILE *file = (FILE *) NULL;
+  MagickBooleanType status;
+
+  GetPathComponent(image->filename, HeadPath, filename, MagickPathExtent);
+  (void) ConcatenateMagickString(filename, "-PS-", MagickPathExtent);
+  (void) GetImagePixelFileName(image, filename);
+
+  file = fopen(filename, "wb");
+  if (file != (FILE *) NULL) {
+    (void) fwrite((void *) (image->pixels + PS_Offset), sizeof(unsigned char), PS_Size, file);
+    (void) fclose(file);
+
+    clone_info = CloneImageInfo(clone_info);
+    clone_info->filename = (char *) filename;
+    new_image = ReadImage(clone_info, exception);
+    if (new_image != (Image *) NULL) {
+      new_image->next = image->next;
+      new_image->previous = image->previous;
+      if (image->previous != (Image *) NULL)
+        image->previous->next = new_image;
+      if (image->next != (Image *) NULL)
+        image->next->previous = new_image;
+      new_image = image;
+    }
+  }
+
+  if (new_image == (Image *) NULL)
+    new_image = image;
+
+  if (clone_info != (ImageInfo *) NULL)
+    clone_info = DestroyImageInfo(clone_info);
+
+  return new_image;
+}

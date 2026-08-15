@@ -1,0 +1,34 @@
+{
+  "case_id": "C_5__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t receive_and_process_message(struct kiocb *iocb, struct socket *sock,\n                                    struct msghdr *msg, size_t size,\n                                    int msg_flags) {\n    struct sock *sk = sock->sk;\n    ssize_t received = 0;\n    struct sk_buff *skb;\n    int error = 0;\n\n    while (1) {\n        skb = skb_dequeue(&sk->sk_receive_queue);\n        if (!skb) {\n            if (msg_flags & MSG_DONTWAIT) {\n                return -EAGAIN;\n            }\n            error = wait_for_poll(sk, NULL, iocb->ki_wait, iocb->ki_timeout);\n            if (error)\n                return error;\n            continue;\n        }\n\n        if (skb->len > size) {\n            msg->msg_flags |= MSG_TRUNC;\n        }\n\n        received = skb->len;\n        if (msg->msg_flags & MSG_TRUNC) {\n            received = size;\n        }\n\n        if (copy_to_iter(skb->data, received, msg->msg_iter) != received) {\n            kfree_skb(skb);\n            return -EFAULT;\n        }\n\n        if (skb->pkt_type == PACKET_NOTIFICATION) {\n            handle_notification(skb);\n        }\n\n        kfree_skb(skb);\n        break;\n    }\n\n    return received;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int receive_and_process_notification(struct kiocb *iocb, struct socket *sock,\n                                     struct msghdr *msg, size_t size,\n                                     int msg_flags) {\n    int ret = 0;\n    struct sk_buff *skb;\n    struct sock *sk = sock->sk;\n    int copied = 0;\n\n    while (1) {\n        skb = skb_dequeue(&sk->sk_receive_queue);\n        if (skb) {\n            int len = skb->len;\n\n            if (len > size) {\n                len = size;\n            }\n\n            if (skb_copy_datagram_msg(skb, 0, msg, 0, len) < 0) {\n                ret = -EFAULT;\n                break;\n            }\n\n            copied += len;\n            if (copied >= size) {\n                ret = size;\n            } else {\n                ret = copied;\n            }\n\n            kfree_skb(skb);\n            break;\n        } else if (msg_flags & MSG_DONTWAIT) {\n            ret = -EAGAIN;\n            break;\n        } else {\n            schedule();\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/socket.h>\n#include <linux/uio.h>\n#include <linux/wait.h>\n#include <linux/slab.h>\n#include <linux/mm.h>\n\nssize_t receive_and_process_message(struct kiocb *iocb, struct socket *sock,\n                                    struct msghdr *msg, size_t size,\n                                    int msg_flags) {\n    struct sock *sk = sock->sk;\n    ssize_t res;\n    long int timeout;\n\n    if (sk->sk_state == TCP_CLOSE)\n        return -ENOTCONN;\n\n    if (msg_flags & MSG_DONTWAIT) {\n        if (!sock->sk->sk_data_ready)\n            return -EAGAIN;\n    }\n\n    timeout = sock_rcvtimeo(sk, msg_flags & MSG_DONTWAIT);\n\n    res = sock_recvmsg(iocb, sock, msg, size, msg_flags);\n    if (res < 0)\n        return res;\n\n    if (msg->msg_name) {\n        struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;\n        addr->sin_port = htons(sk->sk_remote_port);\n        addr->sin_addr.s_addr = sk->sk_remote_ip;\n    }\n\n    return res;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int msg_flags)\n{\n    ssize_t ret = 0;\n    struct sk_buff *skb = NULL;\n    struct sock *sk = sock->sk;\n\n    if (sk == NULL) {\n        return -EINVAL;\n    }\n\n    skb = skb_recv_datagram(sk, msg_flags, &ret);\n    if (!skb) {\n        return ret;\n    }\n\n    ret = skb->len;\n    if (size < ret) {\n        ret = -EMSGSIZE;\n    }\n\n    if (ret < 0) {\n        kfree_skb(skb);\n        return ret;\n    }\n\n    msg->msg_name = skb->cb;\n    msg->msg_namelen = sizeof(struct sockaddr);\n\n    ret = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, ret);\n    if (ret < 0) {\n        kfree_skb(skb);\n        return ret;\n    }\n\n    kfree_skb(skb);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size, int msg_flags) {\n    struct sock *sk = sock->sk;\n    int flags = msg_flags;\n    int err, copied = 0;\n    struct sk_buff *skb;\n\n    if (sk->sk_state == TCP_CLOSE)\n        return -ENOTCONN;\n\n    while (1) {\n        skb = skb_dequeue(&sk->sk_receive_queue);\n        if (skb)\n            break;\n\n        if (signal_pending(current))\n            return -ERESTARTSYS;\n\n        if (!skb_queue_empty(&sk->sk_error_queue)) {\n            err = sock_error_recverr(sk);\n            if (err)\n                return err;\n        }\n\n        if (flags & MSG_DONTWAIT)\n            return -EAGAIN;\n\n        if (sk->sk_shutdown & RCV_SHUTDOWN)\n            return copied ? copied : -ENODATA;\n\n        sk_wait_data(sk, &skb, NULL);\n    }\n\n    copied = min(skb->len, size);\n    if (copied < skb->len)\n        msg->msg_flags |= MSG_TRUNC;\n\n    err = skb_copy_datagram_iovec(skb, 0, msg->msg_iter.iov, copied);\n    if (err) {\n        kfree_skb(skb);\n        return -EFAULT;\n    }\n\n    if (skb->pkt_type == PACKET_LOOPBACK)\n        msg->msg_name = NULL;\n    else {\n        msg->msg_namelen = sizeof(struct sockaddr_in);\n        memcpy(msg->msg_name, &skb->cb, sizeof(struct sockaddr_in));\n    }\n\n    kfree_skb(skb);\n    return copied;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

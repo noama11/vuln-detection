@@ -1,0 +1,56 @@
+{
+  "case_id": "C_358__0",
+  "sample_id": "D/C/358",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-17052",
+  "cve_summary": "The mm_init function in kernel/fork.c in the Linux kernel before 4.12.10 does not clear the ->exe_file member of a new process's mm_struct, allowing a local attacker to achieve a use-after-free or possibly have unspecified other impact by running a specially crafted program.",
+  "changed_file": "kernel/fork.c",
+  "docstring": "Summary: Initializes a memory management structure for a given task.\n\nParameters:\n- mm (struct mm_struct *): Pointer to the memory management structure to initialize.\n- p (struct task_struct *): Pointer to the task structure associated with the memory management.\n- user_ns (struct user_namespace *): Pointer to the user namespace for the memory management.\n\nReturns: struct mm_struct *: Pointer to the initialized memory management structure, or NULL on failure.\n\nLogic: The function sets up various fields of the `mm_struct`, including initializing memory mappings, reference counts, and locks. It also configures flags based on the current process's memory management state or defaults if none exists. The function allocates page tables and initializes a new context for the task. If any initialization step fails, it cleans up allocated resources and returns NULL.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct mm_struct *init_mm(struct mm_struct *mm, struct task_struct *p, struct user_namespace *user_ns) {\n    int err;\n\n    if (!mm)\n        return NULL;\n\n    mm->mmap = NULL;\n    mm->mmap_cache = NULL;\n    mm->get_unmapped_area = arch_get_unmapped_area;\n    mm->unmap_area = arch_unmap_area;\n    mm->mmap_rnd = 0;\n    atomic_set(&mm->mm_users, 1);\n    atomic_set(&mm->mm_count, 1);\n    mm->map_count = 0;\n    mm->locked_vm = 0;\n    mm->total_vm = 0;\n    mm->data_vm = 0;\n    mm->exec_vm = 0;\n    mm->stack_vm = 0;\n    mm->def_flags = 0;\n    mm->context = 0;\n    mm->user_ns = get_user_ns(user_ns);\n\n    err = init_new_context(p, mm);\n    if (err)\n        goto fail_context;\n\n    if (!alloc_page_tables(mm, 1))\n        goto fail_pt;\n\n    return mm;\n\nfail_pt:\n    destroy_context(mm);\nfail_context:\n    put_user_ns(mm->user_ns);\n    return NULL;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the fields they initialize within the `mm_struct`. The candidate implementation initializes fewer fields (e.g., no `mm_rb`, `mmap_sem`, `nr_ptes`, etc.) and lacks some logic for copying flags from the current process's memory management. These differences could lead to undefined behavior or crashes if the missing fields are accessed later. The reference implementation also includes error handling for `mm_alloc_pgd`, which is not present in the candidate. These differences are reachable via normal usage and could affect memory safety or correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the fields they initialize within the `mm_struct`. The candidate implementation initializes fewer fields (e.g., no `mm_rb`, `mmap_sem`, `nr_ptes`, etc.) and lacks some error handling logic (e.g., `init_rwsem`, `INIT_LIST_HEAD`, etc.). These differences could lead to undefined behavior or crashes if the structure is used in a context expecting those fields to be properly initialized. This is a functional mismatch that could be exploited if an attacker can influence the usage of the `mm_struct` after initialization.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

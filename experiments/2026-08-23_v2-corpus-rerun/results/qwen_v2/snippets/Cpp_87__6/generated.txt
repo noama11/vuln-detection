@@ -1,0 +1,65 @@
+void handle_encryption_settings(struct pdf_struct *pdf) {
+    if (!pdf->encryption_obj_id || !pdf->file_id) {
+        return;
+    }
+
+    pdf_obj *encrypt_obj = pdf_get_obj(pdf, pdf->encryption_obj_id);
+    if (!encrypt_obj || pdf_obj_typeof(encrypt_obj) != PDF_OBJ_DICT) {
+        return;
+    }
+
+    pdf_obj *encrypt_dict = pdf_to_dict(encrypt_obj);
+    pdf_obj *encrypt_metadata = pdf_dict_get(encrypt_dict, "/EncryptMetadata");
+    pdf_obj *p = pdf_dict_get(encrypt_dict, "/P");
+    pdf_obj *r = pdf_dict_get(encrypt_dict, "/R");
+    pdf_obj *length = pdf_dict_get(encrypt_dict, "/Length");
+
+    if (!p || !r || !length) {
+        return;
+    }
+
+    int p_val = pdf_to_int(p);
+    int r_val = pdf_to_int(r);
+    int length_val = pdf_to_int(length);
+
+    if (r_val < 2 || r_val > 5 || length_val != 40 && length_val != 128) {
+        return;
+    }
+
+    pdf_obj *o = pdf_dict_get(encrypt_dict, "/O");
+    pdf_obj *u = pdf_dict_get(encrypt_dict, "/U");
+
+    if (!o || !u || pdf_obj_typeof(o) != PDF_OBJ_STRING || pdf_obj_typeof(u) != PDF_OBJ_STRING) {
+        return;
+    }
+
+    size_t o_len = pdf_string_length(pdf_to_string(o));
+    size_t u_len = pdf_string_length(pdf_to_string(u));
+
+    if (o_len != 16 && o_len != 32 && o_len != 48 && o_len != 64 && o_len != 128) {
+        return;
+    }
+
+    if (u_len != 16 && u_len != 32 && u_len != 48 && u_len != 64 && u_len != 128) {
+        return;
+    }
+
+    char *o_str = pdf_string_to_utf8(pdf_to_string(o));
+    char *u_str = pdf_string_to_utf8(pdf_to_string(u));
+
+    if (!o_str || !u_str) {
+        free(o_str);
+        free(u_str);
+        return;
+    }
+
+    // Log encryption parameters
+    printf("Encryption settings: /P=%d, /R=%d, /Length=%d, /EncryptMetadata=%s\n",
+           p_val, r_val, length_val, pdf_obj_typeof(encrypt_metadata) == PDF_OBJ_BOOLEAN && pdf_to_boolean(encrypt_metadata) ? "true" : "false");
+
+    // Verify user password
+    verify_user_password(pdf, o_str, u_str, r_val, length_val);
+
+    free(o_str);
+    free(u_str);
+}

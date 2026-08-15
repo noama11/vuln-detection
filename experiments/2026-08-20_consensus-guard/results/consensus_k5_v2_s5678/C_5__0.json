@@ -1,0 +1,62 @@
+{
+  "case_id": "C_5__0",
+  "sample_id": "D/C/5",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-3430",
+  "cve_summary": "The rds_recvmsg function in net/rds/recv.c in the Linux kernel before 3.0.44 does not initialize a certain structure member, which allows local users to obtain potentially sensitive information from kernel stack memory via a (1) recvfrom or (2) recvmsg system call on an RDS socket.",
+  "changed_file": "net/rds/recv.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags and size.\n\nParameters: \niocb (struct kiocb *): The I/O control block associated with the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header that will be filled with the received data.\nsize (size_t): The maximum size of the message to receive.\nmsg_flags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes received or an error code (e.g., -EAGAIN for non-blocking mode).\n\nLogic: \nThe function checks for pending notifications and incoming messages, handling them based on the provided flags. It uses a loop to wait for messages, applying timeouts and handling race conditions. If a message is successfully received, it populates the message header and updates statistics. The function ensures proper cleanup of resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "Check for socket shutdown or error state before entering wait loop",
+        "performed_by_count": 3,
+        "why_it_matters": "If the socket is in a shutdown or error state, the target may enter a wait loop without checking for these conditions, leading to a potential hang or unhandled error."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a detailed check for pending notifications and congestion before attempting to receive a message. It also includes a timeout and race handling for incoming messages. However, it does not perform a check for socket shutdown or error state before entering the loop, which is a step performed by a majority of the independent implementations. This could lead to an infinite or unhandled wait in the case of a shutdown or error.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check for socket shutdown (RCV_SHUTDOWN) before receiving",
+        "performed_by_count": 3,
+        "why_it_matters": "If the socket is shutdown for receiving, the function should return 0 or an appropriate error. Omitting this check could lead to incorrect behavior when the socket is in a shutdown state."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a check for socket shutdown (RCV_SHUTDOWN) before attempting to receive a message, which is a defensive step performed by a majority of the independent implementations. This omission could lead to returning incorrect data or not handling shutdown conditions properly.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

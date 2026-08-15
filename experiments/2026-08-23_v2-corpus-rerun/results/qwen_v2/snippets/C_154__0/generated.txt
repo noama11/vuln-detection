@@ -1,0 +1,101 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#define MAX_ADDR_BUFFER_SIZE 1024
+
+bool extract_sockaddr_from_url(const char* url, char** sockaddr_url, char** sockaddr_port) {
+    const char* protocol_delim = "://";
+    const char* port_delim = ":";
+    const char* default_port = "80";
+    char* url_copy = NULL;
+    char* protocol_end = NULL;
+    char* port_start = NULL;
+    char* address_end = NULL;
+    char* address = NULL;
+    char* port = NULL;
+    size_t url_len = 0;
+    size_t address_len = 0;
+
+    if (!url || !sockaddr_url || !sockaddr_port) {
+        return false;
+    }
+
+    url_len = strlen(url);
+    url_copy = (char*)malloc(url_len + 1);
+    if (!url_copy) {
+        return false;
+    }
+
+    strcpy(url_copy, url);
+
+    protocol_end = strstr(url_copy, protocol_delim);
+    if (!protocol_end) {
+        free(url_copy);
+        return false;
+    }
+
+    protocol_end += strlen(protocol_delim);
+
+    port_start = strstr(protocol_end, port_delim);
+    if (port_start) {
+        address = (char*)malloc(port_start - protocol_end + 1);
+        if (!address) {
+            free(url_copy);
+            return false;
+        }
+
+        strncpy(address, protocol_end, port_start - protocol_end);
+        address[port_start - protocol_end] = '\0';
+
+        port = (char*)malloc(strlen(port_start + 1) + 1);
+        if (!port) {
+            free(url_copy);
+            free(address);
+            return false;
+        }
+
+        strcpy(port, port_start + 1);
+    } else {
+        address = strdup(protocol_end);
+        if (!address) {
+            free(url_copy);
+            return false;
+        }
+
+        port = strdup(default_port);
+        if (!port) {
+            free(url_copy);
+            free(address);
+            return false;
+        }
+    }
+
+    address_len = strlen(address);
+    if (address_len >= MAX_ADDR_BUFFER_SIZE) {
+        char warning_msg[256];
+        snprintf(warning_msg, sizeof(warning_msg),
+                 "Address exceeds buffer size, truncating from %zu to %d characters.",
+                 address_len, MAX_ADDR_BUFFER_SIZE - 1);
+        fprintf(stderr, "%s\n", warning_msg);
+
+        char* truncated_address = (char*)malloc(MAX_ADDR_BUFFER_SIZE);
+        if (!truncated_address) {
+            free(url_copy);
+            free(address);
+            free(port);
+            return false;
+        }
+
+        strncpy(truncated_address, address, MAX_ADDR_BUFFER_SIZE - 1);
+        truncated_address[MAX_ADDR_BUFFER_SIZE - 1] = '\0';
+        free(address);
+        address = truncated_address;
+    }
+
+    *sockaddr_url = address;
+    *sockaddr_port = port;
+    free(url_copy);
+    return true;
+}

@@ -1,0 +1,56 @@
+{
+  "case_id": "C_635__0",
+  "sample_id": "D/C/635",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "neomutt/neomutt",
+  "cve_id": "CVE-2018-14356",
+  "cve_summary": "An issue was discovered in Mutt before 1.10.1 and NeoMutt before 2018-07-16. pop.c mishandles a zero-length UID.",
+  "changed_file": "pop.c",
+  "docstring": "\"\"\"\nSummary: \nFetches and processes a unique identifier line, updating the context and header information.\n\nParameters: \nline (char *): The input string containing the unique identifier.\ndata (void *): A pointer to the context structure containing message and header data.\n\nReturns: \nint: Returns 0 on success, or -1 on failure.\n\nLogic: \nThe function converts the input line to an integer index, trims whitespace, and checks for a valid unique identifier. It searches for the identifier in the context's headers, adding a new header if it doesn't exist. If the header exists but the index does not match, it marks the cache for clearing. The function updates the reference number and index of the header before returning the status.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int process_unique_identifier(char *line, void *data) {\n    struct context *ctx = (struct context *)data;\n    int index = 0;\n    char *endptr = NULL;\n\n    if (line == NULL || ctx == NULL) {\n        return -1;\n    }\n\n    // Convert line to integer index\n    index = strtol(line, &endptr, 10);\n    if (endptr == line || *endptr != '\\0') {\n        return -1;\n    }\n\n    // Trim whitespace from line\n    while (isspace((unsigned char)*line)) {\n        line++;\n    }\n\n    // Check for valid unique identifier\n    if (strlen(line) == 0) {\n        return -1;\n    }\n\n    // Search for identifier in headers\n    int i;\n    int found = 0;\n    for (i = 0; i < ctx->header_count; i++) {\n        if (strcmp(ctx->headers[i].identifier, line) == 0) {\n            found = 1;\n            if (ctx->headers[i].index != index) {\n                ctx->clear_cache = 1;\n            }\n            ctx->headers[i].reference_number = index;\n            ctx->headers[i].index = i;\n            break;\n        }\n    }\n\n    // If identifier not found, add new header\n    if (!found) {\n        if (ctx->header_count >= ctx->header_capacity) {\n            // Resize headers array if needed\n            ctx->header_capacity += 10;\n            struct header *new_headers = realloc(ctx->headers, ctx->header_capacity * sizeof(struct header));\n            if (new_headers == NULL) {\n                return -1;\n            }\n            ctx->headers = new_headers;\n        }\n        struct header *new_header = &ctx->headers[ctx->header_count];\n        new_header->identifier = strdup(line);\n        if (new_header->identifier == NULL) {\n            return -1;\n        }\n        new_header->reference_number = index;\n        new_header->index = ctx->header_count;\n        ctx->header_count++;\n    }\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation trims whitespace by incrementing the line pointer, while the reference implementation uses `memmove` to shift the string in-place. The candidate implementation uses `strdup` to copy the identifier, while the reference uses a custom `mutt_str_strdup`. The candidate implementation manages header capacity with a fixed increment of 10, while the reference uses a function `mx_alloc_memory` to resize. Additionally, the reference implementation uses 1-based indexing for `index` and stores `index - 1` in the header, while the candidate uses 0-based indexing directly. These differences are not security-relevant but affect correctness and memory management.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key behaviors. First, the candidate implementation uses `strtol` with error checking on `endptr`, while the reference implementation checks `errno` after `strtol`. This could lead to different error behaviors for malformed inputs. Second, the candidate implementation trims whitespace by incrementing the `line` pointer, while the reference implementation uses `memmove` to shift the string in place, which may affect the original string differently. Third, the reference implementation uses `index - 1` for the header index, while the candidate uses the raw `index` value. This could lead to off-by-one errors or mismatches in indexing. Finally, the reference implementation uses `mutt_str_strcmp` and `mutt_str_strdup`, which may have different behaviors than `strcmp` and `strdup`. These differences are reachable via normal or adversarial inputs and could affect correctness or memory safety.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

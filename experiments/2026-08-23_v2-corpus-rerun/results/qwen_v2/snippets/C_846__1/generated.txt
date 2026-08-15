@@ -1,0 +1,49 @@
+ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {
+    ssize_t bytes_read = 0;
+    int ret;
+
+    if (!file || !buffer || !offset) {
+        return -EINVAL;
+    }
+
+    if (count == 0) {
+        return 0;
+    }
+
+    mutex_lock(&sound_timer_mutex);
+    spin_lock(&sound_timer_spinlock);
+
+    if (sound_timer_queue_empty()) {
+        if (file->f_flags & O_NONBLOCK) {
+            spin_unlock(&sound_timer_spinlock);
+            mutex_unlock(&sound_timer_mutex);
+            return -EAGAIN;
+        }
+
+        ret = wait_event_interruptible(sound_timer_wait_queue, !sound_timer_queue_empty());
+        if (ret < 0) {
+            spin_unlock(&sound_timer_spinlock);
+            mutex_unlock(&sound_timer_mutex);
+            return ret;
+        }
+    }
+
+    if (sound_timer_disconnected) {
+        spin_unlock(&sound_timer_spinlock);
+        mutex_unlock(&sound_timer_mutex);
+        return -ENODEV;
+    }
+
+    bytes_read = sound_timer_queue_read(buffer, count);
+    if (bytes_read < 0) {
+        spin_unlock(&sound_timer_spinlock);
+        mutex_unlock(&sound_timer_mutex);
+        return bytes_read;
+    }
+
+    *offset += bytes_read;
+    spin_unlock(&sound_timer_spinlock);
+    mutex_unlock(&sound_timer_mutex);
+
+    return bytes_read;
+}

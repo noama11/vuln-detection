@@ -1,0 +1,36 @@
+size_t WritePSDChannel(const PSDInfo *psd_info, const ImageInfo *image_info,
+                       Image *image, Image *next_image, QuantumType quantum_type,
+                       unsigned char *compact_pixels, MagickOffsetType size_offset,
+                       MagickBooleanType separate) {
+  size_t bytes_written = 0;
+  MagickBooleanType monochrome = (image->depth == 1) ? MagickTrue : MagickFalse;
+  CompressionType compression = psd_info->compression;
+
+  for (size_t y = 0; y < image->rows; y++) {
+    Quantum *pixels = (Quantum *) AcquireQuantumMemory(image->columns, sizeof(Quantum));
+    if (!pixels)
+      return 0;
+
+    ExportQuantumPixels(image, (Cache) NULL, quantum_type, image->columns, 1, pixels);
+
+    if (compression == RLECompression) {
+      size_t compressed_size = RLECompress(pixels, image->columns, monochrome);
+      (void) memcpy(compact_pixels + bytes_written, pixels, compressed_size);
+      bytes_written += compressed_size;
+    }
+    else if (compression == ZipCompression) {
+      size_t compressed_size = ZipCompress(pixels, image->columns, monochrome);
+      (void) memcpy(compact_pixels + bytes_written, pixels, compressed_size);
+      bytes_written += compressed_size;
+    }
+    else {
+      (void) memcpy(compact_pixels + bytes_written, pixels, image->columns * sizeof(Quantum));
+      bytes_written += image->columns * sizeof(Quantum);
+    }
+
+    pixels = (Quantum *) RelinquishMagickMemory(pixels);
+  }
+
+  WriteBlobMemory(image, bytes_written, compact_pixels);
+  return bytes_written;
+}

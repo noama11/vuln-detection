@@ -1,0 +1,34 @@
+{
+  "case_id": "C_108__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int hidp_setup_hid_session(struct hidp_session *session, struct hidp_connadd_req *req)\n{\n\tstruct hid_device *hid_dev;\n\tint ret = -ENOMEM;\n\n\thid_dev = kzalloc(sizeof(*hid_dev), GFP_KERNEL);\n\tif (!hid_dev)\n\t\tgoto err;\n\n\tsession->hid_dev = hid_dev;\n\n\tif (copy_from_user(&hid_dev->rd_data, &req->rd_data, sizeof(hid_dev->rd_data))) {\n\t\tret = -EFAULT;\n\t\tgoto err_free_hid_dev;\n\t}\n\n\thid_dev->vendor = req->vendor;\n\thid_dev->product = req->product;\n\thid_dev->country = req->country;\n\n\tif (hid_is_blacklisted(hid_dev)) {\n\t\tret = -EPERM;\n\t\tgoto err_free_hid_dev;\n\t}\n\n\treturn 0;\n\nerr_free_hid_dev:\n\tkfree(hid_dev);\nerr:\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int hidp_init_session(struct hidp_session *session, struct hidp_connadd_req *req)\n{\n    int ret = -ENOMEM;\n\n    session->hid_dev = hid_allocate_device();\n    if (!session->hid_dev)\n        return -ENOMEM;\n\n    session->hid_dev->vendor = req->vendor;\n    session->hid_dev->product = req->product;\n    session->hid_dev->version = req->version;\n    session->hid_dev->country = req->country;\n    session->hid_dev->phys = kstrdup(req->phys, GFP_KERNEL);\n    if (!session->hid_dev->phys)\n        goto err_free_dev;\n\n    session->hid_dev->driver = &hidp_hid_driver;\n\n    ret = hid_dev_register(session->hid_dev);\n    if (ret)\n        goto err_free_phys;\n\n    ret = hidp_setup_input_devices(session);\n    if (ret)\n        goto err_unregister_dev;\n\n    session->read_buffer = kmalloc(HIDP_MAX_HID_PACKET, GFP_KERNEL);\n    if (!session->read_buffer) {\n        ret = -ENOMEM;\n        goto err_cleanup_inputs;\n    }\n\n    if (hidp_check_blacklist(req->vendor, req->product)) {\n        ret = -EPERM;\n        goto err_free_buffer;\n    }\n\n    return 0;\n\nerr_free_buffer:\n    kfree(session->read_buffer);\nerr_cleanup_inputs:\n    hidp_cleanup_input_devices(session);\nerr_unregister_dev:\n    hid_dev_unregister(session->hid_dev);\nerr_free_phys:\n    kfree(session->hid_dev->phys);\nerr_free_dev:\n    kfree(session->hid_dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int hidp_init_session(struct hidp_session *session, struct hidp_connadd_req *req) {\n    int ret = -ENOMEM;\n\n    session->hid_dev = hid_allocate_device();\n    if (!session->hid_dev)\n        return -ENOMEM;\n\n    session->hid_dev->vendor = req->vendor;\n    session->hid_dev->product = req->product;\n    session->hid_dev->version = req->version;\n    session->hid_dev->country = req->country;\n\n    if (copy_from_user(session->hid_dev->dev_rsize, req->data, req->size)) {\n        ret = -EFAULT;\n        goto err_free_dev;\n    }\n\n    session->hid_dev->dev_size = req->size;\n    session->hid_dev->driver_data = session;\n\n    ret = hid_add_device(session->hid_dev);\n    if (ret < 0)\n        goto err_free_dev;\n\n    if (hid_dev_blacklisted(session->hid_dev)) {\n        ret = -ENODEV;\n        goto err_remove_dev;\n    }\n\n    return 0;\n\nerr_remove_dev:\n    hid_remove_device(session->hid_dev);\nerr_free_dev:\n    hid_free_device(session->hid_dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int hidp_setup_hid_session(struct hidp_session *session, struct hidp_connadd_req *req)\n{\n\tstruct hid_device *hdev;\n\n\tsession->hid_dev = hdev = hid_allocate_device();\n\tif (!hdev)\n\t\treturn -ENOMEM;\n\n\thdev->vendor = req->vendor;\n\thdev->product = req->product;\n\thdev->version = req->version;\n\thdev->country = req->country;\n\thdev->driver_data = session;\n\n\tif (hid_is_blacklist(hdev)) {\n\t\thid_free_device(hdev);\n\t\treturn -ENODEV;\n\t}\n\n\tsession->hid_read_data = kmalloc(req->max_resolution, GFP_KERNEL);\n\tif (!session->hid_read_data) {\n\t\thid_free_device(hdev);\n\t\treturn -ENOMEM;\n\t}\n\n\tif (copy_from_user(session->hid_read_data, req->data, req->data_len)) {\n\t\tkfree(session->hid_read_data);\n\t\thid_free_device(hdev);\n\t\treturn -EFAULT;\n\t}\n\n\treturn 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int hidp_setup_session(struct hidp_session *session, struct hidp_connadd_req *req)\n{\n\tstruct hid_device *hid;\n\tint err;\n\n\thid = hid_allocate_device();\n\tif (!hid)\n\t\treturn -ENOMEM;\n\n\tsession->hid = hid;\n\thid->driver_data = session;\n\n\thid->ll_driver = &hidp_hid_ll_driver;\n\thid->ll_protocol = HID_LL_KEYBOARD;\n\n\thid->vendor = req->vendor;\n\thid->product = req->product;\n\thid->version = req->version;\n\thid->country = req->country;\n\n\thid->report_length = req->report_length;\n\thid->devnum = req->devnum;\n\thid->suggested_id = req->suggested_id;\n\n\terr = hid_set_field(hid, HID_INPUT_REPORT, 0, req->rd_data, req->rd_size);\n\tif (err)\n\t\tgoto err_free_hid;\n\n\tif (hidp_is_blacklisted(hid)) {\n\t\terr = -ENODEV;\n\t\tgoto err_free_hid;\n\t}\n\n\terr = hid_register_device(hid);\n\tif (err)\n\t\tgoto err_free_hid;\n\n\treturn 0;\n\nerr_free_hid:\n\thid_destroy_device(hid);\n\treturn err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

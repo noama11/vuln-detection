@@ -1,0 +1,34 @@
+{
+  "case_id": "C_389__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int\nprint_ipv6_routing_hdr(netdissect_options *ndo, const u_char *bp, const u_char *bp2)\n{\n    const struct ip6_rthdr *rthdr;\n    int len, left;\n\n    rthdr = (const struct ip6_rthdr *)bp;\n    ND_TCHECK(*rthdr);\n    ND_PRINT((ndo, \"Routing Type %d, Length %d, Segments Left %d\",\n              rthdr->ip6r_nxt, rthdr->ip6r_len * 8, rthdr->ip6r_segleft));\n\n    len = sizeof(struct ip6_rthdr);\n    left = rthdr->ip6r_len * 8;\n\n    switch (rthdr->ip6r_type) {\n    case 0: /* IPv6_RTHDR_TYPE_0 */\n        {\n            const struct ip6_rthdr0 *rthdr0;\n            int i;\n\n            rthdr0 = (const struct ip6_rthdr0 *)rthdr;\n            ND_TCHECK(*rthdr0);\n\n            ND_PRINT((ndo, \"\\n    Address: %s\", ip6addr_string(ndo, &rthdr0->ip6r0_addr)));\n            len += sizeof(struct in6_addr);\n            left -= sizeof(struct in6_addr);\n\n            for (i = 1; i < rthdr->ip6r_segleft; i++) {\n                const struct ip6_rthdr0 *next_rthdr0;\n                ND_TCHECK(*next_rthdr0);\n                next_rthdr0 = (const struct ip6_rthdr0 *)((const u_char *)rthdr0 + i * sizeof(struct in6_addr));\n                ND_PRINT((ndo, \"\\n    Address: %s\", ip6addr_string(ndo, &next_rthdr0->ip6r0_addr)));\n                len += sizeof(struct in6_addr);\n            }\n        }\n        break;\n    default:\n        ND_PRINT((ndo, \" (unknown type)\"));\n        break;\n    }\n\n    return len;\n\ntrunc:\n    return -1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int\nprint_ipv6_routing_header(netdissect_options *ndo, const u_char *bp, const u_char *bp2)\n{\n    const struct ipv6_routing_header *rh;\n    int len, i;\n    u_int nh, hdrlen;\n\n    rh = (const struct ipv6_routing_header *)bp;\n    len = sizeof(struct ipv6_routing_header);\n    if (len > ndo->ndo_snaplen) {\n        ND_PRINT((ndo, \" [truncated]\"));\n        return (-1);\n    }\n    ND_PRINT((ndo, \"\\n\\t  Routing Header, type %u, segments left %u, length %u\",\n              rh->rh_type, rh->rh_seg_left, rh->rh_len * 8));\n\n    hdrlen = (rh->rh_len * 8) + 8;\n    if (hdrlen > ndo->ndo_snaplen) {\n        ND_PRINT((ndo, \" [truncated]\"));\n        return (-1);\n    }\n\n    switch (rh->rh_type) {\n        case 0:\n            for (i = 0; i <= rh->rh_seg_left; i++) {\n                ND_PRINT((ndo, \"\\n\\t    %s\", ip6addr_string(ndo, &rh->rh_addrs[i])));\n            }\n            break;\n        default:\n            ND_PRINT((ndo, \"\\n\\t    [unknown routing type %u]\",\n                      rh->rh_type));\n            break;\n    }\n\n    return (hdrlen);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int\nprint_ipv6_routing_header(netdissect_options *ndo, const u_char *bp, const u_char *bp2)\n{\n    const struct ip6_rthdr *rthdr;\n    int len, hdrlen, i;\n    u_int segments;\n\n    rthdr = (const struct ip6_rthdr *)bp;\n\n    if (rthdr->ip6r_len > (ND_DEFAULT_SNAPLEN - (bp - rthdr->ip6r_hdr)))\n        return (-1);\n\n    hdrlen = rthdr->ip6r_len + sizeof(*rthdr);\n    len = hdrlen;\n\n    ND_PRINT((ndo, \"Routing Header: length = %u, type = %u\", rthdr->ip6r_len, rthdr->ip6r_type));\n\n    segments = rthdr->ip6r_segleft;\n    ND_PRINT((ndo, \", segments left = %u\", segments));\n\n    switch (rthdr->ip6r_type) {\n        case 0: // Type 0, simple routing header\n            if (segments > 0) {\n                const struct in6_addr *addrs;\n                addrs = (const struct in6_addr *)((const u_char *)rthdr + sizeof(*rthdr));\n\n                for (i = 0; i < segments; i++) {\n                    if (addrs + i >= (const struct in6_addr *)((const u_char *)rthdr + hdrlen))\n                        break;\n                    ND_PRINT((ndo, \"\\n\\tAddress %d: %s\", i + 1, ip6addr_string(ndo, &addrs[i])));\n                }\n\n                if (i < segments) {\n                    ND_PRINT((ndo, \"\\n\\t[Truncated]\"));\n                    return (-1);\n                }\n            }\n            break;\n        default:\n            ND_PRINT((ndo, \"\\n\\t[Unknown routing header type]\"));\n            break;\n    }\n\n    return (len);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int print_ipv6_routing_header(struct netdissect_options *ndo, const u_char *bp, const u_char *bp2) {\n    const struct ip6_rthdr *rh;\n    int i;\n    u_int len, hdrlen;\n    int off = 0;\n\n    if ((v6print) == NULL)\n        v6print = ndo->ndo_snapend;\n\n    rh = (struct ip6_rthdr *)bp;\n    hdrlen = sizeof(struct ip6_rthdr);\n\n    ND_PRINT(\"\\n\\t  routing type %d, length %d, segments left %d\\n\",\n             rh->ip6r_nxt, rh->ip6r_len * 8, rh->ip6r_segleft);\n\n    len = 0;\n    switch (rh->ip6r_nxt) {\n        case IPPROTO_DSTOPTS:\n        case IPPROTO_ROUTING:\n            len = 8;\n            break;\n        default:\n            len = 0;\n            break;\n    }\n\n    for (i = 0; i < rh->ip6r_segleft; i++) {\n        if (off + sizeof(struct in6_addr) > hdrlen) {\n            ND_PRINT(\"\\n\\t  [truncated]\");\n            return -1;\n        }\n        ND_PRINT(\"\\n\\t  %s\", ip6addr_string(ndo, (const u_char *)&rh[1 + i]));\n        off += sizeof(struct in6_addr);\n    }\n\n    return hdrlen;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int\nprint_ipv6_routing_header(struct netdissect_options *ndo, const u_char *bp, const u_char *bp2)\n{\n    const struct ip6_rthdr *rthdr;\n    int len;\n    int i;\n\n    rthdr = (const struct ip6_rthdr *)bp;\n\n    ND_PRINT(\"(Routing) \");\n\n    if (rthdr->ip6r_len == 0) {\n        ND_PRINT(\"Routing header length is zero\");\n        return 0;\n    }\n\n    len = (rthdr->ip6r_len + 1) * 8;\n\n    if (len > 0 && bp + len > bp2) {\n        ND_PRINT(\"[|trunc]\");\n        return -1;\n    }\n\n    ND_PRINT(\"Routing Type: %u, Segments Left: %u, Header Length: %u bytes\",\n             rthdr->ip6r_type, rthdr->ip6r_segleft, len);\n\n    if (rthdr->ip6r_type == 0) {\n        int num_addrs = rthdr->ip6r_segleft;\n        const u_char *addrp = (const u_char *)(rthdr + 1);\n\n        for (i = 0; i < num_addrs; i++) {\n            if (addrp + sizeof(struct in6_addr) > bp2) {\n                ND_PRINT(\"[|trunc]\");\n                return -1;\n            }\n\n            ND_PRINT(\"Address[%d]: %s\", i, ip6addr_string(ndo, (const struct in6_addr *)addrp));\n            addrp += sizeof(struct in6_addr);\n        }\n    }\n\n    return len;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

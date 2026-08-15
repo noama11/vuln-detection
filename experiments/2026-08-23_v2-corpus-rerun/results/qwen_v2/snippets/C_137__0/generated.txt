@@ -1,0 +1,27 @@
+void handle_syscall_entry(void *data, struct pt_regs *regs, long id) {
+    int syscall_num = regs->syscall;
+    struct ftrace_event_file *event_file = get_syscall_event_file(syscall_num);
+    struct trace_entry *entry;
+    unsigned long flags, preemption;
+
+    if (!event_file || !event_file->enabled)
+        return;
+
+    flags = raw_local_save_flags();
+    preemption = preempt_count();
+
+    entry = trace_buffer_reserve(data, event_file, sizeof(struct syscall_entry));
+    if (!entry)
+        return;
+
+    struct syscall_entry *syscall_entry = (struct syscall_entry *)entry;
+    syscall_entry->syscall_number = syscall_num;
+    syscall_entry->args[0] = regs->di;
+    syscall_entry->args[1] = regs->si;
+    syscall_entry->args[2] = regs->dx;
+    syscall_entry->args[3] = regs->r10;
+    syscall_entry->args[4] = regs->r8;
+    syscall_entry->args[5] = regs->r9;
+
+    trace_buffer_commit(data, event_file, entry, sizeof(*syscall_entry), flags, preemption);
+}

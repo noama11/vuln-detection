@@ -1,0 +1,56 @@
+{
+  "case_id": "C_148__0",
+  "sample_id": "D/C/148",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-5045",
+  "cve_summary": "The mountpoint_last function in fs/namei.c in the Linux kernel before 3.15.8 does not properly maintain a certain reference count during attempts to use the umount system call in conjunction with a symlink, which allows local users to cause a denial of service (memory consumption or use-after-free) or possibly have unspecified other impact via the umount program.",
+  "changed_file": "fs/namei.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function resolves the last component of a path in a nameidata structure,  \n * handling various cases such as symlinks and mounted directories.  \n *  \n * Parameters:  \n * nd (struct nameidata *): Pointer to the nameidata structure containing path information.  \n * path (struct path *): Pointer to the path structure where the resolved dentry will be stored.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function first checks if it is in a read-copy update (rcu) walk and handles it accordingly.  \n * It then attempts to look up the last component of the path, managing mutex locks to ensure thread safety.  \n * If the dentry is not found in the cache, it allocates a new one and performs a lookup.  \n * The function also checks for errors related to memory allocation and negative dentries,  \n * and finally updates the path structure or terminates the walk based on the outcome.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int resolve_last_component(struct nameidata *nd, struct path *path) {\n    int err;\n\n    if (nd->flags & LOOKUP_RCU) {\n        struct dentry *dentry;\n\n        dentry = lookup_dentry(nd);\n        if (IS_ERR_OR_NULL(dentry))\n            return PTR_ERR(dentry);\n\n        path->dentry = dentry;\n        path->mnt = nd->path.mnt;\n        return 0;\n    }\n\n    err = mnt_want_write(nd->path.mnt);\n    if (err)\n        return err;\n\n    path->dentry = d_lookup(nd->path.dentry, nd->last.name, nd->last.len);\n    if (path->dentry) {\n        path->mnt = nd->path.mnt;\n        mnt_drop_write(nd->path.mnt);\n        return 0;\n    }\n\n    path->dentry = d_alloc_name(nd->path.dentry, nd->last.name);\n    if (!path->dentry) {\n        mnt_drop_write(nd->path.mnt);\n        return -ENOMEM;\n    }\n\n    path->dentry->d_name.len = nd->last.len;\n    path->dentry->d_name.hash = full_name_hash(nd->last.name, nd->last.len);\n    path->dentry->d_parent = nd->path.dentry;\n    path->dentry->d_sb = nd->path.dentry->d_sb;\n    path->dentry->d_op = nd->path.dentry->d_op;\n    path->dentry->d_fsdata = NULL;\n\n    err = nd->path.dentry->d_inode->i_op->lookup(nd->path.dentry->d_inode, path->dentry);\n    if (err) {\n        dput(path->dentry);\n        mnt_drop_write(nd->path.mnt);\n        return err;\n    }\n\n    path->mnt = nd->path.mnt;\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of the last component of a path. The candidate implementation performs a lookup and creates a new dentry if necessary, while the reference implementation includes additional logic for handling dots (e.g., '..'), checking for negative dentries, and managing mutex locks. The reference implementation also includes logic for following symlinks and handling mounted directories, which the candidate implementation lacks. These differences are relevant to path resolution and could lead to different behaviors for certain inputs, including edge cases like '..' or symbolic links. This is a functional mismatch that could affect correctness in some scenarios.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of the last component of a path. The candidate implementation performs a lookup and creates a new dentry if necessary, but does not check for negative dentries or handle symbolic links explicitly. The reference implementation includes checks for negative dentries and handles symbolic links via `should_follow_link` and `follow_mount`, which are not present in the candidate. This difference could lead to incorrect behavior when resolving symbolic links or missing error handling for non-existent files, making it a functional mismatch.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

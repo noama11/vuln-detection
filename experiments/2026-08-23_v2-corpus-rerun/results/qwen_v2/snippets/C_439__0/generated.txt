@@ -1,0 +1,45 @@
+int create_graphics_buffer_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {
+    int ret = -EINVAL;
+
+    if (!dev || !data || !file_priv) {
+        return ret;
+    }
+
+    // Allocate and initialize the surface structure
+    struct graphics_buffer_surface *surface = kzalloc(sizeof(*surface), GFP_KERNEL);
+    if (!surface) {
+        return -ENOMEM;
+    }
+
+    // Parse the surface creation arguments from data
+    struct surface_creation_args *args = data;
+
+    // Validate the arguments
+    if (args->width <= 0 || args->height <= 0 || args->format == 0) {
+        kfree(surface);
+        return -EINVAL;
+    }
+
+    // Allocate memory for the surface's backup buffer
+    surface->backup_buffer = kmalloc(args->width * args->height * 4, GFP_KERNEL);
+    if (!surface->backup_buffer) {
+        kfree(surface);
+        return -ENOMEM;
+    }
+
+    // Initialize the surface with the provided arguments
+    surface->width = args->width;
+    surface->height = args->height;
+    surface->format = args->format;
+
+    // Populate the response structure with the surface details
+    struct surface_response *response = data;
+    response->surface_id = assign_surface_id(surface); // Assume this helper assigns a unique ID
+    response->backup_buffer_address = (uintptr_t)surface->backup_buffer;
+
+    // Add the surface to the device's list of surfaces
+    list_add(&surface->list, &dev->surface_list);
+
+    ret = 0;
+    return ret;
+}

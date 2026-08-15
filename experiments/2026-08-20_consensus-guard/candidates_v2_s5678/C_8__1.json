@@ -1,0 +1,34 @@
+{
+  "case_id": "C_8__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct sk_buff *ipv6_gather_frags(struct sk_buff *skb, u32 user)\n{\n    struct sk_buff *prev_skb;\n    struct sk_buff *new_skb;\n\n    if (!skb->len)\n        return skb;\n\n    prev_skb = find_prev_frag_header(skb);\n    if (!prev_skb)\n        return skb;\n\n    new_skb = skb_clone(skb, GFP_ATOMIC);\n    if (!new_skb || skb_headroom(new_skb) < sizeof(struct ipv6hdr))\n        return skb;\n\n    skb_set_transport_header(new_skb, sizeof(struct ipv6hdr));\n\n    if (check_mem_thresholds())\n        return skb;\n\n    struct frag_queue *fq = find_or_create_frag_queue(user);\n    if (!fq)\n        return skb;\n\n    if (queue_frag(fq, new_skb))\n        return skb;\n\n    if (all_frags_received(fq))\n        return reassemble_frags(fq);\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct sk_buff *ipv6_frag_reassembly(struct sk_buff *skb, u32 user) {\n    if (skb->len == 0)\n        return skb;\n\n    struct sk_buff *prev_skb = find_prev_fragment(skb);\n    if (!prev_skb)\n        return skb;\n\n    struct sk_buff *clone_skb = skb_clone(skb, GFP_ATOMIC);\n    if (!clone_skb || skb_headroom(clone_skb) < skb_headroom(skb)) {\n        kfree_skb(clone_skb);\n        return skb;\n    }\n\n    skb_reset_transport_header(clone_skb);\n\n    if (check_memory_threshold(clone_skb)) {\n        kfree_skb(clone_skb);\n        return skb;\n    }\n\n    struct fragment_queue *fq = find_or_create_fragment_queue(user);\n    if (!fq) {\n        kfree_skb(clone_skb);\n        return skb;\n    }\n\n    if (!queue_fragment(fq, clone_skb))\n        return skb;\n\n    if (!fq->all_fragments_received)\n        return skb;\n\n    struct sk_buff *reassembled_skb = reassemble_fragments(fq);\n    if (!reassembled_skb)\n        return skb;\n\n    release_fragment_queue(fq);\n    return reassembled_skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "struct sk_buff *ipv6_gather_frags(struct sk_buff *skb, u32 user) {\n    if (skb->len == 0)\n        return skb;\n\n    struct sk_buff *prev_skb = skb_clone(skb, GFP_ATOMIC);\n    if (!prev_skb || skb_headroom(prev_skb) < sizeof(struct ipv6hdr)) {\n        kfree_skb(skb);\n        return NULL;\n    }\n\n    skb_reset_transport_header(prev_skb);\n\n    struct frag_queue *fq = find_frag_queue(user);\n    if (!fq) {\n        fq = create_frag_queue(user);\n        if (!fq) {\n            kfree_skb(prev_skb);\n            return skb;\n        }\n    }\n\n    if (!queue_skb(fq, prev_skb)) {\n        kfree_skb(skb);\n        return skb;\n    }\n\n    if (fq->complete) {\n        struct sk_buff *reassembled_skb = reassemble_skb(fq);\n        release_frag_queue(fq);\n        if (reassembled_skb)\n            return reassembled_skb;\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "struct sk_buff *ipv6_frag_gather(struct sk_buff *skb, u32 user) {\n    if (skb->len == 0)\n        return skb;\n\n    struct sk_buff *prev_skb = NULL;\n    struct sk_buff *clone = skb_clone(skb, GFP_ATOMIC);\n    if (!clone || skb_headroom(clone) < sizeof(struct ipv6hdr))\n        return skb;\n\n    skb_set_transport_header(clone, sizeof(struct ipv6hdr));\n\n    struct frag_queue *fq = find_frag_queue(user);\n    if (!fq) {\n        fq = create_frag_queue(user);\n        if (!fq) {\n            kfree_skb(clone);\n            return skb;\n        }\n    }\n\n    if (queue_skb(fq, clone) < 0) {\n        return skb;\n    }\n\n    if (!all_fragments_received(fq))\n        return skb;\n\n    struct sk_buff *reassembled_skb = reassemble_skb(fq);\n    if (!reassembled_skb)\n        return skb;\n\n    release_frag_queue(fq);\n    return reassembled_skb;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "struct sk_buff *ipv6_gather_frags(struct sk_buff *skb, u32 user)\n{\n    struct sk_buff *prev_skb;\n    struct sk_buff *clone;\n    struct frag_queue *fq;\n\n    if (skb->len == 0)\n        return skb;\n\n    prev_skb = find_prev_fragment(skb);\n    if (!prev_skb)\n        return skb;\n\n    clone = skb_clone(skb, GFP_ATOMIC);\n    if (!clone || skb_headroom(clone) < skb_headroom(skb)) {\n        kfree_skb(clone);\n        return skb;\n    }\n\n    skb_set_transport_header(clone, skb_transport_offset(skb));\n\n    if (check_memory_threshold(clone))\n        drop_old_fragments(user);\n\n    fq = find_or_create_frag_queue(user, skb);\n    if (!fq)\n        return skb;\n\n    if (queue_skb_in_frag(fq, clone) < 0)\n        return skb;\n\n    if (all_fragments_received(fq)) {\n        struct sk_buff *reassembled = reassemble_skb(fq);\n        if (reassembled) {\n            release_frag_queue(fq);\n            return reassembled;\n        }\n    }\n\n    return skb;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

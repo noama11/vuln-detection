@@ -1,0 +1,44 @@
+int ati_remote_wonder_probe(struct usb_interface *interface, const struct usb_device_id *id) {
+    struct usb_device *udev = interface_to_usbdev(interface);
+    struct usb_host_interface *alt = &interface->cur_altsetting;
+    struct ati_remote_dev *dev;
+    int retval = -ENOMEM;
+
+    if (alt->desc.bNumEndpoints < 1)
+        return -EINVAL;
+
+    dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+    if (!dev)
+        return -ENOMEM;
+
+    dev->udev = usb_get_dev(udev);
+    dev->interface = interface;
+
+    usb_set_intfdata(interface, dev);
+
+    if (usb_set_interface(udev, alt->desc.bInterfaceNumber, 0) < 0) {
+        dev_err(&udev->dev, "failed to set alternate setting\n");
+        goto error;
+    }
+
+    dev->urb = usb_alloc_urb(0, GFP_KERNEL);
+    if (!dev->urb)
+        goto error;
+
+    usb_fill_int_urb(dev->urb, udev, usb_rcvintpipe(udev, alt->endpoint[0].desc.bEndpointAddress),
+                     dev->inbuf, sizeof(dev->inbuf), ati_remote_irq, dev,
+                     alt->endpoint[0].desc.bInterval);
+
+    if (sysfs_create_group(&interface->dev.kobj, &ati_remote_attr_group))
+        goto error;
+
+    return 0;
+
+error:
+    if (dev->urb)
+        usb_free_urb(dev->urb);
+    if (dev->udev)
+        usb_put_dev(dev->udev);
+    kfree(dev);
+    return retval;
+}

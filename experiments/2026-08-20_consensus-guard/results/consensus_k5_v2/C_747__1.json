@@ -1,0 +1,77 @@
+{
+  "case_id": "C_747__1",
+  "sample_id": "D/C/747",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "memcached/memcached",
+  "cve_id": "CVE-2019-15026",
+  "cve_summary": "memcached 1.5.16, when UNIX sockets are used, has a stack-based buffer over-read in conn_to_str in memcached.c.",
+  "changed_file": "memcached.c",
+  "docstring": "/**\n * Summary: \n * Converts a connection's socket address into a human-readable string format.\n * \n * Parameters: \n * c (const conn*): Pointer to the connection structure containing transport type.\n * af (const int): Address family (AF_INET, AF_INET6, or AF_UNIX).\n * addr (char*): Output buffer to store the formatted address string.\n * sock_addr (struct sockaddr*): Pointer to the socket address structure.\n * \n * Returns: \n * None\n * \n * Logic: \n * The function checks the address family and retrieves the appropriate address and port information. \n * For AF_INET and AF_INET6, it uses `inet_ntop` to convert the address to a string format, while for \n * AF_UNIX, it copies the socket path. If the address string is empty, it defaults to a placeholder. \n * Finally, it formats the output string with the protocol name and address, including the port if available.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "null-termination after strncpy",
+        "performed_by_count": 4,
+        "why_it_matters": "If the input string is longer than the buffer, strncpy does not null-terminate the result, leading to a potential buffer overflow or undefined behavior when the string is used."
+      },
+      {
+        "step": "default to placeholder when address string is empty",
+        "performed_by_count": 4,
+        "why_it_matters": "If the address string is empty (e.g., due to invalid or untrusted input), the function may produce an incomplete or malformed output string, which could lead to parsing errors or undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step performed by a majority of the independent implementations: ensuring the output buffer is null-terminated after copying untrusted input. Additionally, it does not handle the case where the address string is empty by defaulting to a placeholder, which is done by most implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 3,
+    "n_steps_majority": 3,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "null or error check after inet_ntop",
+        "performed_by_count": 4,
+        "why_it_matters": "If inet_ntop fails, the resulting string is undefined, and using it could lead to invalid or malformed output."
+      },
+      {
+        "step": "bounds check when copying UNIX socket path",
+        "performed_by_count": 4,
+        "why_it_matters": "Copying the UNIX socket path without a bounds check could lead to buffer overflow if the path is longer than the destination buffer."
+      },
+      {
+        "step": "use of snprintf instead of sprintf",
+        "performed_by_count": 5,
+        "why_it_matters": "Using sprintf without a size limit can lead to buffer overflow if the formatted string exceeds the destination buffer size."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a null or error check after the call to inet_ntop in the AF_INET and AF_INET6 cases. A majority of the independent implementations perform this check to ensure the conversion was successful before using the result. The target also lacks a bounds check when copying the UNIX socket path, which most implementations include. Additionally, the target uses sprintf instead of snprintf, which is less safe and could lead to buffer overflows.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

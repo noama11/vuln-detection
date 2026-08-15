@@ -1,0 +1,56 @@
+{
+  "case_id": "C_66__1",
+  "sample_id": "D/C/66",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-4163",
+  "cve_summary": "The ip6_append_data_mtu function in net/ipv6/ip6_output.c in the IPv6 implementation in the Linux kernel through 3.10.3 does not properly maintain information about whether the IPV6_MTU setsockopt option had been specified, which allows local users to cause a denial of service (BUG and system crash) via a crafted application that uses the UDP_CORK option in a setsockopt system call.",
+  "changed_file": "net/ipv6/ip6_output.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Adjusts the maximum transmission unit (MTU) and maximum fragment length  \n * based on the provided routing information and socket buffer.  \n *  \n * Parameters:  \n * mtu (unsigned int*): Pointer to the MTU value to be adjusted.  \n * maxfraglen (int*): Pointer to the maximum fragment length to be calculated.  \n * fragheaderlen (unsigned int): Length of the fragment header.  \n * skb (struct sk_buff*): Pointer to the socket buffer, can be NULL for the first fragment.  \n * rt (struct rt6_info*): Pointer to routing information structure.  \n * pmtuprobe (bool): Flag indicating if Path MTU probing is enabled.  \n *  \n * Returns:  \n * None  \n *  \n * Logic:  \n * The function checks if the destination is not a tunnel. If the socket buffer  \n * is NULL, it reserves space for the header length in the MTU. For subsequent  \n * fragments, it adjusts the MTU based on the device's MTU or the destination's  \n * MTU path. Finally, it calculates the maximum fragment length considering  \n * the fragment header length.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void adjust_mtu_and_maxfraglen(unsigned int *mtu, int *maxfraglen,\n                               unsigned int fragheaderlen,\n                               struct sk_buff *skb,\n                               struct rt6_info *rt,\n                               bool pmtuprobe) {\n    if (!skb) {\n        *mtu -= fragheaderlen;\n    } else {\n        *mtu = min(*mtu, rt->dst.dev->mtu);\n    }\n\n    if (pmtuprobe) {\n        *mtu = min(*mtu, rt->dst.pmtu);\n    }\n\n    *maxfraglen = *mtu - fragheaderlen;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they adjust the MTU and calculate the maxfraglen. The reference implementation includes a check for whether the destination is a tunnel (`DST_XFRM_TUNNEL`), which the candidate implementation lacks entirely. Additionally, the reference implementation uses `rt->dst.header_len` instead of `fragheaderlen` when `skb` is NULL, and computes `maxfraglen` using a more complex formula involving alignment and subtracting `sizeof(struct frag_hdr)`. These differences are reachable for tunnel-based or malformed routing inputs and could affect packet fragmentation behavior, potentially leading to incorrect handling of packets or malformed data.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation subtracts `fragheaderlen` from `mtu` when `skb` is NULL, while the reference implementation subtracts `rt->dst.header_len` instead. Additionally, the reference implementation includes a check for `DST_XFRM_TUNNEL` and performs a more complex calculation for `*maxfraglen` involving alignment and subtracting `sizeof(struct frag_hdr)`. These differences in logic and conditions can lead to different values for `*mtu` and `*maxfraglen`, especially when the destination is a tunnel or when `skb` is not NULL. This is a functional mismatch that could affect packet fragmentation behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

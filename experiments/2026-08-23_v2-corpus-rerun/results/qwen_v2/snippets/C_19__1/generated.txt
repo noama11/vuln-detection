@@ -1,0 +1,34 @@
+#include <linux/personality.h>
+#include <linux/utsname.h>
+#include <linux/uaccess.h>
+#include <linux/version.h>
+
+int compat_get_uname_26(char __user *release, size_t len) {
+    struct oldoldutsname {
+        char sysname[9];
+        char nodename[9];
+        char release[14];
+        char version[3];
+        char machine[9];
+    } __attribute__((aligned(4))) name;
+
+    if (personality(current->personality) & UNAME26) {
+        int major = LINUX_VERSION_CODE / (100 * 100);
+        int minor = (LINUX_VERSION_CODE / 100) % 100;
+        int patch = LINUX_VERSION_CODE % 100;
+        int compat_version = major * 100 + minor;
+
+        snprintf(name.release, sizeof(name.release), "2.6.%d", compat_version);
+    } else {
+        return -EPERM;
+    }
+
+    int ret = strlen(name.release) + 1;
+    if (len < ret)
+        return -EFAULT;
+
+    if (copy_to_user(release, name.release, ret))
+        return -EFAULT;
+
+    return ret;
+}

@@ -1,0 +1,37 @@
+int parse_fmtp_config_h264(AVFormatContext *s, AVStream *stream, PayloadContext *h264_data, const char *attr, const char *value) {
+    if (!strcmp(attr, "packetization-mode")) {
+        int mode = atoi(value);
+        av_log(s, AV_LOG_DEBUG, "packetization-mode: %d\n", mode);
+        if (mode != 0 && mode != 1) {
+            av_log(s, AV_LOG_ERROR, "packetization-mode %d not supported\n", mode);
+            return AVERROR(EINVAL);
+        }
+        h264_data->packetization_mode = mode;
+    } else if (!strcmp(attr, "profile-level-id")) {
+        if (strlen(value) != 6) {
+            av_log(s, AV_LOG_ERROR, "Invalid profile-level-id length\n");
+            return AVERROR(EINVAL);
+        }
+        h264_data->profile_level_id[0] = value[0];
+        h264_data->profile_level_id[1] = value[1];
+        h264_data->profile_level_id[2] = value[2];
+        h264_data->profile_level_id[3] = value[3];
+        h264_data->profile_level_id[4] = value[4];
+        h264_data->profile_level_id[5] = value[5];
+    } else if (!strcmp(attr, "sprop-parameter-sets")) {
+        uint8_t *extradata = NULL;
+        int extradata_size = 0;
+        int ret = ff_parse_sdp_a_sprop_parameter_sets(&extradata, &extradata_size, value);
+        if (ret < 0) {
+            av_log(s, AV_LOG_ERROR, "Failed to parse sprop-parameter-sets\n");
+            return ret;
+        }
+        av_freep(&stream->codecpar->extradata);
+        stream->codecpar->extradata = extradata;
+        stream->codecpar->extradata_size = extradata_size;
+    } else {
+        av_log(s, AV_LOG_WARNING, "Unknown attribute: %s\n", attr);
+        return 0;
+    }
+    return 0;
+}

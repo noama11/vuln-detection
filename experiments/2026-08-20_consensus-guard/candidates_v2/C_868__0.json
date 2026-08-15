@@ -1,0 +1,34 @@
+{
+  "case_id": "C_868__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int parse_pkt_line(git_pkt **head, const char *line, const char **out, size_t bufflen) {\n    if (bufflen < 4)\n        return -1;\n\n    int len;\n    if (sscanf(line, \"%4hX\", &len) != 1)\n        return -1;\n\n    if (len == 0 && memcmp(line, \"0000\", 4) == 0) {\n        *out = line + 4;\n        return 0;\n    }\n\n    if (bufflen < len + 4)\n        return -1;\n\n    git_pkt *pkt = (git_pkt *)malloc(sizeof(git_pkt));\n    if (!pkt)\n        return -1;\n\n    pkt->data = (char *)malloc(len);\n    if (!pkt->data) {\n        free(pkt);\n        return -1;\n    }\n\n    memcpy(pkt->data, line + 4, len);\n    pkt->len = len;\n\n    pkt->next = *head;\n    *head = pkt;\n\n    *out = line + 4 + len;\n    return len + 4;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int git_pkt_parse(git_pkt **head, const char *line, const char **out, size_t bufflen) {\n    const char *start = line;\n    const char *end = line + bufflen;\n    const char *current = start;\n    git_pkt *pkt;\n    size_t len;\n\n    if (bufflen < 4)\n        return GIT_PKT_ERROR_SHORT;\n\n    if (memcmp(current, \"ACK\", 3) == 0) {\n        current += 3;\n        if (current + 4 > end)\n            return GIT_PKT_ERROR_SHORT;\n        if (sscanf(current, \"%zu\", &len) != 1)\n            return GIT_PKT_ERROR_PARSE;\n        current += 4;\n        pkt = git_pkt_new(GIT_PKT_ACK, current, len);\n    }\n    else if (memcmp(current, \"DATA\", 4) == 0) {\n        current += 4;\n        if (current + 4 > end)\n            return GIT_PKT_ERROR_SHORT;\n        if (sscanf(current, \"%zu\", &len) != 1)\n            return GIT_PKT_ERROR_PARSE;\n        current += 4;\n        pkt = git_pkt_new(GIT_PKT_DATA, current, len);\n    }\n    else if (memcmp(current, \"SIDEBAND\", 8) == 0) {\n        current += 8;\n        if (current + 4 > end)\n            return GIT_PKT_ERROR_SHORT;\n        if (sscanf(current, \"%zu\", &len) != 1)\n            return GIT_PKT_ERROR_PARSE;\n        current += 4;\n        pkt = git_pkt_new(GIT_PKT_SIDEBAND, current, len);\n    }\n    else if (memcmp(current, \"NAK\", 3) == 0) {\n        pkt = git_pkt_new(GIT_PKT_NAK, current, 3);\n        current += 3;\n    }\n    else {\n        return GIT_PKT_ERROR_UNKNOWN;\n    }\n\n    if (!pkt)\n        return GIT_PKT_ERROR_ALLOC;\n\n    if (*head == NULL) {\n        *head = pkt;\n    }\n    else {\n        git_pkt *tmp = *head;\n        while (tmp->next != NULL) {\n            tmp = tmp->next;\n        }\n        tmp->next = pkt;\n    }\n\n    *out = current;\n    return GIT_PKT_OK;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int parse_git_pkt_line(git_pkt **head, const char *line, const char **out, size_t bufflen) {\n    if (bufflen < 4) {\n        return GIT_PKT_ERROR_SHORT_BUFFER;\n    }\n\n    size_t pkt_len;\n    if (memcmp(line, \"ACK\", 3) == 0) {\n        pkt_len = 4;\n    } else if (memcmp(line, \"NAK\", 3) == 0) {\n        pkt_len = 4;\n    } else if (memcmp(line, \"SIDEBAND\", 8) == 0) {\n        int len;\n        if (sscanf(line + 8, \"%d\", &len) != 1) {\n            return GIT_PKT_ERROR_INVALID_FORMAT;\n        }\n        pkt_len = 8 + snprintf(NULL, 0, \"%d\", len);\n    } else {\n        pkt_len = 4;\n    }\n\n    if (bufflen < pkt_len) {\n        return GIT_PKT_ERROR_SHORT_BUFFER;\n    }\n\n    git_pkt *pkt = malloc(sizeof(git_pkt));\n    if (!pkt) {\n        return GIT_PKT_ERROR_MALLOC_FAILED;\n    }\n\n    pkt->data = line;\n    pkt->length = pkt_len;\n\n    if (*head == NULL) {\n        *head = pkt;\n    } else {\n        git_pkt *current = *head;\n        while (current->next != NULL) {\n            current = current->next;\n        }\n        current->next = pkt;\n    }\n\n    *out = line + pkt_len;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int parse_pkt_line(git_pkt **head, const char *line, const char **out, size_t bufflen) {\n    size_t len;\n    const char *ptr = line;\n    int ret;\n\n    if (bufflen < 4)\n        return -1; // Insufficient buffer length\n\n    len = (size_t)strtoul(ptr, NULL, 16);\n    ptr += 4;\n\n    if (len == 0) {\n        *out = ptr;\n        return 0;\n    }\n\n    if (bufflen < len)\n        return -1; // Not enough data for the packet\n\n    if (!memcmp(ptr, \"data\", 4)) {\n        ret = handle_pkt_data(head, ptr, out);\n    } else if (!memcmp(ptr, \"sideband\", 8)) {\n        ret = handle_sideband_pkt(head, ptr, out);\n    } else if (!memcmp(ptr, \"ACK\", 3)) {\n        ret = handle_ack_pkt(head, ptr, out);\n    } else {\n        ret = handle_unknown_pkt(head, ptr, out);\n    }\n\n    if (ret < 0)\n        return ret;\n\n    *head = *head ? (*head)->next : *head;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int parse_pkt_line(git_pkt **head, const char *line, const char **out, size_t bufflen) {\n    if (bufflen < 4)\n        return -1; // Error: buffer too small\n\n    unsigned int pkt_len;\n    int i;\n\n    for (i = 0; i < 4 && line[i] == '0'; ++i)\n        continue;\n\n    if (i == 4)\n        pkt_len = 0;\n    else {\n        char len_str[5];\n        memcpy(len_str, line, 4);\n        len_str[4] = '\\0';\n        pkt_len = (unsigned int)strtol(len_str, NULL, 16);\n    }\n\n    if (pkt_len > bufflen - 4)\n        return -1; // Error: incomplete packet\n\n    if (pkt_len == 0) {\n        *out = line + 4;\n        return 0;\n    }\n\n    git_pkt *pkt = (git_pkt *)malloc(sizeof(git_pkt));\n    if (!pkt)\n        return -1; // Error: memory allocation failed\n\n    pkt->data = (char *)malloc(pkt_len + 1);\n    if (!pkt->data) {\n        free(pkt);\n        return -1; // Error: memory allocation failed\n    }\n\n    memcpy(pkt->data, line + 4, pkt_len);\n    pkt->data[pkt_len] = '\\0';\n    pkt->len = pkt_len;\n\n    // Determine packet type and call appropriate handler\n    if (strncmp(pkt->data, \"data\", 4) == 0) {\n        // Handle data packet\n    } else if (strncmp(pkt->data, \"sideband\", 8) == 0) {\n        // Handle sideband packet\n    } else if (strncmp(pkt->data, \"ACK\", 3) == 0) {\n        // Handle acknowledgment packet\n    } else {\n        free(pkt->data);\n        free(pkt);\n        return -1; // Error: unknown packet type\n    }\n\n    pkt->next = *head;\n    *head = pkt;\n    *out = line + 4 + pkt_len;\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

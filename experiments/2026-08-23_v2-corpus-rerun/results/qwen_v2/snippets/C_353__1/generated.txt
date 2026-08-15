@@ -1,0 +1,27 @@
+#include <linux/key.h>
+#include <linux/errno.h>
+
+int get_dest_keyring(struct key **_dest_keyring) {
+    struct key *dest_keyring = NULL;
+    int ret = 0;
+
+    if (_dest_keyring && *_dest_keyring) {
+        dest_keyring = *_dest_keyring;
+    } else {
+        // Attempt to find a suitable default keyring based on current credentials
+        dest_keyring = keyring_search(KEY_SPEC_SESSION_KEYRING, NULL, NULL);
+        if (IS_ERR(dest_keyring)) {
+            return PTR_ERR(dest_keyring);
+        }
+    }
+
+    // Check if the current process has write access to the keyring
+    ret = key_permission(dest_keyring, KEY_NEED_WRITE);
+    if (ret < 0) {
+        key_put(dest_keyring);
+        return ret;
+    }
+
+    *_dest_keyring = dest_keyring;
+    return 0;
+}

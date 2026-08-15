@@ -1,0 +1,67 @@
+{
+  "case_id": "C_468__0",
+  "sample_id": "D/C/468",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for setting memory policy based on a given mode and node mask.\n\nParameters: \n- mode (int): The memory policy mode to be set.\n- nmask (compat_ulong_t __user *): A pointer to the user-space bitmap representing the nodes.\n- maxnode (compat_ulong_t): The maximum number of nodes that can be specified.\n\nReturns: \n- int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first initializes a bitmap and calculates the number of bits and allocation size based on the provided maximum node. If a valid node mask is provided, it retrieves the bitmap from user space and allocates memory for it. It then copies the bitmap back to user space. Finally, it calls the underlying system function to set the memory policy, passing the mode, allocated memory, and the number of bits.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "null check for nmask before user space access",
+        "performed_by_count": 4,
+        "why_it_matters": "If 'nmask' is null and the code proceeds to call copy_to_user, it will dereference a null pointer, causing a crash or undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a null check for the 'nmask' parameter before attempting to copy data to user space, which is a step performed by a majority of the independent implementations. This could lead to a null pointer dereference if 'nmask' is null and 'err' is not set before returning.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "null check on nmask",
+        "performed_by_count": 4,
+        "why_it_matters": "If nmask is null, the function proceeds to call compat_get_bitmap and copy_to_user without checking, which could lead to a null pointer dereference."
+      },
+      {
+        "step": "dynamic memory allocation for user-space bitmap",
+        "performed_by_count": 4,
+        "why_it_matters": "The target uses a fixed-size DECLARE_BITMAP, which may not be sufficient for large maxnode values, potentially leading to buffer overflow or incorrect behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation uses a fixed-size DECLARE_BITMAP instead of dynamically allocating memory for the node mask. It also does not perform a null check on the nmask parameter before attempting to copy data from it, which is a step performed by a majority of the independent implementations. This could lead to a null pointer dereference if nmask is null.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

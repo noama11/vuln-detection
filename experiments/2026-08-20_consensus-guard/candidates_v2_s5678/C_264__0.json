@@ -1,0 +1,34 @@
+{
+  "case_id": "C_264__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg)\n{\n    struct xc2028_data *priv = fe->demodulator_priv;\n    struct xc2028_config *cfg = priv_cfg;\n    int ret = 0;\n\n    mutex_lock(&priv->lock);\n\n    /* Copy configuration data */\n    memcpy(&priv->config, cfg, sizeof(*cfg));\n\n    /* Check if firmware name has changed */\n    if (priv->fw_name && strcmp(priv->fw_name, cfg->firmware_name)) {\n        kfree(priv->fw_name);\n        priv->fw_name = kstrdup(cfg->firmware_name, GFP_KERNEL);\n        if (!priv->fw_name) {\n            ret = -ENOMEM;\n            goto error;\n        }\n\n        /* Request firmware if no firmware is loaded */\n        if (priv->state == XC2028_STATE_IDLE) {\n            ret = request_firmware_nowait(\n                THIS_MODULE,\n                1,\n                priv->fw_name,\n                &fe->dvb->pub_desc->adapter->dev,\n                GFP_KERNEL,\n                priv,\n                xc2028_firmware_cb);\n            if (ret < 0)\n                goto error;\n        }\n    }\n\n    mutex_unlock(&priv->lock);\n    return ret;\n\nerror:\n    mutex_unlock(&priv->lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg)\n{\n    struct xc2028_data *cfg = (struct xc2028_data *)priv_cfg;\n    int result = 0;\n\n    mutex_lock(&fe->lock);\n\n    /* Copy configuration data */\n    memcpy(&fe->demodulator_priv, cfg, sizeof(struct xc2028_data));\n\n    /* Check if firmware name has changed */\n    if (strcmp(fe->demodulator_priv.firmware_name, cfg->firmware_name) != 0) {\n        kfree(fe->demodulator_priv.firmware_name);\n        fe->demodulator_priv.firmware_name = kstrdup(cfg->firmware_name, GFP_KERNEL);\n        if (!fe->demodulator_priv.firmware_name) {\n            mutex_unlock(&fe->lock);\n            return -ENOMEM;\n        }\n\n        /* Check if firmware needs to be reloaded */\n        if (fe->state == FIRMWARE_NOT_LOADED) {\n            result = request_firmware_nowait(THIS_MODULE, 1,\n                                             fe->demodulator_priv.firmware_name,\n                                             &fe->dvb->priv->i2c_adap, GFP_KERNEL,\n                                             fe, xc2028_firmware_cb);\n            if (result < 0) {\n                mutex_unlock(&fe->lock);\n                return result;\n            }\n        }\n    }\n\n    mutex_unlock(&fe->lock);\n    return result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg)\n{\n    struct xc2028_data *priv = fe->demodulator_priv;\n    struct xc2028_config *cfg = priv_cfg;\n    int ret = 0;\n\n    mutex_lock(&priv->lock);\n\n    if (strcmp(priv->firmware_name, cfg->firmware_name) != 0) {\n        kfree(priv->firmware_name);\n        priv->firmware_name = kstrdup(cfg->firmware_name, GFP_KERNEL);\n        if (!priv->firmware_name) {\n            ret = -ENOMEM;\n            goto error;\n        }\n\n        if (priv->fw && priv->state == XC2028_STATE_NO_FW) {\n            firmware_request_async(fe->dvb->priv, priv->firmware_name, NULL);\n        }\n    }\n\nerror:\n    mutex_unlock(&priv->lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg)\n{\n    struct xc2028_data *cfg = (struct xc2028_data *)priv_cfg;\n    int result = 0;\n\n    mutex_lock(&fe->lock);\n\n    /* Copy configuration data */\n    memcpy(&fe->dvb->priv, cfg, sizeof(struct xc2028_data));\n\n    if (fe->dvb->firmware && strcmp(fe->dvb->firmware, cfg->firmware_name) != 0) {\n        kfree(fe->dvb->firmware);\n        fe->dvb->firmware = NULL;\n    }\n\n    if (!fe->dvb->firmware) {\n        fe->dvb->firmware = kmalloc(strlen(cfg->firmware_name) + 1, GFP_KERNEL);\n        if (!fe->dvb->firmware) {\n            result = -ENOMEM;\n            goto unlock_mutex;\n        }\n        strcpy(fe->dvb->firmware, cfg->firmware_name);\n        result = request_firmware_nowait(\n            THIS_MODULE, 1,\n            fe->dvb->firmware,\n            fe->dvb->device,\n            GFP_KERNEL,\n            (void *)fe,\n            xc2028_firmware_cb\n        );\n        if (result < 0)\n            goto unlock_mutex;\n    }\n\nunlock_mutex:\n    mutex_unlock(&fe->dvb->lock);\n    return result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int xc2028_set_config(struct dvb_frontend *fe, void *priv_cfg)\n{\n    struct xc2028_data *cfg = priv_cfg;\n    int ret = 0;\n\n    mutex_lock(&fe->lock);\n\n    if (strcmp(cfg->firmware_name, fe->dvb->priv) != 0) {\n        kfree(fe->dvb->priv);\n        fe->dvb->priv = kstrdup(cfg->firmware_name, GFP_KERNEL);\n        if (!fe->dvb->priv) {\n            ret = -ENOMEM;\n            mutex_unlock(&fe->lock);\n            return ret;\n        }\n    }\n\n    if (fe->state == FIRMWARE_REQUESTED) {\n        ret = request_firmware_nowait(fe->dvb->device, 1, fe->dvb->priv,\n                                      fe->dvb->device, GFP_KERNEL,\n                                      &cfg->firmware_cb, fe);\n        if (ret < 0) {\n            mutex_unlock(&fe->lock);\n            return ret;\n        }\n    }\n\n    mutex_unlock(&fe->lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

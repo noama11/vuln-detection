@@ -1,0 +1,34 @@
+{
+  "case_id": "C_205__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct super_block *sb = inode->i_sb;\n    struct ext4_sb_info *sbi = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_orphan *orphan, *prev_orphan = NULL;\n    int ret = 0;\n\n    if (!ext4_journal_tuned(sbi))\n        return 0;\n\n    mutex_lock(&sbi->s_orphan_lock);\n\n    if (!ei->i_dentry)\n        goto out;\n\n    orphan = ei->i_dentry;\n\n    while (orphan) {\n        if (orphan->inum == inode->i_ino) {\n            if (prev_orphan)\n                prev_orphan->next = orphan->next;\n            else\n                sbi->s_last_orphan = orphan->next;\n\n            ei->i_dentry = NULL;\n            if (handle) {\n                ret = ext4_journal_get_write_access(handle, sb, EXT4_JBD2_INODE(inode), 0);\n                if (ret)\n                    goto out;\n\n                ret = ext4_mark_inode_dirty(handle, inode);\n            }\n            break;\n        }\n        prev_orphan = orphan;\n        orphan = orphan->next;\n    }\n\nout:\n    mutex_unlock(&sbi->s_orphan_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct super_block *sb = inode->i_sb;\n    struct ext4_sb_info *sbi = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_inode *orphan;\n    int err = 0;\n\n    if (!EXT4_JOURNAL(inode))\n        return 0;\n\n    lock_orphan_list(sbi);\n\n    if (!ei->i_orphan) {\n        unlock_orphan_list(sbi);\n        return 0;\n    }\n\n    if (handle) {\n        err = ext4_journal_get_write_access(handle, sbi->s_sbh, sbi->s_journal);\n        if (err) {\n            unlock_orphan_list(sbi);\n            return err;\n        }\n    }\n\n    if (sbi->s_orphans == ei->i_orphan) {\n        sbi->s_orphans = ei->i_orphan->i_nexgentry;\n        err = ext4_handle_dirty_super(handle, sb);\n        if (err) {\n            unlock_orphan_list(sbi);\n            return err;\n        }\n    } else {\n        struct ext4_inode *prev = sbi->s_orphans;\n        while (prev && prev->i_nexgentry != ei->i_orphan)\n            prev = prev->i_nexgentry;\n\n        if (prev) {\n            prev->i_nexgentry = ei->i_orphan->i_nexgentry;\n            err = ext4_handle_dirty_inode(handle, sb, prev);\n            if (err) {\n                unlock_orphan_list(sbi);\n                return err;\n            }\n        }\n    }\n\n    ei->i_orphan = NULL;\n    mark_inode_dirty(inode);\n    unlock_orphan_list(sbi);\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct super_block *sb = inode->i_sb;\n    struct ext4_sb_info *sbi = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    int err = 0;\n    struct ext4_iloc iloc;\n\n    if (!EXT4_HAS_JOURNAL(sb))\n        return 0;\n\n    mutex_lock(&sbi->s_orphan_lock);\n\n    if (ei->i_orphan_list_entry == NULL) {\n        mutex_unlock(&sbi->s_orphan_lock);\n        return -EINVAL;\n    }\n\n    list_del(&ei->i_orphan_list_entry);\n\n    if (handle) {\n        err = ext4_journal_get_write_access(handle, inode->i_ino);\n        if (err) {\n            mutex_unlock(&sbi->s_orphan_lock);\n            return err;\n        }\n\n        err = ext4_orphan_update(handle, inode);\n        if (err) {\n            mutex_unlock(&sbi->s_orphan_lock);\n            return err;\n        }\n    }\n\n    if (sbi->s_orphan_list == NULL)\n        sbi->s_last_orphan = 0;\n    else if (sbi->s_orphan_list == &ei->i_orphan_list_entry)\n        sbi->s_last_orphan = ei->i_ino;\n\n    mutex_unlock(&sbi->s_orphan_lock);\n\n    mark_inode_dirty(inode);\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct super_block *sb = inode->i_sb;\n    struct ext4_super_block *es = EXT4_SB(sb);\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct ext4_orphan *orphan;\n    int err = 0;\n\n    if (!ext4_journal_tuned(sb))\n        return 0;\n\n    mutex_lock(&EXT4_SB(sb)->s_orphan_mutex);\n\n    if (!ei->i_dentry) {\n        mutex_unlock(&EXT4_SB(sb)->s_orphan_mutex);\n        return 0;\n    }\n\n    orphan = ei->i_dentry->d_fsdata;\n    if (!orphan) {\n        mutex_unlock(&EXT4_SB(sb)->s_orphan_mutex);\n        return 0;\n    }\n\n    if (orphan->next) {\n        struct ext4_orphan *next_orphan = orphan->next;\n        next_orphan->prev = orphan->prev;\n    }\n\n    if (orphan->prev) {\n        struct ext4_orphan *prev_orphan = orphan->prev;\n        prev_orphan->next = orphan->next;\n    } else {\n        es->s_last_orphan = cpu_to_le32(le32_to_cpu(orphan->next));\n        err = ext4_handle_dirty_metadata(handle, sb, es);\n        if (err) {\n            mutex_unlock(&EXT4_SB(sb)->s_orphan_mutex);\n            return err;\n        }\n    }\n\n    ei->i_dentry->d_fsdata = NULL;\n    kfree(orphan);\n\n    mutex_unlock(&EXT4_SB(sb)->s_orphan_mutex);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int ext4_orphan_del(handle_t *handle, struct inode *inode) {\n    struct ext4_inode_info *ei = EXT4_I(inode);\n    struct super_block *sb = inode->i_sb;\n    struct ext4_super_block *es = EXT4_SB(sb);\n    int err = 0;\n\n    if (!EXT4_HAS_JOURNAL(sb) || !EXT4_HANDLE_VALID(handle)) {\n        return 0;\n    }\n\n    lock_orphan_list(sb);\n\n    if (ei->i_orphan_list == NULL) {\n        unlock_orphan_list(sb);\n        return -EINVAL;\n    }\n\n    if (ei->i_orphan_list->i_ino != inode->i_ino) {\n        struct inode *tmp_inode;\n        struct inode *prev_inode = ei->i_orphan_list;\n\n        list_for_each_entry(tmp_inode, &prev_inode->i_orphan_list, i_orphan) {\n            if (tmp_inode == inode) {\n                list_del(&inode->i_orphan);\n                break;\n            }\n            prev_inode = tmp_inode;\n        }\n\n        if (tmp_inode != inode) {\n            unlock_orphan_list(sb);\n            return -EINVAL;\n        }\n    } else {\n        list_del(&inode->i_orphan);\n        es->s_last_orphan = 0;\n    }\n\n    if (handle) {\n        err = ext4_journal_get_write_access(handle, inode->i_sb, ei->i_inode_table);\n        if (err < 0) {\n            unlock_orphan_list(sb);\n            return err;\n        }\n        ext4_update_orphan_list_on_disk(sb);\n        mark_inode_dirty(inode);\n    }\n\n    unlock_orphan_list(sb);\n    return err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

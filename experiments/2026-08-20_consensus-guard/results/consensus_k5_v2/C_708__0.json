@@ -1,0 +1,67 @@
+{
+  "case_id": "C_708__0",
+  "sample_id": "D/C/708",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18202",
+  "cve_summary": "The __oom_reap_task_mm function in mm/oom_kill.c in the Linux kernel before 4.14.4 mishandles gather operations, which allows attackers to cause a denial of service (TLB entry leak or use-after-free) or possibly have unspecified other impact by triggering a copy_to_user call within a certain time window.",
+  "changed_file": "mm/oom_kill.c",
+  "docstring": "\"\"\"\nSummary: \nThis function attempts to reap memory from a task's memory management structure in an out-of-memory (OOM) situation.\n\nParameters: \ntsk (struct task_struct *): Pointer to the task structure of the process to be reaped.\nmm (struct mm_struct *): Pointer to the memory management structure of the task.\n\nReturns: \nbool: Returns true if the reaping was successful, false otherwise.\n\nLogic: \nThe function first acquires a mutex lock to prevent race conditions with the victim's exit path. It attempts to acquire a read lock on the memory map semaphore; if unsuccessful, it logs the event and exits. If the memory management structure has notifiers, it yields execution briefly to allow the OOM victim more time. It checks for the MMF_OOM_SKIP flag to determine if reaping can proceed. If allowed, it marks the memory as unstable and iterates through the virtual memory areas (VMAs) to unmap anonymous or non-shared pages. Finally, it logs the reaped process details and releases the locks before returning the success status.\n\"\"\"",
+  "heuristic_leakage_flag": true,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check mm->mm_count before proceeding",
+        "performed_by_count": 3,
+        "why_it_matters": "If the mm structure has been freed or is no longer valid, using it could lead to use-after-free or invalid memory access."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority-consensus defensive step: checking the atomic reference count of the memory management structure (mm->mm_count) before proceeding. This check is present in three of the five independent implementations and is used to determine if the mm structure is still valid. The target does not perform this check, which could lead to using a freed or invalid memory management structure, potentially causing memory-safety issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "MMF_OOM_SKIP flag check",
+        "performed_by_count": 4,
+        "why_it_matters": "If the flag is set, reaping should be skipped to avoid race conditions or invalid memory access. Omitting this check could lead to reaping on an already invalid memory structure."
+      },
+      {
+        "step": "Check for memory notifiers and yield",
+        "performed_by_count": 3,
+        "why_it_matters": "If the memory structure has notifiers, reaping could be unsafe or cause undefined behavior. Yielding gives the OOM victim more time to stabilize the memory structure."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a check for the MMF_OOM_SKIP flag before proceeding with reaping, which is a consensus step among the independent implementations. It also lacks a check for the presence of memory notifiers before yielding execution, which is also performed by a majority of the implementations. These omissions could lead to unnecessary or unsafe reaping attempts.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

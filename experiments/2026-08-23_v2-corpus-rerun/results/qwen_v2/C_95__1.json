@@ -1,0 +1,56 @@
+{
+  "case_id": "C_95__1",
+  "sample_id": "D/C/95",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1828",
+  "cve_summary": "The sctp_getsockopt_assoc_stats function in net/sctp/socket.c in the Linux kernel before 3.8.4 does not validate a size value before proceeding to a copy_from_user operation, which allows local users to gain privileges via a crafted application that contains an SCTP_GET_ASSOC_STATS getsockopt system call.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "/**\n * Summary: \n * Retrieves association statistics for a given SCTP socket.\n * \n * Parameters:\n * sk (struct sock *): Pointer to the socket structure.\n * len (int): Length of the user-provided buffer.\n * optval (char __user *): Pointer to the user buffer where statistics will be copied.\n * optlen (int __user *): Pointer to an integer where the length of the copied data will be stored.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function first checks if the provided length is sufficient. It then copies the user-provided data into a local structure and retrieves the associated SCTP association. If the association is valid, it populates the statistics structure with various metrics from the association's stats. It updates the maximum observed RTO and prepares the data for user access, returning the appropriate length of data copied. Error handling is included for invalid inputs and memory access issues.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int sctp_get_assoc_stats(struct sock *sk, int len, char __user *optval, int __user *optlen)\n{\n    struct sctp_association *asoc;\n    struct sctp_stats stats;\n    int ret = 0;\n\n    if (len < sizeof(stats))\n        return -EINVAL;\n\n    asoc = sctp_id2assoc(sk, 0);\n    if (!asoc)\n        return -EINVAL;\n\n    memset(&stats, 0, sizeof(stats));\n    stats.assoc_id = asoc->assoc_id;\n    stats.cumu_flight = asoc->c.sack.outstanding;\n    stats.a_rwnd = asoc->a_rwnd;\n    stats.max_rwnd = asoc->max_rwnd;\n    stats.cur_rwnd = asoc->rwnd;\n    stats.pd_mode = asoc->param->pdapi_enable;\n    stats.max_burst = asoc->param->max_burst;\n    stats.max_init_timeo = asoc->param->init_max_timeo;\n    stats.max_path_rto = asoc->param->rto_max;\n    stats.min_path_rto = asoc->param->rto_min;\n    stats.max_path_rtx = asoc->param->rto_max;\n    stats.min_path_rtx = asoc->param->rto_min;\n    stats.max_outstreams = asoc->param->max_out_streams;\n    stats.min_outstreams = asoc->param->min_out_streams;\n    stats.max_instreams = asoc->param->max_in_streams;\n    stats.min_instreams = asoc->param->min_in_streams;\n\n    if (copy_to_user(optval, &stats, sizeof(stats)))\n        return -EFAULT;\n\n    if (put_user(sizeof(stats), optlen))\n        return -EFAULT;\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ significantly in their behavior. The candidate implementation populates a `sctp_stats` structure with fields like `assoc_id`, `a_rwnd`, and various parameters from the association's configuration. It does not copy data from the user buffer and always copies the full `sctp_stats` structure to the user buffer. The reference implementation, on the other hand, populates a `sctp_assoc_stats` structure with detailed statistics (e.g., `rtxchunks`, `gapcnt`, `opackets`) and copies data from the user buffer (`copy_from_user`). It also allows for partial copying based on the provided buffer length and updates the association's statistics (e.g., resetting `max_obs_rto`). These differences are observable for all realistic inputs and include security-relevant operations like `copy_from_user` and `copy_to_user`, which are not uniformly handled in both implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their behavior regarding input validation, data copying, and the statistics they populate. The candidate implementation does not copy data from the user buffer, instead assuming the input is valid and only copying data to the user buffer. The reference implementation copies data from the user buffer and validates the minimum required size. Additionally, the candidate implementation populates different statistics fields than the reference implementation, such as cumu_flight and pd_mode, while the reference implementation includes fields like rtxchunks and gapcnt. These differences are not security-relevant but affect the correctness of the returned data for normal inputs.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

@@ -1,0 +1,36 @@
+void __munlock_pagevec(struct pagevec *pvec, struct zone *zone) {
+    int i;
+
+    for (i = 0; i < pagevec_count(pvec); i++) {
+        struct page *page = pvec->pages[i];
+
+        if (PageLocked(page)) {
+            unlock_page(page);
+            zone->pages_locked--;
+        }
+
+        if (!PageCache(page)) {
+            continue;
+        }
+
+        if (page->count > 1) {
+            page->count--;
+        } else {
+            page_cache_release(page);
+        }
+    }
+
+    for (i = 0; i < pagevec_count(pvec); i++) {
+        struct page *page = pvec->pages[i];
+
+        if (PageLocked(page)) {
+            continue;
+        }
+
+        if (PageCache(page)) {
+            page_cache_putback(page);
+        }
+    }
+
+    pagevec_count_set(pvec, 0);
+}

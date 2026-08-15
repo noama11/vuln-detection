@@ -1,0 +1,56 @@
+{
+  "case_id": "C_332__0",
+  "sample_id": "D/C/332",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "krb5/krb5",
+  "cve_id": "CVE-2015-8629",
+  "cve_summary": "The xdr_nullstring function in lib/kadm5/kadm_rpc_xdr.c in kadmind in MIT Kerberos 5 (aka krb5) before 1.13.4 and 1.14.x before 1.14.1 does not verify whether '0' characters exist as expected, which allows remote authenticated users to obtain sensitive information or cause a denial of service (out-of-bounds read) via a crafted string.",
+  "changed_file": "src/lib/kadm5/kadm_rpc_xdr.c",
+  "docstring": "/**\n * Summary: Serializes and deserializes a null-terminated string using XDR (External Data Representation).\n * \n * Parameters:\n *   xdrs (XDR *): Pointer to the XDR stream for encoding/decoding.\n *   objp (char **): Pointer to the string to be serialized or deserialized.\n * \n * Returns: bool_t - TRUE if the operation is successful, FALSE otherwise.\n * \n * Logic: The function checks the operation mode (encode, decode, or free). For encoding, it calculates the string size and serializes it. For decoding, it allocates memory if necessary, deserializes the string, and checks for proper null-termination. In free mode, it deallocates the memory used for the string. The function ensures that the string is a valid C string during decoding.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "bool_t xdr_string(XDR *xdrs, char **objp)\n{\n    u_int len;\n    u_int i;\n    char *sp;\n    char *newsp;\n\n    if (xdrs->x_op == XDR_ENCODE) {\n        if (*objp == NULL) {\n            return (XDR_PUTLONG(xdrs, (long *)0));\n        }\n        len = strlen(*objp) + 1;\n        if (!XDR_PUTLONG(xdrs, (long *)&len)) {\n            return (FALSE);\n        }\n        for (i = 0; i < len; i++) {\n            if (!XDR_PUTBYTE(xdrs, (*objp)[i])) {\n                return (FALSE);\n            }\n        }\n        return (TRUE);\n    } else if (xdrs->x_op == XDR_DECODE) {\n        if (!XDR_GETLONG(xdrs, (long *)&len)) {\n            return (FALSE);\n        }\n        if (len == 0) {\n            *objp = NULL;\n            return (TRUE);\n        }\n        if ((newsp = (char *)malloc(len)) == NULL) {\n            return (FALSE);\n        }\n        *objp = newsp;\n        for (i = 0; i < len; i++) {\n            if (!XDR_GETBYTE(xdrs, &newsp[i])) {\n                free(newsp);\n                *objp = NULL;\n                return (FALSE);\n            }\n        }\n        return (TRUE);\n    } else if (xdrs->x_op == XDR_FREE) {\n        if (*objp != NULL) {\n            free(*objp);\n            *objp = NULL;\n        }\n        return (TRUE);\n    }\n    return (FALSE);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of memory allocation and string copying. The candidate implementation uses `malloc` and manually copies each byte, while the reference implementation uses `mem_alloc` and `xdr_opaque` for the same purpose. The candidate implementation also sets `*objp = NULL` after freeing, while the reference implementation uses `mem_free`. These differences are functionally equivalent in behavior for all realistic inputs, including edge cases like NULL strings and zero-length strings. There is no observable difference in the outcome of the XDR operation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of the decoding phase. The candidate implementation decodes the string by reading each byte individually and storing it in a buffer, while the reference implementation uses `xdr_opaque` to decode the entire opaque data block at once. Additionally, the reference implementation includes two checks to ensure the decoded string is a valid C string: it checks that the last byte is a null terminator and that there are no null bytes before the end. The candidate implementation lacks these checks, which could allow invalid strings to be accepted during decoding. This difference is security-relevant as it could lead to malformed or malicious data being processed without validation.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

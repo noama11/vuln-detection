@@ -1,0 +1,56 @@
+{
+  "case_id": "C_780__0",
+  "sample_id": "D/C/780",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-11884",
+  "cve_summary": "The do_hidp_sock_ioctl function in net/bluetooth/hidp/sock.c in the Linux kernel before 5.0.15 allows a local user to obtain potentially sensitive information from kernel stack memory via a HIDPCONNADD command, because a name field may not end with a '0' character.",
+  "changed_file": "net/bluetooth/hidp/sock.c",
+  "docstring": "Summary:  \nHandles various HIDP socket ioctl commands for managing Bluetooth HID connections.\n\nParameters:  \nsock (struct socket *): the socket associated with the HIDP connection.  \ncmd (unsigned int): the command to execute (e.g., add, delete, get connection list, get connection info).  \nargp (void __user *): pointer to user-space data for command parameters.\n\nReturns:  \nint: returns 0 on success, or a negative error code on failure.\n\nLogic:  \nThe function processes different commands related to HIDP connections. It checks for administrative privileges, copies data from user space, and performs actions such as adding or deleting connections, or retrieving connection lists and information. It ensures proper cleanup of socket references and handles errors appropriately, returning relevant error codes when necessary.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int hidp_ioctl(struct socket *sock, unsigned int cmd, void __user *argp)\n{\n    int ret = 0;\n    struct hidp_connadd conn_add;\n    struct hidp_conndel conn_del;\n    struct hidp_connlist conn_list;\n    struct hidp_conninfo conn_info;\n\n    if (!capable(CAP_NET_ADMIN))\n        return -EPERM;\n\n    switch (cmd) {\n    case HIDPADDCONN:\n        if (copy_from_user(&conn_add, argp, sizeof(conn_add)))\n            return -EFAULT;\n        ret = hidp_add_connection(sock, &conn_add);\n        break;\n    case HIDPDELCONN:\n        if (copy_from_user(&conn_del, argp, sizeof(conn_del)))\n            return -EFAULT;\n        ret = hidp_del_connection(sock, &conn_del);\n        break;\n    case HIDPGETCONNLIST:\n        if (copy_from_user(&conn_list, argp, sizeof(conn_list)))\n            return -EFAULT;\n        ret = hidp_get_connlist(sock, &conn_list);\n        break;\n    case HIDPGETCONNINFO:\n        if (copy_from_user(&conn_info, argp, sizeof(conn_info)))\n            return -EFAULT;\n        ret = hidp_get_conninfo(sock, &conn_info);\n        if (copy_to_user(argp, &conn_info, sizeof(conn_info)))\n            return -EFAULT;\n        break;\n    default:\n        ret = -EINVAL;\n        break;\n    }\n\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the HIDPGETCONNINFO command. The candidate implementation passes the sock parameter to hidp_get_conninfo and copies the result back to user space, while the reference implementation does not pass the sock parameter and instead calls hidp_get_conninfo without it. This could lead to different behaviors depending on whether the sock parameter is used in the hidp_get_conninfo function, which is not visible in the provided code. This difference is reachable via user input and could affect the correctness of the returned connection information, potentially impacting security if the sock context is relevant for access control or data integrity.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate and reference implementations differ in handling the HIDPGETCONNINFO command. The candidate implementation passes the struct hidp_conninfo to hidp_get_conninfo with the socket, while the reference implementation does not pass the socket. Additionally, the candidate implementation copies the conn_info back to user space, while the reference implementation does not. These differences may lead to different behaviors, particularly in how connection information is retrieved and returned, which could be security-relevant if the socket context is necessary for correct behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

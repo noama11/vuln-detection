@@ -1,0 +1,62 @@
+{
+  "case_id": "C_169__1",
+  "sample_id": "D/C/169",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-3145",
+  "cve_summary": "The BPF_S_ANC_NLATTR_NEST extension implementation in the sk_run_filter function in net/core/filter.c in the Linux kernel through 3.14.3 uses the reverse order in a certain subtraction, which allows local users to cause a denial of service (over-read and system crash) via crafted BPF instructions.  NOTE: the affected code was moved to the __skb_get_nlattr_nest function before the vulnerability was announced.",
+  "changed_file": "net/core/filter.c",
+  "docstring": "Summary: This function retrieves the nested netlink attribute from a given socket buffer context.\n\nParameters: \nctx (u64): The context of the socket buffer.\nA (u64): The offset in the socket buffer where the netlink attribute starts.\nX (u64): The type of nested netlink attribute to find.\nr4 (u64): Unused parameter.\nr5 (u64): Unused parameter.\n\nReturns: u64: The offset of the nested netlink attribute from the start of the socket buffer, or 0 if not found or if any validation fails.\n\nLogic: The function first checks if the socket buffer is non-linear and if its length is sufficient for the netlink attribute. It then verifies that the specified offset A is valid and that the attribute length does not exceed the remaining data. If these checks pass, it attempts to find the nested attribute of type X and returns its offset; otherwise, it returns 0.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "initial attribute length bounds check",
+        "performed_by_count": 4,
+        "why_it_matters": "If the initial attribute length is invalid or exceeds the remaining buffer size, it could lead to out-of-bounds memory access when parsing the attribute."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key defensive step performed by a majority of the independent implementations: validating the length of the initial netlink attribute to ensure it does not exceed the remaining data in the socket buffer. This check is crucial to prevent out-of-bounds memory access when parsing the attribute. The target also uses a helper function `nla_find_nested`, which may encapsulate some of the logic, but it does not perform the same explicit bounds check on the initial attribute length as the majority of the independent implementations do.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "validate offset A before indexing into skb->data",
+        "performed_by_count": 4,
+        "why_it_matters": "If A is invalid (e.g., too large), indexing into skb->data with it could cause an out-of-bounds access."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation uses a helper function `nla_find_nested` to find the nested attribute, which may encapsulate some defensive logic. However, it does not explicitly validate the offset A before using it to index into the skb->data array, unlike the majority of the independent implementations. This could lead to out-of-bounds access if A is invalid.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

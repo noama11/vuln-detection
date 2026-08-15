@@ -1,0 +1,56 @@
+{
+  "case_id": "C_313__0",
+  "sample_id": "D/C/313",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2185",
+  "cve_summary": "The ati_remote2_probe function in drivers/input/misc/ati_remote2.c in the Linux kernel before 4.5.1 allows physically proximate attackers to cause a denial of service (NULL pointer dereference and system crash) via a crafted endpoints value in a USB device descriptor.",
+  "changed_file": "drivers/input/misc/ati_remote2.c",
+  "docstring": "\"\"\"\nSummary: \nProbes the ATI Remote Wonder II USB device and initializes its interface.\n\nParameters: \ninterface (struct usb_interface *): Pointer to the USB interface structure.\nid (const struct usb_device_id *): Pointer to the USB device ID structure.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function checks if the first interface is valid and allocates memory for the device structure. It verifies that the device has at least two interfaces and that each has an endpoint. It claims the second interface, initializes URBs, sets up the device, and creates a sysfs group for attributes. If any step fails, it cleans up resources and returns an appropriate error code. On success, it sets the interface data and enables remote wakeup.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ati_remote_wonder_init(struct usb_interface *interface, const struct usb_device_id *id)\n{\n    struct usb_host_interface *iface_desc;\n    struct usb_endpoint_descriptor *endpoint;\n    struct ati_remote_wonder_dev *dev;\n    int i, retval = -ENOMEM;\n\n    iface_desc = &interface->cur_altsetting[0];\n    if (iface_desc->desc.bNumEndpoints < 1)\n        return -ENODEV;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    dev->udev = usb_get_dev(interface_to_usbdev(interface));\n    dev->interface = interface;\n\n    if (iface_desc->desc.bNumEndpoints < 2) {\n        kfree(dev);\n        return -ENODEV;\n    }\n\n    for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i) {\n        endpoint = &iface_desc->endpoint[i].desc;\n        if (usb_endpoint_is_int_in(endpoint)) {\n            dev->int_in_endpoint = endpoint;\n            break;\n        }\n    }\n\n    if (!dev->int_in_endpoint) {\n        kfree(dev);\n        return -ENODEV;\n    }\n\n    usb_set_intfdata(interface, dev);\n\n    if (usb_driver_claim_interface(&ati_remote_wonder_driver, interface, dev)) {\n        kfree(dev);\n        return -EBUSY;\n    }\n\n    if (ati_remote_wonder_setup_dev(dev)) {\n        usb_set_intfdata(interface, NULL);\n        kfree(dev);\n        return -EFAULT;\n    }\n\n    if (sysfs_create_group(&interface->dev.kobj, &ati_remote_wonder_attr_group)) {\n        ati_remote_wonder_cleanup_dev(dev);\n        usb_set_intfdata(interface, NULL);\n        kfree(dev);\n        return -EFAULT;\n    }\n\n    dev->enabled = 1;\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key aspects. The candidate implementation checks for at least one endpoint in the first interface and then for at least two endpoints, while the reference implementation assumes the first interface has exactly one endpoint and explicitly accesses the second interface. The candidate implementation dynamically allocates and initializes the device structure, whereas the reference implementation uses a struct with multiple interfaces and endpoints. Additionally, the candidate implementation sets up a sysfs group on the interface's kobj, while the reference implementation does so on the udev's kobj. These differences could lead to different behaviors, particularly in how the device is initialized and how sysfs attributes are managed. Some of these differences may be security-relevant, such as how interfaces are claimed and released.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle interface validation and endpoint assignment. The candidate implementation checks for at least one endpoint in the first interface and then for at least two endpoints, while the reference implementation explicitly checks for two interfaces and ensures each has an endpoint. Additionally, the reference implementation includes more detailed error logging and performs additional setup tasks like input initialization and device path construction. These differences are not security-relevant but affect functional behavior on edge cases.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

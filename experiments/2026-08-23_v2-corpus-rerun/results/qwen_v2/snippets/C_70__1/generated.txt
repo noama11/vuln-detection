@@ -1,0 +1,32 @@
+ssize_t receive_message_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {
+    ssize_t bytes_received;
+    int err;
+
+    if (sock->state == SS_DISCONNECTED) {
+        return -ENOTCONN;
+    }
+
+    if (sock->type & SOCK_OOB) {
+        bytes_received = sock->ops->recv_oob(iocb, msg, len, flags);
+        if (bytes_received > 0) {
+            return bytes_received;
+        }
+    }
+
+    err = sock->ops->recvmsg(iocb, msg, len, flags, NULL, NULL);
+    if (err < 0) {
+        return err;
+    }
+
+    bytes_received = err;
+
+    if (msg->msg_name && msg->msg_namelen) {
+        memcpy(msg->msg_name, sock->sk->sk_peer_name, msg->msg_namelen);
+    }
+
+    if (sock->type & SOCK_DGRAM) {
+        sock->ops->clean_rcv_queue(sock->sk);
+    }
+
+    return bytes_received;
+}

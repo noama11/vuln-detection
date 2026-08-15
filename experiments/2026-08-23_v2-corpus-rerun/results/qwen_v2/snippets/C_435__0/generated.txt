@@ -1,0 +1,48 @@
+int read_gab2_subtitle_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt) {
+    if (!pkt || pkt->size < 4) {
+        return 0;
+    }
+
+    if (memcmp(pkt->data, "GAB2", 4) != 0) {
+        return 0;
+    }
+
+    AVIOContext *bc = avio_alloc_context(pkt->data, pkt->size, 0, NULL, NULL, NULL, NULL);
+    if (!bc) {
+        return 0;
+    }
+
+    avio_skip(bc, 4); // Skip "GAB2" identifier
+
+    int format = avio_r8(bc);
+    if (format != 1) {
+        avio_free(bc);
+        return 0;
+    }
+
+    AVCodecParameters *par = avcodec_parameters_alloc();
+    if (!par) {
+        avio_free(bc);
+        return 0;
+    }
+
+    par->codec_type = AVMEDIA_TYPE_SUBTITLE;
+    par->codec_id = AV_CODEC_ID_GAB2;
+
+    if (avcodec_parameters_copy(st->codecpar, par) < 0) {
+        avcodec_parameters_free(&par);
+        avio_free(bc);
+        return 0;
+    }
+
+    avcodec_parameters_free(&par);
+    avio_free(bc);
+
+    st->time_base = (AVRational){1, 1000};
+
+    if (pkt->pts != AV_NOPTS_VALUE) {
+        st->pts = pkt->pts;
+    }
+
+    return 1;
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_296__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int reject_and_link_key(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    int ret;\n\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    down_write(&key->sem);\n\n    if (key->type_data) {\n        up_write(&key->sem);\n        return -EEXIST;\n    }\n\n    key->flags |= 1 << KEY_FLAG_INstantiated;\n    key->flags |= 1 << KEY_FLAG_NEGATIVE;\n\n    key->expiry = jiffies + timeout;\n    key->uid = current_uid();\n    key->gid = current_gid();\n\n    if (keyring) {\n        ret = key_link(keyring, key);\n        if (ret < 0) {\n            up_write(&key->sem);\n            return ret;\n        }\n    }\n\n    up_write(&key->sem);\n\n    if (authkey) {\n        key_revoke(authkey);\n    }\n\n    key_notify(key);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,\n                        struct key *keyring, struct key *authkey)\n{\n    int ret = 0;\n    unsigned long expires = 0;\n\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    if (timeout) {\n        expires = get_cycles() + timeout;\n    }\n\n    if (key->state != KEY_STATE_REVOKED) {\n        key->state = KEY_STATE_NEGATIVE;\n        key->perm = KEY_POS_VIEW | KEY_POS_READ;\n        key->error = error;\n        key->expiry = expires;\n        key->atime = get_cycles();\n        key->user = NULL;\n        key->uid = INVALID_UID;\n        key->gid = INVALID_GID;\n\n        if (keyring) {\n            ret = key_link(keyring, key);\n            if (ret < 0) {\n                return ret;\n            }\n\n            if (authkey) {\n                key_revoke(authkey);\n            }\n        }\n\n        key_schedule_gc(key);\n        wake_up_bit(&key->state, 0);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    int ret;\n\n    if (!key || (keyring && !keyring))\n        return -EINVAL;\n\n    key->flags |= 1 << 1; // Negatively instantiated\n    key->expiry = get_current_time() + timeout;\n    key->uid = current_uid();\n    key->error = error;\n\n    if (keyring) {\n        ret = key_link(keyring, key);\n        if (ret < 0)\n            return ret;\n    } else {\n        ret = 0;\n    }\n\n    if (authkey) {\n        key_revoke(authkey);\n    }\n\n    if (key->concrete && key->keyring && key->keyring->waiters) {\n        wake_up_keyring(key->keyring);\n    }\n\n    schedule_key_gc();\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,\n                        struct key *keyring, struct key *authkey) {\n    int ret;\n\n    key_check(key);\n    key_check(keyring);\n\n    if (test_bit(KEY_FLAG_INSTANTIATED, &key->flags)) {\n        return -EEXIST;\n    }\n\n    key->flags |= KEY_FLAG_NEGATIVE;\n    key->negative_timeout = timeout;\n    key->expiry = get_current_time() + timeout;\n\n    if (keyring) {\n        ret = key_link(keyring, key);\n        if (ret < 0) {\n            return ret;\n        }\n    }\n\n    if (authkey) {\n        key_revoke(authkey);\n    }\n\n    wake_up_all(&key->wait_queue);\n    schedule_gc(key);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,\n                        struct key *keyring, struct key *authkey)\n{\n    int ret = 0;\n\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    key->flags |= 1 << (KEY_FLAG_NEGATIVE - 1);\n    key->timeout = timeout;\n    key->error = error;\n\n    if (keyring) {\n        ret = key_add_link(keyring, key);\n        if (ret < 0) {\n            return ret;\n        }\n    }\n\n    key_instantiate_and_flush(key, NULL, 0);\n    key_schedule_gc(key);\n\n    if (authkey) {\n        key_revoke(authkey);\n    }\n\n    key_notify(key);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

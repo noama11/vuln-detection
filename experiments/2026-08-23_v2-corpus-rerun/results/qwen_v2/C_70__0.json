@@ -1,0 +1,56 @@
+{
+  "case_id": "C_70__0",
+  "sample_id": "D/C/70",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3233",
+  "cve_summary": "The llcp_sock_recvmsg function in net/nfc/llcp/sock.c in the Linux kernel before 3.9-rc7 does not initialize a certain length variable and a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/nfc/llcp/sock.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it according to the specified flags.\n\nParameters: \niocb (struct kiocb *): The I/O control block for the operation.\nsock (struct socket *): The socket from which to receive the message.\nmsg (struct msghdr *): The message header structure to fill with received data.\nlen (size_t): The maximum length of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header or an error code.\n\nLogic: \nThe function first checks the socket state and whether the receive queue is empty. It handles non-blocking and out-of-band flags, retrieves a datagram from the socket, and copies the data into the provided message header. It also populates the address information if the socket type is datagram. Depending on the socket type, it manages the received data, either re-queuing or freeing the socket buffer. Finally, it returns the number of bytes received or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t receive_and_process_message(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    ssize_t copied = 0;\n    int err;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -EINVAL;\n\n    if (sk->sk_receive_queue.head == NULL) {\n        if (flags & MSG_DONTWAIT)\n            return -EAGAIN;\n        // Wait for data to arrive (simplified for example)\n        schedule();\n    }\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb)\n        return -EAGAIN;\n\n    if (flags & MSG_OOB) {\n        // Handle out-of-band data\n        copied = skb->len;\n        err = skb_copy_datagram_const(skb, 0, msg->msg_iov->iov_base, copied);\n        if (err)\n            return err;\n    } else {\n        copied = min(skb->len, len);\n        err = skb_copy_datagram_const(skb, 0, msg->msg_iov->iov_base, copied);\n        if (err)\n            return err;\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;\n        if (addr) {\n            addr->sin_family = AF_INET;\n            addr->sin_port = skb->h.iph->saddr;\n        }\n    }\n\n    if (sock->type == SOCK_STREAM) {\n        skb_queue_head(&sk->sk_receive_queue, skb);\n    } else {\n        kfree_skb(skb);\n    }\n\n    return copied;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation does not handle the MSG_OOB flag correctly by returning -EOPNOTSUPp, and it lacks proper handling of shutdown states and error propagation. Additionally, the candidate implementation does not support MSG_TRUNC for SOCK_SEQPACKET, and it does not handle the MSG_PEEK flag. These differences could lead to incorrect behavior or data loss in edge cases, particularly when handling malformed or adversarial inputs. These differences are not security-critical but affect functional correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation does not handle the MSG_OOB flag correctly by returning -EOPNOTSUPP, and it lacks detailed error handling and logging found in the reference. Additionally, the candidate implementation does not support returning the sender's address in a standardized format for datagram sockets, and it does not handle the MSG_TRUNC flag for SOCK_SEQPACKET sockets. These differences could affect the correctness and robustness of the function in edge cases or adversarial scenarios.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

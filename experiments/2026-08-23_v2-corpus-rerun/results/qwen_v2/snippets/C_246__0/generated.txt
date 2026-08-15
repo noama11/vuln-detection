@@ -1,0 +1,39 @@
+int netlink_dump(struct sock *sk) {
+    struct sk_buff *skb;
+    int err = 0;
+
+    mutex_lock(&sk->sk_mutex);
+    if (sk->sk_callback_running) {
+        mutex_unlock(&sk->sk_mutex);
+        return -EBUSY;
+    }
+
+    if (sk->sk_rcvbuf_used >= sk->sk_rcvbuf) {
+        mutex_unlock(&sk->sk_mutex);
+        return -ENOBUFS;
+    }
+
+    skb = alloc_skb(sk->sk_rcvbuf / 2, GFP_KERNEL);
+    if (!skb) {
+        mutex_unlock(&sk->sk_mutex);
+        return -ENOMEM;
+    }
+
+    err = sk->sk_prot->dump(sk, skb);
+    if (err < 0) {
+        kfree_skb(skb);
+        mutex_unlock(&sk->sk_mutex);
+        return err;
+    }
+
+    if (sk->sk_filter) {
+        skb_set_owner_r(skb, sk);
+        sock_queue_rcv_skb(sk, skb);
+    } else {
+        kfree_skb(skb);
+    }
+
+    sk->sk_rcvbuf_used += skb->truesize;
+    mutex_unlock(&sk->sk_mutex);
+    return 0;
+}

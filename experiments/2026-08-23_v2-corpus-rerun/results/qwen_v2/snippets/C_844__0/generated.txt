@@ -1,0 +1,25 @@
+void handle_timer_callback(struct snd_timer_instance *timeri, int event,
+                           struct timespec *tstamp, unsigned long resolution)
+{
+    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)
+        return;
+
+    if (timeri->filter & (1 << event)) {
+        struct snd_timer_read *tr;
+
+        tr = kmalloc(sizeof(*tr), GFP_KERNEL);
+        if (!tr)
+            return;
+
+        tr->event = event;
+        tr->tstamp = *tstamp;
+        tr->resolution = resolution;
+
+        spin_lock_irq(&timeri->queue_lock);
+        list_add_tail(&tr->list, &timeri->queue);
+        spin_unlock_irq(&timeri->queue_lock);
+
+        wake_up(&timeri->wait_queue);
+        wake_up_interruptible(&timeri->sleep_queue);
+    }
+}

@@ -1,0 +1,42 @@
+size_t WritePSDChannelBlob(const PSDInfo *psd_info, const ImageInfo *image_info,
+                           Image *image, Image *next_image,
+                           QuantumType quantum_type, unsigned char *compact_pixels,
+                           MagickOffsetType size_offset, MagickBooleanType separate,
+                           ExceptionInfo *exception) {
+  size_t written_bytes = 0;
+  MagickBooleanType is_monochrome = (psd_info->depth == 1);
+  size_t rows = image->rows;
+  size_t columns = image->columns;
+  size_t row_size = (columns * sizeof(Quantum) + 1);
+  unsigned char *pixels = NULL;
+  unsigned char *compressed_data = NULL;
+  size_t compressed_size = 0;
+
+  pixels = (unsigned char *) AcquireQuantumMemory(row_size, sizeof(*pixels));
+  if (!pixels) {
+    ThrowBinaryException(ResourceLimitError, "Memory allocation failed", "WritePSDChannelBlob");
+  }
+
+  for (size_t y = 0; y < rows; y++) {
+    ExportQuantumPixels(image, NULL, quantum_type, row_size, pixels, exception);
+    if (psd_info->compression == 1) {
+      /* RLE compression */
+      compressed_size = CompressRLE(pixels, row_size, &compressed_data);
+    } else if (psd_info->compression == 2) {
+      /* ZIP compression */
+      compressed_size = CompressZIP(pixels, row_size, &compressed_data);
+    } else {
+      compressed_data = pixels;
+      compressed_size = row_size;
+    }
+
+    written_bytes += WriteBlobMemory(image, size_offset + y * row_size, compressed_size, compressed_data);
+
+    if (psd_info->compression != 0) {
+      RelinquishMagickMemory(compressed_data);
+    }
+  }
+
+  RelinquishMagickMemory(pixels);
+  return written_bytes;
+}

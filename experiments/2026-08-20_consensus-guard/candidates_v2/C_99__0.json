@@ -1,0 +1,34 @@
+{
+  "case_id": "C_99__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void edgeport_drain_data(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty;\n    struct edgeport_tty *edge_tty;\n    unsigned long orig_jiffies;\n    unsigned long baud_rate;\n    unsigned long chars;\n    int ret;\n    wait_queue_t wait;\n\n    if (!port || !port->tty)\n        return;\n\n    tty = port->tty;\n    edge_tty = tty->driver_data;\n\n    init_waitqueue_head(&wait);\n\n    spin_lock_irq(&port->lock);\n    while (port->tx_in) {\n        if (signal_pending(current) || !tty_hung_up_p(tty)) {\n            spin_unlock_irq(&port->lock);\n            break;\n        }\n\n        if (flush) {\n            edgeport_flush_buffer(port);\n            spin_unlock_irq(&port->lock);\n            break;\n        }\n\n        spin_unlock_irq(&port->lock);\n\n        schedule_timeout_interruptible(timeout);\n        spin_lock_irq(&port->lock);\n    }\n    spin_unlock_irq(&port->lock);\n\n    if (!tty->port)\n        return;\n\n    ret = tty_wait_until_sent(tty, timeout);\n    if (ret != 0) {\n        if (ret == -EIO)\n            return;\n    }\n\n    orig_jiffies = jiffies;\n    while ((chars = tty->flip.hlt)) {\n        if (signal_pending(current))\n            break;\n        if (time_after(jiffies, orig_jiffies + timeout))\n            break;\n\n        schedule_timeout_interruptible(HZ / 10);\n    }\n\n    if (flush)\n        edgeport_flush_buffer(port);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void edgeport_drain(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n\tstruct tty_struct *tty = port->tty;\n\tDECLARE_WAITQUEUE(wait, current);\n\n\tif (!tty)\n\t\treturn;\n\n\tadd_wait_queue(&tty->write_wait, &wait);\n\twhile (tty->chars_in_buffer(tty)) {\n\t\tset_current_state(TASK_INTERRUPTIBLE);\n\n\t\tif (signal_pending(current))\n\t\t\tbreak;\n\n\t\tif (time_after(jiffies, timeout))\n\t\t\tbreak;\n\n\t\tif (port->disconnected)\n\t\t\tbreak;\n\n\t\tschedule_timeout(1);\n\t}\n\tset_current_state(TASK_RUNNING);\n\tremove_wait_queue(&tty->write_wait, &wait);\n\n\tif (flush)\n\t\ttty->low_latency = 1;\n\n\twhile (tty->chars_in_buffer(tty)) {\n\t\tset_current_state(TASK_INTERRUPTIBLE);\n\n\t\tif (signal_pending(current))\n\t\t\tbreak;\n\n\t\tif (time_after(jiffies, timeout))\n\t\t\tbreak;\n\n\t\tif (port->disconnected)\n\t\t\tbreak;\n\n\t\tschedule_timeout(1);\n\t}\n\tset_current_state(TASK_RUNNING);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void edgeport_drain(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n\tstruct tty_struct *tty;\n\tDECLARE_WAITQUEUE(wait, current);\n\tunsigned long jiffies_timeout;\n\tint draining = 1;\n\tint disconn;\n\n\ttty = port->port.tty;\n\tif (!tty)\n\t\treturn;\n\n\tadd_wait_queue(&port->wait, &wait);\n\tjiffies_timeout = jiffies + timeout;\n\n\twhile (draining) {\n\t\tdisconn = port->disconnected;\n\t\tif (disconn)\n\t\t\tbreak;\n\n\t\tif (time_after(jiffies, jiffies_timeout))\n\t\t\tbreak;\n\n\t\tif (port->port.x_char)\n\t\t\tcontinue;\n\n\t\tif (port->port.flags & ASYNC_BROKEN_MUX)\n\t\t\tcontinue;\n\n\t\tif (port->port.irq_count && time_before(jiffies, jiffies_timeout))\n\t\t\tcontinue;\n\n\t\tif (port->port.irq_count && port->port.icount.parity)\n\t\t\tcontinue;\n\n\t\tdraining = 0;\n\t}\n\n\tremove_wait_queue(&port->wait, &wait);\n\twake_up(&port->wait);\n\n\tif (flush)\n\t\tport->port.flags |= ASYNC_BROKEN_MUX;\n\n\tif (!disconn)\n\t\twait_for_xmitr(tty, jiffies_timeout);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void edgeport_drain_data(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n    struct tty_struct *tty;\n    wait_queue_t wait;\n    unsigned long orig_jiffies;\n    int discon;\n    int ret;\n\n    if (!port || !port->port)\n        return;\n\n    tty = port->port;\n    if (!tty || !tty_port_initialized(&tty->port))\n        return;\n\n    init_waitqueue_head(&wait);\n\n    spin_lock_irq(&port->port_lock);\n\n    if (flush) {\n        discon = port->disconnected;\n        if (!discon) {\n            port->disconnected = 1;\n            spin_unlock_irq(&port->port_lock);\n\n            ret = tty_hangup(tty);\n            if (ret)\n                return;\n\n            spin_lock_irq(&port->port_lock);\n        }\n    }\n\n    orig_jiffies = jiffies;\n    while ((port->tx_remaining > 0) && (port->disconnected == 0)) {\n        if (signal_pending(current))\n            break;\n\n        if (time_after(jiffies, orig_jiffies + timeout))\n            break;\n\n        if (wait_event_interruptible_timeout(wait, (port->tx_remaining == 0 || port->disconnected != 0), timeout))\n            break;\n\n        schedule();\n    }\n\n    spin_unlock_irq(&port->port_lock);\n\n    if (!flush)\n        return;\n\n    port->disconnected = 1;\n\n    if (!tty_hung_up_p(tty))\n        tty_hangup(tty);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void edgeport_drain_data(struct edgeport_port *port, unsigned long timeout, int flush)\n{\n\tstruct tty_struct *tty = port->tty;\n\tunsigned long orig_jiffies = jiffies;\n\tunsigned long chars;\n\tDECLARE_WAITQUEUE(wait, current);\n\tint disconn;\n\n\tif (!tty)\n\t\treturn;\n\n\tadd_wait_queue(&tty->write_wait, &wait);\n\twhile (1) {\n\t\tset_current_state(TASK_INTERRUPTIBLE);\n\t\tdisconn = port->disconnected;\n\t\tif (disconn || time_after(jiffies, orig_jiffies + timeout))\n\t\t\tbreak;\n\t\tchars = tty_chars_in_buffer(tty);\n\t\tif (!chars)\n\t\t\tbreak;\n\t\tif (signal_pending(current)) {\n\t\t\tdisconn = 1;\n\t\t\tbreak;\n\t\t}\n\t\tspin_unlock_irq(&port->lock);\n\t\tschedule_timeout(1);\n\t\tspin_lock_irq(&port->lock);\n\t}\n\tset_current_state(TASK_RUNNING);\n\tremove_wait_queue(&tty->write_wait, &wait);\n\n\tif (flush)\n\t\ttty->driver->flush_chars(tty);\n\n\t/* Wait for the transmit buffer to drain */\n\tchars = tty_chars_in_buffer(tty);\n\tif (chars) {\n\t\tint divisor;\n\t\tunsigned long limit;\n\n\t\tdivisor = port->baud_rate ? port->baud_rate / 1000 : 19200 / 1000;\n\t\tlimit = (chars * divisor + 999) / 1000;\n\t\tmsleep_interruptible(limit);\n\t}\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

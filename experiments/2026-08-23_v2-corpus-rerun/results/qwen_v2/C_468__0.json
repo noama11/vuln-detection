@@ -1,0 +1,56 @@
+{
+  "case_id": "C_468__0",
+  "sample_id": "D/C/468",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-7616",
+  "cve_summary": "Incorrect error handling in the set_mempolicy and mbind compat syscalls in mm/mempolicy.c in the Linux kernel through 4.10.9 allows local users to obtain sensitive information from uninitialized stack data by triggering failure of a certain bitmap operation.",
+  "changed_file": "mm/mempolicy.c",
+  "docstring": "Summary: This function defines a compatibility syscall for setting memory policy based on a given mode and node mask.\n\nParameters: \n- mode (int): The memory policy mode to be set.\n- nmask (compat_ulong_t __user *): A pointer to the user-space bitmap representing the nodes.\n- maxnode (compat_ulong_t): The maximum number of nodes that can be specified.\n\nReturns: \n- int: Returns 0 on success or a negative error code on failure.\n\nLogic: The function first initializes a bitmap and calculates the number of bits and allocation size based on the provided maximum node. If a valid node mask is provided, it retrieves the bitmap from user space and allocates memory for it. It then copies the bitmap back to user space. Finally, it calls the underlying system function to set the memory policy, passing the mode, allocated memory, and the number of bits.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/uaccess.h>\n#include <linux/bitmap.h>\n\nint compat_sys_mbind(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode) {\n    unsigned long *bitmap = NULL;\n    int nbits = 0;\n    int ret = -EFAULT;\n\n    if (maxnode) {\n        nbits = maxnode;\n        bitmap = kmalloc(BITS_TO_LONGS(nbits) * sizeof(unsigned long), GFP_KERNEL);\n        if (!bitmap)\n            return -ENOMEM;\n\n        if (nmask) {\n            if (copy_from_user(bitmap, nmask, BITS_TO_LONGS(nbits) * sizeof(compat_ulong_t)))\n                goto out;\n        }\n    }\n\n    ret = sys_mbind(mode, nmask, maxnode, bitmap, nbits, MPOL_F_STATIC);\n\n    if (nmask && copy_to_user(nmask, bitmap, BITS_TO_LONGS(nbits) * sizeof(compat_ulong_t)))\n        ret = -EFAULT;\n\nout:\n    kfree(bitmap);\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the node mask and the number of bits. The candidate implementation calculates the number of bits directly from maxnode, while the reference implementation uses min_t to cap the number of bits at MAX_NUMNODES and adjusts for alignment. Additionally, the candidate implementation uses kmalloc and copy_from_user, whereas the reference implementation uses a fixed-size DECLARE_BITMAP and compat_get_bitmap. These differences could lead to different behaviors for large maxnode values or malformed inputs, particularly in memory allocation and handling of user-space data, which may be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the node mask and memory allocation. The candidate implementation calculates the number of bits directly from maxnode, while the reference implementation uses a capped value (min(maxnode-1, MAX_NUMNODES)). Additionally, the candidate implementation copies the bitmap from and to user space, whereas the reference implementation uses a fixed-size bitmap and allocates user space memory for the output. These differences could lead to different behaviors for large or invalid maxnode values, potentially affecting memory safety and correctness.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

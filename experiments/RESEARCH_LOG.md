@@ -21,7 +21,7 @@ including ones that looked positive at an interim checkpoint. Where an earlier
 claim in this log is later overturned, the original stays and the correction is
 appended — the paper needs the trajectory, not a cleaned-up version of it.
 
-**Last updated**: 2026-08-14, during the consensus (K=5) run.
+**Last updated**: 2026-08-15, after the corrected-corpus re-run (ch. 14).
 
 ---
 
@@ -39,8 +39,11 @@ appended — the paper needs the trajectory, not a cleaned-up version of it.
 | 7 | Baselines | Every single-version method at chance |
 | 8 | Specification provenance + extraction defect | 2 new confounds |
 | 9 | Contrastive judge (both versions) | **84.4% — signal exists** |
-| 10 | Guard contrast, K=1 | Null |
-| 11 | Consensus guard, K=5 | *in flight* |
+| 10 | Guard contrast, K=1 | Null; H2 failed replication |
+| 11 | Consensus guard, K=5 | Null (50.3%, p = 1.0) |
+| 12 | Defensive reconstruction + per-claim checks | 57.1% → **53.3% on replication** |
+| 13 | The corpus was broken, and we could not see it | Corpus rebuilt; null unmoved |
+| 14 | The method on the corrected corpus (n=626) | **Null confirmed; anti-signal was an artefact** |
 
 ---
 
@@ -808,7 +811,7 @@ under the *right* question it is everything. That contrast is itself a finding.
 
 ---
 
-# Chapter 11 — Consensus guard, K=5 *(in flight)*
+# Chapter 11 — Consensus guard, K=5
 
 **Directory**: `experiments/2026-08-20_consensus-guard/`
 
@@ -966,7 +969,7 @@ information.
 
 ---
 
-# Chapter 12 — Defensive reconstruction with explicit guard claims *(in flight)*
+# Chapter 12 — Defensive reconstruction with explicit guard claims
 
 **Directory**: `experiments/2026-08-21_defensive-claims/`
 
@@ -1228,14 +1231,404 @@ available evidence that it is not for want of trying.
   is further reason for caution.
 - 44.4% tie rate.
 
+---
+
+# Chapter 13 — The corpus was broken, and we could not see it
+
+*(No inference. This chapter produces a corrected corpus, an independent
+validation gate, and a process finding. Arm:
+`experiments/2026-08-22_extraction-v2/`.)*
+
+## Question
+
+Open thread #4 said the extraction defect measured in ch. 8 should be fixed and
+the corpus re-derived, and that the ~49% clean rate was "optimistic". Two
+questions follow: **how bad is it actually, and does it explain the null?**
+
+## Why we expected this to matter
+
+Ch. 8 found 111/392 (28.3%) vulnerable snippets malformed against 3/392 on the
+fixed side, and showed the null survived excluding them (16.0% → 15.8%). That
+check bounded the damage but did not repair it. A corpus where the vulnerable
+reference is systematically contaminated and the fixed reference is not is a
+confound in the exact direction of the result, and no amount of downstream
+statistics fixes a broken input.
+
+## What we did
+
+Re-derived the corpus from `D.zip` with a corrected extractor, then validated it
+against the raw archive rather than against the extractor's own opinion.
+
+## Results
+
+**The defect was twice what we recorded.** Ch. 8 measured it by brace balance.
+That test undercounts, because the dominant failure is the slice running *past*
+the target function into the next one, and the trailing fragment frequently
+happens to balance. Measured strictly — exactly one complete top-level function,
+nothing glued on after its closing brace:
+
+| the 392 `ok` vulnerable snippets | n | |
+|---|---:|---:|
+| target function **+ fragment of the next function** | 197 | 50% |
+| clean single function | 163 | 42% |
+| no complete function (truncated or body-only) | 31 | 8% |
+| **defective** | **229** | **58%** |
+
+The fixed side of the same cases is 390/392 (99.5%) clean, because it was
+brace-matched rather than sliced. **That asymmetry is the defect.**
+
+**Three bugs, all in `scripts/extract_cases.py`:**
+
+| | bug | effect |
+|---|---|---|
+| B1 | `locate_function_by_anchor:151` takes the **innermost** enclosing brace pair | returns the `if`/`while` block the patched line sits in, not the function — this is the entire `suspect_identifier_mismatch` class, i.e. the right function was located all along and then discarded |
+| B2 | the vulnerable side is sliced **literally** from `scope.start`/`scope.end` (`:239`) while the fixed side is brace-matched | the slice over-runs into the following function; `scope.start` is often not a function boundary at all |
+| B3 | `count_top_level_braces:137` counts only **matched** brace pairs | a slice ending in an unclosed `{` is never flagged — exactly what B2 produces, which is why contaminated cases carry `extraction_status: "ok"` |
+
+**The corrected corpus is larger, not just cleaner** — B1 was discarding
+recoverable cases:
+
+| | published | v2 |
+|---|---:|---:|
+| usable cases | 392 extracted / 357 scored | **626** |
+| vulnerable side a single complete function | 163 | 626 |
+| unique CVEs | 302 | 453 |
+| 95% CI half-width at PFA ≈ 16% | ±3.8pp | ±2.9pp |
+
+344 of the published 392 survive; 48 do not, and each is a case the method
+cannot pose rather than one the new extractor failed on (30 have changed lines
+outside the located function, 9 patch file scope, 7 are `#define` macros with
+statement-expression bodies, 2 lose the function on the fixed side).
+
+**Does the defect explain the null? No.** Splitting the published run by
+reference quality, reproduced in place from `results/qwen_full/` (n_scored = 357,
+PFA = 0.1597, matching the published report exactly before any split):
+
+| defective set | defective ref | clean ref | p |
+|---|---|---|---:|
+| any defect | 16.7% (n=203) | 14.9% (n=154) | 0.643 |
+| over-extension only | 14.4% (n=181) | 17.6% (n=176) | 0.402 |
+
+The two slices disagree on sign and neither is significant — consistent with
+ch. 8's own 16.0% → 15.8% check. **The corrected corpus buys credibility and
+statistical power, not a different headline**, and the paper must say so.
+
+## Findings
+
+**Why it survived eight arms.** `extraction_status: "ok"` was written by the same
+code that had the bug, and the one validity check ever run — brace balance —
+was structurally unable to see the failure mode. A self-reported quality field
+is worth nothing when the reporter and the defect share an author.
+
+Two process gaps followed, both now closed in `scripts/`:
+
+- **`scripts/validate_corpus.py`** — seven structural invariants checked against
+  the raw files in `D.zip`, independent of whatever produced the corpus, exiting
+  non-zero so it works as a gate. On the published corpus: **261 of 392 cases
+  (67%) fail at least one invariant.** It also surfaced a defect nothing had
+  recorded — on 13 cases the dataset's `scope` range runs past the end of the
+  file (`C_591__0` claims lines 771–803 of a 788-line file) and the literal
+  slice clamps silently, so the stored `vulnerable_line_range` describes more
+  lines than the snippet holds.
+- **`scripts/corpus_sha.py`** — content-addresses a corpus the way
+  `agent_prompts.py` content-addresses the rubric (`cases/` = `d98dcc64782d`,
+  `cases_v2/` = `b60b2d62fbd0`). Every result already carried `prompt_sha`;
+  there was no equivalent for the corpus, so **none of the eight published arms
+  can name the corpus it ran against.** `run_cases_local.py` now takes
+  `--cases-dir` and stamps `corpus_sha` / `corpus_dir` / `corpus_n_ok` into each
+  record. Defaults are unchanged and the published arms remain byte-reproducible.
+
+## Conclusions
+
+The null is not an artefact of the broken corpus — that is now measured twice, by
+two different splits, rather than assumed. But every headline in chapters 4–12
+was computed against references that were contaminated on one side in 58% of
+cases, and the honest framing is that the numbers are *directionally sound and
+quantitatively provisional* until re-run on `cases_v2/`.
+
+## Weaknesses
+
+- **No inference was run.** The 626-case corpus is validated but untested; every
+  claim about what the method does on it is a prediction.
+- The v2 extractor is validated by predicates that now live in
+  `validate_corpus.py` and are checked against `D.zip` directly — but they are
+  still predicates *we* chose. Independent verification is manual diff reading
+  (`spot_check.py`), done on a sample, not exhaustively.
+- Repo clustering does not improve: `torvalds/linux` is 54% of v2 vs 51%
+  published, so CVE-clustered CIs remain mandatory.
+- 87 of the 626 are the same function emitted twice with two docstrings; they are
+  flagged `duplicate_of` and must be dropped where independence matters.
+
+## Pros and cons
+
+**Pro:** this is the strongest possible answer to the reviewer question *"is your
+negative result just a data-quality artefact?"* — we found the artefact, measured
+it at twice the recorded size, corrected it, and showed the result holds anyway.
+A negative result that survives a corpus rebuild is much harder to dismiss than
+one that was never checked.
+
+**Con:** it invalidates the precision of every number published so far, and the
+re-run to restore that precision has not been done.
+
 ## What it changed in our beliefs
 
-Provisionally: **secure-coding priors are a real information source the
-specification does not contain**, and instructing the generator to be faithful
-rather than careful was suppressing them. If it replicates, that is the paper's
-positive contribution and it reframes the whole negative arc — the method was
-never given the one input that could make it work. If it does not replicate, the
-conclusion of ch. 11 stands and the failure is complete.
+About the result: nothing — the null is unmoved, now on stronger evidence.
+
+About the method of the project: **the additivity rule cuts both ways.** Freezing
+`scripts/` and `cases/` is why the published arms stayed byte-reproducible, and
+it is also why a known defect sat in the base for weeks with no path to being
+fixed. The resolution is to *version* the base rather than freeze it — tag the
+pre-change commit, then let `scripts/` move forward, with `corpus_sha` making it
+impossible to silently confuse two corpora. That is a transferable lesson and
+belongs in the paper's methodology section, not only in an appendix.
+
+---
+
+# Chapter 14 — The method on the corrected corpus
+
+*Arm: `experiments/2026-08-23_v2-corpus-rerun/`. **This section was written before
+the run was launched.** Nothing below the pre-registration line existed when the
+first case was dispatched.*
+
+## Question
+
+Every headline in chapters 4–12 was computed on 357 scored cases — 45% of the
+dataset — with a vulnerable-side reference that ch. 13 showed is contaminated in
+58% of cases and a fixed-side reference that is 99.5% clean. **What does the
+method do when both sides are clean and the corpus is 626 cases?**
+
+## Why this is the right run to make
+
+It is the only remaining experiment that can change the *precision* of the
+paper's central claim rather than merely add another failed variant. Three
+things improve at once:
+
+1. **The one-sided contamination is gone.** Both references are now brace-matched
+   by the same code path, so the asymmetry that ran in the same direction as the
+   result no longer exists.
+2. **Coverage rises from 45% to 79% of the dataset** (626/792), because bug B1
+   was discarding recoverable cases rather than bad ones.
+3. **453 CVEs instead of 302**, which is what actually sets the width of a
+   CVE-clustered interval — the half-width at PFA ≈ 16% falls from ±3.8pp to
+   ±2.9pp.
+
+## Pre-registration
+
+Fixed before launch, so that a surprise cannot be reinterpreted afterwards:
+
+- **Primary**: PFA on the non-duplicate subset, CVE-clustered bootstrap CI,
+  10k resamples. Chance = 25%.
+- **Prediction**: **PFA lands in 12–20%, and the clustered CI excludes 25%.**
+  That is, the null holds and tightens. Ch. 13 already tested the causal question
+  two ways on the published run (p = 0.64, p = 0.40, signs disagreeing), so a
+  large move here would contradict evidence we already have and would mean
+  something is wrong with the comparison, not that the method works.
+- **What would change our conclusion**: PFA ≥ 25% with a clustered CI excluding
+  25% *from below*. That would mean the extraction defect was masking a real
+  effect, and chapters 4–12 would need re-running rather than re-stating.
+- **Secondary, and the cleanest single comparison in the project**: the **344
+  cases present in both corpora**. Same cases, same CVEs, same prompts, same
+  seed — only the snippets are repaired. Any difference on that matched subset
+  is attributable to the extraction fix alone, with corpus expansion held out.
+- **Reported alongside, not as the primary**: PFA including the 87 `duplicate_of`
+  cases; directional accuracy; ROC-AUC; the degenerate-generation rate per side.
+- **One test.** The matched-subset and with-duplicates figures are descriptive.
+  No subgroup will be promoted to a headline — the lesson of chapters 10 and 12.
+
+## Configuration
+
+Held identical to the published arm so the corpus is the only variable:
+`seed 1234`, `gen_temperature 0.2`, `judge_temperature 0.0`, thinking off,
+`prompt_sha 1de29ae28c7d`, `qwen3-32b-awq`. The corpus is stamped into every
+record as `corpus_sha b60b2d62fbd0` — the first arm in this project whose results
+can name the corpus that produced them.
+
+## Expected weaknesses, recorded in advance
+
+- The degenerate-generation rate should **fall** on the fixed side (21 of the 34
+  unscored cases in the published arm were fixed-side degenerate, which ch. 13
+  attributes to the two sides being extracted by different code paths). If it
+  does not, that attribution is wrong and needs revisiting.
+- Repo clustering does not improve — `torvalds/linux` is 54% of v2 vs 51%
+  published — so a tighter CI reflects more CVEs, not a more diverse corpus.
+- 87 duplicate functions with variant docstrings are included in the corpus and
+  excluded from the primary; they are informative about docstring sensitivity but
+  violate independence.
+
+## Results
+
+626/626 cases completed in 27.1 minutes, 0 failed, 0 skipped.
+
+**The pre-registered prediction was correct**, and by a narrow margin on the
+stated interval:
+
+| set | cases | scored | CVEs | PFA | 95% CI (CVE-clustered) |
+|---|---|---|---|---|---|
+| non-duplicate (**primary**) | 539 | 536 | 453 | **14.9%** | [12.0%, 18.0%] |
+| all cases | 626 | 620 | 453 | 14.5% | [11.7%, 17.3%] |
+
+14.9% sits inside the predicted 12–20% band and the CI excludes 25%. **The null
+holds and tightens.** No re-running of chapters 4–12 is required; their numbers
+stand as re-stated, not overturned.
+
+### But three things reversed sign
+
+| | published (`qwen_full`) | v2 (`qwen_v2`) |
+|---|---|---|
+| degenerate-generation rate | 8.7% | **0.6%** |
+| ROC-AUC | 0.475 | **0.516** |
+| flag rate, vulnerable − fixed | **−2.8pp** | **+1.9pp** |
+| observed PFA vs its permutation null | **below** (p(≥) = 0.833) | above (p(≥) = 0.193) |
+
+And on the **343 cases present in both corpora** — same cases, same CVEs, same
+prompts, same seed, only the snippets repaired, so corpus expansion is held out:
+
+| | published snippets | corrected snippets |
+|---|---|---|
+| PFA | 15.7% | 13.8% |
+| ROC-AUC | 0.473 | **0.524** |
+| flag rate, vulnerable − fixed | **−3.4pp** | **+3.2pp** |
+| permutation null mean | 17.4% | 12.2% |
+| p(observed ≥ null) | 0.871 | 0.140 |
+
+63 of 343 cases changed the sign of their paired-flag outcome.
+
+## Findings
+
+**1. The anti-signal was an extraction artefact.** Chapter 4's two unexplained
+anomalies — ROC-AUC *below* 0.5, and the fixed side being flagged *more* often
+than the vulnerable side — both disappear when the snippets are repaired, on
+identical cases. This is the causal test ch. 8 could not run: it is not a
+correlation between defect status and outcome, it is the same cases measured
+twice.
+
+**2. "Below chance" was the wrong description all along.** The published arm was
+compared against a 25% ceiling and a 23.1% independence baseline. Its *own*
+permutation null — which preserves the correlation between the two judge calls —
+is 17.4%, and 16.0% sat below it. On the corrected corpus the null is 12.2% and
+the observed 13.8% sits slightly above, p = 0.140. **The correct statement is
+that the method is indistinguishable from chance, not worse than it.**
+
+**3. PFA is low because the two judge calls are correlated, not because the
+detector is inverted.** The judge assigns the *same* category to both sides in
+68.7% of cases (60.8% before). That is chapter 1's "baseline gap", still the
+dominant effect: the gap between a from-spec reconstruction and either real
+version swamps the gap between the two real versions. PFA cannot exceed
+1 − P(same category), so ~31% is its practical ceiling here regardless of skill.
+
+**4. Ch. 13's mechanism prediction is confirmed, sharply.** It predicted the
+fixed-side degenerate rate should fall because the two sides were extracted by
+different code paths. Fixed side: 7.2% → **0.6%**. Vulnerable side: 3.3% → 1.0%.
+The 8.7% generation-failure rate of ch. 4 was almost entirely the extractor, not
+the generator — the model was being asked to match malformed code.
+
+## Conclusions
+
+**The bounded-negative thesis survives, and is now cleaner.** The method does not
+detect: 14.9% PFA on 79% of the dataset, against a permutation null it does not
+beat. But it is a *null*, not an inversion, and the paper must stop describing it
+as sub-chance.
+
+This changes the mechanism section, not the result. Chapters 4–12's numbers were
+computed on references contaminated on one side in 58% of cases; the direction of
+that contamination produced an apparent anti-signal that does not exist. The
+finding that survives is the information deficit (ch. 8, 11) and the correlated-
+judge baseline gap (ch. 1, confirmed here at 68.7%).
+
+## Weaknesses
+
+- **PFA's own ceiling is not 100%.** With 68.7% of cases receiving the same
+  category on both sides, PFA is bounded near 31%. The pre-registered 60/80%
+  bands were never attainable. This should have been derived at design time.
+- The permutation null shifts with the corpus (17.4% → 12.2%), so PFA values are
+  not comparable across corpora without it. Any cross-arm PFA comparison in this
+  log that predates ch. 14 carries that caveat.
+- One seed. Ch. 12 showed a single seed is not sufficient for a marginal effect;
+  here the effect is not marginal (the CI is nowhere near 25%), so the risk is
+  lower, but a second seed would be cheap insurance.
+- 343 matched cases, not the 344 ch. 13 projected: one published case never
+  produced a result record.
+
+## Pros and cons
+
+**Pro:** this is the run that makes the negative result defensible. The method
+was measured on 79% of the dataset with clean references on both sides, a
+tightened CVE-clustered interval, and a pre-registered prediction that held. And
+it retired two anomalies that had been in the write-up since ch. 4 without an
+explanation — by finding their cause, not by dropping them.
+
+**Con:** it invalidates a claim we had been making with some confidence. "Worse
+than chance" was rhetorically strong and is now known to be an artefact of our
+own extractor. Chapters 4, 5 and 8 all lean on it to some degree.
+
+## What it changed in our beliefs
+
+The result is unmoved; the *story* is materially different. We had two mechanisms
+for the sub-chance behaviour — spec provenance (ch. 8) and information deficit
+(ch. 11) — and were using the first to explain an effect that turns out to have
+been a data bug. Spec provenance remains a measured property of the corpus
+(p = 2.9e-6) but is no longer needed to explain AUC < 0.5, because AUC is no
+longer < 0.5.
+
+The general lesson, and the one worth putting in the paper: **an anomaly that
+survives for nine chapters without a mechanism is more likely to be an artefact
+than a finding.** We built two explanations for this one before testing whether
+it was real.
+
+---
+
+# Chapter 15 — The two rescue arms, re-measured on clean data *(in flight)*
+
+*Arm: `experiments/2026-08-24_v2-rescue-rerun/`. **Written before launch.***
+
+## Question
+
+Chapters 9 and 11 both ran on the broken corpus, and ch. 14 showed the baseline
+they were measured against was contaminated in a way that manufactured an
+apparent anti-signal. Two of their conclusions therefore rest on a reference
+point we now know was wrong:
+
+- **Ch. 9** — the contrastive judge scored **81.5%** with a generated candidate
+  (84.4% with the oracle pair). This is the project's strongest number and the
+  evidence for "the signal exists". Does it survive on clean snippets?
+- **Ch. 11** — consensus K=5 scored **50.3%, p = 1.0000**, read as "ensembling
+  adds nothing". But the 43.5% → 48.8% → 50.3% trajectory it sits on begins at a
+  number ch. 14 attributes to the extractor. Measured from a clean baseline, does
+  K=5 still land exactly on chance?
+
+## Why it is worth the GPU time
+
+These are the two arms whose *interpretation* changes most if the baseline moves.
+Ch. 14 re-measured the headline; this re-measures the two results the paper
+leans on hardest — one positive, one negative. If the answers hold, both become
+claims about clean data on 79% of the dataset rather than claims about a corpus
+with a 58% defect rate.
+
+## Pre-registration
+
+- **Contrastive, generated mode** — primary is accuracy on the decided subset,
+  chance 50%, abstentions (`neither`) reported as coverage and never scored.
+  **Prediction: 75–88%, CI excluding 50%.** Ch. 9 already showed accuracy is
+  equal on cleanly and badly extracted cases, so a large move would contradict
+  evidence we have.
+- **Consensus K=5** — primary is directional accuracy on the decided subset,
+  chance 50%. **Prediction: 45–56%, CI containing 50%.** That is, still null.
+- **What would change our conclusion**: contrastive falling below ~65% would mean
+  ch. 9's signal was partly an extraction artefact and the "signal exists" claim
+  needs weakening. Consensus rising above 56% with a CI excluding 50% would mean
+  ensembling *does* work and was masked by the broken baseline — which would be
+  the first genuine positive result in the project.
+- **One test each.** No subgroup promoted, per chapters 10 and 12.
+- Same seed (1234), same rubrics (`prompt_sha` unchanged per arm), K=5,
+  generation temperature 0.8. Only the corpus and the candidate source change.
+
+## The asymmetry we expect, and what it would mean
+
+If contrastive holds near 81% while consensus stays at 50%, the thesis sharpens:
+**the information needed to separate the pair is present in the data and the
+judge can extract it when shown both versions, but no amount of single-reference
+ensembling recovers it.** That is the paper's central claim, and it would then
+rest on clean data at both ends rather than on a contaminated baseline.
 
 ---
 
@@ -1243,7 +1636,7 @@ conclusion of ch. 11 stands and the failure is complete.
 
 | Claim | Status | Evidence |
 |---|---|---|
-| The method fails at corpus scale | **Established** | ch. 4, 5 |
+| The method fails at corpus scale | **Established** | ch. 4, 5, 14 (14.9%, n=536, 79% of dataset) |
 | Not because the generator is weak | **Established** | ch. 6 (L1 = 14.6% vs 16.0%) |
 | Not because more context is missing | **Established** | ch. 3 |
 | Not because the judge is incapable | **Established** | ch. 9 (84.4%) |
@@ -1251,7 +1644,11 @@ conclusion of ch. 11 stands and the failure is complete.
 | PFA's chance level is 25%, and it rewards asymmetry | **Established** | ch. 7 |
 | Every single-version formulation is at chance | **Established** | ch. 7 |
 | The specs are derived from the vulnerable code | **Established** (correlational) | ch. 8 (p=2.9e-6) |
-| 28.3% of vulnerable snippets are mis-extracted | **Established**, not causal | ch. 8 |
+| 58% of vulnerable snippets are mis-extracted (28.3% was an undercount) | **Established**, not causal | ch. 8, corrected by ch. 13 |
+| The corpus defect explains the null | **Refuted** | ch. 13, 14 (PFA 15.7% -> 13.8% on matched cases) |
+| The corpus defect explains the *anti-signal* | **Established, causal** | ch. 14 (AUC 0.473 -> 0.524, flag delta -3.4pp -> +3.2pp, same 343 cases) |
+| The detector is worse than chance | **Refuted** | ch. 14 (observed sits above its permutation null, p=0.140) |
+| PFA is capped near 31% by the correlated-judge baseline gap | **Established** | ch. 14 (same category both sides in 68.7% of cases) |
 | The failure is in the task formulation | **Strongly supported** | ch. 9 vs 4 |
 | Reconstruction quality binds under the right question | **Supported** | ch. 10 (2×2) |
 | Ensembling recovers the signal | **Refuted** | ch. 11 (50.3%, p=1.0) |
@@ -1263,13 +1660,17 @@ conclusion of ch. 11 stands and the failure is complete.
 
 ## Open threads, ranked
 
-1. **Ch. 11 result** — in flight.
+1. **Purge "below chance" from the write-up.** Ch. 14 showed it was an artefact
+   of our own extractor. `SUBMISSION_DRAFT.md` and chapters 4, 5 and 8 all lean
+   on it; each needs re-stating as *indistinguishable from chance*, against the
+   permutation null rather than the 25% ceiling. **This is now the highest
+   priority — it is a claim we currently make and know to be wrong.**
 2. **The provenance causal test** (`respec.py`, scripted, unrun). Diagnostic
    only; must not be presented as a method improvement.
 3. **Semantic spec-sufficiency labels**, to replace the failed lexical proxy.
-4. **Fix the extraction defect** and re-derive the corpus; the ~49% clean rate is
-   optimistic.
-5. **Seed variance** — everything so far is a single seed per arm.
+4. **Seed variance** — only ch. 12 has been replicated; every other arm is a
+   single seed, and ch. 11 and ch. 12 both show single-seed significance is not
+   reliable at this effect size.
 
 ## Methodological notes worth keeping for the paper
 

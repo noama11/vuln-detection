@@ -1,0 +1,56 @@
+{
+  "case_id": "C_262__1",
+  "sample_id": "D/C/262",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-7915",
+  "cve_summary": "The hid_input_field function in drivers/hid/hid-core.c in the Linux kernel before 4.6 allows physically proximate attackers to obtain sensitive information from kernel memory or cause a denial of service (out-of-bounds read) by connecting a device, as demonstrated by a Logitech DJ receiver.",
+  "changed_file": "drivers/hid/hid-core.c",
+  "docstring": "/**\n * Summary: Processes input data from a HID device field and triggers events based on the extracted values.\n * \n * Parameters:\n * hid (struct hid_device *): Pointer to the HID device structure.\n * field (struct hid_field *): Pointer to the HID field structure containing report details.\n * data (__u8 *): Pointer to the input data buffer from the HID device.\n * interrupt (int): Interrupt flag indicating the context of the event processing.\n * \n * Returns: None\n * \n * Logic: The function allocates memory for storing extracted values from the HID input data. It iterates over the report count to extract values based on the field's logical range and checks for specific conditions to trigger events. If the conditions are met, it processes the event using the `hid_process_event` function. Finally, it copies the processed values back to the field structure and frees the allocated memory.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void process_hid_input(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n    int i, j;\n    int *values;\n    int rc;\n\n    values = kmalloc(field->report_count * sizeof(int), GFP_KERNEL);\n    if (!values)\n        return;\n\n    for (i = 0; i < field->report_count; i++) {\n        rc = hid_input_get_value(field, i, values + i);\n        if (rc < 0) {\n            kfree(values);\n            return;\n        }\n\n        if (values[i] < field->logical_minimum || values[i] > field->logical_maximum) {\n            hid_process_event(hid, field, values[i], interrupt);\n        }\n    }\n\n    for (j = 0; j < field->report_count; j++) {\n        field->value[j] = values[j];\n    }\n\n    kfree(values);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The candidate implementation and reference implementation differ in several key aspects. The candidate implementation calls `hid_input_get_value` to extract values, while the reference implementation directly extracts values using `hid_field_extract`. Additionally, the candidate implementation only triggers `hid_process_event` if the value is outside the logical range, whereas the reference implementation has more complex logic involving `HID_MAIN_ITEM_VARIABLE`, `search`, and additional conditions for triggering events. These differences suggest that the two implementations may behave differently for certain inputs, particularly in how they handle variable fields and event processing. This could be security-relevant if the missing checks in the candidate implementation lead to incorrect or unsafe event processing.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they process HID input data and trigger events. The candidate implementation calls `hid_input_get_value` to extract values and triggers an event if the value is outside the logical range. The reference implementation directly extracts values using `hid_field_extract` and includes additional logic for handling variable flags, checking for ErrorRollOver, and comparing current and previous values. These differences affect the conditions under which events are triggered and how values are processed, making the implementations behaviorally different. The difference is not security-relevant as it does not involve missing checks for memory safety, input validation, or authorization.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

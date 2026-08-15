@@ -1,0 +1,62 @@
+{
+  "case_id": "C_193__0",
+  "sample_id": "D/C/193",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-7339",
+  "cve_summary": "The rds_ib_laddr_check function in net/rds/ib.c in the Linux kernel before 3.12.8 allows local users to cause a denial of service (NULL pointer dereference and system crash) or possibly have unspecified other impact via a bind system call for an RDS socket on a system that lacks RDS transports.",
+  "changed_file": "net/rds/ib.c",
+  "docstring": "\"\"\"\nSummary: \nChecks if a given IP address is valid for RDMA (Remote Direct Memory Access) by attempting to bind it to a CMA (Connection Manager API) ID.\n\nParameters: \naddr (__be32): The IP address to check for RDMA compatibility.\n\nReturns: \nint: Returns 0 if the address is valid for RDMA, or a negative error code if it is not.\n\nLogic: \nThe function creates a CMA ID and attempts to bind it to the provided IP address. It checks if the binding succeeds, which indicates that the address is valid for either InfiniBand (IB) or iWARP devices. If the binding fails or the device is not an IB device, it returns an error code indicating the address is not available. Finally, it cleans up by destroying the CMA ID before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "zeroing the sockaddr_in structure",
+        "performed_by_count": 4,
+        "why_it_matters": "If the sockaddr_in structure is not zeroed, uninitialized fields may contain garbage values, leading to undefined behavior when passed to rdma_bind_addr. This could result in incorrect behavior or crashes on unexpected input."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step performed by a majority of the independent implementations: initializing the sockaddr_in structure with zeroed memory before use. This could lead to undefined behavior if any uninitialized fields are used during the bind operation. The target does, however, perform a check for the device type (RDMA_NODE_IB_CA), which is not present in most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check if the device is an InfiniBand device after successful bind",
+        "performed_by_count": 3,
+        "why_it_matters": "If the bind succeeds but the device is not InfiniBand, the function should return an error. Without this check, the function may incorrectly return success for iWARP devices, violating the specification."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: checking that the device is an InfiniBand device after a successful bind. This check is important because the specification requires validation that the address is valid for RDMA, which includes ensuring it is for an InfiniBand device. The target does not perform this check, leaving it exposed to accepting iWARP devices as valid when they should not be considered so.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

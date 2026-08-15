@@ -1,0 +1,34 @@
+{
+  "case_id": "C_339__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sock_recv(int fd, void __user *ubuf, size_t size, unsigned int flags,\n              struct sockaddr __user *addr, int __user *addr_len) {\n  struct socket *sock;\n  struct msghdr msg;\n  struct iovec iov;\n  int ret;\n\n  if (fd < 0 || !ubuf || !size)\n    return -EINVAL;\n\n  sock = fd_getsock(fd);\n  if (IS_ERR(sock))\n    return PTR_ERR(sock);\n\n  iov.iov_base = ubuf;\n  iov.iov_len = size;\n  msg.msg_name = addr;\n  msg.msg_namelen = addr_len ? get_user(*addr_len, addr_len) : 0;\n  msg.msg_iov = &iov;\n  msg.msg_iovlen = 1;\n  msg.msg_control = NULL;\n  msg.msg_controllen = 0;\n  msg.msg_flags = flags;\n\n  ret = sock->ops->recvmsg(sock, &msg, msg.msg_flags);\n  if (ret > 0 && msg.msg_namelen && addr && addr_len) {\n    put_user(msg.msg_namelen, addr_len);\n  }\n\n  sock_put(sock);\n  return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sock_recvmsg(int fd, void __user *ubuf, size_t size, unsigned int flags,\n                 struct sockaddr __user *addr, int __user *addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    struct iovec iov;\n    int ret, len;\n\n    if (!ubuf || size == 0) {\n        return -EINVAL;\n    }\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock) {\n        return ret;\n    }\n\n    iov.iov_base = ubuf;\n    iov.iov_len = size;\n\n    msg.msg_name = addr;\n    msg.msg_namelen = sizeof(struct sockaddr);\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    ret = sock->ops->recvmsg(NULL, sock, &msg, size, flags, NULL);\n    if (ret < 0) {\n        goto out;\n    }\n\n    len = ret;\n    if (addr && msg.msg_namelen > 0) {\n        ret = put_user(msg.msg_namelen, addr_len);\n        if (ret < 0) {\n            goto out;\n        }\n    }\n\nout:\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sock_recv(int fd, void __user *ubuf, size_t size, unsigned int flags,\n              struct sockaddr __user *addr, int __user *addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    struct iovec iov;\n    int ret;\n\n    if (size == 0)\n        return -EINVAL;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = ubuf;\n    iov.iov_len = size;\n    msg.msg_name = addr;\n    msg.msg_namelen = addr ? sizeof(*addr) : 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    ret = sock->ops->recvmsg(sock, &msg, msg.msg_flags);\n\n    if (ret > 0 && addr && put_user(msg.msg_namelen, addr_len))\n        ret = -EFAULT;\n\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int recv_from_socket(int fd, void __user *ubuf, size_t size, unsigned int flags, struct sockaddr __user *addr, int __user *addr_len) {\n    struct socket *sock;\n    struct msghdr msg = { };\n    struct iovec iov;\n    int ret;\n\n    if (!ubuf || !addr || !addr_len)\n        return -EINVAL;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = ubuf;\n    iov.iov_len = size;\n    msg.msg_name = addr;\n    msg.msg_namelen = sizeof(struct sockaddr);\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_flags = flags;\n\n    ret = kernel_recvmsg(sock, &msg, NULL, 0, msg.msg_iovlen, msg.msg_flags);\n    if (ret > 0) {\n        if (put_user(msg.msg_namelen, addr_len))\n            ret = -EFAULT;\n    }\n\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/uaccess.h>\n#include <linux/socket.h>\n#include <linux/sockios.h>\n#include <linux/file.h>\n#include <linux/fdtable.h>\n#include <linux/net.h>\n\nint recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags,\n             struct sockaddr __user *addr, int __user *addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    struct iovec iov;\n    int ret;\n\n    if (fd < 0 || fd >= NR_FILE)\n        return -EBADF;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = ubuf;\n    iov.iov_len = size;\n\n    msg.msg_name = addr;\n    msg.msg_namelen = addr ? sizeof(*addr) : 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    ret = sock->ops->recvmsg(NULL, sock, &msg, size, flags, NULL);\n\n    if (ret > 0 && msg.msg_namelen && addr && addr_len) {\n        if (put_user(msg.msg_namelen, addr_len))\n            ret = -EFAULT;\n    }\n\n    fput_light(sock->file, 1);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

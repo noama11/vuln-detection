@@ -1,0 +1,34 @@
+{
+  "case_id": "C_829__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n#include <linux/rfcomm/core.h>\n#include <linux/rfcomm/tty.h>\n#include <linux/rfcomm/sock.h>\n\nint rfcomm_get_dev_list(void __user *arg)\n{\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_list __user *ulist;\n    struct rfcomm_dev_list list;\n    int i = 0, rc = -EFAULT;\n    int count;\n\n    if (get_user(count, (int __user *)arg))\n        return -EFAULT;\n\n    if (count <= 0)\n        return -EINVAL;\n\n    ulist = arg;\n    list = kmalloc(count * sizeof(struct rfcomm_dev), GFP_KERNEL);\n    if (!list)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_lock);\n\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= count)\n            break;\n\n        if (dev->flags & RFCOMM_DEV_REleased)\n            continue;\n\n        list[i].id = dev->id;\n        list[i].flags = dev->flags;\n        list[i].state = dev->state;\n        list[i].line = dev->line;\n        list[i].port = dev->port;\n        list[i].owner = dev->owner;\n\n        i++;\n    }\n\n    mutex_unlock(&rfcomm_dev_lock);\n\n    if (copy_to_user(ulist, list, i * sizeof(struct rfcomm_dev))) {\n        kfree(list);\n        return -EFAULT;\n    }\n\n    kfree(list);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int get_rfcomm_device_list(void __user *arg) {\n    int num_devices;\n    struct rfcomm_dev_list *dev_list = NULL;\n    struct rfcomm_dev *d;\n    int i = 0;\n\n    if (get_user(num_devices, (int __user *)arg))\n        return -EFAULT;\n\n    if (num_devices <= 0)\n        return -EINVAL;\n\n    dev_list = kmalloc(sizeof(struct rfcomm_dev_list) + num_devices * sizeof(struct rfcomm_dev_entry), GFP_KERNEL);\n    if (!dev_list)\n        return -ENOMEM;\n\n    dev_list->count = 0;\n\n    mutex_lock(&rfcomm_dev_list_mutex);\n\n    list_for_each_entry(d, &rfcomm_dev_list, list) {\n        if (i >= num_devices)\n            break;\n        if (!test_bit(RFCOMM_DEV_REGISTERED, &d->flags))\n            continue;\n        dev_list->entry[i].id = d->id;\n        dev_list->entry[i].flags = d->flags;\n        dev_list->count++;\n        i++;\n    }\n\n    mutex_unlock(&rfcomm_dev_list_mutex);\n\n    if (copy_to_user(arg, dev_list, sizeof(struct rfcomm_dev_list) + dev_list->count * sizeof(struct rfcomm_dev_entry))) {\n        kfree(dev_list);\n        return -EFAULT;\n    }\n\n    kfree(dev_list);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n#include <linux/mutex.h>\n\nint get_rfcomm_devices(void __user *arg) {\n    int err = 0;\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_info *info;\n    unsigned int count, i = 0;\n    struct rfcomm_dev_list list;\n\n    if (get_user(count, (unsigned int __user *)arg))\n        return -EFAULT;\n\n    if (!count)\n        return 0;\n\n    info = kzalloc(count * sizeof(*info), GFP_KERNEL);\n    if (!info)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_list_mutex);\n\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= count)\n            break;\n        if (dev->flags & RFCOMM_DEV_RELEASED)\n            continue;\n\n        info[i].id = dev->id;\n        info[i].state = dev->state;\n        info[i].channel = dev->channel;\n        i++;\n    }\n\n    mutex_unlock(&rfcomm_dev_list_mutex);\n\n    if (copy_to_user(arg, info, count * sizeof(*info))) {\n        err = -EFAULT;\n    }\n\n    kfree(info);\n    return err ? err : 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int get_rfcomm_devices(void __user *arg) {\n    int num_devices;\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_list *list;\n    int i = 0;\n\n    if (get_user(num_devices, (int __user *)arg))\n        return -EFAULT;\n\n    if (num_devices <= 0)\n        return -EINVAL;\n\n    list = kmalloc(sizeof(struct rfcomm_dev_list) + num_devices * sizeof(struct rfcomm_dev), GFP_KERNEL);\n    if (!list)\n        return -ENOMEM;\n\n    list->count = 0;\n\n    lock_device_list();\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= num_devices)\n            break;\n\n        if (!dev->released) {\n            list->devices[i++] = *dev;\n            list->count++;\n        }\n    }\n    unlock_device_list();\n\n    if (copy_to_user(arg, list, sizeof(struct rfcomm_dev_list) + list->count * sizeof(struct rfcomm_dev))) {\n        kfree(list);\n        return -EFAULT;\n    }\n\n    kfree(list);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n\nint rfcomm_dev_list_get(void __user *arg)\n{\n    int num_devs, i;\n    struct rfcomm_dev *d;\n    struct rfcomm_dev_list *list;\n\n    if (get_user(num_devs, (int __user *)arg))\n        return -EFAULT;\n\n    if (num_devs <= 0)\n        return -EINVAL;\n\n    list = kzalloc(sizeof(*list) + num_devs * sizeof(list->dev[0]), GFP_KERNEL);\n    if (!list)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_list_lock);\n\n    list->count = 0;\n    list_for_each_entry(d, &rfcomm_dev_list, list) {\n        if (list->count >= num_devs)\n            break;\n        if (d->sentinel || d->release)\n            continue;\n\n        list->dev[list->count].id = d->id;\n        list->dev[list->count].state = d->state;\n        list->dev[list->count].type = d->type;\n        list->dev[list->count].mtu = d->mtu;\n        list->dev[list->count].features = d->features;\n        list->count++;\n    }\n\n    mutex_unlock(&rfcomm_dev_list_lock);\n\n    if (copy_to_user(arg, list, sizeof(*list) + list->count * sizeof(list->dev[0]))) {\n        kfree(list);\n        return -EFAULT;\n    }\n\n    kfree(list);\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

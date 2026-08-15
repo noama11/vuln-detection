@@ -1,0 +1,43 @@
+int handle_incoming_data(int s, unsigned char* data, int len, struct sockaddr_in* s_in) {
+    if (len == 5 && memcmp(data, "sorbo", 5) == 0) {
+        // Prepare command for internet check and send it back
+        const char* response = "internet_check";
+        if (sendto(s, response, strlen(response), 0, (struct sockaddr*)s_in, sizeof(*s_in)) < 0) {
+            return 1;
+        }
+        return 0;
+    } else {
+        // Process the packet
+        if (len < 6) {
+            return 1; // Invalid packet length
+        }
+
+        int packet_id = *(int*)(data);
+        int packet_len = *(int*)(data + 4);
+
+        // Check for valid packet length
+        if (packet_len < 0 || packet_len > len - 6) {
+            return 1;
+        }
+
+        // Check for duplicate packet ID (example logic)
+        static int last_packet_id = 0;
+        if (packet_id <= last_packet_id) {
+            // Handle wrap-around
+            if (last_packet_id - packet_id > 1000) {
+                last_packet_id = packet_id;
+            } else {
+                return 1; // Duplicate packet
+            }
+        } else {
+            last_packet_id = packet_id;
+        }
+
+        // Send processed data back
+        if (sendto(s, data, len, 0, (struct sockaddr*)s_in, sizeof(*s_in)) < 0) {
+            return 1;
+        }
+
+        return 0;
+    }
+}

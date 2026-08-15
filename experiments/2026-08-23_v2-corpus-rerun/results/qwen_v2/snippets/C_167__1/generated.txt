@@ -1,0 +1,67 @@
+int process_magic_input(struct hid_device *hdev, struct hid_report *report, u8 *data, int size)
+{
+    int i;
+    struct input_dev *input_dev = hidinput_input(hdev);
+    int ret = 0;
+
+    switch (data[0]) {
+    case TRACKPAD_REPORT_ID: {
+        int num_fingers = data[1];
+        for (i = 0; i < num_fingers; i++) {
+            int x = get_unaligned_le16(&data[2 + i * 8]);
+            int y = get_unaligned_le16(&data[2 + i * 8 + 2]);
+            int pressure = data[2 + i * 8 + 4];
+
+            input_report_abs(input_dev, ABS_MT_POSITION_X, x);
+            input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
+            input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
+            input_mt_sync(input_dev);
+        }
+
+        if (data[2 + num_fingers * 8])
+            input_report_key(input_dev, BTN_LEFT, 1);
+        else
+            input_report_key(input_dev, BTN_LEFT, 0);
+
+        ret = 1;
+        break;
+    }
+
+    case MOUSE_REPORT_ID: {
+        int dx = data[1];
+        int dy = data[2];
+        int buttons = data[3];
+
+        input_report_rel(input_dev, REL_X, dx);
+        input_report_rel(input_dev, REL_Y, dy);
+        input_report_key(input_dev, BTN_LEFT, buttons & 0x01);
+        input_report_key(input_dev, BTN_RIGHT, buttons & 0x02);
+        input_report_key(input_dev, BTN_MIDDLE, buttons & 0x04);
+
+        ret = 1;
+        break;
+    }
+
+    case DOUBLE_REPORT_ID: {
+        int dx = data[1];
+        int dy = data[2];
+        int buttons = data[3];
+
+        input_report_rel(input_dev, REL_X, dx);
+        input_report_rel(input_dev, REL_Y, dy);
+        input_report_key(input_dev, BTN_LEFT, buttons & 0x01);
+        input_report_key(input_dev, BTN_RIGHT, buttons & 0x02);
+        input_report_key(input_dev, BTN_MIDDLE, buttons & 0x04);
+
+        ret = 1;
+        break;
+    }
+
+    default:
+        ret = 0;
+        break;
+    }
+
+    input_sync(input_dev);
+    return ret;
+}

@@ -1,0 +1,47 @@
+int kvm_vcpu_create(struct kvm *kvm, u32 id)
+{
+	int ret;
+	struct kvm_vcpu *vcpu;
+
+	if (id >= KVM_MAX_VCPUS)
+		return -EINVAL;
+
+	vcpu = kzalloc(sizeof(*vcpu), GFP_KERNEL);
+	if (!vcpu)
+		return -ENOMEM;
+
+	vcpu->kvm = kvm;
+	vcpu->vcpu_id = id;
+
+	ret = kvm_arch_vcpu_create(vcpu);
+	if (ret)
+		goto free_vcpu;
+
+	ret = kvm_vcpu_init(vcpu);
+	if (ret)
+		goto arch_destroy;
+
+	ret = kvm_set_preemption_notifier(vcpu);
+	if (ret)
+		goto vcpu_uninit;
+
+	if (atomic_inc_return(&kvm->online_vcpus) > KVM_MAX_VCPUS) {
+		atomic_dec(&kvm->online_vcpus);
+		ret = -EINVAL;
+		goto vcpu_uninit;
+	}
+
+	kvm->vcpus[id] = vcpu;
+
+	kvm_arch_post_vcpu_creation(vcpu);
+
+	return 0;
+
+vcpu_uninit:
+	kvm_vcpu_uninit(vcpu);
+arch_destroy:
+	kvm_arch_vcpu_destroy(vcpu);
+free_vcpu:
+	kfree(vcpu);
+	return ret;
+}

@@ -1,0 +1,53 @@
+int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst) {
+    int ret = 0;
+    int corked = 0;
+    size_t total_len = 0;
+    struct kvec *iov = rqst->rq_iov;
+    int iovcnt = rqst->rq_nvec;
+    struct page **pages = rqst->rq_pages;
+    int npages = rqst->rq_npages;
+    int i;
+
+    if (!server || !server->sock) {
+        return -EINVAL;
+    }
+
+    if (set_cork(server->sock, 1)) {
+        ret = -EFAULT;
+        goto out;
+    }
+    corked = 1;
+
+    ret = smb_send_kvec(server, iov, iovcnt);
+    if (ret < 0)
+        goto uncork;
+
+    total_len += ret;
+
+    for (i = 0; i < npages; i++) {
+        ret = smb_send_page(server, pages[i], 0, PAGE_SIZE, MSG_MORE);
+        if (ret < 0)
+            goto uncork;
+        total_len += ret;
+    }
+
+uncork:
+    if (corked)
+        set_cork(server->sock, 0);
+
+    if (total_len != rqst->rq_totallen) {
+        server->tcp_status = -1;
+        cifs_dbg(VFS, "Sent only %zu of expected %zu bytes\n", total_len, rqst->rq_totallen);
+    }
+
+    if (ret == 0)
+        ret = total_len;
+    else if (ret > 0)
+        ret = 0;
+
+out:
+    if (ret < 0)
+        cifs_dbg(VFS, "Error sending SMB request: %d\n", ret);
+
+    return ret;
+}

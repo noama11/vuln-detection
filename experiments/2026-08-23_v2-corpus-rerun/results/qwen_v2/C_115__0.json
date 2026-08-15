@@ -1,0 +1,56 @@
+{
+  "case_id": "C_115__0",
+  "sample_id": "D/C/115",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nRetrieves socket options for a given socket in an ATM (Asynchronous Transfer Mode) context.\n\nParameters:  \nsock (struct socket *): Pointer to the socket from which options are retrieved.  \nlevel (int): The level at which the option resides (e.g., SOL_SOCKET).  \noptname (int): The specific option to retrieve (e.g., SO_ATMQOS).  \noptval (char __user *): Pointer to user space where the option value will be stored.  \noptlen (int __user *): Pointer to user space where the length of the option value is provided.\n\nReturns:  \nint: Returns 0 on success, or a negative error code indicating the type of failure (e.g., -EFAULT, -EINVAL, -ENOTCONN).\n\nLogic:  \nThe function first checks the validity of the provided length and option name. It then retrieves the ATM virtual circuit control structure associated with the socket. Depending on the requested option, it either copies the relevant data to user space or calls the device's specific `getsockopt` function if the option is not handled directly.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int atm_getsockopt(struct socket *sock, int level, int optname,\n                   char __user *optval, int __user *optlen)\n{\n    struct atm_vcc *vcc;\n    int len, err;\n\n    if (optlen == NULL) {\n        return -EFAULT;\n    }\n\n    if (get_user(len, optlen))\n        return -EFAULT;\n\n    if (len < 0)\n        return -EINVAL;\n\n    vcc = ATM_SOCKET(sock)->vcc;\n    if (!vcc)\n        return -ENOTCONN;\n\n    if (level == SOL_ATM) {\n        switch (optname) {\n        case ATM_PROTOCOL:\n            if (len < sizeof(u16))\n                return -EINVAL;\n            if (put_user(vcc->qos.aal, (u16 __user *)optval))\n                return -EFAULT;\n            break;\n        default:\n            if (vcc->dev && vcc->dev->ops->getsockopt)\n                return vcc->dev->ops->getsockopt(vcc, level, optname, optval, optlen);\n            else\n                return -ENOPROTOOPT;\n        }\n    } else {\n        if (sock->ops->getsockopt)\n            return sock->ops->getsockopt(sock, level, optname, optval, optlen);\n        else\n            return -ENOPROTOOPT;\n    }\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the `optlen` parameter and the logic for validating the option name and level. The candidate implementation checks if `optlen` is NULL and if `len` is negative, while the reference implementation does not perform these checks explicitly. Additionally, the reference implementation uses a macro (`__SO_LEVEL_MATCH`) and a helper function (`__SO_SIZE`) for validation, which the candidate implementation replaces with explicit logic. These differences could lead to different behaviors for invalid or malformed inputs, particularly in error handling and validation, which may be security-relevant if exploited.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the optlen parameter and validate the option name and level. The candidate implementation checks for a NULL optlen and performs a bounds check on len, while the reference implementation does not check for NULL optlen but instead uses a macro-based validation of the option name and level. Additionally, the reference implementation uses a fixed-size copy for SO_ATMQOS, while the candidate implementation uses a dynamic check for ATM_PROTOCOL. These differences could lead to different behaviors for malformed or adversarial inputs, particularly in error handling and memory access, which may be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

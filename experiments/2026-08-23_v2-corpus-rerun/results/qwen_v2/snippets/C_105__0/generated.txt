@@ -1,0 +1,32 @@
+krb5_int32 prepare_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {
+    krb5_int32 ret = 0;
+    krb5_boolean need_reprocess = FALSE;
+
+    if (request->kdc_options & KDC_OPT_CANONICALIZE) {
+        if (krb5_principal_compare_fqdn(krbtgt_princ, request->client)) {
+            krb5_principal cross_realm_tgt = NULL;
+            ret = krb5_build_cross_realm_tgt(krbtgt_princ, &cross_realm_tgt);
+            if (ret != 0) {
+                return ret;
+            }
+
+            ret = krb5_free_principal(krb5_context, request->client);
+            if (ret != 0) {
+                krb5_free_principal(krb5_context, cross_realm_tgt);
+                return ret;
+            }
+
+            request->client = cross_realm_tgt;
+            need_reprocess = TRUE;
+        }
+    }
+
+    if (need_reprocess) {
+        ret = krb5_reprocess_request(request);
+        if (ret != 0) {
+            return ret;
+        }
+    }
+
+    return 0;
+}

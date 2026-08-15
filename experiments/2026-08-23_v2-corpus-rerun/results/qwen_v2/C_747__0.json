@@ -1,0 +1,56 @@
+{
+  "case_id": "C_747__0",
+  "sample_id": "D/C/747",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "memcached/memcached",
+  "cve_id": "CVE-2019-15026",
+  "cve_summary": "memcached 1.5.16, when UNIX sockets are used, has a stack-based buffer over-read in conn_to_str in memcached.c.",
+  "changed_file": "memcached.c",
+  "docstring": "/**\n * Summary: Converts a socket address to a human-readable string representation.\n * \n * Parameters:\n * c (const conn*): Pointer to a connection structure containing transport information.\n * af (const int): Address family (e.g., AF_INET, AF_INET6, AF_UNIX).\n * addr (char*): Buffer to store the resulting address string.\n * sock_addr (struct sockaddr*): Pointer to the socket address structure to convert.\n * \n * Returns: None\n * \n * Logic: The function uses the address family to determine how to format the socket address. \n * For AF_INET and AF_INET6, it uses `inet_ntop` to convert the IP address to a string and \n * retrieves the port number. For AF_UNIX, it copies the socket path into the address string. \n * If the address string is empty, it defaults to a placeholder indicating the address family. \n * Finally, it formats the output string to include the protocol name, address, and port if available.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void sock_to_str(const conn *c, const int af, char *addr, struct sockaddr *sock_addr) {\n    const char *proto = (c->transport == tcp_transport) ? \"tcp\" : \"udp\";\n    char buffer[INET6_ADDRSTRLEN];\n    char port[NI_MAXSERV];\n    int port_len = 0;\n\n    if (af == AF_INET || af == AF_INET6) {\n        void *ip;\n        if (af == AF_INET) {\n            ip = &((struct sockaddr_in *)sock_addr)->sin_addr;\n            port_len = snprintf(port, sizeof(port), \":%d\", ntohs(((struct sockaddr_in *)sock_addr)->sin_port));\n        } else {\n            ip = &((struct sockaddr_in6 *)sock_addr)->sin6_addr;\n            port_len = snprintf(port, sizeof(port), \":%d\", ntohs(((struct sockaddr_in6 *)sock_addr)->sin6_port));\n        }\n\n        if (inet_ntop(af, ip, buffer, sizeof(buffer)) == NULL) {\n            snprintf(addr, MAX_SOCKET_STRLEN, \"%s [%s]\", proto, (af == AF_INET) ? \"IPv4\" : \"IPv6\");\n        } else {\n            snprintf(addr, MAX_SOCKET_STRLEN, \"%s %s%s\", proto, buffer, port);\n        }\n    } else if (af == AF_UNIX) {\n        struct sockaddr_un *un = (struct sockaddr_un *)sock_addr;\n        if (un->sun_path[0] == '\\0') {\n            snprintf(addr, MAX_SOCKET_STRLEN, \"%s [UNIX abstract]\", proto);\n        } else {\n            snprintf(addr, MAX_SOCKET_STRLEN, \"%s %s\", proto, un->sun_path);\n        }\n    } else {\n        snprintf(addr, MAX_SOCKET_STRLEN, \"%s [unknown address family]\", proto);\n    }\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their formatting of the output string. The candidate implementation uses a format like 'tcp 192.168.0.1:1234' or 'tcp [UNIX abstract]', while the reference implementation uses 'tcp:192.168.0.1:1234' or 'unix:<AF 1>'. Additionally, the reference implementation includes the protocol name as 'tcp6' or 'udp6' for IPv6, while the candidate implementation uses 'tcp' or 'udp' regardless of the address family. These differences are not security-relevant but affect the output format, which could be considered a functional mismatch for normal inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they format the output string. The candidate implementation uses a format like 'proto ip:port' and includes a placeholder for unknown address families, while the reference implementation uses a format like 'proto:ip:port' and appends the address family as '<AF X>' when no address is available. Additionally, the reference implementation uses 'tcp6' or 'udp6' for IPv6, while the candidate uses 'tcp' or 'udp'. These differences affect the output string format and may impact parsing or logging behavior. However, they are not security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

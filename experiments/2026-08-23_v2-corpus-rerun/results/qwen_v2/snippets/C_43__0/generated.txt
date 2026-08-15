@@ -1,0 +1,50 @@
+int br_add_multicast_group(struct net_bridge *br, struct net_bridge_port *port, struct br_ip *group) {
+    int result = 0;
+
+    spin_lock(&br->multicast_lock);
+
+    if (!netif_running(br->dev)) {
+        result = -EINVAL;
+        goto unlock;
+    }
+
+    if (port && !port->enabled) {
+        result = -EINVAL;
+        goto unlock;
+    }
+
+    if (!port) {
+        struct br_multicast *mcast;
+
+        mcast = kmalloc(sizeof(*mcast), GFP_ATOMIC);
+        if (!mcast) {
+            result = -ENOMEM;
+            goto unlock;
+        }
+
+        mcast->group = *group;
+        hlist_add_head(&mcast->hlist, &br->multicast_list);
+    } else {
+        struct br_port_group *pgrp;
+
+        pgrp = kmalloc(sizeof(*pgrp), GFP_ATOMIC);
+        if (!pgrp) {
+            result = -ENOMEM;
+            goto unlock;
+        }
+
+        pgrp->group = *group;
+        pgrp->port = port;
+        hlist_add_head(&pgrp->hlist, &port->multicast_list);
+
+        pgrp->timer.expires = jiffies + BR_MULTICAST_MEMBERSHIP_TIMEOUT;
+        add_timer(&pgrp->timer);
+
+        pgrp->query_timer.expires = jiffies + BR_MULTICAST_QUERY_TIMEOUT;
+        add_timer(&pgrp->query_timer);
+    }
+
+unlock:
+    spin_unlock(&br->multicast_lock);
+    return result;
+}

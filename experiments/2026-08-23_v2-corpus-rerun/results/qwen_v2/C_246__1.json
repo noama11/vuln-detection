@@ -1,0 +1,56 @@
+{
+  "case_id": "C_246__1",
+  "sample_id": "D/C/246",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function performs a netlink dump operation, allocating a socket buffer and invoking a callback to fill it with data, while managing mutex locks and error handling.\n\nParameters:  \nsk (struct sock *): The socket associated with the netlink communication.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks the mutex associated with the netlink socket and checks if a callback is running. It then verifies if there is sufficient memory allocated for receiving data. Depending on the conditions, it allocates a socket buffer of appropriate size. The buffer is filled by calling the dump function from the callback. If the dump is successful, the function checks for filters and sends the buffer or frees it accordingly. Finally, it handles cleanup, including unlocking the mutex and releasing resources, before returning the result of the operation.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int netlink_dump(struct sock *sk)\n{\n    struct sk_buff *skb = NULL;\n    int ret = 0;\n\n    mutex_lock(&sk->sk_mutex);\n    if (sk->sk_callback_running) {\n        mutex_unlock(&sk->sk_mutex);\n        return -EBUSY;\n    }\n\n    if (!sk->sk_rcvbuf) {\n        ret = -ENOBUFS;\n        goto out;\n    }\n\n    skb = alloc_skb(sk->sk_rcvbuf, GFP_KERNEL);\n    if (!skb) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    if (!sk->dump_callback || sk->dump_callback(sk, skb)) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    if (sk->filter && sk_filter(skb, sk->filter)) {\n        ret = -EPERM;\n        goto out;\n    }\n\n    if (skb->len > 0) {\n        netlink_unicast(sk, skb, sk->sk_protocol, MSG_DONTWAIT);\n    } else {\n        kfree_skb(skb);\n    }\n\nout:\n    mutex_unlock(&sk->sk_mutex);\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for allocating and handling the socket buffer (skb). The candidate implementation uses a simpler approach, allocating a fixed-size skb and calling a dump callback directly, while the reference implementation includes more complex logic for determining the allocation size, handling message packing, and ensuring consistency with the netlink message format. These differences affect how the buffer is filled and sent, and could lead to different behaviors for edge cases such as malformed or large inputs. The reference implementation also includes additional checks for message consistency and module cleanup, which are not present in the candidate implementation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for allocating and handling the socket buffer (skb). The candidate implementation uses a simpler approach, allocating a fixed-size buffer and calling a dump callback directly, while the reference implementation includes more complex logic for determining the buffer size, handling message packing, and ensuring consistency with the netlink message format. These differences affect how the buffer is filled and sent, and could lead to different behaviors for malformed or edge-case inputs. The reference implementation also includes additional checks for message consistency and filtering, which are not present in the candidate implementation. These differences are not clearly security-relevant but could affect functional correctness.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

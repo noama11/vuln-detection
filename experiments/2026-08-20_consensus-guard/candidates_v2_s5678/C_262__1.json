@@ -1,0 +1,34 @@
+{
+  "case_id": "C_262__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void process_hid_input(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n    int i;\n    int j;\n    int k;\n    int *values;\n    int index = 0;\n    int new_value;\n\n    if (!(values = kmalloc(field->report_count * sizeof(int), GFP_ATOMIC))) {\n        return;\n    }\n\n    for (i = 0; i < field->report_count; i++) {\n        new_value = 0;\n        for (j = 0; j < field->maxusage; j++) {\n            if (field->logical_min < field->logical_max) {\n                int value = hid->ll_driver->report_raw(field->hidinput, field->usage + j, data + field->report_offset + i * field->report_size, field->report_size, interrupt);\n                if (value < field->logical_min)\n                    value = field->logical_min;\n                if (value > field->logical_max)\n                    value = field->logical_max;\n                new_value += value;\n            } else {\n                new_value = field->logical_max;\n            }\n        }\n\n        if (field->flags & HID_MAIN_ITEM_CONSTANT)\n            new_value = 0;\n\n        if (field->flags & HID_MAIN_ITEM_RELATIVE)\n            new_value = 0;\n\n        values[index++] = new_value;\n    }\n\n    for (k = 0; k < field->report_count; k++) {\n        hid_process_event(hid, field->hidinput, field->usage + k, values[k]);\n    }\n\n    for (i = 0; i < field->report_count; i++) {\n        field->value[i] = values[i];\n    }\n\n    kfree(values);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void hid_handle_input_event(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n    int i, j;\n    int *values;\n    struct hid_report *report;\n\n    values = kmalloc(field->report_count * sizeof(int), GFP_ATOMIC);\n    if (!values)\n        return;\n\n    for (i = 0; i < field->report_count; i++) {\n        values[i] = hid_field_value(field, data, i);\n        if (values[i] < field->logical_minimum || values[i] > field->logical_maximum)\n            continue;\n\n        for (j = 0; j < field->maxusage; j++) {\n            if (field->usage[j].usage != HID_UP_UNDEFINED) {\n                hid_process_event(hid, field->report_id, field->usage[j].usage, values[i], interrupt);\n            }\n        }\n    }\n\n    for (i = 0; i < field->report_count; i++) {\n        field->value[i] = values[i];\n    }\n\n    kfree(values);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void process_hid_input(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n\tstruct hid_value *values;\n\tint i, j, index = 0;\n\tint max = field->max + 1;\n\n\tvalues = kmalloc(max, GFP_KERNEL);\n\tif (!values)\n\t\treturn;\n\n\tfor (i = 0; i < field->report_count; i++) {\n\t\tfor (j = 0; j < field->usage->hid; j++) {\n\t\t\tvalues[index++] = field->value[i];\n\t\t}\n\t}\n\n\tfor (i = 0; i < field->report_count; i++) {\n\t\tint value = hid_input_data(hid, field, data, interrupt);\n\t\tif (value < 0)\n\t\t\tgoto out;\n\n\t\thid_process_event(field, i, value);\n\t\tfield->value[i] = value;\n\t}\n\nout:\n\tkfree(values);\n\tmemcpy(field->value, values, max);\n\tkfree(values);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "```c\nvoid process_hid_input(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n    int i;\n    int j;\n    int *values;\n    int new;\n\n    values = kmalloc(field->report_count * sizeof(int), GFP_KERNEL);\n    if (!values)\n        return;\n\n    for (i = 0; i < field->report_count; i++) {\n        values[i] = hid->driver->report->hidinput_input_get_value(field, i);\n        new = hid->driver->report->hidinput_input_get_value(field, i);\n        if (new != values[i]) {\n            hid_process_event(hid, field, i, new);\n            values[i] = new;\n        }\n    }\n\n    for (j = 0; j < field->maxusage; j++)\n        field->value[j] = values[j];\n\n    kfree(values);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void process_hid_input(struct hid_device *hid, struct hid_field *field, __u8 *data, int interrupt)\n{\n    int i;\n    int j;\n    int *values;\n    int allocated = 0;\n\n    if (!field->maxfield) return;\n\n    values = kmalloc(field->maxfield * sizeof(int), GFP_ATOMIC);\n    if (!values) return;\n    allocated = 1;\n\n    for (i = 0; i < field->report_count; i++) {\n        for (j = 0; j < field->maxfield; j++) {\n            struct hid_usage *usage = &field->usage[i * field->maxusage + j];\n            __s32 value = hid_input_data(hid, usage, data + field->report_offset, field->report_size, i, interrupt);\n            if (value < usage->value)\n                hid->status &= ~HID_STAT_ADDED;\n            if (value != usage->value) {\n                usage->value = value;\n                hid_process_event(hid, usage->hid, usage->type, usage->number, value);\n            }\n        }\n    }\n\n    for (i = 0; i < field->maxfield; i++)\n        field->value[i] = values[i];\n\n    if (allocated)\n        kfree(values);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

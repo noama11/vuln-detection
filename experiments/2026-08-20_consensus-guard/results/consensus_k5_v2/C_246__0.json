@@ -1,0 +1,62 @@
+{
+  "case_id": "C_246__0",
+  "sample_id": "D/C/246",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-9806",
+  "cve_summary": "Race condition in the netlink_dump function in net/netlink/af_netlink.c in the Linux kernel before 4.6.3 allows local users to cause a denial of service (double free) or possibly have unspecified other impact via a crafted application that makes sendmsg system calls, leading to a free operation associated with a new dump that started earlier than anticipated.",
+  "changed_file": "net/netlink/af_netlink.c",
+  "docstring": "Summary:  \nThis function handles the dumping of netlink messages from a socket, managing memory allocation and ensuring proper synchronization.\n\nParameters:  \nsk (struct sock *): The socket from which to dump netlink messages.\n\nReturns:  \nint: Returns 0 on success or an error code on failure.\n\nLogic:  \nThe function first locks a mutex to ensure thread safety and checks if the callback is running. It then verifies if the socket's receive buffer is full. Depending on the conditions, it allocates a socket buffer (skb) of appropriate size for the dump operation. If allocation fails, it cleans up and returns an error. The function then calls the dump callback to fill the skb with data. If the dump is successful, it checks for filters and sends the skb or frees it accordingly. Finally, it handles the completion of the dump, unlocking the mutex and cleaning up resources before returning.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "Setting callback-running flag to false before unlocking the mutex in error paths",
+        "performed_by_count": 4,
+        "why_it_matters": "If an error occurs before the flag is cleared, another thread may attempt to re-enter the callback while it is still marked as running, leading to a race condition or double invocation."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several defensive steps that are not present in the majority of the independent implementations, such as handling `MSG_TRUNC` and ensuring consistent message formatting. However, it omits a majority-consensus step of explicitly setting a callback-running flag to false before unlocking the mutex in all error paths, which could lead to a race condition.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "Set callback running flag before unlocking the mutex",
+        "performed_by_count": 4,
+        "why_it_matters": "If the callback running flag is set after unlocking the mutex, another thread could acquire the lock and attempt to run the dump callback again before the flag is set, leading to concurrent execution of the dump callback and potential data corruption or undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: setting a flag to indicate the callback is running before unlocking the mutex. This can lead to a race condition where multiple threads might attempt to run the dump callback simultaneously.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,41 @@
+Sdb* process_elf_version_info(ELFOBJ* bin, Elf_Shdr* shdr, int sz) {
+    Sdb* sdb = sdb_new0();
+    if (!sdb) {
+        return NULL;
+    }
+
+    if (!shdr || sz <= 0 || shdr->sh_size == 0) {
+        sdb_free(sdb);
+        return NULL;
+    }
+
+    // Get the version definition data from the ELF object
+    Elf_Verdef* verdef = (Elf_Verdef*)(bin->data + shdr->sh_offset);
+    if (!verdef) {
+        sdb_free(sdb);
+        return NULL;
+    }
+
+    int num_entries = shdr->sh_size / sizeof(Elf_Verdef);
+    for (int i = 0; i < num_entries; ++i) {
+        Elf_Verdef* entry = &verdef[i];
+        if (entry->vd_version != 1) {
+            continue; // Skip invalid version entries
+        }
+
+        char* version_name = (char*)(bin->data + shdr->sh_offset + entry->vd_ndx);
+        if (!version_name) {
+            sdb_free(sdb);
+            return NULL;
+        }
+
+        char key[256];
+        snprintf(key, sizeof(key), "version.%s", version_name);
+        if (!sdb_set(sdb, key, "1", 0)) {
+            sdb_free(sdb);
+            return NULL;
+        }
+    }
+
+    return sdb;
+}

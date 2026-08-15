@@ -1,0 +1,34 @@
+{
+  "case_id": "C_483__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    int ret = -EINVAL;\n    struct sctp_association *assoc = NULL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        goto out;\n\n    if (assoc->ep->base.type != SOCK_STREAM) {\n        ret = -EOPNOTSUPP;\n        goto out;\n    }\n\n    if (!list_empty(&assoc->waiting_stream_list)) {\n        ret = -EBUSY;\n        goto out;\n    }\n\n    ret = sock_create_kern(&init_net, PF_INET, SOCK_STREAM, IPPROTO_SCTP, sockp);\n    if (ret)\n        goto out;\n\n    sctp_assoc_copy(*sockp, assoc);\n    sctp_assoc_migrate(assoc, *sockp);\n    ret = 0;\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *asoc;\n    int ret = -EINVAL;\n\n    asoc = sctp_id2assoc(sk, id);\n    if (!asoc)\n        return -EFAULT;\n\n    if (asoc->ep->type != SOCK_STREAM || sk->sk_type != SOCK_STREAM)\n        return -ESOCKTNOSUPPORT;\n\n    if (!list_empty(&asoc->listen_queue) || !list_empty(&asoc->send_queue))\n        return -EBUSY;\n\n    ret = sock_create(kern_ptr->pf, SOCK_STREAM, IPPROTO_SCTP, sockp);\n    if (ret < 0)\n        return ret;\n\n    sctp_association_dup_to_sock(asoc, (*sockp)->sk);\n    sctp_assoc_migrate(sk, asoc, (*sockp)->sk);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sctp_association_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *assoc;\n    int ret = -EINVAL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        return -EFAULT;\n\n    if (!sockp || !*sockp)\n        return -EINVAL;\n\n    if (sctp_is_peeloff_disallowed(sk, assoc))\n        return -EBUSY;\n\n    ret = sock_create_kern(&init_net, sk->sk_family, SOCK_STREAM, PF_INET, sockp);\n    if (ret < 0)\n        return ret;\n\n    ret = sctp_copy_sock(*sockp, sk, assoc);\n    if (ret < 0) {\n        sock_release(*sockp);\n        return ret;\n    }\n\n    ret = sctp_migrate_association(*sockp, assoc);\n    if (ret < 0) {\n        sock_release(*sockp);\n        return ret;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp) {\n    struct sctp_association *asoc;\n    int ret = -EINVAL;\n\n    asoc = sctp_id2assoc(sk, id);\n    if (!asoc)\n        return -EFAULT;\n\n    if (sctp_wait_for_peeloff(sk, asoc)) {\n        return -EBUSY;\n    }\n\n    ret = sock_create_kern(&init_net, sk->sk_family, SOCK_STREAM, IPPROTO_SCTP, sockp);\n    if (ret < 0)\n        return ret;\n\n    sctp_copy_sock_props(sk, (*sockp)->sk);\n    sctp_migrate_association(asoc, (*sockp)->sk);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)\n{\n    struct sctp_association *assoc;\n    int ret = -EINVAL;\n\n    assoc = sctp_id2assoc(sk, id);\n    if (!assoc)\n        return -ESRCH;\n\n    if (sk->sk_type != SOCK_STREAM || sk->sk_type != SOCK_SEQPACKET) {\n        return -EINVAL;\n    }\n\n    if (!list_empty(&assoc->waiting_sk)) {\n        return -EBUSY;\n    }\n\n    ret = sock_create_kern(current->nsproxy->net_ns, PF_INET, sk->sk_type,\n                           sk->sk_protocol, sockp);\n    if (ret < 0)\n        return ret;\n\n    sock_graft(*sockp, sk->sk_sleep);\n\n    assoc->base.sk = (*sockp)->sk;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

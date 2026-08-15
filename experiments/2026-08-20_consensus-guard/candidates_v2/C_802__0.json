@@ -1,0 +1,34 @@
+{
+  "case_id": "C_802__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int kvm_create_device(struct kvm *kvm, struct kvm_create_device *cd)\n{\n\tstruct kvm_device_ops *ops;\n\tstruct kvm_device *dev;\n\tint r;\n\n\tif (cd->type >= KVM_DEV_TYPE_MAX)\n\t\treturn -EINVAL;\n\n\tops = kvm_dev_ops[cd->type];\n\tif (!ops)\n\t\treturn -ENODEV;\n\n\tif (cd->flags & KVM_CREATE_DEVICE_TEST)\n\t\treturn 0;\n\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\n\tif (!dev)\n\t\treturn -ENOMEM;\n\n\tdev->ops = ops;\n\tdev->kvm = kvm;\n\n\tmutex_lock(&kvm->lock);\n\tr = ops->create(dev, cd->fd);\n\tif (r) {\n\t\tmutex_unlock(&kvm->lock);\n\t\tgoto out_free;\n\t}\n\n\tlist_add(&dev->list, &kvm->devices);\n\tmutex_unlock(&kvm->lock);\n\n\tif (ops->init) {\n\t\tr = ops->init(dev);\n\t\tif (r)\n\t\t\tgoto out_remove;\n\t}\n\n\tcd->fd = kvm_dev_ioctl_create_fd(dev);\n\treturn 0;\n\nout_remove:\n\tmutex_lock(&kvm->lock);\n\tlist_del(&dev->list);\n\tmutex_unlock(&kvm->lock);\nout_free:\n\tkfree(dev);\n\treturn r;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int kvm_create_device(struct kvm *kvm, struct kvm_create_device *cd)\n{\n\tstruct kvm_dev_ops *ops;\n\tstruct kvm_device *dev;\n\tint r, fd;\n\n\tif (cd->type >= KVM_DEV_TYPE_MAX)\n\t\treturn -EINVAL;\n\n\tops = kvm_dev_ops[cd->type];\n\tif (!ops)\n\t\treturn -EINVAL;\n\n\tif (cd->flags & KVM_CREATE_DEVICE_TEST)\n\t\treturn 0;\n\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\n\tif (!dev)\n\t\treturn -ENOMEM;\n\n\tkvm_lock(kvm);\n\tr = -EINVAL;\n\tif (ops->create_dev)\n\t\tr = ops->create_dev(kvm, cd, dev);\n\tif (r) {\n\t\tkvm_unlock(kvm);\n\t\tgoto unlock;\n\t}\n\n\tlist_add(&dev->list, &kvm->devices);\n\tdev->ops = ops;\n\tdev->kvm = kvm;\n\tkvm_get_kvm(kvm);\n\tkvm_unlock(kvm);\n\n\tif (ops->init_dev) {\n\t\tr = ops->init_dev(dev);\n\t\tif (r)\n\t\t\tgoto init_dev_failed;\n\t}\n\n\tfd = kvm_dev_ioctl_create_device(dev, NULL);\n\tif (fd < 0) {\n\t\tr = fd;\n\t\tgoto init_dev_failed;\n\t}\n\n\tcd->fd = fd;\n\treturn 0;\n\ninit_dev_failed:\n\tops->destroy_dev(dev);\nunlock:\n\tkfree(dev);\n\treturn r;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int kvm_device_create(struct kvm *kvm, struct kvm_create_device *cd)\n{\n\tstruct kvm_device_ops *ops;\n\tstruct kvm_device *dev;\n\tint r, createflags;\n\n\tif (cd->type >= KVM_DEV_TYPE_MAX || !kvm_dev_ops[cd->type])\n\t\treturn -EINVAL;\n\n\tops = kvm_dev_ops[cd->type];\n\tif (cd->flags & KVM_CREATE_DEVICE_TEST)\n\t\treturn 0;\n\n\tdev = kzalloc(sizeof(*dev), GFP_KERNEL);\n\tif (!dev)\n\t\treturn -ENOMEM;\n\n\tdev->kvm = kvm;\n\tdev->ops = ops;\n\tdev->id = cd->id;\n\n\tmutex_lock(&kvm->lock);\n\tr = ops->create(dev, cd->flags);\n\tif (r) {\n\t\tmutex_unlock(&kvm->lock);\n\t\tgoto out_free_dev;\n\t}\n\n\tlist_add(&dev->list, &kvm->devices);\n\tmutex_unlock(&kvm->lock);\n\n\tif (ops->init) {\n\t\tr = ops->init(dev);\n\t\tif (r)\n\t\t\tgoto out_remove_dev;\n\t}\n\n\tcd->fd = kvm_dev_ioctl_create_device(dev, &createflags);\n\tif (cd->fd < 0) {\n\t\tr = cd->fd;\n\t\tgoto out_deinit;\n\t}\n\n\treturn 0;\n\nout_deinit:\n\tif (ops->init)\n\t\tops->init(dev);\nout_remove_dev:\n\tmutex_lock(&kvm->lock);\n\tlist_del(&dev->list);\n\tmutex_unlock(&kvm->lock);\nout_free_dev:\n\tkfree(dev);\n\treturn r;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int kvm_device_create(struct kvm *kvm, struct kvm_create_device *cd)\n{\n\tint ret = -EINVAL;\n\n\tif (!kvm || !cd)\n\t\treturn -EINVAL;\n\n\tif (cd->type >= KVM_DEV_TYPE_MAX)\n\t\treturn ret;\n\n\tconst struct kvm_device_ops *ops = kvm_dev_ioctl_ops[cd->type];\n\tif (!ops)\n\t\treturn ret;\n\n\tif (cd->flags & KVM_CREATE_DEVICE_TEST)\n\t\treturn 0;\n\n\tstruct kvm_device *dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n\tif (!dev)\n\t\treturn -ENOMEM;\n\n\tkvm_lock(kvm);\n\n\tdev->kvm = kvm;\n\tdev->ops = ops;\n\n\tret = ops->create(dev, cd->fd, cd->flags);\n\tif (ret) {\n\t\tkvm_unlock(kvm);\n\t\tgoto out_free;\n\t}\n\n\tlist_add(&dev->list, &kvm->devices);\n\n\tif (ops->init) {\n\t\tret = ops->init(dev);\n\t\tif (ret) {\n\t\t\tkvm_unlock(kvm);\n\t\t\tgoto out_remove;\n\t\t}\n\t}\n\n\tret = kvm_ioctl_create_device(kvm, cd->fd, dev);\n\n\tif (ret) {\n\t\tkvm_unlock(kvm);\n\t\tgoto out_cleanup;\n\t}\n\n\tkvm_unlock(kvm);\n\n\treturn 0;\n\nout_cleanup:\n\tif (ops->release)\n\t\tops->release(dev);\nout_remove:\n\tlist_del(&dev->list);\nout_free:\n\tkfree(dev);\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/kvm.h>\n#include <linux/slab.h>\n#include <linux/file.h>\n\nint kvm_device_create(struct kvm *kvm, struct kvm_create_device *cd)\n{\n    int r = -EINVAL;\n    struct kvm_device_ops *ops;\n    struct kvm_device *dev;\n\n    if (cd->type >= KVM_DEV_TYPE_MAX)\n        return r;\n\n    ops = kvm_find_device_ops(cd->type);\n    if (!ops)\n        return r;\n\n    if (cd->flags & KVM_CREATE_DEVICE_TEST)\n        return 0;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        return -ENOMEM;\n\n    dev->ops = ops;\n    dev->kvm = kvm;\n    dev->id = cd->id;\n\n    mutex_lock(&kvm->lock);\n    r = ops->create(dev, cd);\n    if (r) {\n        mutex_unlock(&kvm->lock);\n        goto out_free;\n    }\n\n    list_add(&dev->list, &kvm->devices);\n    mutex_unlock(&kvm->lock);\n\n    if (ops->init) {\n        r = ops->init(dev);\n        if (r)\n            goto out_remove;\n    }\n\n    cd->fd = get_ufd();\n    if (!cd->fd) {\n        r = -ENODEV;\n        goto out_remove;\n    }\n\n    return 0;\n\nout_remove:\n    mutex_lock(&kvm->lock);\n    list_del(&dev->list);\n    mutex_unlock(&kvm->lock);\nout_free:\n    kfree(dev);\n    return r;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

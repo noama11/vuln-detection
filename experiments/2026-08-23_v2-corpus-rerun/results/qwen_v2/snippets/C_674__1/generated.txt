@@ -1,0 +1,56 @@
+int read_index_entry(git_index_entry **out, size_t *out_size, git_index *index, const void *buffer, size_t buffer_size, const char *last) {
+    const git_index_entry *entry = buffer;
+    size_t entry_size = sizeof(git_index_entry);
+    size_t path_len = 0;
+
+    if (buffer_size < entry_size) {
+        return -1;
+    }
+
+    if (entry->flags_extended & GIT_INDEX_ENTRY_FLAG_CASE) {
+        path_len = strlen(entry->path);
+    } else {
+        path_len = entry->path_len;
+    }
+
+    if (path_len == 0) {
+        return -1;
+    }
+
+    if (entry->flags & GIT_INDEX_ENTRY_FLAG_HASH) {
+        entry_size += 20;
+    }
+
+    if (entry->flags & GIT_INDEX_ENTRY_FLAG_LINK) {
+        entry_size += path_len;
+    }
+
+    if (entry_size > buffer_size) {
+        return -1;
+    }
+
+    *out = (git_index_entry *)malloc(entry_size);
+    if (!*out) {
+        return -1;
+    }
+
+    memcpy(*out, entry, entry_size);
+
+    if (last) {
+        char *path = (char *)malloc(strlen(last) + path_len + 1);
+        if (!path) {
+            free(*out);
+            *out = NULL;
+            return -1;
+        }
+
+        strcpy(path, last);
+        strcat(path, "/");
+        strcat(path, entry->path);
+
+        (*out)->path = path;
+    }
+
+    *out_size = entry_size;
+    return 0;
+}

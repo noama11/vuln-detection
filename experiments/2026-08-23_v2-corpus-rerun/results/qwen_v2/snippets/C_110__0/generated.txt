@@ -1,0 +1,33 @@
+int vhost_get_vhost_dev_iov(struct vhost_dev *dev, u64 addr, u32 len,
+                            struct iovec iov[], int iov_size) {
+    int i = 0;
+    int ret = 0;
+
+    if (!dev || !iov || iov_size <= 0 || len == 0)
+        return -EINVAL;
+
+    vhost_dev_lock_read(dev);
+
+    while (len > 0 && i < iov_size) {
+        void *user_addr;
+        size_t chunk_len;
+
+        if (vhost_dev_translate(dev, addr, len, &user_addr, &chunk_len) < 0) {
+            ret = -EFAULT;
+            break;
+        }
+
+        iov[i].iov_base = user_addr;
+        iov[i].iov_len = chunk_len;
+        addr += chunk_len;
+        len -= chunk_len;
+        i++;
+    }
+
+    vhost_dev_unlock_read(dev);
+
+    if (ret < 0)
+        return ret;
+
+    return i;
+}

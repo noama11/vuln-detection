@@ -1,0 +1,34 @@
+{
+  "case_id": "C_483__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n        int err = 0;\n        long timeout = *timeo_p;\n        int result = 0;\n\n        atomic_inc(&asoc->refcnt);\n\n        while (1) {\n                if (msg_len <= asoc->sndbuf_used) {\n                        result = 0;\n                        break;\n                }\n\n                if (!timeout) {\n                        result = -EAGAIN;\n                        break;\n                }\n\n                if (signal_pending(current)) {\n                        result = -ERESTARTSYS;\n                        break;\n                }\n\n                if (asoc->state == SCTP_STATE_CLOSED) {\n                        result = -EPIPE;\n                        break;\n                }\n\n                if (timeout > HZ)\n                        schedule_timeout_interruptible(HZ);\n                else\n                        schedule_timeout_interruptible(timeout);\n                timeout -= HZ;\n        }\n\n        atomic_dec(&asoc->refcnt);\n\n        if (result < 0)\n                err = result;\n\n        *timeo_p = timeout;\n        return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n    int ret = 0;\n    long timeout;\n    long left;\n\n    sctp_association_hold(asoc);\n\n    for (;;) {\n        if (msg_len <= asoc->sndbuf_used)\n            break;\n\n        timeout = *timeo_p;\n        if (timeout == 0) {\n            ret = -EAGAIN;\n            break;\n        }\n\n        if (signal_pending(current)) {\n            ret = -EINTR;\n            break;\n        }\n\n        left = schedule_timeout(timeout);\n        *timeo_p = left;\n\n        if (*timeo_p <= 0) {\n            ret = -ETIMEDOUT;\n            break;\n        }\n\n        if (asoc->state == SCTP_STATE_ABORTEDPENDING ||\n            asoc->state == SCTP_STATE_CLOSED ||\n            asoc->state == SCTP_STATE_SHUTDOWN_PENDING) {\n            ret = -EPIPE;\n            break;\n        }\n    }\n\n    sctp_association_put(asoc);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n    long timeout;\n    int err = 0;\n    int need_wait = 1;\n\n    sctp_association_hold(asoc);\n\n    while (need_wait) {\n        if (msg_len <= asoc->sndbuf_used) {\n            need_wait = 0;\n            break;\n        }\n\n        if (*timeo_p < 0)\n            return -EAGAIN;\n\n        timeout = *timeo_p;\n        err = wait_event_interruptible_timeout(sctp_wait_event,\n                                               (msg_len <= asoc->sndbuf_used),\n                                               timeout);\n        if (err <= 0) {\n            if (signal_pending(current))\n                err = -ERESTARTSYS;\n            else if (!err)\n                err = -ETIMEDOUT;\n            break;\n        }\n\n        if (!asoc->active || asoc->state != SCTP_ACTIVE) {\n            err = -EPIPE;\n            break;\n        }\n\n        *timeo_p = timeout;\n    }\n\n    sctp_association_put(asoc);\n\n    if (err)\n        return err;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n    long timeout;\n    int error = 0;\n    int result = 0;\n    int noblock = 0;\n\n    /* Increment reference count on the association */\n    sctp_association_hold(asoc);\n\n    timeout = *timeo_p;\n\n    while (1) {\n        if (signal_pending(current)) {\n            error = -EINTR;\n            break;\n        }\n\n        if (noblock) {\n            result = -EAGAIN;\n            break;\n        }\n\n        if (msg_len <= asoc->sndbuf_used) {\n            result = 0;\n            break;\n        }\n\n        if (!timeout) {\n            result = -ETIMEDOUT;\n            break;\n        }\n\n        /* Prepare to wait for send buffer space */\n        error = wait_event_interruptible_timeout(asoc->wait,\n                                                 (msg_len <= asoc->sndbuf_available),\n                                                 timeout);\n        if (error <= 0) {\n            if (error == -ERESTARTSYS) {\n                error = -EINTR;\n            } else if (!error) {\n                error = -ETIMEDOUT;\n            }\n            break;\n        }\n\n        timeout = error;\n    }\n\n    /* Decrement reference count on the association */\n    sctp_association_put(asoc);\n\n    if (error) {\n        if (error == -EINTR) {\n            result = -EINTR;\n        } else if (error == -ETIMEDOUT) {\n            result = -ETIMEDOUT;\n        } else if (error == -EPIPE) {\n            result = -EPIPE;\n        } else {\n            result = -EAGAIN;\n        }\n    }\n\n    *timeo_p = timeout;\n    return result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n    long timeout;\n    int ret = 0;\n    int wait_result = 0;\n\n    SCTP_INC_REF(asoc);\n\n    while (1) {\n        if (msg_len <= asoc->autils->free) {\n            break;\n        }\n\n        timeout = *timeo_p;\n        if (timeout == 0) {\n            ret = -EAGAIN;\n            goto out;\n        }\n\n        if (signal_pending(current)) {\n            ret = -EINTR;\n            goto out;\n        }\n\n        if (!asoc->active) {\n            ret = -ENOTCONN;\n            goto out;\n        }\n\n        wait_result = wait_event_interruptible_timeout(asoc->wait,\n                                                      (msg_len <= asoc->autils->free),\n                                                      timeout);\n        if (wait_result <= 0) {\n            if (wait_result == 0)\n                ret = -ETIMEDOUT;\n            else if (wait_result == -ERESTARTSYS)\n                ret = -EINTR;\n            goto out;\n        }\n    }\n\nout:\n    SCTP_DEC_REF(asoc);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "C_677__0",
+  "sample_id": "D/C/677",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-8043",
+  "cve_summary": "The unimac_mdio_probe function in drivers/net/phy/mdio-bcm-unimac.c in the Linux kernel through 4.15.8 does not validate certain resource availability, which allows local users to cause a denial of service (NULL pointer dereference).",
+  "changed_file": "drivers/net/phy/mdio-bcm-unimac.c",
+  "docstring": "/**\n * Summary: \n * Probes the UniMAC MDIO device and initializes the associated MII bus.\n * \n * Parameters:\n * pdev (struct platform_device *): Pointer to the platform device structure representing the MDIO device.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic:\n * The function allocates memory for the private data structure, retrieves the memory resource, and maps the device registers. It initializes the MII bus, setting its properties based on platform data if available. The bus is registered with the device tree, and the driver data is set for the platform device. If any step fails, appropriate cleanup is performed, and an error code is returned. Successful completion logs the base address of the MDIO bus.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "using devm_ioremap_resource instead of devm_ioremap",
+        "performed_by_count": 4,
+        "why_it_matters": "devm_ioremap_resource includes error checking and ensures proper cleanup, whereas devm_ioremap does not. If the resource is invalid or cannot be mapped, the target may leave the device in an inconsistent state."
+      },
+      {
+        "step": "bounds check on resource before mapping",
+        "performed_by_count": 4,
+        "why_it_matters": "Most implementations check if the resource is valid before mapping it. The target does not, which could lead to a NULL pointer dereference or invalid memory access if the resource is not available."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits using devm_ioremap_resource, which is used by a majority of the independent implementations to ensure proper error handling and resource management. Instead, it uses devm_ioremap directly, which lacks the same level of safety and cleanup guarantees. Additionally, the target does not perform a bounds check on the resource before mapping it, which is implied by the specification and performed by most implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 3,
+    "n_steps_majority": 3,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "Using devm_mdiobus_alloc for automatic cleanup",
+        "performed_by_count": 4,
+        "why_it_matters": "On failure, the target must manually free the mii_bus, which it does, but this is not as robust as using devm functions. If an error occurs after the bus is allocated but before registration, the target may leak the bus."
+      },
+      {
+        "step": "Using devm_ioremap_resource for automatic iounmap on error",
+        "performed_by_count": 5,
+        "why_it_matters": "The target uses devm_ioremap, which is less robust than devm_ioremap_resource. If an error occurs after ioremap but before registration, the target may not properly unmap the resource."
+      },
+      {
+        "step": "Error handling for devm_ioremap",
+        "performed_by_count": 4,
+        "why_it_matters": "The target checks for a NULL return from ioremap, but does not check for IS_ERR, which could leave the device in an inconsistent state if the ioremap fails with an error pointer."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits using devm_mdiobus_alloc and devm_ioremap_resource, which are used by a majority of the independent implementations. Instead, it uses non-devm versions (ioremap and mdiobus_alloc), which require explicit cleanup. The target also lacks error handling for the devm_ioremap call, which is present in most implementations. These omissions could lead to resource leaks or improper cleanup on failure.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

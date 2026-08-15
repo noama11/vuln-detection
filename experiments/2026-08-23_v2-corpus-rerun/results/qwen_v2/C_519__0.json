@@ -1,0 +1,56 @@
+{
+  "case_id": "C_519__0",
+  "sample_id": "D/C/519",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "mm2/Little-CMS",
+  "cve_id": "CVE-2016-10165",
+  "cve_summary": "The Type_MLU_Read function in cmstypes.c in Little CMS (aka lcms2) allows remote attackers to obtain sensitive information or cause a denial of service via an image with a crafted ICC profile, which triggers an out-of-bounds heap read.",
+  "changed_file": "src/cmstypes.c",
+  "docstring": "\"\"\"\nSummary: \nReads a multi-localized Unicode (MLU) structure from an input stream.\n\nParameters: \nself (struct _cms_typehandler_struct*): Pointer to the type handler structure.\nio (cmsIOHANDLER*): Pointer to the input/output handler for reading data.\nnItems (cmsUInt32Number*): Pointer to store the number of items read.\nSizeOfTag (cmsUInt32Number): Size of the tag from which to read the MLU.\n\nReturns: \nvoid*: Pointer to the allocated cmsMLU structure on success, or NULL on failure.\n\nLogic: \nThe function first reads the count and record length from the input stream. It checks if the record length is valid and allocates memory for the MLU structure. It then reads language and country codes, along with string lengths and offsets, ensuring no overflow occurs. The function calculates the maximum position of the strings and reads the actual string data into memory. If any errors occur during reading or memory allocation, it cleans up and returns NULL. If successful, it updates the number of items and returns the MLU structure.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "cmsMLU* ReadMLUFromStream(struct _cms_typehandler_struct* self, cmsIOHANDLER* io, cmsUInt32Number* nItems, cmsUInt32Number SizeOfTag) {\n    cmsUInt32Number Count = 0;\n    cmsUInt32Number RecordLength = 0;\n    cmsUInt32Number i;\n    cmsMLU* mlu = NULL;\n    cmsUInt16Number* LangCode = NULL;\n    cmsUInt16Number* CountryCode = NULL;\n    cmsUInt32Number* StringLength = NULL;\n    cmsUInt32Number* StringOffset = NULL;\n    cmsUInt32Number MaxPos = 0;\n    cmsUInt8Number* StringData = NULL;\n    cmsUInt32Number TotalSize = 0;\n\n    if (!io || !nItems || SizeOfTag < 8)\n        return NULL;\n\n    if (!io->Read(io, &Count, sizeof(cmsUInt32Number), 1))\n        return NULL;\n\n    if (!io->Read(io, &RecordLength, sizeof(cmsUInt32Number), 1))\n        return NULL;\n\n    if (RecordLength != 8)\n        return NULL;\n\n    if (Count == 0)\n        return NULL;\n\n    mlu = (cmsMLU*)calloc(1, sizeof(cmsMLU));\n    if (!mlu)\n        return NULL;\n\n    mlu->nItems = Count;\n\n    LangCode = (cmsUInt16Number*)malloc(Count * sizeof(cmsUInt16Number));\n    CountryCode = (cmsUInt16Number*)malloc(Count * sizeof(cmsUInt16Number));\n    StringLength = (cmsUInt32Number*)malloc(Count * sizeof(cmsUInt32Number));\n    StringOffset = (cmsUInt32Number*)malloc(Count * sizeof(cmsUInt32Number));\n\n    if (!LangCode || !CountryCode || !StringLength || !StringOffset) {\n        free(LangCode);\n        free(CountryCode);\n        free(StringLength);\n        free(StringOffset);\n        free(mlu);\n        return NULL;\n    }\n\n    for (i = 0; i < Count; i++) {\n        if (!io->Read(io, &LangCode[i], sizeof(cmsUInt16Number), 1) ||\n            !io->Read(io, &CountryCode[i], sizeof(cmsUInt16Number), 1) ||\n            !io->Read(io, &StringLength[i], sizeof(cmsUInt32Number), 1) ||\n            !io->Read(io, &StringOffset[i], sizeof(cmsUInt32Number), 1)) {\n            free(LangCode);\n            free(CountryCode);\n            free(StringLength);\n            free(StringOffset);\n            free(mlu);\n            return NULL;\n        }\n\n        if (StringOffset[i] > MaxPos)\n            MaxPos = StringOffset[i];\n\n        if (StringLength[i] > MaxPos)\n            MaxPos = StringLength[i];\n    }\n\n    TotalSize = MaxPos;\n    StringData = (cmsUInt8Number*)malloc(TotalSize);\n    if (!StringData) {\n        free(LangCode);\n        free(CountryCode);\n        free(StringLength);\n        free(StringOffset);\n        free(mlu);\n        return NULL;\n    }\n\n    for (i = 0; i < Count; i++) {\n        if (StringOffset[i] + StringLength[i] > TotalSize) {\n            free(LangCode);\n            free(CountryCode);\n            free(StringLength);\n            free(StringOffset);\n            free(StringData);\n            free(mlu);\n            return NULL;\n        }\n\n        if (!io->Read(io, &StringData[StringOffset[i]], StringLength[i], 1)) {\n            free(LangCode);\n            free(CountryCode);\n            free(StringLength);\n            free(StringOffset);\n            free(StringData);\n            free(mlu);\n            return NULL;\n        }\n    }\n\n    mlu->LangCode = LangCode;\n    mlu->CountryCode = CountryCode;\n    mlu->StringLength = StringLength;\n    mlu->StringOffset = StringOffset;\n    mlu->Strings = StringData;\n\n    *nItems = Count;\n    return (void*)mlu;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of the record length and string data. The candidate implementation expects a record length of 8 and uses `cmsUInt16Number` for string data, while the reference implementation expects a record length of 12 and uses `wchar_t`. Additionally, the reference implementation includes error handling for unsupported record lengths and performs more detailed checks for overflow and alignment. These differences are security-relevant as they affect memory allocation and input validation, potentially leading to memory safety issues if malformed input is provided.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of string data and memory allocation. The candidate implementation reads and stores string data as `cmsUInt8Number` (bytes), while the reference implementation reads and stores wide character strings (`wchar_t`). Additionally, the reference implementation includes error checking for string offsets relative to a calculated header size and tag size, which the candidate implementation lacks. These differences could lead to different behaviors when parsing malformed or adversarial input, particularly in terms of memory safety and string handling. The candidate implementation is more likely to be vulnerable to buffer overflows or incorrect string parsing.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

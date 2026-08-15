@@ -1,0 +1,34 @@
+{
+  "case_id": "C_316__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "enum integrity_status verify_hmac_xattr(struct dentry *dentry,\n                                        const char *xattr_name,\n                                        char *xattr_value,\n                                        size_t xattr_value_len,\n                                        struct integrity_iint_cache *iint)\n{\n    enum integrity_status status;\n    void *digest = NULL;\n    size_t digest_len = 0;\n    int rc;\n\n    if (iint->flags & INTEGRITY_IINT_HMAC)\n        return iint->integrity_status;\n\n    rc = get_xattr_data(dentry, xattr_name, &digest, &digest_len);\n    if (rc < 0) {\n        if (rc == -ENODATA)\n            status = INTEGRITY_NO_ATTRIBUTE;\n        else\n            status = INTEGRITY_NOTVERIFIED;\n        goto out;\n    }\n\n    if (is_hmac_digest(digest, digest_len)) {\n        void *computed_digest = compute_hmac(dentry, xattr_value, xattr_value_len);\n        if (!computed_digest) {\n            status = INTEGRITY_NOTVERIFIED;\n            goto out_free;\n        }\n\n        if (memcmp(digest, computed_digest, digest_len) == 0)\n            status = INTEGRITY_PASS;\n        else\n            status = INTEGRITY_FAIL;\n        kfree(computed_digest);\n    } else {\n        void *computed_hash = compute_hash(dentry, xattr_value, xattr_value_len);\n        if (!computed_hash) {\n            status = INTEGRITY_NOTVERIFIED;\n            goto out_free;\n        }\n\n        if (memcmp(digest, computed_hash, digest_len) == 0)\n            status = INTEGRITY_PASS;\n        else\n            status = INTEGRITY_FAIL;\n        kfree(computed_hash);\n    }\n\n    iint->integrity_status = status;\n    iint->flags |= INTEGRITY_IINT_HMAC;\n\nout_free:\n    kfree(digest);\nout:\n    return status;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "enum integrity_status verify_hmac_for_xattr(struct dentry *dentry, const char *xattr_name,\n                                            char *xattr_value, size_t xattr_value_len,\n                                            struct integrity_iint_cache *iint) {\n    enum integrity_status status;\n    void *digest;\n    size_t digest_len;\n    int rc;\n\n    if (iint->flags & INTEGRITY_PASS) {\n        return INTEGRITY_PASS;\n    }\n\n    digest = kmalloc(xattr_value_len, GFP_KERNEL);\n    if (!digest) {\n        return INTEGRITY_NOTVERIFIED;\n    }\n\n    rc = security_get_xattr(dentry->d_inode, xattr_name, digest, xattr_value_len, 0);\n    if (rc < 0) {\n        kfree(digest);\n        return INTEGRITY_NOTVERIFIED;\n    }\n\n    digest_len = rc;\n\n    if (digest_len != xattr_value_len || memcmp(digest, xattr_value, xattr_value_len) != 0) {\n        status = INTEGRITY_FAIL;\n    } else {\n        status = INTEGRITY_PASS;\n    }\n\n    kfree(digest);\n\n    return status;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "enum integrity_status verify_hmac_xattr(struct dentry *dentry, const char *xattr_name,\n                                        char *xattr_value, size_t xattr_value_len,\n                                        struct integrity_iint_cache *iint)\n{\n    enum integrity_status status;\n    void *digest;\n    size_t digest_len;\n    int result;\n\n    if (iint->flags & INTEGRITY_SIGNATURE_PRESENT)\n        return INTEGRITY_STATUS_NO_CHANGE;\n\n    digest = get_xattr_digest(dentry, xattr_name, &digest_len);\n    if (!digest)\n        return INTEGRITY_STATUS_NO_ATTRIBUTE;\n\n    switch (xattr_value[0]) {\n    case HMAC_TYPE_SHA256:\n        result = verify_hmac_sha256(dentry, xattr_value, xattr_value_len, digest, digest_len);\n        break;\n    case HMAC_TYPE_SHA1:\n        result = verify_hmac_sha1(dentry, xattr_value, xattr_value_len, digest, digest_len);\n        break;\n    default:\n        result = -EINVAL;\n        break;\n    }\n\n    kfree(digest);\n\n    if (result < 0) {\n        iint->flags |= INTEGRITY_SIGNATURE_INVALID;\n        return INTEGRITY_STATUS_FAILURE;\n    }\n\n    return INTEGRITY_STATUS_SUCCESS;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "enum integrity_status verify_hmac_xattr(struct dentry *dentry, const char *xattr_name,\n                                        char *xattr_value, size_t xattr_value_len,\n                                        struct integrity_iint_cache *iint)\n{\n    enum integrity_status status = INTEGRITY_PASS;\n    void *digest;\n    int rc;\n    struct integrity_dentry_data *integrity_data = NULL;\n    struct xattr_val xattr_val;\n    size_t digest_len = 0;\n\n    if (!xattr_name || !xattr_value || !xattr_value_len || !iint)\n        return INTEGRITY_NA;\n\n    if (iint->flags & INTEGRITY_IINT_CACHE_HMAC)\n        return iint->status;\n\n    rc = getxattr_value(dentry, xattr_name, &xattr_val);\n    if (rc <= 0)\n        return INTEGRITY_NA;\n\n    digest = calculate_hmac_or_hash(xattr_val.data, xattr_val.len, &digest_len);\n    if (!digest) {\n        free_xattr_val(&xattr_val);\n        return INTEGRITY_FAIL;\n    }\n\n    if (xattr_value_len != digest_len) {\n        status = INTEGRITY_FAIL;\n    } else if (memcmp(xattr_value, digest, digest_len) != 0) {\n        status = INTEGRITY_FAIL;\n    }\n\n    iint->status = status;\n    iint->flags |= INTEGRITY_IINT_CACHE_HMAC;\n\n    free(digest);\n    free_xattr_val(&xattr_val);\n    return status;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "enum integrity_status verify_hmac_xattr(struct dentry *dentry, const char *xattr_name,\n                                        char *xattr_value, size_t xattr_value_len,\n                                        struct integrity_iint_cache *iint) {\n    enum integrity_status status = INTEGRITY_PASS;\n    void *xattr_data = NULL;\n    size_t xattr_data_len = 0;\n    int ret;\n\n    if (iint->flags & INTEGRITY_IINT_HMAC)\n        return iint->integrity;\n\n    xattr_data_len = vfs_getxattr(dentry, xattr_name, NULL, 0);\n    if (xattr_data_len < 0)\n        return INTEGRITY_NO_XATTR;\n\n    xattr_data = kmalloc(xattr_data_len, GFP_KERNEL);\n    if (!xattr_data) {\n        status = INTEGRITY_FAIL;\n        goto out;\n    }\n\n    ret = vfs_getxattr(dentry, xattr_name, xattr_data, xattr_data_len);\n    if (ret < 0) {\n        status = INTEGRITY_FAIL;\n        goto out;\n    }\n\n    if (!xattr_data_len)\n        return INTEGRITY_NO_XATTR;\n\n    status = verify_hmac(xattr_value, xattr_value_len, xattr_data, xattr_data_len);\n    if (status != INTEGRITY_PASS)\n        iint->flags |= INTEGRITY_IINT_HMAC;\n\nout:\n    kfree(xattr_data);\n    return status;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

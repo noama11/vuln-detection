@@ -1,0 +1,29 @@
+void syscall_trace_entry(void *ignore, struct pt_regs *regs, long id) {
+    int syscall_nr = (int)id;
+    struct syscall_metadata *meta;
+
+    if (syscall_nr < 0 || syscall_nr >= __NR_syscall_max)
+        return;
+
+    meta = get_syscall_metadata(syscall_nr);
+    if (!meta || !meta->event)
+        return;
+
+    struct trace_record *record;
+    int size = sizeof(*record) + meta->arg_count * sizeof(struct syscall_arg);
+    size = ALIGN(size, 8);
+
+    record = allocate_trace_record(size);
+    if (!record)
+        return;
+
+    record->type = TRACE_SYSCALL_ENTRY;
+    record->syscall_id = syscall_nr;
+
+    for (int i = 0; i < meta->arg_count; i++) {
+        record->args[i].arg_id = i;
+        record->args[i].value = get_syscall_arg(regs, i);
+    }
+
+    submit_trace_record(record);
+}

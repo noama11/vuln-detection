@@ -1,0 +1,34 @@
+{
+  "case_id": "C_468__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/bitmap.h>\n#include <linux/uaccess.h>\n#include <linux/compat.h>\n\nint compat_sys_mempolicy(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode)\n{\n    int err;\n    unsigned long *bitmap = NULL;\n    unsigned int bits = 0;\n    unsigned int size = 0;\n\n    if (maxnode) {\n        bits = maxnode;\n        size = BITS_TO_LONGS(bits) * sizeof(long);\n        bitmap = compat_alloc_user_space(size);\n        if (!access_ok(VERIFY_READ, nmask, size)) {\n            return -EFAULT;\n        }\n        if (copy_from_user(bitmap, nmask, size)) {\n            return -EFAULT;\n        }\n    }\n\n    err = sys_mempolicy(mode, bitmap, maxnode);\n\n    if (nmask && maxnode) {\n        if (copy_to_user(nmask, bitmap, size)) {\n            return -EFAULT;\n        }\n    }\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "#include <linux/syscalls.h>\n#include <linux/uaccess.h>\n#include <linux/bitmap.h>\n\nasmlinkage long sys_compat_mempolicy_set(int mode, compat_ulong_t __user *nmask, compat_ulong_t maxnode)\n{\n\tDECLARE_BITMAP(bitmap, MAX_NUMNODES);\n\tunsigned long nbits = maxnode;\n\tunsigned long size = BITMAP_SIZE(nbits);\n\tint err = 0;\n\n\tif (nmask) {\n\t\tif (maxnode > MAX_NUMNODES)\n\t\t\tmaxnode = MAX_NUMNODES;\n\t\tif (copy_from_user(bitmap, nmask, (size_t) ((maxnode + 7) / 8)))\n\t\t\treturn -EFAULT;\n\t}\n\n\terr = do_set_mempolicy(mode, bitmap, nbits);\n\n\tif (!err && nmask) {\n\t\tif (copy_to_user(nmask, bitmap, (size_t) ((maxnode + 7) / 8)))\n\t\t\treturn -EFAULT;\n\t}\n\n\treturn err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/syscalls.h>\n#include <linux/uaccess.h>\n#include <linux/bitmap.h>\n\nSYSCALL_DEFINE3(set_mempolicy_compat, int, mode, compat_ulong_t __user *, nmask,\n                compat_ulong_t, maxnode)\n{\n    int err = 0;\n    unsigned long *bmp = NULL;\n    unsigned int nbits = maxnode;\n    unsigned int size = ALIGN(nbits, 8 * sizeof(long)) / (8 * sizeof(long));\n\n    if (nmask) {\n        bmp = compat_alloc_user_space(size * sizeof(long));\n        if (!bmp)\n            return -EFAULT;\n\n        if (copy_from_user(bmp, nmask, size * sizeof(compat_ulong_t))) {\n            err = -EFAULT;\n            goto out;\n        }\n    }\n\n    err = sys_set_mempolicy(mode, bmp, nbits);\n\nout:\n    if (bmp && nmask) {\n        if (copy_to_user(nmask, bmp, size * sizeof(compat_ulong_t)))\n            err = -EFAULT;\n    }\n\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <linux/syscalls.h>\n#include <linux/uaccess.h>\n#include <linux/bitmap.h>\n\nSYSCALL_DEFINE3(set_mempolicy_compat, int, mode, compat_ulong_t __user *, nmask, compat_ulong_t, maxnode)\n{\n    unsigned long *bmp = NULL;\n    int nbits = 0;\n    int ret = 0;\n\n    if (maxnode == 0)\n        return -EINVAL;\n\n    nbits = fls(maxnode);\n    if (nbits <= 0)\n        return -EINVAL;\n\n    if (nmask) {\n        bmp = kmalloc(BITS_TO_LONGS(nbits) * sizeof(unsigned long), GFP_KERNEL);\n        if (!bmp)\n            return -ENOMEM;\n\n        if (copy_from_user(bmp, nmask, (nbits + 7) / 8)) {\n            ret = -EFAULT;\n            goto out_free;\n        }\n    }\n\n    ret = sys_set_mempolicy(mode, bmp, nbits);\n\n    if (nmask && copy_to_user(nmask, bmp, (nbits + 7) / 8))\n        ret = -EFAULT;\n\nout_free:\n    kfree(bmp);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/syscalls.h>\n#include <linux/uaccess.h>\n#include <linux/bitmap.h>\n\nSYSCALL_DEFINE3(set_mempolicy_compat, int, mode, compat_ulong_t __user *, nmask, compat_ulong_t, maxnode)\n{\n    unsigned long *bitmap = NULL;\n    unsigned long nbits;\n    int ret = -EINVAL;\n\n    if (maxnode == 0)\n        return -EINVAL;\n\n    nbits = maxnode;\n    if (nmask) {\n        bitmap = kmalloc(BITS_TO_LONGS(nbits) * sizeof(unsigned long), GFP_KERNEL);\n        if (!bitmap)\n            return -ENOMEM;\n\n        if (copy_from_user(bitmap, nmask, COMPAT_BITS_TO_LONGS(nbits) * sizeof(compat_ulong_t)))\n            goto out_free;\n    }\n\n    ret = sys_set_mempolicy(mode, bitmap, nbits);\n    if (ret >= 0 && nmask && copy_to_user(nmask, bitmap, COMPAT_BITS_TO_LONGS(nbits) * sizeof(compat_ulong_t)))\n        ret = -EFAULT;\n\nout_free:\n    if (bitmap)\n        kfree(bitmap);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

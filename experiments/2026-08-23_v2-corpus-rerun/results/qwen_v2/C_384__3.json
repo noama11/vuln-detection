@@ -1,0 +1,56 @@
+{
+  "case_id": "C_384__3",
+  "sample_id": "D/C/384",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "uclouvain/openjpeg",
+  "cve_id": "CVE-2017-14164",
+  "cve_summary": "A size-validation issue was discovered in opj_j2k_write_sot in lib/openjp2/j2k.c in OpenJPEG 2.2.0. The vulnerability causes an out-of-bounds write, which may lead to remote denial of service (heap-based buffer overflow affecting opj_write_bytes_LE in lib/openjp2/cio.c) or possibly remote code execution. NOTE: this vulnerability exists because of an incomplete fix for CVE-2017-14152.",
+  "changed_file": "src/lib/openjp2/j2k.c",
+  "docstring": "\"\"\"\nSummary: \nWrites all tile parts of a JPEG 2000 codestream to a specified output stream.\n\nParameters: \np_j2k (opj_j2k_t *): Pointer to the JPEG 2000 codec context.\np_data (OPJ_BYTE *): Pointer to the buffer where the data will be written.\np_data_written (OPJ_UINT32 *): Pointer to store the total number of bytes written.\np_total_data_size (OPJ_UINT32): Total size of data that can be written.\np_stream (opj_stream_private_t *): Pointer to the output stream for writing data.\np_manager (struct opj_event_mgr *): Pointer to the event manager for handling events.\n\nReturns: \nOPJ_BOOL: Returns OPJ_TRUE if writing was successful, otherwise OPJ_FALSE.\n\nLogic: \nThe function iterates through the tile parts of the current tile, writing each part's header and data to the output stream. It updates the number of bytes written and manages the writing of specific markers. It handles both the initial tile part and subsequent parts, ensuring that the correct sizes are written and updating the event manager as needed.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "OPJ_BOOL write_jpeg2000_tile_parts(opj_j2k_t *p_j2k, OPJ_BYTE *p_data, OPJ_UINT32 *p_data_written,\n                                   OPJ_UINT32 p_total_data_size, opj_stream_private_t *p_stream,\n                                   struct opj_event_mgr *p_manager) {\n    OPJ_UINT32 data_written = 0;\n    OPJ_BOOL success = OPJ_TRUE;\n\n    for (OPJ_UINT32 tile_index = 0; tile_index < p_j2k->num_tiles; ++tile_index) {\n        opj_tile_t *tile = &p_j2k->tiles[tile_index];\n\n        for (OPJ_UINT32 part_index = 0; part_index < tile->num_parts; ++part_index) {\n            opj_tile_part_t *tile_part = &tile->tile_parts[part_index];\n\n            if (data_written + tile_part->size > p_total_data_size) {\n                opj_event_msg(p_manager, EVT_ERROR, \"Not enough space to write tile part data.\\n\");\n                return OPJ_FALSE;\n            }\n\n            OPJ_UINT32 header_size = tile_part->header_size;\n            OPJ_UINT32 data_size = tile_part->data_size;\n\n            if (tile_part->is_first_part) {\n                header_size += 4; /* Add space for marker */\n            }\n\n            if (data_written + header_size > p_total_data_size) {\n                opj_event_msg(p_manager, EVT_ERROR, \"Not enough space to write tile part header.\\n\");\n                return OPJ_FALSE;\n            }\n\n            memcpy(p_data + data_written, tile_part->header, header_size);\n            data_written += header_size;\n\n            memcpy(p_data + data_written, tile_part->data, data_size);\n            data_written += data_size;\n\n            if (!opj_stream_write(p_stream, p_data + data_written - header_size - data_size, header_size + data_size)) {\n                opj_event_msg(p_manager, EVT_ERROR, \"Failed to write tile part to stream.\\n\");\n                success = OPJ_FALSE;\n                break;\n            }\n\n            opj_event_msg(p_manager, EVT_INFO, \"Wrote tile part %u of tile %u.\\n\", part_index, tile_index);\n        }\n\n        if (!success) {\n            break;\n        }\n    }\n\n    *p_data_written = data_written;\n    return success;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ significantly in their logic and structure. The candidate implementation iterates over tiles and tile parts, directly copying header and data into the buffer and writing to the stream. The reference implementation uses a more complex approach, involving multiple loops and calls to `opj_j2k_write_sot` and `opj_j2k_write_sod`, which are not present in the candidate. These functions likely handle the writing of specific JPEG 2000 markers and data, which the candidate implementation handles directly. This suggests a real behavioral difference in how the codestream is written, particularly in marker handling and data organization. The difference could affect the correctness of the output stream and may be security-relevant if it leads to malformed or incomplete data being written.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ significantly in their approach to writing JPEG 2000 tile parts. The candidate implementation iterates over tiles and tile parts directly, writing headers and data manually. The reference implementation uses helper functions like `opj_j2k_write_sot` and `opj_j2k_write_sod`, and includes logic for handling cinema-specific features and TLM updates. These differences suggest distinct behaviors, particularly in how they handle marker writing and tile part size updates. The candidate implementation lacks logic for cinema-specific features and TLM updates, which could affect output correctness in certain scenarios.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

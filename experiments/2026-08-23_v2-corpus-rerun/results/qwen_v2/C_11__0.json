@@ -1,0 +1,56 @@
+{
+  "case_id": "C_11__0",
+  "sample_id": "D/C/11",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2375",
+  "cve_summary": "The __nfs4_get_acl_uncached function in fs/nfs/nfs4proc.c in the NFSv4 implementation in the Linux kernel before 3.3.2 uses an incorrect length variable during a copy operation, which allows remote NFS servers to cause a denial of service (OOPS) by sending an excessive number of bitmap words in an FATTR4_ACL reply.  NOTE: this vulnerability exists because of an incomplete fix for CVE-2011-4131.",
+  "changed_file": "fs/nfs/nfs4proc.c",
+  "docstring": "\"\"\"\nSummary: \nRetrieves an Access Control List (ACL) for a given inode without caching the result.\n\nParameters: \ninode (struct inode *): The inode for which the ACL is being retrieved.\nbuf (void *): A buffer to store the retrieved ACL data.\nbuflen (size_t): The size of the buffer.\n\nReturns: \nssize_t: The length of the retrieved ACL data on success, or a negative error code on failure.\n\nLogic: \nThe function allocates pages to hold the ACL data and prepares a message for an NFS call to retrieve the ACL. It calculates the number of pages needed based on the buffer length and handles memory allocation for the pages. After making the synchronous NFS call, it processes the response to either cache the ACL or copy it into the provided buffer. Finally, it frees allocated pages and returns the length of the ACL or an error code if any step fails.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t get_acl_uncached(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages;\n    ssize_t ret = 0;\n    size_t num_pages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n    int i;\n\n    pages = kmalloc_array(num_pages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (i = 0; i < num_pages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i--)\n                __free_page(pages[i]);\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    ret = nfs_call_get_acl(inode, pages, num_pages);\n    if (ret < 0) {\n        for (i = 0; i < num_pages; i++)\n            __free_page(pages[i]);\n        kfree(pages);\n        return ret;\n    }\n\n    for (i = 0; i < num_pages && ret > 0; i++) {\n        size_t copy_len = min_t(size_t, ret, PAGE_SIZE);\n        void *page_addr = kmap(pages[i]);\n        memcpy(buf, page_addr, copy_len);\n        buf += copy_len;\n        ret -= copy_len;\n        kunmap(pages[i]);\n        __free_page(pages[i]);\n    }\n\n    kfree(pages);\n    return buflen - ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ significantly in their logic and behavior. The candidate implementation allocates pages dynamically based on buflen, calls `nfs_call_get_acl`, and copies the result into the buffer. The reference implementation uses a fixed-size array of pages, includes additional logic for handling page decoding, caching, and error conditions (e.g., `-ERANGE`), and calls `nfs4_call_sync`. These differences affect memory allocation, error handling, and the overall flow of data, making the implementations non-equivalent. The reference implementation also includes logic for caching the ACL, which the candidate implementation lacks entirely. These differences are not cosmetic and could affect correctness and security, especially in edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ significantly in their logic and behavior. The candidate implementation allocates pages dynamically based on buflen, calls `nfs_call_get_acl`, and copies the result into the buffer. The reference implementation uses a fixed-size array of pages, includes additional logic for handling page decoding, caching, and error conditions (e.g., `-ERANGE`), and calls `nfs4_call_sync`. These differences affect memory allocation, error handling, and the overall flow of data retrieval, making the implementations non-equivalent. The reference implementation also includes logic for caching the ACL, which the candidate implementation lacks entirely. These differences are not cosmetic and could affect correctness and security, particularly in edge cases.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

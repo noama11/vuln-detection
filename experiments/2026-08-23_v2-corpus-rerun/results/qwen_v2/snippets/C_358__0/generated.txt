@@ -1,0 +1,38 @@
+struct mm_struct *init_mm(struct mm_struct *mm, struct task_struct *p, struct user_namespace *user_ns) {
+    int err;
+
+    if (!mm)
+        return NULL;
+
+    mm->mmap = NULL;
+    mm->mmap_cache = NULL;
+    mm->get_unmapped_area = arch_get_unmapped_area;
+    mm->unmap_area = arch_unmap_area;
+    mm->mmap_rnd = 0;
+    atomic_set(&mm->mm_users, 1);
+    atomic_set(&mm->mm_count, 1);
+    mm->map_count = 0;
+    mm->locked_vm = 0;
+    mm->total_vm = 0;
+    mm->data_vm = 0;
+    mm->exec_vm = 0;
+    mm->stack_vm = 0;
+    mm->def_flags = 0;
+    mm->context = 0;
+    mm->user_ns = get_user_ns(user_ns);
+
+    err = init_new_context(p, mm);
+    if (err)
+        goto fail_context;
+
+    if (!alloc_page_tables(mm, 1))
+        goto fail_pt;
+
+    return mm;
+
+fail_pt:
+    destroy_context(mm);
+fail_context:
+    put_user_ns(mm->user_ns);
+    return NULL;
+}

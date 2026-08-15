@@ -1,0 +1,73 @@
+Image *ReadARTImage(const ImageInfo *image_info, ExceptionInfo *exception) {
+  Image *image = NULL;
+  assert(image_info != NULL);
+  assert(exception != NULL);
+  (void) memset(exception, 0, sizeof(*exception));
+
+  image = AcquireImage(image_info, exception);
+  if (image == NULL)
+    return NULL;
+
+  // Open the image file
+  if (OpenBlob(image_info, &image->blob, ReadBlob, exception) != MagickPass)
+    goto cleanup;
+
+  // Read image dimensions and initialize colormap
+  size_t width = 0, height = 0;
+  if (ReadBlob(&width, sizeof(size_t), 1, image->blob) != 1 ||
+      ReadBlob(&height, sizeof(size_t), 1, image->blob) != 1) {
+    ThrowFileException(exception, CorruptImageError, "UnableToReadImageDimensions", image->filename);
+    goto cleanup;
+  }
+
+  image->columns = width;
+  image->rows = height;
+
+  // Initialize colormap (assuming grayscale for simplicity)
+  image->colors = 2;
+  image->colormap = (PixelPacket *) AcquireQuantumMemory(image->colors, sizeof(*image->colormap));
+  if (image->colormap == NULL) {
+    ThrowMemoryException(exception);
+    goto cleanup;
+  }
+
+  // Initialize pixel packets
+  image->pixels = (PixelPacket *) AcquireQuantumMemory(image->columns * image->rows, sizeof(*image->pixels));
+  if (image->pixels == NULL) {
+    ThrowMemoryException(exception);
+    goto cleanup;
+  }
+
+  // Read pixel data row by row
+  for (size_t y = 0; y < height; y++) {
+    for (size_t x = 0; x < width; x++) {
+      unsigned char bit;
+      if (ReadBlob(&bit, sizeof(bit), 1, image->blob) != 1) {
+        ThrowFileException(exception, CorruptImageError, "PrematureEndOfFile", image->filename);
+        goto cleanup;
+      }
+
+      // Convert LSB bit to pixel value
+      PixelPacket *pixel = GetPixelCachePixel(image, x, y);
+      pixel->red = pixel->green = pixel->blue = (bit ? QuantumRange : 0);
+    }
+  }
+
+  // Close the blob
+  CloseBlob(image->blob);
+
+  return image;
+
+cleanup:
+  if (image != NULL) {
+    if (image->blob != NULL)
+      CloseBlob(image->blob);
+    if (image->pixels != NULL)
+      image->pixels = (PixelPacket *) RelinquishMagickMemory(image->pixels);
+    if (image->colormap != NULL)
+      image->colormap = (PixelPacket *) RelinquishMagickMemory(image->colormap);
+    image = DestroyImage(image);
+  }
+
+  return NULL;
+}

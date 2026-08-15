@@ -1,0 +1,34 @@
+{
+  "case_id": "C_740__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int smb2_handle_write_op(unsigned int xid, struct cifs_io_parms *io_parms,\n                         unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    int rc = 0;\n\n    if (!io_parms || !iov || !nbytes) {\n        return -EINVAL;\n    }\n\n    req = cifs_buf_get();\n    if (!req) {\n        return -ENOMEM;\n    }\n\n    resp = cifs_buf_get();\n    if (!resp) {\n        cifs_buf_put(req);\n        return -ENOMEM;\n    }\n\n    req->hdr.MessageId = cpu_to_le64(xid);\n    req->PersistentFileId = io_parms->persistent_fid;\n    req->VolatileFileId = io_parms->volatile_fid;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->DataLength = cpu_to_le32(io_parms->length);\n    req->Channel = 0;\n\n    rc = cifs_send_recv(io_parms->tcon, &req, &resp, iov, n_vec, 0);\n    if (rc != 0) {\n        cifs_buf_put(req);\n        cifs_buf_put(resp);\n        return rc;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\n    cifs_buf_put(req);\n    cifs_buf_put(resp);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms,\n                      unsigned int *nbytes, struct kvec *iov, int n_vec)\n{\n    int rc = 0;\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    struct TCP_Server_Info *server = io_parms->cfile->tcon->ses->server;\n\n    if (!server || !serverCanDMA(server)) {\n        rc = -EIO;\n        goto out;\n    }\n\n    req = cifs_buf_get();\n    if (!req) {\n        rc = -ENOMEM;\n        goto out;\n    }\n\n    resp = cifs_buf_get();\n    if (!resp) {\n        rc = -ENOMEM;\n        goto free_req;\n    }\n\n    init_hdr((struct smb2_hdr *)req, SMB2_WRITE, sizeof(*req), server);\n    req->PersistentFileId = io_parms->pid;\n    req->FileId = io_parms->unique_id;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->RemainingBytes = 0;\n    req->DataOffset = cpu_to_le16(offsetof(struct smb2_write_request, Buffer));\n    req->DataLength = cpu_to_le32(io_parms->length);\n    req->Channel = 0;\n\n    rc = cifs_send_recv(xid, server, req, 0, resp);\n    if (rc) {\n        cifs_buf_release(req);\n        cifs_buf_release(resp);\n        goto out;\n    }\n\n    if (le32_to_cpu(resp->DataLength) != io_parms->length) {\n        cifs_dbg(VFS, \"Unexpected response length\\n\");\n        rc = -EIO;\n        cifs_buf_release(req);\n        cifs_buf_release(resp);\n        goto out;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\n\n    cifs_buf_release(req);\n    cifs_buf_release(resp);\n\nout:\n    return rc;\n\nfree_req:\n    cifs_buf_release(req);\n    goto out;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes,\n                      struct kvec *iov, int n_vec) {\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    int rc = 0;\n\n    req = cifs_buf_get();\n    if (!req) {\n        return -ENOMEM;\n    }\n\n    resp = cifs_buf_get();\n    if (!resp) {\n        cifs_buf_release(req);\n        return -ENOMEM;\n    }\n\n    req->hdr.MessageID = cpu_to_le64(xid);\n    req->PersistentFileId = io_parms->persistent_fid;\n    req->VolatileFileId = io_parms->volatile_fid;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->DataLength = cpu_to_le32(*nbytes);\n\n    rc = cifs_send_recv(io_parms->tcon->ses->server, req, iov, n_vec, resp);\n    if (rc) {\n        cifs_buf_release(req);\n        cifs_buf_release(resp);\n        return rc;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\n    cifs_buf_release(req);\n    cifs_buf_release(resp);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    int rc = 0;\n    struct smb2_write_request *req = NULL;\n    struct smb2_write_response *resp = NULL;\n    struct TCP_Server_Info *server;\n\n    if (!io_parms || !nbytes || !iov) {\n        return -EINVAL;\n    }\n\n    server = io_parms->tcon->ses->server;\n    if (!server) {\n        return -EIO;\n    }\n\n    req = smb2_plain_req_init(SMB2_WRITE, server, (unsigned char **)&resp);\n    if (!req) {\n        return -ENOMEM;\n    }\n\n    req->PersistentFileId = io_parms->persistent_fid;\n    req->FileId = io_parms->volatile_fid;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->Length = cpu_to_le32(io_parms->length);\n\n    rc = cifs_send_recv(xid, server, (char *)req, iov, n_vec, CIFS_WRITE, &resp);\n    if (rc) {\n        goto out;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\nout:\n    kfree(req);\n    return rc;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec)\n{\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    int rc = 0;\n    int bytes_sent;\n\n    req = cifs_buf_get();\n    if (!req) {\n        rc = -ENOMEM;\n        goto out;\n    }\n\n    init_smb2_write_request(req, io_parms->persistent_fid, io_parms->volatile_fid, *nbytes);\n\n    resp = cifs_buf_get();\n    if (!resp) {\n        rc = -ENOMEM;\n        goto out_free_req;\n    }\n\n    rc = cifs_send_recv(xid, io_parms->ses, req, &resp, &bytes_sent);\n    if (rc != 0)\n        goto out_free_all;\n\n    *nbytes = get_smb2_write_data_length(resp);\n    cifs_small_buf_release(req);\n    cifs_small_buf_release(resp);\n    return 0;\n\nout_free_all:\n    cifs_small_buf_release(resp);\nout_free_req:\n    cifs_small_buf_release(req);\nout:\n    *nbytes = 0;\n    return rc;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

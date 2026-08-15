@@ -1,0 +1,67 @@
+{
+  "case_id": "C_568__0",
+  "sample_id": "D/C/568",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "ImageMagick/ImageMagick",
+  "cve_id": "CVE-2016-7527",
+  "cve_summary": "coders/wpg.c in ImageMagick allows remote attackers to cause a denial of service (out-of-bounds read) via a crafted file.",
+  "changed_file": "coders/wpg.c",
+  "docstring": "```plaintext\nSummary: \nExtracts a Postscript image from a given image, processes it, and returns the modified image.\n\nParameters: \nimage (Image *): The input image from which to extract the Postscript.\nimage_info (const ImageInfo *): Information about the image.\nPS_Offset (MagickOffsetType): The offset in the image where the Postscript data begins.\nPS_Size (ssize_t): The size of the Postscript data to extract.\nexception (ExceptionInfo *): A structure to capture any exceptions that occur during processing.\n\nReturns: \nImage *: A pointer to the newly created image containing the extracted Postscript data, or the original image if extraction fails.\n\nLogic: \nThe function clones the image info, acquires a unique filename for temporary storage, and writes the Postscript data to this file. It then checks the file format using magic numbers, reads the nested image, and replaces the original image with the new one while preserving attributes. Finally, it cleans up resources and handles any exceptions that arise during the process.\n```",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check PS_Size is non-negative before using in loop",
+        "performed_by_count": 4,
+        "why_it_matters": "If PS_Size is negative, the loop will underflow and write garbage data or cause an infinite loop."
+      },
+      {
+        "step": "Check ReadImage returns non-NULL before using the result",
+        "performed_by_count": 4,
+        "why_it_matters": "If ReadImage returns NULL, the target proceeds to use image2 without checking, leading to a null pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a majority-consensus defensive step: validating that the PS_Size is non-negative before using it in a loop. This could lead to an underflow or infinite loop if PS_Size is negative. The target also lacks a check for the success of the ReadImage call before using the returned image2. These omissions are present in all or most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Validate number of bytes written to file",
+        "performed_by_count": 3,
+        "why_it_matters": "If the number of bytes written to the temporary file does not match PS_Size, the resulting file may be incomplete or corrupted, leading to incorrect image processing or undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a majority-consensus step of validating the number of bytes written to the temporary file against the expected PS_Size. This omission could allow partial or failed writes to proceed without detection, potentially leading to malformed or incomplete Postscript data being processed.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

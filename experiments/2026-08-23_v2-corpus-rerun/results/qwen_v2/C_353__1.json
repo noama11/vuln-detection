@@ -1,0 +1,56 @@
+{
+  "case_id": "C_353__1",
+  "sample_id": "D/C/353",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-17807",
+  "cve_summary": "The KEYS subsystem in the Linux kernel before 4.14.6 omitted an access-control check when adding a key to the current task's *default request-key keyring* via the request_key() system call, allowing a local user to use a sequence of crafted system calls to add keys to a keyring with only Search permission (not Write permission) to that keyring, related to construct_get_dest_keyring() in security/keys/request_key.c.",
+  "changed_file": "security/keys/request_key.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Constructs and retrieves the destination keyring for the current process,  \n * either using a provided keyring or selecting a default based on the  \n * current credentials.  \n *  \n * Parameters:  \n * _dest_keyring (struct key **): A pointer to a pointer where the destination  \n * keyring will be stored.  \n *  \n * Returns:  \n * int: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function checks if a destination keyring is provided; if not, it  \n * attempts to find a suitable default keyring based on the current user's  \n * credentials. It performs permission checks to ensure the process has  \n * write access to the keyring before returning it. If no valid keyring is  \n * found or permission is denied, an error code is returned.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <linux/key.h>\n#include <linux/errno.h>\n\nint get_dest_keyring(struct key **_dest_keyring) {\n    struct key *dest_keyring = NULL;\n    int ret = 0;\n\n    if (_dest_keyring && *_dest_keyring) {\n        dest_keyring = *_dest_keyring;\n    } else {\n        // Attempt to find a suitable default keyring based on current credentials\n        dest_keyring = keyring_search(KEY_SPEC_SESSION_KEYRING, NULL, NULL);\n        if (IS_ERR(dest_keyring)) {\n            return PTR_ERR(dest_keyring);\n        }\n    }\n\n    // Check if the current process has write access to the keyring\n    ret = key_permission(dest_keyring, KEY_NEED_WRITE);\n    if (ret < 0) {\n        key_put(dest_keyring);\n        return ret;\n    }\n\n    *_dest_keyring = dest_keyring;\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation uses `keyring_search(KEY_SPEC_SESSION_KEYRING, NULL, NULL)` to find a default keyring, while the reference implementation attempts to find a suitable keyring by checking multiple fallback options based on the current credentials' configuration. This leads to different keyring selection logic, which could result in different keyrings being returned under certain credential configurations. This difference is security-relevant because it affects which keyring is used, potentially impacting access control and authorization.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation uses `keyring_search(KEY_SPEC_SESSION_KEYRING, NULL, NULL)` to find a default keyring, while the reference implementation selects a keyring based on the current credentials' `jit_keyring` configuration, which includes multiple fallback options (e.g., thread, process, session, user keyrings). This leads to different keyring selection logic and potentially different keyrings being returned for the same input. Additionally, the reference implementation includes a conditional permission check that is skipped for the requestor keyring, which the candidate implementation does not replicate. These differences are reachable and could affect behavior depending on the credentials and system configuration, making them security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

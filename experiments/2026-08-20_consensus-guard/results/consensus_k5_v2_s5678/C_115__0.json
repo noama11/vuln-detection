@@ -1,0 +1,72 @@
+{
+  "case_id": "C_115__0",
+  "sample_id": "D/C/115",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-6546",
+  "cve_summary": "The ATM implementation in the Linux kernel before 3.6 does not initialize certain structures, which allows local users to obtain sensitive information from kernel stack memory via a crafted application.",
+  "changed_file": "net/atm/common.c",
+  "docstring": "Summary:  \nRetrieves socket options for a given socket in an ATM (Asynchronous Transfer Mode) context.\n\nParameters:  \nsock (struct socket *): Pointer to the socket from which options are retrieved.  \nlevel (int): The level at which the option resides (e.g., SOL_SOCKET).  \noptname (int): The specific option to retrieve (e.g., SO_ATMQOS).  \noptval (char __user *): Pointer to user space where the option value will be stored.  \noptlen (int __user *): Pointer to user space where the length of the option value is provided.\n\nReturns:  \nint: Returns 0 on success, or a negative error code indicating the type of failure (e.g., -EFAULT, -EINVAL, -ENOTCONN).\n\nLogic:  \nThe function first checks the validity of the provided length and option name. It then retrieves the ATM virtual circuit control structure associated with the socket. Depending on the requested option, it either copies the relevant data to user space or calls the device's specific `getsockopt` function if the option is not handled directly.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check for non-null vcc before use",
+        "performed_by_count": 4,
+        "why_it_matters": "If the vcc is NULL, dereferencing it in the switch statement or when calling dev->ops->getsockopt would cause a NULL pointer dereference."
+      },
+      {
+        "step": "Check for negative len values",
+        "performed_by_count": 2,
+        "why_it_matters": "If len is negative, it could lead to invalid memory operations or buffer overflows when used in copy_to_user or other operations."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority-consensus defensive step: checking that the socket's ATM virtual circuit (vcc) is non-null before dereferencing it. Independent implementations 1, 2, 3, and 4 all check for a valid vcc before proceeding, but the target does not. This omission could lead to a NULL pointer dereference if the vcc is invalid. The target also lacks a check for negative len values, which is present in implementations 2 and 5.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "optname >= 0 check",
+        "performed_by_count": 4,
+        "why_it_matters": "A negative optname could bypass switch-case logic and lead to undefined behavior or invalid memory access."
+      },
+      {
+        "step": "optlen >= 0 check",
+        "performed_by_count": 3,
+        "why_it_matters": "A negative optlen could lead to invalid buffer size handling and potential memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority consensus step of validating the optname is non-negative. It also lacks a check for the optlen being negative in the case of SO_ATMQOS. These omissions could lead to invalid memory accesses or incorrect behavior on hostile input.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

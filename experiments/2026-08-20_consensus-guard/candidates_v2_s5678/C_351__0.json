@@ -1,0 +1,34 @@
+{
+  "case_id": "C_351__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int check_stack_boundary(struct bpf_verifier_env *env, int regno, int access_size, bool zero_size_allowed, struct bpf_call_arg_meta *meta)\n{\n    struct bpf_reg_state *reg = &env->cur_state->regs[regno];\n    int off, i, err;\n\n    if (reg->type != PTR_TO_STACK)\n        return -EACCES;\n\n    if (access_size == 0) {\n        if (zero_size_allowed)\n            return 0;\n        return -EACCES;\n    }\n\n    off = reg->off;\n    if (off < 0 && off + access_size > 0)\n        return -EACCES;\n\n    if (off != reg->off)\n        return -EACCES;\n\n    for (i = 0; i < access_size; i++) {\n        int slot = -off - i - 1;\n        if (slot >= BPF_STACK_DEPTH)\n            return -EACCES;\n    }\n\n    env->cur_state->allocated_stack = max(env->cur_state->allocated_stack, -off + access_size);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int check_stack_boundary_access(struct bpf_verifier_env *env, int regno,\n                                int access_size, bool zero_size_allowed,\n                                struct bpf_call_arg_meta *meta)\n{\n    struct bpf_reg_state *reg = &env->cur_state->regs[regno];\n    int i, off, slot_off;\n\n    if (reg->type != PTR_TO_STACK)\n        return -EACCES;\n\n    if (access_size == 0) {\n        if (zero_size_allowed)\n            return 0;\n        return -EACCES;\n    }\n\n    if (reg->off != 0)\n        return -EACCES;\n\n    off = reg->off + reg->var_off.value;\n    if (off + access_size > MAX_BPF_STACK || off < 0)\n        return -EACCES;\n\n    for (i = 0; i < access_size; i++) {\n        slot_off = off + i;\n        if (slot_off % BPF_REG_SIZE != 0)\n            continue;\n        if (env->cur_state->allocated_stack < slot_off + BPF_REG_SIZE)\n            return -EACCES;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int check_stack_boundary_access(struct bpf_verifier_env *env, int regno, int access_size,\n                                bool zero_size_allowed, struct bpf_call_arg_meta *meta)\n{\n    struct bpf_reg_state *reg = &env->cur_state->regs[regno];\n    int i, slot, offset, err = 0;\n\n    if (reg->type != PTR_TO_STACK)\n        return -EACCES;\n\n    /* Allow zero-size access if permitted */\n    if (access_size == 0 && zero_size_allowed)\n        return 0;\n\n    if (reg->off + access_size < reg->off)\n        return -EACCES;\n\n    offset = reg->off;\n    if (offset < 0)\n        return -EACCES;\n\n    for (i = 0; i < access_size; i++) {\n        slot = offset + i;\n        if (slot >= BPF_MAX_STACK_DEPTH)\n            return -EACCES;\n    }\n\n    env->cur_state->stack_depth = max(env->cur_state->stack_depth, offset + access_size);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int check_stack_boundary_access(struct bpf_verifier_env *env, int regno, int access_size,\n                                bool zero_size_allowed, struct bpf_call_arg_meta *meta)\n{\n    struct bpf_reg_state *regs = cur_regs(env);\n    struct bpf_reg_state *reg = &regs[regno];\n    int i, off, slot;\n\n    if (reg->type != PTR_TO_STACK) {\n        return -EACCES;\n    }\n\n    if (access_size == 0) {\n        if (zero_size_allowed) {\n            return 0;\n        }\n        return -EACCES;\n    }\n\n    if (reg->off < 0) {\n        return -EACCES;\n    }\n\n    off = reg->off;\n    for (i = 0; i < access_size; i++) {\n        slot = -(off + i) / BPF_REG_SIZE;\n        if (slot < 0 || slot >= MAX_BPF_STACK / BPF_REG_SIZE) {\n            return -EACCES;\n        }\n    }\n\n    if (meta) {\n        meta->stack_depth = max(meta->stack_depth, off + access_size);\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int check_stack_boundary_access(struct bpf_verifier_env *env, int regno, int access_size,\n                                bool zero_size_allowed, struct bpf_call_arg_meta *meta)\n{\n    struct bpf_reg_state *reg = &env->cur_state->regs[regno];\n    int i;\n\n    if (reg->type != PTR_TO_STACK)\n        return -EACCES;\n\n    if (access_size == 0 && zero_size_allowed)\n        return 0;\n\n    if (access_size <= 0)\n        return -EACCES;\n\n    if (reg->off != 0 && reg->off != -1) {\n        if (reg->off >= 0)\n            return -EACCES;\n        if (reg->off + access_size > 0)\n            return -EACCES;\n    }\n\n    for (i = 0; i < access_size; i++) {\n        int off = reg->off + i;\n        if (off >= MAX_BPF_STACK || off < 0)\n            return -EACCES;\n    }\n\n    if (reg->off + access_size > env->cur_state->allocated_stack)\n        env->cur_state->allocated_stack = reg->off + access_size;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

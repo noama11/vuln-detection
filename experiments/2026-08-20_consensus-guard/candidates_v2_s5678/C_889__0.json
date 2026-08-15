@@ -1,0 +1,34 @@
+{
+  "case_id": "C_889__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    ssize_t bytes_written = 0;\n    struct usb_request *req = NULL;\n    int ret = 0;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        ret = wait_event_interruptible(write_queue_wait, !write_pending);\n        if (ret < 0)\n            goto out;\n    }\n\n    req = get_free_request();\n    if (!req) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    if (copy_from_user(req->buf, buffer, count)) {\n        ret = -EFAULT;\n        goto release_req;\n    }\n\n    req->length = count;\n    queue_request(req);\n\n    bytes_written = count;\n    write_pending = 1;\n\n    wake_up(&write_queue_wait);\n\n    spin_unlock(&write_queue_lock);\n\n    return bytes_written;\n\nrelease_req:\n    release_request(req);\nout:\n    spin_unlock(&write_queue_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    ssize_t ret = 0;\n    struct hid_request *req;\n    unsigned long flags;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock_irqsave(&write_queue_lock, flags);\n    if (write_pending) {\n        spin_unlock_irqrestore(&write_queue_lock, flags);\n        wait_event_interruptible(write_queue_wait, !write_pending);\n        spin_lock_irqsave(&write_queue_lock, flags);\n    }\n\n    req = kmalloc(sizeof(*req), GFP_ATOMIC);\n    if (!req) {\n        ret = -ENOMEM;\n        spin_unlock_irqrestore(&write_queue_lock, flags);\n        goto out;\n    }\n\n    if (copy_from_user(req->data, buffer, count)) {\n        kfree(req);\n        ret = -EFAULT;\n        spin_unlock_irqrestore(&write_queue_lock, flags);\n        goto out;\n    }\n\n    req->length = count;\n    req->status = 0;\n\n    if (!usb_ep_queue(ep_out, &req->request, GFP_ATOMIC)) {\n        write_pending = 1;\n        spin_unlock_irqrestore(&write_queue_lock, flags);\n        wake_up_interruptible(&write_queue_wait);\n        ret = count;\n    } else {\n        write_pending = 0;\n        spin_unlock_irqrestore(&write_queue_lock, flags);\n        dev_err(&gadget->dev, \"Failed to queue write request\\n\");\n        ret = -EIO;\n    }\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    ssize_t ret = 0;\n    struct hid_gadget *hid;\n    struct usb_request *req;\n    int err;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    hid = file->private_data;\n    if (!hid)\n        return -EINVAL;\n\n    spin_lock(&hid->write_lock);\n    while (hid->write_pending) {\n        wait_queue_entry_t wait = {\n            .private = current,\n            .func = default_wake_function,\n        };\n        __add_wait_queue(&hid->write_queue, &wait);\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        spin_unlock(&hid->write_lock);\n        schedule();\n        remove_wait_queue(&hid->write_queue, &wait);\n\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto out;\n        }\n\n        spin_lock(&hid->write_lock);\n    }\n\n    req = hid->write_req;\n    if (!req) {\n        ret = -ENOMEM;\n        goto out_unlock;\n    }\n\n    if (count > req->length) {\n        ret = -EMSGSIZE;\n        goto out_unlock;\n    }\n\n    if (copy_from_user(req->buf, buffer, count)) {\n        ret = -EFAULT;\n        goto out_unlock;\n    }\n\n    req->length = count;\n    hid->write_pending = true;\n\n    err = usb_ep_queue(hid->ep, req, GFP_ATOMIC);\n    if (err < 0) {\n        hid->write_pending = false;\n        ret = err;\n        goto out_unlock;\n    }\n\n    ret = count;\n\nout_unlock:\n    spin_unlock(&hid->write_lock);\n    wake_up(&hid->write_queue);\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    ssize_t bytes_written = 0;\n    int ret;\n\n    if (!access_ok(buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        wait_event_interruptible(write_queue_wait, !write_pending);\n        if (signal_pending(current)) {\n            spin_unlock(&write_queue_lock);\n            return -ERESTARTSYS;\n        }\n    }\n\n    ret = copy_from_user(write_request_buffer, buffer, count);\n    if (ret) {\n        spin_unlock(&write_queue_lock);\n        return -EFAULT;\n    }\n\n    bytes_written = queue_usb_transfer(write_request_buffer, count);\n    if (bytes_written < 0) {\n        set_write_pending(false);\n        spin_unlock(&write_queue_lock);\n        return bytes_written;\n    }\n\n    write_pending = true;\n    wake_up_all(&write_queue_wait);\n    spin_unlock(&write_queue_lock);\n\n    *offp += bytes_written;\n    return bytes_written;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    struct hid_gadget *hid = file->private_data;\n    ssize_t ret = 0;\n    int err = 0;\n\n    if (!access_ok(buffer, count))\n        return -EFAULT;\n\n    spin_lock(&hid->write_queue_lock);\n\n    while (hid->write_pending) {\n        wait_queue_t wait;\n\n        init_wait(&wait);\n        add_wait_queue(&hid->write_queue, &wait);\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        spin_unlock(&hid->write_queue_lock);\n        schedule();\n        remove_wait_queue(&hid->write_queue, &wait);\n\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto out;\n        }\n\n        spin_lock(&hid->write_queue_lock);\n    }\n\n    hid->write_pending = 1;\n    spin_unlock(&hid->write_queue_lock);\n\n    err = copy_from_user(hid->write_req->buf, buffer, count);\n    if (err) {\n        ret = -EFAULT;\n        goto release_pending;\n    }\n\n    hid->write_req->length = count;\n    usb_ep_queue(hid->ep, hid->write_req, GFP_KERNEL);\n\n    if (hid->write_req->status != 0) {\n        ret = -EIO;\n        goto release_pending;\n    }\n\n    ret = count;\n    wake_up_interruptible(&hid->write_queue);\n    return ret;\n\nrelease_pending:\n    hid->write_pending = 0;\n    wake_up_interruptible(&hid->write_queue);\n\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

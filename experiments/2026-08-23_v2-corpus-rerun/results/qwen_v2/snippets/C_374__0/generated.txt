@@ -1,0 +1,36 @@
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#include <errno.h>
+#include <signal.h>
+
+int handle_waitid(int which, pid_t upid, struct siginfo __user *infop, int options, struct rusage __user *ru) {
+    struct rusage rusage_data;
+    struct siginfo siginfo_data;
+    int ret;
+
+    // Initialize the siginfo structure
+    memset(&siginfo_data, 0, sizeof(siginfo_data));
+
+    // Call waitid to get the child process information
+    ret = waitid(which, upid, &siginfo_data, options, ru ? &rusage_data : NULL);
+
+    if (ret < 0) {
+        // Copy error code to user space
+        return -errno;
+    }
+
+    // Copy the siginfo data to user space
+    if (copy_to_user(infop, &siginfo_data, sizeof(siginfo_data)) != 0) {
+        return -EFAULT;
+    }
+
+    // If ru is provided, copy the rusage data to user space
+    if (ru && copy_to_user(ru, &rusage_data, sizeof(rusage_data)) != 0) {
+        return -EFAULT;
+    }
+
+    return 0;
+}

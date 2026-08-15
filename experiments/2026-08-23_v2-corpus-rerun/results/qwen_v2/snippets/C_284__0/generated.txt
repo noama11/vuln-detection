@@ -1,0 +1,49 @@
+int airspy_usb_probe(struct usb_interface *intf, const struct usb_device_id *id) {
+    struct airspy_dev *dev;
+    int ret;
+
+    dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+    if (!dev)
+        return -ENOMEM;
+
+    mutex_init(&dev->lock);
+    spin_lock_init(&dev->irq_lock);
+
+    ret = airspy_usb_init_device(intf, dev);
+    if (ret < 0)
+        goto error_free_dev;
+
+    ret = videobuf2_queue_init(&dev->vb2_queue, &airspy_queue_ops, &dev->udev->dev,
+                               V4L2_MEMORY_MMAP, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+    if (ret < 0)
+        goto error_cleanup_device;
+
+    strlcpy(dev->vdev.name, "Airspy", sizeof(dev->vdev.name));
+    dev->vdev.vfl_dir = VFL_DIR_M2M;
+    dev->vdev.fops = &airspy_fops;
+    dev->vdev.ioctl_ops = &airspy_ioctl_ops;
+    dev->vdev.release = video_device_release;
+    dev->vdev.queue = &dev->vb2_queue;
+
+    ret = video_register_device(&dev->vdev, VFL_TYPE_VIDEO, -1);
+    if (ret < 0)
+        goto error_cleanup_queue;
+
+    v4l2_device_register(&intf->dev, &dev->v4l2_dev);
+
+    airspy_init_controls(dev);
+
+    dev_info(&intf->dev, "Airspy device registered as /dev/video%d\n", dev->vdev.num);
+    dev_info(&intf->dev, "This is an experimental SDR API. Use with caution.\n");
+
+    usb_set_intfdata(intf, dev);
+    return 0;
+
+error_cleanup_queue:
+    videobuf2_queue_release(&dev->vb2_queue);
+error_cleanup_device:
+    airspy_usb_cleanup_device(dev);
+error_free_dev:
+    kfree(dev);
+    return ret;
+}

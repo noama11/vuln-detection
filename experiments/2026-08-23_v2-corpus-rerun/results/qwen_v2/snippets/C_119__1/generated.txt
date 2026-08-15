@@ -1,0 +1,54 @@
+ssize_t handle_macvtap_queue(struct macvtap_queue *q, struct msghdr *m,
+                             const struct iovec *iv, unsigned long total_len,
+                             size_t count, int noblock) {
+    struct sk_buff *skb = NULL;
+    ssize_t ret = -EFAULT;
+    bool zcopy = false;
+    struct vlan_dev *vlan_dev;
+
+    if (!q || !m || !iv || !total_len || count == 0) {
+        return -EINVAL;
+    }
+
+    if (total_len > MACVTAP_MAX_PACKET_SIZE) {
+        return -EMSGSIZE;
+    }
+
+    if (noblock && (m->msg_flags & MSG_DONTWAIT)) {
+        return -EAGAIN;
+    }
+
+    skb = alloc_skb(total_len, GFP_KERNEL);
+    if (!skb) {
+        return -ENOMEM;
+    }
+
+    zcopy = (m->msg_flags & MSG_ZEROCOPY) ? true : false;
+
+    if (zcopy) {
+        ret = skb_zerocopy_from_iovec(skb, iv, count, total_len);
+    } else {
+        ret = skb_copy_from_iovec(skb, iv, count, total_len);
+    }
+
+    if (ret < 0) {
+        kfree_skb(skb);
+        return ret;
+    }
+
+    skb_set_network_header(skb, ETH_HLEN);
+
+    vlan_dev = q->vlan_dev;
+    if (!vlan_dev) {
+        kfree_skb(skb);
+        return -ENODEV;
+    }
+
+    ret = dev_queue_xmit(skb, vlan_dev);
+    if (ret < 0) {
+        kfree_skb(skb);
+        return ret;
+    }
+
+    return total_len;
+}

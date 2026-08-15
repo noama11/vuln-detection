@@ -1,0 +1,56 @@
+{
+  "case_id": "C_233__0",
+  "sample_id": "D/C/233",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "illumos/illumos-gate",
+  "cve_id": "CVE-2014-9491",
+  "cve_summary": "The devzvol_readdir function in illumos does not check the return value of a strchr call, which allows remote attackers to cause a denial of service (NULL pointer dereference and panic) via unspecified vectors.",
+  "changed_file": "usr/src/uts/common/fs/dev/sdev_zvolops.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function implements the readdir operation for a device volume,  \n * allowing directory entries to be read from a specified vnode.  \n *  \n * Parameters:  \n * dvp (struct vnode *): The vnode representing the directory to read from.  \n * uiop (struct uio *): The user I/O structure for reading data.  \n * cred (struct cred *): The credentials of the user requesting the read.  \n * eofp (int *): Pointer to an integer indicating end-of-file status.  \n * ct_unused (caller_context_t *): Unused context parameter.  \n * flags_unused (int): Unused flags parameter.  \n *  \n * Returns:  \n * int: Returns 0 on success, or an error code on failure.  \n *  \n * Logic:  \n * The function checks the path of the device node and handles special cases  \n * for the ZVOL_DIR, creating necessary directories if needed, and iterates  \n * over datasets to populate the directory entries. It manages read/write  \n * locks to ensure thread safety during directory operations.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int\nreaddir_device_volume(struct vnode *dvp, struct uio *uiop, struct cred *cred,\n    int *eofp, caller_context_t *ct_unused, int flags_unused)\n{\n    int error = 0;\n    struct dirent *dent;\n    off_t *offset;\n    char *name;\n    size_t namelen;\n\n    /* Check if the directory is a ZVOL_DIR */\n    if (strcmp(vnode_getpath(dvp), ZVOL_DIR) == 0) {\n        /* Handle special directory creation if needed */\n        if (create_special_directories() != 0) {\n            return (EIO);\n        }\n\n        /* Acquire read lock for thread safety */\n        read_lock_acquire();\n\n        /* Iterate over datasets and populate directory entries */\n        while (next_dataset(&name, &namelen) == 0) {\n            dent = (struct dirent *)malloc(sizeof(struct dirent) + namelen);\n            if (dent == NULL) {\n                read_lock_release();\n                return (ENOMEM);\n            }\n\n            dent->d_ino = get_dataset_inode(name);\n            dent->d_type = DT_DIR;\n            dent->d_namlen = namelen;\n            strcpy(dent->d_name, name);\n\n            if ((error = uiomove(dent, sizeof(struct dirent) + namelen, uiop)) != 0) {\n                free(dent);\n                read_lock_release();\n                return (error);\n            }\n\n            free(dent);\n        }\n\n        read_lock_release();\n    }\n\n    *eofp = 1;\n    return (error);\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of directory entries and directory creation. The candidate implementation manually creates and populates directory entries using a loop and malloc, while the reference implementation uses helper functions like devname_lookup_func and devname_readdir_func. Additionally, the reference implementation includes logic for handling specific subdirectories like '/dsk' and '/rdsk', which the candidate implementation lacks. These differences could lead to different directory structures being exposed to users, which may be security-relevant if the missing directory creation logic in the candidate implementation leads to missing or incorrect entries for attacker-influenced inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of directory creation and iteration. The candidate implementation manually creates and populates directory entries using a loop and direct memory allocation, while the reference implementation uses helper functions like devname_lookup_func and devname_readdir_func, which may handle directory creation and iteration differently. Additionally, the reference implementation includes logic for handling specific subdirectories like '/dsk' and '/rdsk', which the candidate implementation lacks. These differences could lead to different directory structures or behaviors for certain inputs, particularly in edge cases involving nested directories or malformed paths.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

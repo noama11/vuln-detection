@@ -1,0 +1,72 @@
+{
+  "case_id": "C_119__1",
+  "sample_id": "D/C/119",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2119",
+  "cve_summary": "Buffer overflow in the macvtap device driver in the Linux kernel before 3.4.5, when running in certain configurations, allows privileged KVM guest users to cause a denial of service (crash) via a long descriptor with a long vector length.",
+  "changed_file": "drivers/net/macvtap.c",
+  "docstring": "\"\"\"\nSummary: \nHandles the retrieval of user data from a macvtap queue, processing it according to specified parameters and conditions.\n\nParameters: \nq (struct macvtap_queue *): Pointer to the macvtap queue from which data is retrieved.\nm (struct msghdr *): Pointer to the message header containing control information.\niv (const struct iovec *): Pointer to an array of I/O vectors for data transfer.\ntotal_len (unsigned long): Total length of the data to be processed.\ncount (size_t): Number of I/O vectors.\nnoblock (int): Flag indicating whether the operation should be non-blocking.\n\nReturns: \nssize_t: The total length of data processed, or an error code on failure.\n\nLogic: \nThe function first checks for virtual network header requirements and validates input parameters. It then determines if zero-copy is applicable and allocates a socket buffer (skb) for data transfer. Depending on the zero-copy flag, it either maps user space data directly or copies it into the skb. The function sets network headers, processes the skb based on the virtual network header, and attempts to transmit the skb through the associated VLAN device, handling errors and cleanup as necessary.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 3,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Validation of VLAN device pointer",
+        "performed_by_count": 3,
+        "why_it_matters": "If the VLAN device pointer is invalid, dereferencing it could cause a null-pointer dereference or use-after-free."
+      },
+      {
+        "step": "Bounds check on total_len against MTU or maximum size",
+        "performed_by_count": 2,
+        "why_it_matters": "Exceeding the MTU or maximum size could lead to oversized skb allocations or transmission errors."
+      },
+      {
+        "step": "Non-blocking flag validation",
+        "performed_by_count": 2,
+        "why_it_matters": "If the noblock flag is set but the operation is not non-blocking, it could lead to deadlocks or unexpected blocking behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a majority of the defensive steps seen in the independent implementations, including input validation for the VLAN device, bounds checks on the total length, and non-blocking flag validation. These omissions could lead to memory-safety issues or incorrect behavior on hostile input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "bounds check on 'count' against UIO_MAXIOV",
+        "performed_by_count": 4,
+        "why_it_matters": "An attacker could pass a large 'count' value, exceeding system limits, leading to excessive memory allocation or processing of a large number of iovec entries, which could cause resource exhaustion or instability."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a bounds check on the 'count' parameter against UIO_MAXIOV, which is a defensive step performed by a majority of the independent implementations. This omission could allow an attacker to pass an excessive number of iovec entries, potentially leading to resource exhaustion or other issues.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -125,6 +125,16 @@ def main():
     p.add_argument("--max-tokens", type=int, default=1024)
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--force", action="store_true")
+    # Corpus override. Defaults reproduce the published arm byte for byte; pass
+    # these to re-run the same rubric against the corrected corpus (ch. 14).
+    p.add_argument("--cases-dir", default=None,
+                   help="corpus directory (default: cases/)")
+    p.add_argument("--candidates-from", default=None,
+                   help="results dir supplying generated_code in --mode generated "
+                        "(default: results/qwen_full)")
+    p.add_argument("--tag", default="",
+                   help="suffix for the results directory, so a re-run on a "
+                        "different corpus cannot overwrite the published one")
     args = p.parse_args()
 
     base_url = V.read_endpoint(args.base_url)
@@ -139,15 +149,15 @@ def main():
 
     system = (HERE / "prompts" / "judge_contrastive.md").read_text(encoding="utf-8")
     args.prompt_sha = V.prompt_sha(system)
-    cases = load_cases()
+    cases = load_cases(args.cases_dir)
 
     candidates = {}
     if args.mode == "generated":
-        recs = load_records(ROOT / "results" / "qwen_full")
+        recs = load_records(args.candidates_from or (ROOT / "results" / "qwen_full"))
         candidates = {cid: r.get("generated_code", "") for cid, r in recs.items()}
         cases = {cid: c for cid, c in cases.items() if candidates.get(cid)}
 
-    results_dir = HERE / "results" / f"contrastive_{args.mode}"
+    results_dir = HERE / "results" / f"contrastive_{args.mode}{args.tag}"
     (results_dir / "logs").mkdir(parents=True, exist_ok=True)
     todo = [c for cid, c in sorted(cases.items())
             if args.force or not (results_dir / f"{cid}.json").exists()]

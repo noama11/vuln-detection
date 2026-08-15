@@ -1,0 +1,34 @@
+{
+  "case_id": "C_600__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int ret = 0;\n    int k = 0;\n    int nsegs = 0;\n    int sector_size = 512; // Assuming standard sector size if not provided by context\n    unsigned int order = 0;\n    int allocated = 0;\n    unsigned long flags = 0;\n\n    if (!schp || !sfp || buff_size <= 0) {\n        return -EINVAL;\n    }\n\n    // Align buffer size to sector size\n    buff_size = (buff_size + (sector_size - 1)) & ~(sector_size - 1);\n\n    schp->kern_pages = NULL;\n    schp->buff_size = buff_size;\n    schp->sgl = NULL;\n\n    while (buff_size > 0) {\n        if (k >= SGL_MAX_ELEMENTS) {\n            ret = -EINVAL;\n            goto error;\n        }\n\n        order = get_order(buff_size); // Assume get_order is defined elsewhere\n\n        schp->kern_pages[k] = (void *)__get_free_pages(flags, order);\n        if (!schp->kern_pages[k]) {\n            if (allocated == 0)\n                ret = -ENOMEM;\n            goto error;\n        }\n\n        buff_size -= (PAGE_SIZE << order);\n        schp->sgl[k].page = schp->kern_pages[k];\n        schp->sgl[k].length = (PAGE_SIZE << order);\n        nsegs++;\n        k++;\n        allocated++;\n    }\n\n    schp->n_elem = nsegs;\n    return 0;\n\nerror:\n    while (--k >= 0) {\n        free_pages((unsigned long)schp->kern_pages[k], get_order((PAGE_SIZE << order))));\n    }\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int build_indirect_sgl(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int ret = 0;\n    unsigned int nr_sg = 0;\n    unsigned int sg_sectors;\n    unsigned int max_sg = schp->k_use->max_sg;\n    unsigned int buff_sectors;\n    unsigned int sectors;\n    unsigned int max_order = 0;\n    int i;\n\n    if (!buff_size)\n        return 0;\n\n    buff_sectors = (buff_size + sfp->device_sectors - 1) / sfp->device_sectors;\n\n    if (buff_sectors > max_sg) {\n        ret = -EINVAL;\n        goto out;\n    }\n\n    schp->k_ref = 0;\n    schp->k_nents = 0;\n    schp->k_nseg = 0;\n    schp->k_size = 0;\n\n    for (i = 0; i < max_sg; ++i) {\n        Sg_scat *scp = &schp->k_scat[i];\n        struct page *page;\n        unsigned int len;\n\n        scp->page = NULL;\n        scp->k_use = NULL;\n        scp->nalloc = 0;\n\n        if (nr_sg >= buff_sectors)\n            break;\n\n        len = sfp->device_sectors - (buff_sectors % sfp->device_sectors);\n        if (i == max_sg - 1)\n            len = buff_sectors;\n\n        page = alloc_pages(GFP_KERNEL | __GFP_ZERO, max_order);\n        if (!page) {\n            ret = -ENOMEM;\n            goto error;\n        }\n\n        scp->page = page;\n        scp->nalloc = 1 << max_order;\n        scp->k_use = kmalloc(sizeof(*scp->k_use), GFP_KERNEL);\n        if (!scp->k_use) {\n            __free_pages(page, max_order);\n            ret = -ENOMEM;\n            goto error;\n        }\n\n        scp->k_use->length = len * sfp->device_size;\n        scp->k_use->offset = 0;\n        scp->k_use->nalloc = 1 << max_order;\n        scp->k_use->page = page;\n\n        ++nr_sg;\n        schp->k_nents++;\n        schp->k_nseg++;\n        schp->k_size += len * sfp->device_size;\n        buff_sectors -= len;\n    }\n\n    if (nr_sg == 0) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    schp->k_ref = 1;\n    return nr_sg;\n\nerror:\n    while (nr_sg > 0) {\n        --nr_sg;\n        Sg_scat *scp = &schp->k_scat[nr_sg];\n        if (scp->page)\n            __free_pages(scp->page, max_order);\n        if (scp->k_use)\n            kfree(scp->k_use);\n    }\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/gfp.h>\n#include <linux/mm.h>\n#include <linux/errno.h>\n\nint build_indirect_scatter_list(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int result = 0;\n    int order = get_order(buff_size);\n    int gfp_mask = GFP_KERNEL;\n    struct page *page = NULL;\n    int nr_pages = 1 << order;\n    int i;\n\n    if (!buff_size || (buff_size % SECTOR_SIZE)) {\n        buff_size = ((buff_size + SECTOR_SIZE - 1) / SECTOR_SIZE) * SECTOR_SIZE;\n    }\n\n    for (i = 0; i < nr_pages; i++) {\n        page = alloc_pages(gfp_mask, order);\n        if (!page) {\n            result = -ENOMEM;\n            break;\n        }\n\n        schp->kern_pages[i] = page;\n        schp->nENTS++;\n    }\n\n    if (result < 0) {\n        while (--i >= 0) {\n            __free_pages(schp->kern_pages[i], order);\n        }\n        return result;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int build_indirect_scatter_list(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int ret = 0;\n    unsigned int align_size = 0;\n    int order = 0;\n    struct page *page = NULL;\n\n    if (!schp || !sfp || buff_size <= 0)\n        return -EINVAL;\n\n    align_size = ALIGN(buff_size, SECTOR_SIZE);\n\n    if (build_sg_table(schp, sfp, align_size)) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    order = get_order(align_size);\n    page = alloc_pages(GFP_KERNEL | __GFP_HIGHMEM, order);\n    if (!page) {\n        ret = -ENOMEM;\n        goto out_free_sg;\n    }\n\n    schp->kern_pages = page;\n    schp->buff_size = align_size;\n\n    return 0;\n\nout_free_sg:\n    free_sg_table(schp, sfp);\nout:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int build_indirect_sg_list(Sg_scatter_hold *schp, Sg_fd *sfp, int buff_size) {\n    int ret = 0;\n    size_t align_size = ALIGN(buff_size, SECTOR_SIZE);\n\n    if (align_size < buff_size) {\n        ret = -ENOMEM;\n        return ret;\n    }\n\n    ret = sg_build_table(schp, sfp, align_size);\n    if (ret < 0) {\n        return ret;\n    }\n\n    int num_allocs = 0;\n    int order = get_order(align_size);\n    unsigned long flags = GFP_KERNEL | __GFP_ZERO;\n\n    while (num_allocs < MAX_RETRIES) {\n        struct page *page = alloc_pages(flags, order);\n        if (!page) {\n            if (num_allocs > 0) {\n                ret = -ENOMEM;\n                break;\n            }\n            num_allocs++;\n            continue;\n        }\n\n        // Assume the page is added to the scatter-gather list here\n        sg_add_page_to_list(schp, page, align_size);\n\n        // Successfully allocated and added\n        break;\n    }\n\n    if (ret < 0) {\n        // Free any previously allocated pages if error\n        sg_free_pages(schp);\n    }\n\n    return ret >= 0 ? ret : ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

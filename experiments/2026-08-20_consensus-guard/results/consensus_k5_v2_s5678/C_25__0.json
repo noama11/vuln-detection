@@ -1,0 +1,72 @@
+{
+  "case_id": "C_25__0",
+  "sample_id": "D/C/25",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-4913",
+  "cve_summary": "The rose_parse_ccitt function in net/rose/rose_subr.c in the Linux kernel before 2.6.39 does not validate the FAC_CCITT_DEST_NSAP and FAC_CCITT_SRC_NSAP fields, which allows remote attackers to (1) cause a denial of service (integer underflow, heap memory corruption, and panic) via a small length value in data sent to a ROSE socket, or (2) conduct stack-based buffer overflow attacks via a large length value in data sent to a ROSE socket.",
+  "changed_file": "net/rose/rose_subr.c",
+  "docstring": "\"\"\"\nSummary: \nParses national facilities from a given byte stream and populates the provided facilities structure.\n\nParameters: \np (unsigned char *): Pointer to the byte stream to be parsed.\nfacilities (struct rose_facilities_struct *): Pointer to the structure where parsed data will be stored.\nlen (int): Length of the byte stream to be processed.\n\nReturns: \nint: The number of bytes processed from the byte stream.\n\nLogic: \nThe function iterates through the byte stream, interpreting different facility types based on the first two bits of each byte. It handles various cases, including updating the facilities structure with random values, source and destination digipeaters, failure calls, and addresses. The parsing continues until a termination byte (0x00) is encountered or the specified length is exhausted. The function returns the total number of bytes processed.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Bounds check before accessing p[1] and p[2] for FAC_NATIONAL_RAND",
+        "performed_by_count": 4,
+        "why_it_matters": "If the input stream is too short, accessing p[1] and p[2] could cause out-of-bounds memory access."
+      },
+      {
+        "step": "Bounds check before copying data for FAC_NATIONAL_DIGIS",
+        "performed_by_count": 4,
+        "why_it_matters": "If the length field is larger than the available data, the target could copy beyond the input buffer, leading to memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform bounds checks before accessing memory beyond the current byte in the stream for certain facility types (e.g., FAC_NATIONAL_RAND, FAC_NATIONAL_DIGIS). This could lead to out-of-bounds memory access if the input is maliciously crafted. Independent implementations generally perform bounds checks or limit access to the available data.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Bounds check before array access",
+        "performed_by_count": 4,
+        "why_it_matters": "If the input stream contains more digipeaters or calls than the facilities structure can hold, the target will write out of bounds, leading to memory corruption."
+      },
+      {
+        "step": "Validation of length field before use",
+        "performed_by_count": 3,
+        "why_it_matters": "If the length field in the input stream is maliciously set to a large value, the target will process it without checking, leading to potential out-of-bounds memory access."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits bounds checks for array accesses when copying data into the facilities structure, which could lead to buffer overflows if the input stream contains unexpected or malicious data. Additionally, it lacks validation of the length field before using it in loops, which could lead to out-of-bounds memory access.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

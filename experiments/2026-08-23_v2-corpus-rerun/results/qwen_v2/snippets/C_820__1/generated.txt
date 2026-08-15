@@ -1,0 +1,42 @@
+int dvb_diseqc_send_master_cmd(struct dvb_frontend *fe, struct dvb_diseqc_master_cmd *d)
+{
+	int i, ret = 0;
+	u8 len = d->msg[0] & 0x0f;
+
+	if (len < 1 || len > 5) {
+		dprintk(1, "DiSEqC: invalid message length\n");
+		return -EINVAL;
+	}
+
+	if (dvb_debug & 4) {
+		dprintk(1, "DiSEqC: sending master command: ");
+		for (i = 0; i <= len; i++)
+			dprintk(1, "%02x ", d->msg[i]);
+		dprintk(1, "\n");
+	}
+
+	d->msg[1] |= 0x30; /* set command length */
+	if (d->msg[0] & 0x10)
+		d->msg[1] |= 0x40; /* set toneburst */
+
+	/* wait for LNB to be ready */
+	msleep(10);
+
+	/* delay for voltage stabilization */
+	udelay(100);
+
+	/* send the command */
+	for (i = 0; i <= len; i++) {
+		ret = fe->ops.send_diseqc(fe, d->msg[i]);
+		if (ret < 0)
+			return ret;
+	}
+
+	/* wait for message to be sent */
+	if (d->msg[0] & 0x10)
+		msleep(10); /* toneburst */
+	else
+		msleep(5); /* no toneburst */
+
+	return 0;
+}

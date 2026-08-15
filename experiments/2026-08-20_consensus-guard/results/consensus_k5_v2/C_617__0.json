@@ -1,0 +1,67 @@
+{
+  "case_id": "C_617__0",
+  "sample_id": "D/C/617",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "curl/curl",
+  "cve_id": "CVE-2018-16839",
+  "cve_summary": "Curl versions 7.33.0 through 7.61.1 are vulnerable to a buffer overrun in the SASL authentication code that may lead to denial of service.",
+  "changed_file": "lib/vauth/cleartext.c",
+  "docstring": "\"\"\"\nSummary: Generates a Base64 encoded PLAIN authentication message.\n\nParameters:\ndata (struct Curl_easy *): The session handle.\nuserp (const char *): The user name.\npasswdp (const char *): The user's password.\noutptr (char **): The address where a pointer to newly allocated memory holding the result will be stored upon completion.\noutlen (size_t *): The length of the output message.\n\nReturns: CURLcode: CURLE_OK on success, or an error code on failure.\n\nLogic: The function computes the required length for the PLAIN message based on the user name and password, allocates memory for it, constructs the message, and then encodes it in Base64 format. It handles memory allocation errors and checks for potential overflows during length calculations.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check base64 encoding result before returning",
+        "performed_by_count": 4,
+        "why_it_matters": "If the base64 encoding function fails, the target returns the error code without freeing the allocated memory or cleaning up, potentially leaking memory or returning an invalid pointer."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: validating the result of the base64 encoding function before returning. Additionally, the target constructs the PLAIN message incorrectly by copying `userp` instead of `passwdp` into the second null-terminated field, which is a logic error but not a defensive step. It also performs an overflow check on the length calculation, which is not performed by most of the other implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 7,
+    "consensus_exposure": 2,
+    "net_exposure": 5,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "correct construction of the PLAIN message (\\0username\\0password)",
+        "performed_by_count": 5,
+        "why_it_matters": "The target incorrectly copies `userp` into the password section of the buffer instead of `passwdp`, leading to an invalid message format. This could result in incorrect authentication behavior."
+      },
+      {
+        "step": "null-termination of the password section",
+        "performed_by_count": 4,
+        "why_it_matters": "The target does not ensure that the password section is null-terminated, which could lead to an invalid Base64 encoding if the password is not null-terminated."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation constructs the PLAIN message incorrectly by copying `userp` into the password section of the buffer, instead of `passwdp`. This is a clear deviation from the expected format of `\\0username\\0password`. Additionally, the target omits a null-termination check for the password section of the buffer, which could lead to an invalid Base64 encoding if the password is not null-terminated. These issues are not present in the majority of the independent implementations, which correctly construct the message and ensure null-termination.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

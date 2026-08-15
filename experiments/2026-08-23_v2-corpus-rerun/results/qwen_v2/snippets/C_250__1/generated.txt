@@ -1,0 +1,71 @@
+int map_user_io(struct request_queue *q, struct request *rq, struct rq_map_data *map_data, const struct iov_iter *iter, gfp_t gfp_mask) {
+    struct bio *bio = NULL;
+    struct bio *prev = NULL;
+    size_t size;
+    int ret = 0;
+
+    if (!iov_iter_count(iter))
+        return -EINVAL;
+
+    size = iov_iter_count(iter);
+
+    while (size) {
+        struct bio *new_bio;
+        unsigned int nr_segs;
+        int nsegs;
+
+        nsegs = min(QUEUE_MAX_SEGMENTS, (int)(size / (1 << 9)) + 1);
+        new_bio = bio_alloc(gfp_mask, nsegs);
+        if (!new_bio) {
+            ret = -ENOMEM;
+            goto unmap;
+        }
+
+        nr_segs = 0;
+        while (size && nr_segs < nsegs) {
+            struct iovec *iov;
+            size_t len;
+            void __user *buf;
+
+            iov = iter->iov + iter->nr_segs;
+            len = iov->iov_len;
+            buf = iov->iov_base;
+
+            if (iov_iter_get iov, iter, &len, &buf, 1)) {
+                ret = -EFAULT;
+                bio_put(new_bio);
+                goto unmap;
+            }
+
+            if (bio_add_page(new_bio, virt_to_page(buf), len, offset_in_page(buf)) != len) {
+                ret = -EINVAL;
+                bio_put(new_bio);
+                goto unmap;
+            }
+
+            iov_iter_advance(iter, len);
+            size -= len;
+            nr_segs++;
+        }
+
+        new_bio->bi_next = NULL;
+        if (prev)
+            prev->bi_next = new_bio;
+        else
+            rq->bio = new_bio;
+
+        prev = new_bio;
+    }
+
+    rq->cmd_flags |= REQ_USER_MAPPED;
+    return 0;
+
+unmap:
+    while (rq->bio) {
+        struct bio *next = rq->bio->bi_next;
+        bio_unmap_user(rq->bio);
+        bio_put(rq->bio);
+        rq->bio = next;
+    }
+    return ret;
+}

@@ -1,0 +1,62 @@
+{
+  "case_id": "C_339__0",
+  "sample_id": "D/C/339",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2015-2686",
+  "cve_summary": "net/socket.c in the Linux kernel 3.19 before 3.19.3 does not validate certain range data for (1) sendto and (2) recvfrom system calls, which allows local users to gain privileges by leveraging a subsystem that uses the copy_from_iter function in the iov_iter interface, as demonstrated by the Bluetooth subsystem.",
+  "changed_file": "net/socket.c",
+  "docstring": "Summary: This function implements the `sendto` system call for sending data to a specified address using a socket.\n\nParameters:\n- fd (int): The file descriptor of the socket.\n- buff (void __user *): A pointer to the buffer containing the data to be sent.\n- len (size_t): The length of the data in bytes.\n- flags (unsigned int): Flags that modify the behavior of the send operation.\n- addr (struct sockaddr __user *): A pointer to the address structure where the data is to be sent.\n- addr_len (int): The length of the address structure.\n\nReturns: int - The number of bytes sent on success, or a negative error code on failure.\n\nLogic: The function first checks the validity of the buffer length and the accessibility of the buffer. It retrieves the socket associated with the file descriptor and prepares the message header. If an address is provided, it converts it to kernel space. It sets the message flags based on the socket's non-blocking status and then calls `sock_sendmsg` to send the data. Finally, it releases the socket reference and returns the result of the send operation.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "manual allocation and copy of address buffer",
+        "performed_by_count": 4,
+        "why_it_matters": "If the address buffer is invalid or the copy fails, the target may proceed with an invalid address, leading to a use-after-free or null pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a majority-consensus step of validating and copying the address buffer into kernel space with explicit error handling. Instead, it uses `move_addr_to_kernel`, which may not be as defensively handled as the manual `kmalloc` and `copy_from_user` approach used by most implementations. This could leave the target exposed if `move_addr_to_kernel` fails or if the address is invalid.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "null check on buffer",
+        "performed_by_count": 4,
+        "why_it_matters": "If the buffer is null, the target will dereference it in `iov.iov_base = buff`, leading to a null pointer dereference."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority-consensus defensive step: checking that the buffer is non-null before using it. Most of the independent implementations perform this check, but the target does not, leaving it exposed to a null pointer dereference if the buffer is null.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

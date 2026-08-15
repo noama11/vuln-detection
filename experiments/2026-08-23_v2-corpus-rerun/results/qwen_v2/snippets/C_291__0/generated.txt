@@ -1,0 +1,41 @@
+int tipc_sk_dump(struct sk_buff *skb, struct netlink_callback *cb)
+{
+    int pid;
+    struct tipc_port *port;
+    struct tipc_sock *ts;
+    int ret = 0;
+
+    if (!cb->args[0]) {
+        pid = nlmsg_parse(cb->nlh, 0, NULL, 0, NULL);
+        if (pid < 0)
+            return pid;
+    } else {
+        pid = cb->args[0];
+    }
+
+    if (cb->args[1])
+        return skb->len;
+
+    port = tipc_port_get(pid);
+    if (!port)
+        return -ENOENT;
+
+    ts = container_of(port, struct tipc_sock, port);
+    spin_lock_bh(&ts->lock);
+
+    if (ts->last_publ >= 0) {
+        ret = tipc_sk_list_publish(skb, ts, cb->args[2]);
+        if (ret < 0)
+            goto out;
+        cb->args[2]++;
+    }
+
+    cb->args[0] = pid;
+    cb->args[1] = 1;
+    ret = skb->len;
+
+out:
+    spin_unlock_bh(&ts->lock);
+    tipc_port_put(port);
+    return ret;
+}

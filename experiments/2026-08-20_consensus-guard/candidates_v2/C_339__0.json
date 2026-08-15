@@ -1,0 +1,34 @@
+{
+  "case_id": "C_339__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sendto(int fd, void __user *buff, size_t len, unsigned int flags,\n           struct sockaddr __user *addr, int addr_len)\n{\n    struct socket *sock;\n    struct msghdr msg;\n    int ret = -EFAULT;\n\n    if (len == 0)\n        return 0;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    memset(&msg, 0, sizeof(msg));\n    msg.msg_name = addr;\n    msg.msg_namelen = addr_len;\n    msg.msg_iov = (struct iovec __user *)buff;\n    msg.msg_iovlen = len;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    if (msg.msg_name) {\n        struct sockaddr *kaddr;\n\n        kaddr = kmalloc(addr_len, GFP_KERNEL);\n        if (!kaddr) {\n            ret = -ENOMEM;\n            goto out;\n        }\n        if (copy_from_user(kaddr, addr, addr_len)) {\n            kfree(kaddr);\n            goto out;\n        }\n        msg.msg_name = kaddr;\n    }\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        msg.msg_flags |= MSG_DONTWAIT;\n\n    ret = sock_sendmsg(sock, &msg, len);\n\n    if (msg.msg_name && msg.msg_name != addr)\n        kfree(msg.msg_name);\n\nout:\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int sendto(int fd, void __user *buff, size_t len, unsigned int flags,\n           struct sockaddr __user *addr, int addr_len)\n{\n    struct socket *sock;\n    struct msghdr msg;\n    int ret = -EBADF;\n\n    if (len == 0)\n        return 0;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = 0;\n\n    if (addr) {\n        msg.msg_name = (struct sockaddr *)addr;\n        msg.msg_namelen = addr_len;\n    }\n\n    msg.msg_iov = NULL;\n    msg.msg_iovlen = 0;\n    msg.msg_flags = flags;\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        flags |= MSG_DONTWAIT;\n\n    ret = sock_sendmsg(sock, &msg, len);\n    sockfd_put(sock);\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sendto(int fd, void __user *buff, size_t len, unsigned int flags,\n           struct sockaddr __user *addr, int addr_len)\n{\n    struct socket *sock;\n    struct msghdr msg;\n    int ret = -EFAULT;\n    int nonblock;\n\n    if (len == 0)\n        return 0;\n\n    sock = sockfd_lookup(fd, &nonblock);\n    if (!sock)\n        return -EBADF;\n\n    memset(&msg, 0, sizeof(msg));\n    msg.msg_name = addr;\n    msg.msg_namelen = addr_len;\n    msg.msg_flags = flags;\n    msg.msg_iov = NULL;\n    msg.msg_iovlen = 0;\n\n    if (buff) {\n        msg.msg_iov = kmalloc(sizeof(struct iovec), GFP_KERNEL);\n        if (!msg.msg_iov)\n            goto out;\n\n        msg.msg_iov[0].iov_base = buff;\n        msg.msg_iov[0].iov_len = len;\n        msg.msg_iovlen = 1;\n    }\n\n    ret = sock_sendmsg(sock, &msg, len);\n    if (ret < 0)\n        goto out;\n\n    nonblock = 0;\n\nout:\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags, struct sockaddr __user *addr, int addr_len) {\n    struct socket *sock;\n    struct msghdr msg;\n    int ret;\n\n    if (len > INT_MAX)\n        return -EINVAL;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_iov = NULL;\n    msg.msg_iovlen = 0;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = 0;\n\n    if (buff) {\n        struct iovec iov;\n        iov.iov_base = buff;\n        iov.iov_len = len;\n        msg.msg_iov = &iov;\n        msg.msg_iovlen = 1;\n    }\n\n    if (addr && addr_len > 0) {\n        msg.msg_name = kcalloc(addr_len, sizeof(char), GFP_KERNEL);\n        if (!msg.msg_name) {\n            ret = -ENOMEM;\n            goto out;\n        }\n        if (copy_from_user(msg.msg_name, addr, addr_len)) {\n            ret = -EFAULT;\n            goto out;\n        }\n        msg.msg_namelen = addr_len;\n    }\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        flags |= MSG_DONTWAIT;\n\n    msg.msg_flags = flags;\n    ret = sock_sendmsg(sock, &msg, len);\n    if (ret < 0)\n        goto out;\n\nout:\n    if (msg.msg_name)\n        kfree(msg.msg_name);\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/uaccess.h>\n#include <linux/socket.h>\n#include <linux/fdtable.h>\n\nint sendto(int fd, void __user *buff, size_t len, unsigned int flags, struct sockaddr __user *addr, int addr_len)\n{\n    struct socket *sock;\n    struct msghdr msg;\n    int ret = -EBADF;\n    struct iovec iov;\n    struct sockaddr *kaddr = NULL;\n\n    if (len > INT_MAX)\n        len = INT_MAX;\n\n    if (!buff || !access_ok(buff, len))\n        return -EFAULT;\n\n    sock = sockfd_lookup(fd, &ret);\n    if (!sock)\n        return ret;\n\n    iov.iov_base = buff;\n    iov.iov_len = len;\n\n    msg.msg_name = NULL;\n    msg.msg_namelen = 0;\n    msg.msg_iov = &iov;\n    msg.msg_iovlen = 1;\n    msg.msg_control = NULL;\n    msg.msg_controllen = 0;\n    msg.msg_flags = flags;\n\n    if (addr && addr_len > 0) {\n        kaddr = kmalloc(addr_len, GFP_KERNEL);\n        if (!kaddr) {\n            ret = -ENOMEM;\n            goto out;\n        }\n\n        if (copy_from_user(kaddr, addr, addr_len)) {\n            ret = -EFAULT;\n            kfree(kaddr);\n            goto out;\n        }\n\n        msg.msg_name = kaddr;\n        msg.msg_namelen = addr_len;\n    }\n\n    if (sock->file->f_flags & O_NONBLOCK)\n        msg.msg_flags |= MSG_DONTWAIT;\n\n    ret = sock_sendmsg(sock, &msg, len);\n\n    if (kaddr)\n        kfree(kaddr);\n\nout:\n    sockfd_put(sock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

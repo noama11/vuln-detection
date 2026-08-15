@@ -1,0 +1,56 @@
+{
+  "case_id": "C_122__0",
+  "sample_id": "D/C/122",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2011-2905",
+  "cve_summary": "Untrusted search path vulnerability in the perf_config function in tools/perf/util/config.c in perf, as distributed in the Linux kernel before 3.1, allows local users to overwrite arbitrary files via a crafted config file in the current working directory.",
+  "changed_file": "tools/perf/util/config.c",
+  "docstring": "Summary: This function applies performance configurations by reading from specified configuration files.\n\nParameters:\nfn (config_fn_t): A function pointer to handle configuration entries.\ndata (void*): A pointer to user-defined data to be passed to the configuration function.\n\nReturns: int: The number of successfully processed configuration entries, or -1 if no configuration files were found.\n\nLogic: The function first checks if a specific configuration file is set via the `config_exclusive_filename` variable. If so, it reads from that file exclusively. It then checks for a system-wide configuration file and reads from it if accessible. Next, it attempts to read a user-specific configuration file located in the user's home directory. If no configuration files are found, it returns -1; otherwise, it returns the total count of successfully processed configurations.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\n\nint apply_performance_configurations(config_fn_t fn, void* data) {\n    int total_processed = 0;\n    FILE *fp = NULL;\n    char *line = NULL;\n    size_t len = 0;\n    ssize_t read;\n\n    // Check for exclusive configuration file\n    if (config_exclusive_filename && *config_exclusive_filename != '\\0') {\n        fp = fopen(config_exclusive_filename, \"r\");\n        if (fp) {\n            while ((read = getline(&line, &len, fp)) != -1) {\n                if (line[read - 1] == '\\n') {\n                    line[read - 1] = '\\0';\n                }\n                total_processed += fn(line, data);\n            }\n            fclose(fp);\n        }\n    }\n\n    // Check for system-wide configuration file\n    fp = fopen(\"/etc/performance.conf\", \"r\");\n    if (fp) {\n        while ((read = getline(&line, &len, fp)) != -1) {\n            if (line[read - 1] == '\\n') {\n                line[read - 1] = '\\0';\n            }\n            total_processed += fn(line, data);\n        }\n        fclose(fp);\n    }\n\n    // Check for user-specific configuration file\n    char *home = getenv(\"HOME\");\n    if (home) {\n        size_t path_len = strlen(home) + strlen(\"/.performance.conf\") + 1;\n        char *user_config_path = malloc(path_len);\n        if (user_config_path) {\n            snprintf(user_config_path, path_len, \"%s/.performance.conf\", home);\n            fp = fopen(user_config_path, \"r\");\n            if (fp) {\n                while ((read = getline(&line, &len, fp)) != -1) {\n                    if (line[read - 1] == '\\n') {\n                        line[read - 1] = '\\0';\n                    }\n                    total_processed += fn(line, data);\n                }\n                fclose(fp);\n            }\n            free(user_config_path);\n        }\n    }\n\n    if (total_processed == 0) {\n        return -1;\n    }\n\n    if (line) {\n        free(line);\n    }\n\n    return total_processed;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their logic for reading configuration files. The candidate implementation reads from `config_exclusive_filename`, `/etc/performance.conf`, and the user's `~/.performance.conf`. The reference implementation reads from `config_exclusive_filename`, a system-wide config via `perf_etc_perfconfig()`, and a user-specific config via `mkpath(\"%s/.perfconfig\", home)`. These differences in file paths and the use of helper functions like `perf_config_from_file` suggest different behaviors for file access and processing. Additionally, the reference implementation checks for file accessibility using `access()` before attempting to open them, which the candidate implementation does not do for all cases. This could lead to differences in error handling and file access behavior, particularly for non-existent or inaccessible files, which may be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their logic for reading configuration files. The candidate implementation reads from the exclusive configuration file, system-wide file, and user-specific file directly, processing each line with the provided function. The reference implementation uses helper functions like `perf_config_from_file` and `access` to check file accessibility before processing. Additionally, the reference implementation uses a different configuration file name (`.perfconfig`) and relies on `mkpath` for path construction. These differences affect the behavior for inputs involving different configuration file names and access checks, making the implementations functionally distinct.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

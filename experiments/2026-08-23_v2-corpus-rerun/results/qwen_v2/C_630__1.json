@@ -1,0 +1,56 @@
+{
+  "case_id": "C_630__1",
+  "sample_id": "D/C/630",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-14734",
+  "cve_summary": "drivers/infiniband/core/ucma.c in the Linux kernel through 4.17.11 allows ucma_leave_multicast to access a certain data structure after a cleanup step in ucma_process_join, which allows attackers to cause a denial of service (use-after-free).",
+  "changed_file": "drivers/infiniband/core/ucma.c",
+  "docstring": "/**\n * Summary: Processes a request to join a multicast group in the RDMA UCM.\n * \n * Parameters:\n * file (struct ucma_file *): The file descriptor associated with the UCM.\n * cmd (struct rdma_ucm_join_mcast *): The command structure containing join parameters.\n * out_len (int): The length of the output buffer.\n * \n * Returns: \n * ssize_t: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function first checks if the output buffer is large enough and validates the address size. It determines the join state based on the provided flags and retrieves the context associated with the file. It allocates memory for the multicast structure, joins the multicast group, and copies the response back to the user. In case of errors, it performs necessary cleanup and releases resources before returning the appropriate error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len) {\n    struct rdma_mcast *mcast;\n    struct rdma_cm_id *id = file->id;\n    int ret;\n\n    if (out_len < sizeof(*cmd)) {\n        return -EINVAL;\n    }\n\n    if (cmd->addr_len < sizeof(struct sockaddr_in)) {\n        return -EINVAL;\n    }\n\n    mcast = kmalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast)\n        return -ENOMEM;\n\n    mcast->id = id;\n    mcast->addr_len = cmd->addr_len;\n    memcpy(&mcast->addr, &cmd->addr, cmd->addr_len);\n    mcast->join_state = RDMA_MCAST_JOIN_FLAG(cmd->flags);\n\n    ret = rdma_join_ip_multicast(mcast, &cmd->addr, cmd->addr_len, cmd->flags);\n    if (ret) {\n        kfree(mcast);\n        return ret;\n    }\n\n    cmd->response = RDMA_UCM_JOIN_MCAST_RESP;\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation lacks proper validation of the `addr_len` field against the actual size of the provided address structure, which could lead to potential buffer overflows or malformed data handling. Additionally, it does not handle the `join_flags` as comprehensively as the reference implementation, which includes specific checks for `RDMA_MC_JOIN_FLAG_FULLMEMBER` and `RDMA_MC_JOIN_FLAG_SENDONLY_FULLMEMBER`. These differences could be exploited via attacker-controlled inputs, making this a security-relevant concern.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation lacks several key features present in the reference implementation, including validation of the join flags, allocation of a context, and proper resource management with mutex locks and error cleanup. These differences could lead to memory leaks, race conditions, or incorrect behavior under concurrent access, which are security-relevant concerns.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

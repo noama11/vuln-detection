@@ -1,0 +1,71 @@
+int configure_usb_console(struct console *co, char *options) {
+    int baud_rate = 0;
+    int data_bits = 0;
+    char parity = '\0';
+    int flow_control = 0;
+    char *token;
+
+    // Parse options string
+    token = strtok(options, ",");
+    while (token != NULL) {
+        if (strncmp(token, "baud=", 5) == 0) {
+            baud_rate = atoi(token + 5);
+        } else if (strncmp(token, "bits=", 5) == 0) {
+            data_bits = atoi(token + 5);
+        } else if (strncmp(token, "parity=", 7) == 0) {
+            parity = *(token + 7);
+        } else if (strncmp(token, "flow=", 5) == 0) {
+            if (strcmp(token + 5, "rtscts") == 0) {
+                flow_control = 1;
+            }
+        }
+        token = strtok(NULL, ",");
+    }
+
+    if (baud_rate == 0 || data_bits == 0 || parity == '\0') {
+        return -EINVAL;
+    }
+
+    struct usb_serial_port *port = get_usb_serial_port(co->index);
+    if (!port) {
+        pr_err("Failed to retrieve USB serial port for console index %d\n", co->index);
+        return -ENODEV;
+    }
+
+    if (!port->connected) {
+        pr_err("USB serial port is not connected\n");
+        return -ENODEV;
+    }
+
+    if (open_usb_serial_port(port) < 0) {
+        pr_err("Failed to open USB serial port\n");
+        return -EIO;
+    }
+
+    struct termios tio;
+    memset(&tio, 0, sizeof(tio));
+    tio.c_cflag = baud_rate | CS8 | CLOCAL | CREAD;
+    tio.c_iflag = IGNPAR;
+    tio.c_oflag = 0;
+    tio.c_lflag = 0;
+
+    if (parity == 'o') {
+        tio.c_cflag |= PARENB | PARODD;
+    } else if (parity == 'e') {
+        tio.c_cflag |= PARENB;
+    }
+
+    if (flow_control) {
+        tio.c_cflag |= CRTSCTS;
+    }
+
+    if (tcsetattr(port->fd, TCSANOW, &tio) < 0) {
+        close_usb_serial_port(port);
+        return -EIO;
+    }
+
+    co->is_console = 1;
+    co->port = port;
+
+    return 0;
+}

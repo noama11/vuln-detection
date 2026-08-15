@@ -1,0 +1,92 @@
+bool stratum_subscribe(struct pool *pool) {
+    CURL *curl;
+    CURLcode res;
+    struct curl_slist *headers = NULL;
+    long http_code;
+    char *json_response = NULL;
+    size_t response_size = 0;
+    bool success = false;
+
+    curl = curl_easy_init();
+    if (!curl) {
+        applog(LOG_ERR, "Failed to initialize CURL for Stratum subscription");
+        return false;
+    }
+
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    if (!headers) {
+        applog(LOG_ERR, "Failed to set Content-Type header for Stratum subscription");
+        goto cleanup;
+    }
+
+    json_t *request = json_object();
+    if (!request)
+        goto cleanup;
+
+    json_object_set_new(request, "jsonrpc", json_string("2.0"));
+    json_object_set_new(request, "method", json_string("mining.subscribe"));
+    json_object_set_new(request, "params", json_array());
+    json_object_set_new(request, "id", json_integer(1));
+
+    char *json_str = json_dumps(request, JSON_COMPACT);
+    if (!json_str)
+        goto cleanup;
+
+    curl_easy_setopt(curl, CURLOPT_URL, pool->stratum_url);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &json_response);
+    curl_easy_setopt(curl, CURLOPT_HEADER, 0L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
+
+    res = curl_easy_perform(curl);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    if (res != CURLE_OK || http_code != 200) {
+        applog(LOG_ERR, "Stratum subscription failed: %s", curl_easy_strerror(res));
+        goto cleanup;
+    }
+
+    json_t *response = json_loads(json_response, 0, NULL);
+    if (!response)
+        goto cleanup;
+
+    json_t *result = json_object_get(response, "result");
+    if (!result || !json_is_array(result)) {
+        applog(LOG_ERR, "Invalid Stratum subscription response format");
+        goto cleanup;
+    }
+
+    json_t *session_id = json_array_get(result, 0);
+    json_t *nonce = json_array_get(result, 1);
+
+    if (!session_id || !nonce || !json_is_string(session_id) || !json_is_string(nonce)) {
+        applog(LOG_ERR, "Failed to extract session ID or nonce from Stratum response");
+        goto cleanup;
+    }
+
+    free(pool->session_id);
+    pool->session_id = strdup(json_string_value(session_id));
+    free(pool->nonce);
+    pool->nonce = strdup(json_string_value(nonce));
+
+    applog(LOG_NOTICE, "Stratum session initiated: session ID %s, nonce %s", pool->session_id, pool->nonce);
+    success = true;
+
+cleanup:
+    if (json_str)
+        free(json_str);
+    if (json_response)
+        free(json_response);
+    if (request)
+        json_decref(request);
+    if (headers)
+        curl_slist_free_all(headers);
+    if (curl)
+        curl_easy_cleanup(curl);
+
+    return success;
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_303__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret = -ENOMEM;\n    struct cypress_private *priv;\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    mutex_init(&priv->lock);\n    ret = usb_serial_probe(port);\n    if (ret < 0)\n        goto error;\n\n    usb_fill_int_urb(port->read_urb,\n                     port->serial->dev,\n                     USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE,\n                     NULL,\n                     port->read_urb->transfer_buffer_length,\n                     cypress_read_int_callback,\n                     port,\n                     port->serial->read_interval);\n    usb_fill_int_urb(port->write_urb,\n                     port->serial->dev,\n                     USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,\n                     NULL,\n                     port->write_urb->transfer_buffer_length,\n                     cypress_write_int_callback,\n                     port,\n                     port->serial->write_interval);\n\n    port->private = priv;\n    return 0;\n\nerror:\n    kfree(priv);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *cypress_private;\n    int ret = -ENOMEM;\n\n    if (!port)\n        return -EINVAL;\n\n    cypress_private = kzalloc(sizeof(*cypress_private), GFP_KERNEL);\n    if (!cypress_private)\n        return -ENOMEM;\n\n    spin_lock_init(&cypress_private->lock);\n    init_waitqueue_head(&cypress_private->read_wait);\n    init_waitqueue_head(&cypress_private->write_wait);\n\n    cypress_private->port = port;\n    cypress_private->drain_delay = 1;\n\n    usb_serial_set_private_data(port, cypress_private);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret;\n    struct cypress_private *priv;\n\n    /* Check for required endpoints */\n    if (!port->port.open_count) {\n        dev_err(&port->dev, \"No endpoints found\\n\");\n        return -ENODEV;\n    }\n\n    /* Allocate memory for private data structure */\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    /* Initialize locks and FIFO buffers */\n    spin_lock_init(&priv->lock);\n    priv->read_fifo = usb_fifo_create(USB_FIFO_SIZE_DEFAULT);\n    if (!priv->read_fifo) {\n        ret = -ENOMEM;\n        goto error_free_priv;\n    }\n\n    priv->write_fifo = usb_fifo_create(USB_FIFO_SIZE_DEFAULT);\n    if (!priv->write_fifo) {\n        ret = -ENOMEM;\n        goto error_free_read_fifo;\n    }\n\n    /* Configure packet format based on interrupt output size */\n    if (port->interrupt_out_size == 1)\n        priv->packet_format = PACKET_FORMAT_1_BYTE;\n    else if (port->interrupt_out_size == 2)\n        priv->packet_format = PACKET_FORMAT_2_BYTE;\n    else\n        priv->packet_format = PACKET_FORMAT_DEFAULT;\n\n    /* Handle special cases for certain devices */\n    if (is_special_device(port->serial->dev)) {\n        priv->special_case = true;\n        priv->drain_delay = SPECIAL_CASE_DRAIN_DELAY;\n    } else {\n        priv->special_case = false;\n        priv->drain_delay = DEFAULT_DRAIN_DELAY;\n    }\n\n    /* Set read/write intervals */\n    if (port->read_interval == 0)\n        port->read_interval = DEFAULT_READ_INTERVAL;\n\n    if (port->write_interval == 0)\n        port->write_interval = DEFAULT_WRITE_INTERVAL;\n\n    /* Associate private data with the port */\n    usb_set_serial_port_data(port, priv);\n\n    return 0;\n\nerror_free_read_fifo:\n    usb_fifo_free(priv->read_fifo);\nerror_free_priv:\n    kfree(priv);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret = -ENOMEM;\n    struct usb_serial *serial = port->serial;\n    struct usb_host_interface *iface_desc;\n    struct usb_endpoint_descriptor *bulk_out, *bulk_in;\n    struct cypress_private *cypress;\n\n    iface_desc = port->port->host->config->interface[0];\n    bulk_out = usb_find_int_in_endpoint(iface_desc);\n    bulk_in = usb_find_int_out_endpoint(iface_desc);\n    if (!bulk_in || !bulk_out)\n        return -ENODEV;\n\n    cypress = kzalloc(sizeof(*cypress), GFP_KERNEL);\n    if (!cypress)\n        goto error;\n\n    mutex_init(&cypress->lock);\n    ret = usb_fill_bulk_urb(cypress->bulk_out_urb, serial->dev, bulk_out,\n                            NULL, 0, cypress_read_bulk_callback, cypress);\n    if (ret)\n        goto error;\n\n    ret = usb_fill_bulk_urb(cypress->bulk_in_urb, serial->dev, bulk_in,\n                            NULL, 0, cypress_write_bulk_callback, cypress);\n    if (ret)\n        goto error;\n\n    if (iface_desc->bNumEndpoints == 4)\n        cypress->packet_size = le16_to_cpu(bulk_in->wMaxPacketSize);\n\n    cypress->drain_delay = 0;\n    usb_set_intfdata(port->port->host, cypress);\n    port->port->private_data = cypress;\n\n    return 0;\n\nerror:\n    kfree(cypress);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret;\n    struct cypress_private *priv;\n\n    /* Check required endpoints */\n    if (!port->port.open_count) {\n        dev_err(&port->dev, \"Endpoints not available\\n\");\n        return -ENODEV;\n    }\n\n    /* Allocate private data */\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    /* Initialize locks and FIFOs */\n    spin_lock_init(&priv->lock);\n    usb_serial_init_fifo(&priv->read_fifo);\n    usb_serial_init_fifo(&priv->write_fifo);\n\n    /* Configure packet format based on interrupt output size */\n    if (port->interrupt_out_size > 0)\n        priv->packet_size = port->interrupt_out_size;\n\n    /* Handle special device cases */\n    if (port->serial->dev->descriptor.idVendor == 0x04b4) {\n        if (port->serial->dev->descriptor.idProduct == 0x1000)\n            priv->packet_size = 64;\n    }\n\n    /* Set read/write intervals */\n    if (!port->serial->read_urb_size)\n        port->serial->read_urb_size = 0x40;\n    if (!port->serial->write_urb_size)\n        port->serial->write_urb_size = 0x40;\n\n    /* Associate private data with port */\n    usb_set_serial_port_data(port, priv);\n\n    /* Set drain delay */\n    port->drain_delay = 0;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

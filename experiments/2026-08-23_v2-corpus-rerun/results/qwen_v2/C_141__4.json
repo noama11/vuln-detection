@@ -1,0 +1,56 @@
+{
+  "case_id": "C_141__4",
+  "sample_id": "D/C/141",
+  "func_idx": 4,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-6418",
+  "cve_summary": "net/ceph/auth_x.c in Ceph, as used in the Linux kernel before 3.16.3, does not properly validate auth replies, which allows remote attackers to cause a denial of service (system crash) or possibly have unspecified other impact via crafted data from the IP address of a Ceph Monitor.",
+  "changed_file": "net/ceph/auth_x.c",
+  "docstring": "\"\"\"\nSummary: \nProcesses a single ticket for the Ceph authentication client, handling decryption and updating session keys.\n\nParameters: \nac (struct ceph_auth_client*): Pointer to the Ceph authentication client structure.\nsecret (struct ceph_crypto_key*): Pointer to the cryptographic key used for decryption.\np (void**): Pointer to the data buffer containing the ticket information.\nend (void*): Pointer to the end of the data buffer.\n\nReturns: \nint: Returns 0 on success or a negative error code on failure.\n\nLogic: \nThe function begins by decoding the ticket type and structure version. It retrieves the appropriate ticket handler and decrypts the ticket data. It then updates the session key and validity information based on the decrypted data. If the ticket is encrypted, it decrypts it using the old session key; otherwise, it directly copies the data. The function finally updates the ticket blob and validity parameters in the ticket handler, cleans up allocated resources, and returns the result of the operation.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ceph_auth_client_process_ticket(struct ceph_auth_client *ac,\n                                    struct ceph_crypto_key *secret,\n                                    void **p, void *end)\n{\n    int ret = -EINVAL;\n    struct ceph_auth_ticket_handler *handler = NULL;\n    void *ticket_data = NULL;\n    size_t ticket_len = 0;\n    struct ceph_auth_ticket ticket;\n\n    // Decode ticket type and version\n    if ((end - *p) < sizeof(ticket)) {\n        goto out;\n    }\n    ceph_decode_copy(&ticket, p, sizeof(ticket), end);\n    ceph_decode_advance(p, sizeof(ticket));\n\n    handler = ceph_get_ticket_handler(ac, ticket.type);\n    if (!handler) {\n        goto out;\n    }\n\n    // Decrypt ticket data\n    if (ticket.encrypted) {\n        ret = ceph_decrypt_ticket(&ticket_data, &ticket_len, secret, *p, end);\n    } else {\n        ticket_data = *p;\n        ticket_len = end - *p;\n    }\n\n    if (ret < 0) {\n        goto out;\n    }\n\n    // Update session key and validity\n    ret = ceph_update_session_key(ac, ticket_data, ticket_len);\n    if (ret < 0) {\n        goto out;\n    }\n\n    ret = ceph_update_validity(ac, &ticket);\n    if (ret < 0) {\n        goto out;\n    }\n\n    // Update ticket blob and validity in handler\n    handler->ticket_blob = ticket_data;\n    handler->valid_until = ticket.valid_until;\n\n    ret = 0;\n\nout:\n    if (ret < 0) {\n        ceph_free(ticket_data);\n    }\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key aspects. The candidate implementation uses a simplified approach, decoding the ticket header, retrieving the handler, and updating session keys and validity directly. In contrast, the reference implementation performs more detailed decoding, including handling of blob structures, decryption of both session key and ticket blob, and managing additional metadata like secret IDs and expiration timestamps. These differences are behaviorally significant, particularly in how decryption is handled and how session key and ticket blob data are processed. The reference implementation also includes more detailed error handling and logging. These differences are not security-relevant but affect the correctness of the implementation for the full specification.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ significantly in their decoding and processing logic. The candidate implementation uses a simplified approach, decoding the ticket header and relying on a generic decrypt function, while the reference implementation performs more detailed decoding, including multiple structure versions and explicit memory allocation for unencrypted data. The reference implementation also includes additional fields like `secret_id`, `expires`, and `renew_after`, which are not present in the candidate. These differences are reachable via normal input and affect the correctness of the ticket processing, making the candidate implementation functionally incomplete.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

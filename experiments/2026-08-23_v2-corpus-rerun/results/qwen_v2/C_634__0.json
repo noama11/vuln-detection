@@ -1,0 +1,56 @@
+{
+  "case_id": "C_634__0",
+  "sample_id": "D/C/634",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "neomutt/neomutt",
+  "cve_id": "CVE-2018-14358",
+  "cve_summary": "An issue was discovered in Mutt before 1.10.1 and NeoMutt before 2018-07-16. imap/message.c has a stack-based buffer overflow for a FETCH response with a long RFC822.SIZE field.",
+  "changed_file": "imap/message.c",
+  "docstring": "\"\"\"\nSummary: Parses a fetch response from an IMAP server and populates the provided ImapHeader structure with relevant data.\n\nParameters:\nh (struct ImapHeader *): Pointer to the ImapHeader structure to be populated.\ns (char *): Pointer to the string containing the fetch response to be parsed.\n\nReturns: int: Returns 0 on success, -1 on error, or -2 if the BODY or RFC822.HEADER fields are encountered.\n\nLogic: The function processes the input string character by character, skipping whitespace and identifying specific fields such as FLAGS, UID, INTERNALDATE, and RFC822.SIZE. It updates the ImapHeader structure with the parsed values. If it encounters unrecognized input or malformed data, it logs an error and returns an appropriate error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int parse_imap_fetch_response(struct ImapHeader *h, char *s) {\n    char *ptr = s;\n    int in_field = 0;\n    char field_name[64];\n    int field_name_len = 0;\n    int in_value = 0;\n    char value[1024];\n    int value_len = 0;\n\n    while (*ptr) {\n        if (isspace(*ptr)) {\n            if (in_field && in_value) {\n                h->flags = 0;\n                h->uid = 0;\n                h->internal_date[0] = '\\0';\n                h->size = 0;\n                return -1;\n            }\n            ptr++;\n            continue;\n        }\n\n        if (!in_field) {\n            if (isalpha(*ptr)) {\n                field_name[field_name_len++] = *ptr;\n                in_field = 1;\n            } else {\n                h->flags = 0;\n                h->uid = 0;\n                h->internal_date[0] = '\\0';\n                h->size = 0;\n                return -1;\n            }\n        } else {\n            if (*ptr == '(') {\n                if (field_name_len == 5 && !strncmp(field_name, \"FLAGS\", 5)) {\n                    in_value = 1;\n                } else if (field_name_len == 3 && !strncmp(field_name, \"UID\", 3)) {\n                    in_value = 1;\n                } else if (field_name_len == 10 && !strncmp(field_name, \"INTERNALDA\", 10)) {\n                    in_value = 1;\n                } else if (field_name_len == 9 && !strncmp(field_name, \"RFC822.SIZE\", 9)) {\n                    in_value = 1;\n                } else if (field_name_len == 9 && !strncmp(field_name, \"BODY\", 4)) {\n                    return -2;\n                } else if (field_name_len == 11 && !strncmp(field_name, \"RFC822.HEAD\", 11)) {\n                    return -2;\n                } else {\n                    h->flags = 0;\n                    h->uid = 0;\n                    h->internal_date[0] = '\\0';\n                    h->size = 0;\n                    return -1;\n                }\n            } else if (isalnum(*ptr)) {\n                field_name[field_name_len++] = *ptr;\n            } else {\n                h->flags = 0;\n                h->uid = 0;\n                h->internal_date[0] = '\\0';\n                h->size = 0;\n                return -1;\n            }\n        }\n\n        ptr++;\n    }\n\n    if (in_field && in_value) {\n        h->flags = 0;\n        h->uid = 0;\n        h->internal_date[0] = '\\0';\n        h->size = 0;\n        return -1;\n    }\n\n    h->flags = 0;\n    h->uid = 0;\n    h->internal_date[0] = '\\0';\n    h->size = 0;\n    return -1;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their parsing logic and error handling. The candidate implementation uses a character-by-character approach and resets the ImapHeader structure to default values on error, always returning -1. The reference implementation uses helper functions like `mutt_str_strncasecmp` and `mutt_str_atoui` for case-insensitive string comparisons and numeric parsing, and returns 0 on success. The candidate implementation lacks proper handling of quoted strings for INTERNALDATE and does not correctly parse numeric values for UID or RFC822.SIZE. These differences are functionally significant and could lead to incorrect header data being populated, especially for malformed or normal inputs. However, these differences are not directly security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their parsing logic and error handling. The candidate implementation uses a custom state machine to parse the input character by character, while the reference implementation uses string comparison functions and skips whitespace with a macro. The candidate implementation returns -1 in many error cases without distinguishing between malformed input and unsupported fields, whereas the reference implementation handles specific fields (e.g., UID, INTERNALDATE, RFC822.SIZE) with more detailed parsing and validation. These differences could lead to different behaviors for malformed or edge-case inputs, particularly in how they handle unsupported fields and parsing errors.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

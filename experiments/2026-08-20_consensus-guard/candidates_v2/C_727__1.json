@@ -1,0 +1,34 @@
+{
+  "case_id": "C_727__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "TEE_Result populate_crypto_object(unsigned long obj, struct utee_attribute *usr_attrs, unsigned long attr_count) {\n    TEE_Result result = TEE_ERROR_GENERIC;\n    struct crypto_session *session = get_current_session();\n    struct crypto_object *crypto_obj = NULL;\n    struct utee_attribute *attrs = NULL;\n\n    if (!session) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    crypto_obj = get_crypto_object_by_id(obj);\n    if (!crypto_obj || !crypto_obj->is_transient || crypto_obj->is_initialized) {\n        return TEE_ERROR_BAD_PARAMETERS;\n    }\n\n    attrs = calloc(attr_count, sizeof(*attrs));\n    if (!attrs) {\n        return TEE_ERROR_OUT_OF_MEMORY;\n    }\n\n    if (copy_from_user(attrs, usr_attrs, attr_count * sizeof(*usr_attrs)) != 0) {\n        result = TEE_ERROR_BAD_PARAMETERS;\n        goto cleanup;\n    }\n\n    result = validate_attributes_against_object(attrs, attr_count, crypto_obj);\n    if (result != TEE_SUCCESS) {\n        goto cleanup;\n    }\n\n    result = apply_attributes_to_object(crypto_obj, attrs, attr_count);\n    if (result != TEE_SUCCESS) {\n        goto cleanup;\n    }\n\n    crypto_obj->is_initialized = 1;\n\ncleanup:\n    free(attrs);\n    return result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "TEE_Result populate_crypto_object(unsigned long obj, struct utee_attribute *usr_attrs,\n                                  unsigned long attr_count)\n{\n    TEE_Result res = TEE_ERROR_GENERIC;\n    struct crypto_session *sess = get_current_session();\n    struct crypto_object *c_obj;\n\n    if (!sess || obj >= MAX_CRYPTO_OBJECTS)\n        return TEE_ERROR_BAD_PARAMETERS;\n\n    c_obj = &sess->objects[obj];\n    if (!c_obj || c_obj->type != TEE_TYPE_TRANIENT_CRYPTO_OBJECT || c_obj->state != TEE_HANDLE_STATE_CLOSED)\n        return TEE_ERROR_BAD_PARAMETERS;\n\n    c_obj->attributes = calloc(attr_count, sizeof(struct crypto_attribute));\n    if (!c_obj->attributes)\n        return TEE_ERROR_OUT_OF_MEMORY;\n\n    for (unsigned long i = 0; i < attr_count; i++) {\n        c_obj->attributes[i] = *usr_attrs[i];\n        if (validate_attribute(c_obj->type, &c_obj->attributes[i]) != TEE_SUCCESS) {\n            res = TEE_ERROR_BAD_PARAMETERS;\n            goto cleanup;\n        }\n    }\n\n    if (initialize_crypto_object(c_obj) != TEE_SUCCESS)\n        goto cleanup;\n\n    c_obj->state = TEE_HANDLE_STATE_ACTIVE;\n    res = TEE_SUCCESS;\n\ncleanup:\n    if (res != TEE_SUCCESS)\n        free(c_obj->attributes);\n    return res;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "TEE_Result populate_crypto_object(unsigned long obj, struct utee_attribute *usr_attrs,\n                                  unsigned long attr_count)\n{\n    TEE_Result res = TEE_ERROR_BAD_PARAMETERS;\n    struct crypto_session *sess = get_current_session();\n    struct crypto_object *crypto_obj = get_crypto_object_by_id(obj);\n\n    if (!sess || !crypto_obj || !usr_attrs || !attr_count)\n        return TEE_ERROR_BAD_PARAMETERS;\n\n    if (crypto_obj->type != TEE_TYPE_TRANSIENT_MEMORY ||\n        crypto_obj->state != TEE_OBJECT_STATE_UNINITIALIZED) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    crypto_obj->attributes = calloc(attr_count, sizeof(struct tee_attribute));\n    if (!crypto_obj->attributes)\n        return TEE_ERROR_OUT_OF_MEMORY;\n\n    for (unsigned long i = 0; i < attr_count; i++) {\n        struct utee_attribute *src = &usr_attrs[i];\n        struct tee_attribute *dst = &crypto_obj->attributes[i];\n\n        dst->attr = src->attr;\n        dst->value = src->value;\n        dst->size = src->size;\n    }\n\n    res = validate_attributes(crypto_obj, attr_count);\n    if (res != TEE_SUCCESS)\n        goto cleanup;\n\n    res = initialize_crypto_object(crypto_obj);\n    if (res != TEE_SUCCESS)\n        goto cleanup;\n\n    crypto_obj->state = TEE_OBJECT_STATE_INITIALIZED;\n    return TEE_SUCCESS;\n\ncleanup:\n    free(crypto_obj->attributes);\n    crypto_obj->attributes = NULL;\n    return res;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "TEE_Result populate_crypto_object(unsigned long obj, struct utee_attribute *usr_attrs, unsigned long attr_count) {\n    TEE_Result res = TEE_ERROR_GENERIC;\n    struct tee_session *session = tee_get_current_session();\n    struct tee_object *object;\n\n    if (!session)\n        return TEE_ERROR_BAD_STATE;\n\n    object = tee_get_object_by_id(session, obj);\n    if (!object || !object->is_transient || object->is_initialized)\n        return TEE_ERROR_BAD_PARAMETERS;\n\n    object->attributes = malloc(attr_count * sizeof(struct tee_attribute));\n    if (!object->attributes)\n        return TEE_ERROR_OUT_OF_MEMORY;\n\n    for (unsigned long i = 0; i < attr_count; i++) {\n        object->attributes[i] = *usr_attrs[i].attribute;\n        if (!tee_validate_attribute(object, &object->attributes[i])) {\n            res = TEE_ERROR_BAD_PARAMETERS;\n            goto cleanup;\n        }\n    }\n\n    object->attr_count = attr_count;\n    object->is_initialized = 1;\n    res = TEE_SUCCESS;\n\ncleanup:\n    if (res != TEE_SUCCESS)\n        free(object->attributes);\n\n    return res;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "TEE_Result populate_crypto_object(unsigned long obj, struct utee_attribute *usr_attrs, unsigned long attr_count) {\n    TEE_Result res = TEE_SUCCESS;\n    struct tee_internal_session *session = tee_get_current_session();\n    struct tee_object *obj_desc = tee_get_object_by_id(obj);\n\n    if (!obj_desc || !obj_desc->is_transient || obj_desc->is_initialized) {\n        return TEE_ERROR_BAD_STATE;\n    }\n\n    obj_desc->attributes = calloc(attr_count, sizeof(struct tee_attribute));\n    if (!obj_desc->attributes) {\n        return TEE_ERROR_OUT_OF_MEMORY;\n    }\n\n    for (unsigned long i = 0; i < attr_count; i++) {\n        res = tee_copy_from_user(&obj_desc->attributes[i], &usr_attrs[i], sizeof(struct utee_attribute));\n        if (res != TEE_SUCCESS) {\n            free(obj_desc->attributes);\n            return res;\n        }\n    }\n\n    res = validate_attributes_against_type(obj_desc->type, obj_desc->attributes, attr_count);\n    if (res != TEE_SUCCESS) {\n        free(obj_desc->attributes);\n        return res;\n    }\n\n    obj_desc->is_initialized = 1;\n\n    return TEE_SUCCESS;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

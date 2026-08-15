@@ -1,0 +1,38 @@
+int snd_usb_audio_probe(struct usb_interface *intf, const struct usb_device_id *usb_id)
+{
+    struct usb_device *dev = interface_to_usbdev(intf);
+    int err;
+
+    if (dev == NULL)
+        return -ENODEV;
+
+    if (dev->quirks & USB_QUIRK_AUDIO) {
+        err = snd_usb_apply_boot_quirk(dev, intf, usb_id);
+        if (err < 0)
+            return err;
+    }
+
+    if (dev->registered)
+        return -EBUSY;
+
+    for (int i = 0; i < MAX_AUDIO_DEVICES; i++) {
+        if (!card_instances[i]) {
+            card_instances[i] = snd_card_new(index, id, longname, 0);
+            if (!card_instances[i]) {
+                return -ENOMEM;
+            }
+
+            err = snd_usb_register_card(dev, intf, card_instances[i]);
+            if (err < 0) {
+                snd_card_free(card_instances[i]);
+                card_instances[i] = NULL;
+                return err;
+            }
+
+            dev->registered = 1;
+            return 0;
+        }
+    }
+
+    return -ENOSPC;
+}

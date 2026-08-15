@@ -1,0 +1,46 @@
+krb5_error_code find_alternate_tgs(kdc_realm_t *kdc_active_realm, krb5_principal princ, krb5_db_entry **server_ptr, const char **status) {
+    krb5_error_code ret = KRB5_KDC_NO_TGS;
+    krb5_db_entry *server = NULL;
+    kdc_realm_t *current_realm = NULL;
+
+    /* Assert that the principal is a cross TGS principal */
+    if (!krb5_is_krbtgt(princ)) {
+        *status = "Principal is not a TGS principal.";
+        return KRB5_KDC_INVALID_PRINCIPAL;
+    }
+
+    /* Walk the realm tree to find potential TGS servers */
+    for (current_realm = kdc_active_realm; current_realm != NULL; current_realm = current_realm->next) {
+        krb5_db_entry **servers = NULL;
+        krb5_int32 num_servers = 0;
+        krb5_int32 i;
+
+        ret = get_tgs_servers(current_realm, princ, &servers, &num_servers);
+        if (ret != 0) {
+            continue;
+        }
+
+        /* Skip the first entry (assumed to be the primary TGS) */
+        for (i = 1; i < num_servers; i++) {
+            if (servers[i] != NULL) {
+                server = servers[i];
+                break;
+            }
+        }
+
+        if (server != NULL) {
+            break;
+        }
+
+        free_servers(servers, num_servers);
+    }
+
+    if (server == NULL) {
+        *status = "No alternate TGS found.";
+        return KRB5_KDC_NO_TGS;
+    }
+
+    *server_ptr = server;
+    *status = "Alternate TGS found successfully.";
+    return 0;
+}

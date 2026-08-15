@@ -1,0 +1,38 @@
+int set_floppy_geometry(unsigned int cmd, struct floppy_struct *g, int drive, int type, struct block_device *bdev) {
+    int ret = 0;
+
+    if (!g || drive < 0 || drive >= N_DRIVE) {
+        return -EINVAL;
+    }
+
+    if (type == FLOPPY_USER_DEFINED) {
+        if (!capable(CAP_SYS_ADMIN)) {
+            return -EPERM;
+        }
+
+        if (lock_fdc(drive)) {
+            return -EINTR;
+        }
+
+        if (g->sector <= 0 || g->head <= 0 || g->track <= 0 || g->stretch < 0) {
+            unlock_fdc(drive);
+            return -EINVAL;
+        }
+
+        update_floppy_type(drive, type);
+        update_floppy_sizes(drive, g);
+    } else {
+        if (cmd == SETGEOMETRY) {
+            if (g->sector <= 0 || g->head <= 0 || g->track <= 0) {
+                return -EINVAL;
+            }
+
+            invalidate_drive(drive);
+            update_current_geometry(drive, g);
+        } else {
+            return -EINVAL;
+        }
+    }
+
+    return ret;
+}

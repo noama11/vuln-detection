@@ -1,0 +1,67 @@
+{
+  "case_id": "C_276__0",
+  "sample_id": "D/C/276",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-6198",
+  "cve_summary": "The filesystem layer in the Linux kernel before 4.5.5 proceeds with post-rename operations after an OverlayFS file is renamed to a self-hardlink, which allows local users to cause a denial of service (system crash) via a rename system call, related to fs/namei.c and fs/open.c.",
+  "changed_file": "fs/namei.c",
+  "docstring": "\"\"\"\nSummary: \nRenames a directory entry in the virtual file system, handling various conditions and permissions.\n\nParameters: \nold_dir (struct inode *): The directory containing the entry to be renamed.\nold_dentry (struct dentry *): The directory entry to be renamed.\nnew_dir (struct inode *): The target directory for the new entry.\nnew_dentry (struct dentry *): The new directory entry name.\ndelegated_inode (struct inode **): Pointer to an inode that may be delegated.\nflags (unsigned int): Options for the rename operation, such as RENAME_EXCHANGE.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function checks if the source and target are the same, verifies permissions for deletion and creation, and handles special cases for directories and link limits. It performs the rename operation through the appropriate inode operations and manages locks to ensure thread safety. Finally, it notifies the filesystem of the move and cleans up resources.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "Directory permission check (MAY_EXEC)",
+        "performed_by_count": 4,
+        "why_it_matters": "If the source is a directory, the process must have execute permission to access it. Omitting this check could allow unauthorized renaming of directories."
+      },
+      {
+        "step": "Link limit check (i_nlink)",
+        "performed_by_count": 3,
+        "why_it_matters": "Exceeding the maximum number of links allowed by the filesystem can lead to filesystem corruption or undefined behavior. Omitting this check could allow the function to proceed when it should fail."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation lacks a majority-consensus defensive step of checking for directory-specific permissions (MAY_EXEC) before renaming a directory. This is performed by four of the five independent implementations and is important to ensure that the calling process has the necessary permissions to manipulate a directory. The target also lacks a check for link limits (i_nlink) on the source and target directories, which is performed by three of the five implementations and is important to avoid exceeding filesystem-imposed link limits.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 1,
+    "consensus_exposure": 3,
+    "net_exposure": -2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "Check if source and target are the same directory entry",
+        "performed_by_count": 3,
+        "why_it_matters": "If the source and target are the same, the function can return early without performing any operations, avoiding unnecessary work and potential side effects."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a check for the same directory entry (old_dentry == new_dentry) that is present in a majority of the independent implementations. This check is important to avoid unnecessary operations when the source and target are the same.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_846__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n    int ret = 0;\n\n    if (!buffer || !offset) {\n        return -EINVAL;\n    }\n\n    mutex_lock(&sound_timer_mutex);\n    spin_lock(&sound_timer_spinlock);\n\n    if (sound_timer_queue_empty()) {\n        spin_unlock(&sound_timer_spinlock);\n        mutex_unlock(&sound_timer_mutex);\n\n        if (file->f_flags & O_NONBLOCK) {\n            return -EAGAIN;\n        }\n\n        ret = wait_event_interruptible(sound_timer_wait_queue, !sound_timer_queue_empty());\n        if (ret < 0) {\n            return ret;\n        }\n        mutex_lock(&sound_timer_mutex);\n        spin_lock(&sound_timer_spinlock);\n    }\n\n    if (sound_timer_disconnected) {\n        spin_unlock(&sound_timer_spinlock);\n        mutex_unlock(&sound_timer_mutex);\n        return -ENODEV;\n    }\n\n    bytes_read = sound_timer_queue_read(buffer, count);\n    if (bytes_read < 0) {\n        spin_unlock(&sound_timer_spinlock);\n        mutex_unlock(&sound_timer_mutex);\n        return bytes_read;\n    }\n\n    spin_unlock(&sound_timer_spinlock);\n    mutex_unlock(&sound_timer_mutex);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n\n    // Acquire locks for thread safety\n    mutex_lock(&sound_timer_mutex);\n    spin_lock(&sound_timer_spinlock);\n\n    // Check if data is available in the queue\n    if (sound_timer_queue_empty()) {\n        // Wait for data if necessary, depending on file flags\n        if (file->f_flags & O_NONBLOCK) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -EAGAIN;\n        } else {\n            wait_event_interruptible(sound_timer_wait_queue, !sound_timer_queue_empty());\n        }\n    }\n\n    // Read data from the queue into the user buffer\n    while (bytes_read < count && !sound_timer_queue_empty()) {\n        char data = sound_timer_dequeue();\n        if (copy_to_user(buffer + bytes_read, &data, 1)) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -EFAULT;\n        }\n        bytes_read++;\n    }\n\n    // Release locks before returning\n    spin_unlock(&sound_timer_spinlock);\n    mutex_unlock(&sound_timer_mutex);\n\n    // Update offset if needed\n    if (offset) {\n        *offset += bytes_read;\n    }\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    ssize_t bytes_read = 0;\n    int result;\n\n    if (!buffer || !offset) {\n        return -EINVAL;\n    }\n\n    if (!nonseekable_open(file)) {\n        return -EINVAL;\n    }\n\n    mutex_lock(&sound_timer_mutex);\n    spin_lock(&sound_timer_spinlock);\n\n    if (sound_timer_queue_empty()) {\n        if (file->f_flags & O_NONBLOCK) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -EAGAIN;\n        }\n\n        while (sound_timer_queue_empty() && !signal_pending(current)) {\n            wait_event_interruptible(sound_timer_wait_queue,\n                                     !sound_timer_queue_empty());\n        }\n\n        if (signal_pending(current)) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -ERESTARTSYS;\n        }\n    }\n\n    while (bytes_read < count && !sound_timer_queue_empty()) {\n        char data = sound_timer_dequeue();\n        if (copy_to_user(buffer + bytes_read, &data, 1)) {\n            bytes_read = -EFAULT;\n            break;\n        }\n        bytes_read++;\n    }\n\n    spin_unlock(&sound_timer_spinlock);\n    mutex_unlock(&sound_timer_mutex);\n\n    if (bytes_read > 0) {\n        *offset += bytes_read;\n    }\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t sound_timer_read(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n\n    if (!buffer || !offset) {\n        return -EINVAL;\n    }\n\n    spin_lock(&sound_timer_lock);\n    mutex_lock(&sound_timer_mutex);\n\n    if (sound_timer_queue_empty()) {\n        mutex_unlock(&sound_timer_mutex);\n        spin_unlock(&sound_timer_lock);\n\n        if (file->f_flags & O_NONBLOCK) {\n            return -EAGAIN;\n        }\n\n        wait_event_interruptible(sound_timer_wait_queue, !sound_timer_queue_empty());\n    }\n\n    if (signal_pending(current)) {\n        mutex_unlock(&sound_timer_mutex);\n        spin_unlock(&sound_timer_lock);\n        return -ERESTARTSYS;\n    }\n\n    bytes_read = sound_timer_dequeue(buffer, count);\n    if (bytes_read < 0) {\n        mutex_unlock(&sound_timer_mutex);\n        spin_unlock(&sound_timer_lock);\n        return bytes_read;\n    }\n\n    *offset += bytes_read;\n    mutex_unlock(&sound_timer_mutex);\n    spin_unlock(&sound_timer_lock);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n\n    if (!file || !buffer || !offset)\n        return -EINVAL;\n\n    // Lock the device's mutex and spinlock for thread safety\n    mutex_lock(&device_mutex);\n    spin_lock(&device_spinlock);\n\n    // Check if data is available in the queue\n    if (sound_timer_queue_empty()) {\n        spin_unlock(&device_spinlock);\n        mutex_unlock(&device_mutex);\n\n        // Handle blocking or non-blocking I/O\n        if (file->f_flags & O_NONBLOCK)\n            return -EAGAIN;\n\n        // Wait for data to be available\n        wait_event_interruptible(data_available_queue, !sound_timer_queue_empty());\n    }\n\n    // Read data from the queue into the user buffer\n    while (bytes_read < count && !sound_timer_queue_empty()) {\n        char data;\n        if (dequeue_data(&data)) {\n            if (copy_to_user(buffer + bytes_read, &data, sizeof(char)))\n                return -EFAULT;\n            bytes_read += sizeof(char);\n        }\n    }\n\n    // Unlock the spinlock and mutex before returning\n    spin_unlock(&device_spinlock);\n    mutex_unlock(&device_mutex);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+Sdb* process_verneed_section(ELFOBJ* bin, Elf_(Shdr)* shdr, int sz) {
+    if (!bin || !shdr || sz <= 0) {
+        return NULL;
+    }
+
+    Sdb* sdb = sdb_new0();
+    if (!sdb) {
+        return NULL;
+    }
+
+    void* data = elf_getdata(bin, shdr, &sz);
+    if (!data) {
+        sdb_free(sdb);
+        return NULL;
+    }
+
+    Elf_(Verneed)* verneed = (Elf_(Verneed)*)data;
+    char* strtab = elf_strptr(bin, shdr->sh_link, 0);
+
+    for (size_t i = 0; i < shdr->sh_info; i++) {
+        Elf_(Verneed) entry = verneed[i];
+        char* version_name = strtab + entry.vn_file;
+        char* aux_name = strtab + entry.vn_aux;
+
+        sdb_num_set(sdb, version_name, entry.vn_version, 0);
+        sdb_set(sdb, aux_name, sdb_fmt("%d", entry.vn_cnt), 0);
+
+        for (int j = 0; j < entry.vn_cnt; j++) {
+            Elf_(Verneed_aux)* aux = (Elf_(Verneed_aux)*)((char*)data + entry.vn_aux);
+            char* aux_name = strtab + aux->vna_name;
+            sdb_set(sdb, aux_name, sdb_fmt("%d", aux->vna_hash), 0);
+        }
+    }
+
+    return sdb;
+}

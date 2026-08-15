@@ -1,0 +1,34 @@
+{
+  "case_id": "C_277__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int set_aa_process_attribute(struct task_struct *task, char *name, void *value, size_t size) {\n    if (size == 0 || task != current) {\n        return -EINVAL;\n    }\n\n    char *value_str = value;\n    size_t len = strnlen(value_str, size);\n    if (len == size) {\n        return -ERANGE;\n    }\n\n    char *command = strsep(&value_str, \" \");\n    if (!command || strlen(command) == 0) {\n        return -EINVAL;\n    }\n\n    if (strcmp(name, \"profile\") == 0) {\n        int result = aa_change_profile(task, command);\n        if (result < 0) {\n            audit_log_message(\"AA_ERROR\", \"Failed to change profile: %s\", command);\n            return result;\n        }\n    } else if (strcmp(name, \"namespace\") == 0) {\n        int result = aa_change_namespace(task, command);\n        if (result < 0) {\n            audit_log_message(\"AA_ERROR\", \"Failed to change namespace: %s\", command);\n            return result;\n        }\n    } else {\n        return -EINVAL;\n    }\n\n    return (int)size;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int aa_setprocattr(struct task_struct *task, char *name, void *value, size_t size) {\n    if (size == 0) {\n        return -EINVAL;\n    }\n\n    if (current != task) {\n        return -EPERM;\n    }\n\n    char *str = kmalloc(size + 1, GFP_KERNEL);\n    if (!str) {\n        return -ENOMEM;\n    }\n\n    memcpy(str, value, size);\n    str[size] = '\\0';\n\n    if (strcmp(name, \"current\") == 0) {\n        int ret = aa_change_hat(str);\n        kfree(str);\n        if (ret < 0) {\n            return ret;\n        }\n        return size;\n    } else if (strcmp(name, \"exec\") == 0) {\n        int ret = aa_change_hat_onexec(str);\n        kfree(str);\n        if (ret < 0) {\n            return ret;\n        }\n        return size;\n    } else {\n        kfree(str);\n        return -EINVAL;\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int apparmor_setprocattr(struct task_struct *task, char *name, void *value, size_t size) {\n    if (size == 0) {\n        return -EINVAL;\n    }\n\n    if (task != current) {\n        return -EPERM;\n    }\n\n    char *command = value;\n    if (!command) {\n        return -EFAULT;\n    }\n\n    if (strncmp(name, \"current\", 7) == 0) {\n        int result = apparmor_change_current_profile(command);\n        if (result < 0) {\n            audit_log_apparmor_failure(command, result);\n            return result;\n        }\n    } else if (strncmp(name, \"prev\", 4) == 0) {\n        int result = apparmor_change_previous_profile(command);\n        if (result < 0) {\n            audit_log_apparmor_failure(command, result);\n            return result;\n        }\n    } else {\n        return -EINVAL;\n    }\n\n    return size;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int set_apparmor_process_attribute(struct task_struct *task, char *name, void *value, size_t size) {\n    if (size == 0 || task != current) {\n        return -EINVAL;\n    }\n\n    char *value_str = (char *)value;\n    if (strnlen(value_str, size) == size) {\n        return -ERANGE;\n    }\n\n    char *command = strsep(&value_str, \":\");\n\n    if (strncmp(name, \"security\", sizeof(\"security\") - 1) == 0) {\n        if (strncmp(command, \"change_hat\", sizeof(\"change_hat\") - 1) == 0) {\n            int ret = change_hat(task, value_str, size - strlen(command) - 1);\n            if (ret < 0) {\n                audit_log(current, AUDIT_APPARMOR, \"change_hat_failed\", 0);\n                return ret;\n            }\n        } else if (strncmp(command, \"change_profile\", sizeof(\"change_profile\") - 1) == 0) {\n            int ret = change_profile(task, value_str, size - strlen(command) - 1);\n            if (ret < 0) {\n                audit_log(current, AUDIT_APPARMOR, \"change_profile_failed\", 0);\n                return ret;\n            }\n        } else {\n            audit_log(current, AUDIT_APPARMOR, \"unsupported_command\", 0);\n            return -ENOSYS;\n        }\n    } else {\n        audit_log(current, AUDIT_APPARMOR, \"unsupported_attribute\", 0);\n        return -ENOSYS;\n    }\n\n    return (int)size;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/sched.h>\n#include <linux/audit.h>\n#include <linux/errno.h>\n#include <linux/string.h>\n\nint apparmor_setprocattr(struct task_struct *task, char *name, void *value, size_t size)\n{\n    char *cmd;\n\n    if (size == 0)\n        return -EINVAL;\n\n    if (current != task)\n        return -EPERM;\n\n    if (!value) {\n        audit_log(current->audit_context, AUDIT_AA_SETPROCATTR, 0, \"invalid value\", 0);\n        return -EINVAL;\n    }\n\n    if (strnlen(value, size) == size) {\n        audit_log(current->audit_context, AUDIT_AA_SETPROCATTR, 0, \"value not null-terminated\", 0);\n        return -EINVAL;\n    }\n\n    cmd = value;\n\n    if (strcmp(name, \"change_hat\") == 0) {\n        int ret = apparmor_change_hat(task, cmd);\n        if (ret < 0) {\n            audit_log(current->audit_context, AUDIT_AA_SETPROCATTR, 0, \"failed to change_hat\", 0);\n            return ret;\n        }\n    } else {\n        audit_log(current->audit_context, AUDIT_AA_SETPROCATTR, 0, \"unknown attribute\", 0);\n        return -EINVAL;\n    }\n\n    return (int)size;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

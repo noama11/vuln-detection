@@ -1,0 +1,43 @@
+int atm_getsockopt(struct socket *sock, int level, int optname,
+                   char __user *optval, int __user *optlen)
+{
+    struct atm_vcc *vcc;
+    int len, err;
+
+    if (optlen == NULL) {
+        return -EFAULT;
+    }
+
+    if (get_user(len, optlen))
+        return -EFAULT;
+
+    if (len < 0)
+        return -EINVAL;
+
+    vcc = ATM_SOCKET(sock)->vcc;
+    if (!vcc)
+        return -ENOTCONN;
+
+    if (level == SOL_ATM) {
+        switch (optname) {
+        case ATM_PROTOCOL:
+            if (len < sizeof(u16))
+                return -EINVAL;
+            if (put_user(vcc->qos.aal, (u16 __user *)optval))
+                return -EFAULT;
+            break;
+        default:
+            if (vcc->dev && vcc->dev->ops->getsockopt)
+                return vcc->dev->ops->getsockopt(vcc, level, optname, optval, optlen);
+            else
+                return -ENOPROTOOPT;
+        }
+    } else {
+        if (sock->ops->getsockopt)
+            return sock->ops->getsockopt(sock, level, optname, optval, optlen);
+        else
+            return -ENOPROTOOPT;
+    }
+
+    return 0;
+}

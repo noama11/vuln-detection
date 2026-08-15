@@ -1,0 +1,67 @@
+{
+  "case_id": "C_474__1",
+  "sample_id": "D/C/474",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "aquynh/capstone",
+  "cve_id": "CVE-2017-6952",
+  "cve_summary": "Integer overflow in the cs_winkernel_malloc function in winkernel_mm.c in Capstone 3.0.4 and earlier allows attackers to cause a denial of service (heap-based buffer overflow in a kernel driver) or possibly have unspecified other impact via a large value.",
+  "changed_file": "windows/winkernel_mm.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Allocates memory of a specified size from the NonPagedPool in a Windows kernel environment.  \n *  \n * Parameters:  \n * size (size_t): The number of bytes to allocate. Must be greater than zero.  \n *  \n * Returns:  \n * void*: A pointer to the allocated memory block on success, or NULL on failure.  \n *  \n * Logic:  \n * The function first checks that the requested size is non-zero to prevent wasting memory.  \n * It then calculates the total size needed for the allocation, including a header.  \n * If the size calculation overflows, it returns NULL.  \n * Memory is allocated using ExAllocatePoolWithTag, and if successful, the size is stored in the block header.  \n * Finally, it returns a pointer to the data portion of the allocated block.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": true,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 0,
+    "net_exposure": 6,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "overflow check for total allocation size",
+        "performed_by_count": 5,
+        "why_it_matters": "If the size + header overflows, the allocation will be smaller than expected, leading to memory corruption when the header is written."
+      },
+      {
+        "step": "explicit check for zero-sized allocations",
+        "performed_by_count": 5,
+        "why_it_matters": "The target uses an internal assertion instead of returning NULL, which is not visible to callers and may lead to undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation omits the overflow check for the total allocation size (size + header). A majority of the independent implementations perform this check to prevent integer overflow, which could lead to an undersized allocation and potential memory corruption. The target also omits the explicit check for zero-sized allocations, relying instead on an assertion that is not visible to callers.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 0,
+    "consensus_exposure": 3,
+    "net_exposure": -3,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "overflow check using size comparison",
+        "performed_by_count": 4,
+        "why_it_matters": "If the size calculation overflows, the allocation will be incorrect and could lead to memory corruption or other issues."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation uses a different header type (CS_WINKERNEL_MEMBLOCK) instead of a simple size_t header. This means it does not perform the same overflow check as the majority of the independent implementations, which check that the total size is not less than the requested size. The target also performs a more robust overflow check using RtlSizeTAdd, which is not used by most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

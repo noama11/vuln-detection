@@ -1,0 +1,37 @@
+int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)
+{
+    int ret = 0;
+    long timeout = *timeo_p;
+    long left;
+
+    sctp_association_hold(asoc);
+
+    while (1) {
+        if (msg_len <= asoc->sndbuf_used) {
+            if (timeout <= 0)
+                break;
+        } else {
+            break;
+        }
+
+        if (signal_pending(current)) {
+            ret = -EINTR;
+            break;
+        }
+
+        if (!timeo_p || !*timeo_p) {
+            ret = -EAGAIN;
+            break;
+        }
+
+        left = schedule_timeout(timeout);
+        timeout = left;
+    }
+
+    if (asoc->state == SCTP_STATE_CLOSED || asoc->state == SCTP_STATE_SHUTDOWN)
+        ret = -EPIPE;
+
+    sctp_association_put(asoc);
+    *timeo_p = timeout;
+    return ret;
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_821__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\n{\n        int err = -ENOSPC;\n        int i;\n\n        mutex_lock(&dev->mac_table.mutex);\n\n        for (i = 0; i < dev->mac_table.max_num_macs; ++i) {\n                struct mlx4_mac_table_entry *entry = &dev->mac_table.entry[i];\n\n                if (entry->ref_count && entry->mac == mac) {\n                        (*index) = i;\n                        entry->ref_count++;\n                        err = 0;\n                        goto out;\n                }\n        }\n\n        for (i = 0; i < dev->mac_table.max_num_macs; ++i) {\n                struct mlx4_mac_table_entry *entry = &dev->mac_table.entry[i];\n\n                if (!entry->ref_count) {\n                        entry->mac = mac;\n                        entry->ref_count = 1;\n                        (*index) = i;\n                        err = mlx4_PORT_set_mac(dev, port, mac);\n                        if (err)\n                                goto out;\n                        else {\n                                err = 0;\n                                goto out;\n                        }\n                }\n        }\n\nout:\n        mutex_unlock(&dev->mac_table.mutex);\n        return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int mlx4_register_mac_address(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\n{\n\tint i, err = 0;\n\tstruct mlx4_mac_table *mac_table = &dev->mac_table[port - 1];\n\tunsigned long flags;\n\n\tspin_lock_irqsave(&mac_table->lock, flags);\n\n\t/* Check if MAC is already registered */\n\tfor (i = 0; i < mac_table->size; ++i) {\n\t\tif (mac_table->macs[i] == mac) {\n\t\t\tmac_table->ref_count[i]++;\n\t\t\t*index = i;\n\t\t\tgoto out;\n\t\t}\n\t}\n\n\t/* Find a free entry */\n\tfor (i = 0; i < mac_table->size; ++i) {\n\t\tif (mac_table->macs[i] == 0) {\n\t\t\tmac_table->macs[i] = mac;\n\t\t\tmac_table->ref_count[i] = 1;\n\t\t\t*index = i;\n\t\t\terr = mlx4_WRITE_MAC_address(dev, port, i, mac);\n\t\t\tif (err) {\n\t\t\t\tmac_table->macs[i] = 0;\n\t\t\t\tmac_table->ref_count[i] = 0;\n\t\t\t}\n\t\t\tgoto out;\n\t\t}\n\t}\n\n\t/* No free entries */\n\terr = -ENOSPC;\n\tgoto out;\n\nout:\n\tspin_unlock_irqrestore(&mac_table->lock, flags);\n\treturn err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int register_mac_address(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\n{\n        int i, err = -ENOSPC;\n\n        mutex_lock(&dev->mac_table_mutex);\n\n        for (i = 0; i < MLX4_MAX_MAC_ADDRS; i++) {\n                if (dev->mac_table[port - 1][i].mac == mac) {\n                        dev->mac_table[port - 1][i].ref_count++;\n                        *index = i;\n                        err = 0;\n                        goto out;\n                }\n        }\n\n        for (i = 0; i < MLX4_MAX_MAC_ADDRS; i++) {\n                if (!dev->mac_table[port - 1][i].ref_count) {\n                        dev->mac_table[port - 1][i].mac = mac;\n                        dev->mac_table[port - 1][i].ref_count = 1;\n                        *index = i;\n                        err = 0;\n                        break;\n                }\n        }\n\n        if (err)\n                goto out;\n\n        err = mlx4_register_mac(dev, port, mac);\n\nout:\n        mutex_unlock(&dev->mac_table_mutex);\n        return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\n{\n\tint err = -ENOSPC;\n\tint i;\n\n\tmutex_lock(&dev->mac_table.mutex);\n\n\t/* Check if MAC is already registered */\n\tfor (i = 0; i < dev->mac_table.size; ++i) {\n\t\tif (dev->mac_table.entries[i].port == port &&\n\t\t    dev->mac_table.entries[i].mac == mac) {\n\t\t\t/* MAC already exists, increment ref count */\n\t\t\tdev->mac_table.entries[i].ref_count++;\n\t\t\t*index = i;\n\t\t\tmutex_unlock(&dev->mac_table.mutex);\n\t\t\treturn 0;\n\t\t}\n\t}\n\n\t/* Find a free entry */\n\tfor (i = 0; i < dev->mac_table.size; ++i) {\n\t\tif (!dev->mac_table.entries[i].ref_count) {\n\t\t\t/* Register new MAC */\n\t\t\tdev->mac_table.entries[i].port = port;\n\t\t\tdev->mac_table.entries[i].mac = mac;\n\t\t\tdev->mac_table.entries[i].ref_count = 1;\n\t\t\t*index = i;\n\n\t\t\terr = mlx4_WRITE_MAC_ADDR(dev, port, mac);\n\t\t\tif (err) {\n\t\t\t\tdev->mac_table.entries[i].port = 0;\n\t\t\t\tdev->mac_table.entries[i].mac = 0;\n\t\t\t\tdev->mac_table.entries[i].ref_count = 0;\n\t\t\t} else {\n\t\t\t\tmutex_unlock(&dev->mac_table.mutex);\n\t\t\t\treturn 0;\n\t\t\t}\n\t\t\tbreak;\n\t\t}\n\t}\n\n\tmutex_unlock(&dev->mac_table.mutex);\n\treturn err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int mlx4_register_mac_address(struct mlx4_dev *dev, u8 port, u64 mac, int *index)\n{\n        int i, err = -ENOSPC;\n\n        mutex_lock(&dev->mac_table.mutex);\n\n        for (i = 0; i < MLX4_MAC_NUM; ++i) {\n                struct mlx4_mac_entry *entry = &dev->mac_table.entry[i];\n\n                if (entry->port == port && entry->mac == mac) {\n                        ++entry->ref_count;\n                        *index = i;\n                        err = 0;\n                        goto out;\n                }\n\n                if (!entry->ref_count) {\n                        err = mlx4_cmd(dev, (mac << 8) | port, i, MLX4_CMD_REGISTER_MAC,\n                                         MLX4_CMD_TIME_CLASS_A, MLX4_CMD_NATIVE);\n                        if (!err) {\n                                entry->port    = port;\n                                entry->mac     = mac;\n                                entry->ref_count = 1;\n                                *index = i;\n                                goto out;\n                        }\n                }\n        }\n\nout:\n        mutex_unlock(&dev->mac_table.mutex);\n        return err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

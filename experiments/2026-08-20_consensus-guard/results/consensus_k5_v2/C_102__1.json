@@ -1,0 +1,62 @@
+{
+  "case_id": "C_102__1",
+  "sample_id": "D/C/102",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-1767",
+  "cve_summary": "Use-after-free vulnerability in the shmem_remount_fs function in mm/shmem.c in the Linux kernel before 3.7.10 allows local users to gain privileges or cause a denial of service (system crash) by remounting a tmpfs filesystem without specifying a required mpol (aka mempolicy) mount option.",
+  "changed_file": "mm/shmem.c",
+  "docstring": "/**\n * Summary: Remounts a shared memory filesystem with new configuration options.\n * \n * Parameters:\n * sb (struct super_block *): Pointer to the superblock of the filesystem.\n * flags (int *): Pointer to flags that may affect the remount operation.\n * data (char *): String containing options for the remount configuration.\n * \n * Returns: int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function first parses the options from the provided data string into a configuration structure. It then acquires a lock on the superblock's statistics and checks if the current usage exceeds the new limits for blocks and inodes. If the checks pass, it updates the maximum blocks and inodes, adjusts the free inodes, and updates the memory policy if specified. Finally, it releases the lock and returns the result of the operation.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check if new limits are greater than current usage",
+        "performed_by_count": 4,
+        "why_it_matters": "If the new limits are less than the current usage, the remount operation could fail or cause the filesystem to become unusable."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a check on the current usage of blocks and inodes against the new configuration limits, but it does not explicitly check whether the new limits are greater than the current usage. This is a step that a majority of the independent implementations perform to ensure that the remount operation does not reduce the limits below the current usage, which could cause the filesystem to become unusable. The target omits this check, which could lead to a situation where the remount operation fails due to insufficient available resources.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check current usage against new limits before remount",
+        "performed_by_count": 4,
+        "why_it_matters": "If the new limits are lower than the current usage, the remount would be invalid and should fail. The target does not perform this check, which could allow a remount that reduces the filesystem's capacity below what is already in use, leading to inconsistent or invalid state."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target implementation omits a defensive step that a majority of the independent implementations perform: checking whether the new configuration limits (max_blocks and max_inodes) are sufficient to accommodate the current usage before applying the new configuration. This check is performed in all but one of the independent implementations and is crucial for preventing invalid remounts that would reduce the filesystem's capacity below current usage.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

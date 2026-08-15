@@ -1,0 +1,33 @@
+int cifs_search_next(int xid, struct cifs_tcon *tcon, __u16 searchHandle, struct cifs_search_info *psrch_inf) {
+    struct smb_hdr *smb;
+    struct smb2_query_directory_req *req;
+    struct smb2_query_directory_rsp *rsp;
+    int rc = 0;
+    int bytes_returned = 0;
+
+    smb = cifs_smb2_init(SMB2_OP_QUERY_DIRECTORY, tcon, (void **)&req, CIFS_SEARCH_INFO_SIZE);
+    if (!smb) {
+        return -ENOMEM;
+    }
+
+    req->FileId = searchHandle;
+    req->FileInformationClass = psrch_inf->info_class;
+    req->FileIndex = psrch_inf->index;
+    req->MaxOutputResponse = psrch_inf->max_entries;
+
+    rc = SendReceive2(xid, tcon, (struct smb2_ioctl_req *)req, &rsp, &bytes_returned, 0);
+    if (rc != 0) {
+        cifs_smb2_free(smb);
+        return rc;
+    }
+
+    psrch_inf->index = rsp->NextEntryOffset;
+    psrch_inf->eof = rsp->EndOfSearch;
+
+    if (rsp->EndOfSearch) {
+        psrch_inf->end_of_search = true;
+    }
+
+    cifs_smb2_free(smb);
+    return 0;
+}

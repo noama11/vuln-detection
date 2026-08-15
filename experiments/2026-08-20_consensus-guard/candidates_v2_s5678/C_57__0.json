@@ -1,0 +1,34 @@
+{
+  "case_id": "C_57__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t device_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {\n    ssize_t bytes_written = 0;\n    struct device_info *dev_info = filp->private_data;\n    struct element_info *element = NULL;\n\n    if (!dev_info || !dev_info->active) {\n        return -ENODEV;\n    }\n\n    if (count > MAX_WRITE_SIZE) {\n        count = MAX_WRITE_SIZE;\n    }\n\n    element = kmalloc(sizeof(*element), GFP_KERNEL);\n    if (!element) {\n        return -ENOMEM;\n    }\n\n    element->data = kmalloc(count, GFP_KERNEL);\n    if (!element->data) {\n        kfree(element);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(element->data, buf, count)) {\n        kfree(element->data);\n        kfree(element);\n        return -EFAULT;\n    }\n\n    element->length = count;\n    element->sequence = atomic_inc_return(&dev_info->sequence_number);\n\n    spin_lock(&dev_info->lock);\n    list_add_tail(&element->list, &dev_info->write_queue);\n    spin_unlock(&dev_info->lock);\n\n    wake_up_process(dev_info->worker_task);\n\n    bytes_written = count;\n\n    return bytes_written;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {\n    if (count > MAX_ALLOWED_SIZE)\n        return -EINVAL;\n\n    struct dev_lock *dev_lock = get_active_device_lock();\n    if (!dev_lock)\n        return -ENODEV;\n\n    struct dev_info *dev_info = NULL;\n    int err = 0;\n    ssize_t bytes_written = 0;\n\n    dev_info = kzalloc(sizeof(*dev_info), GFP_KERNEL);\n    if (!dev_info) {\n        err = -ENOMEM;\n        goto out;\n    }\n\n    if (!is_device_connected(dev_lock)) {\n        err = -ENODEV;\n        goto out_free;\n    }\n\n    if (copy_from_user(dev_info->data, buf, count)) {\n        err = -EFAULT;\n        goto out_free;\n    }\n\n    update_sequence_number(dev_info);\n    queue_element_for_processing(dev_info);\n\n    bytes_written = count;\n    *fpos += count;\n\nout_free:\n    kfree(dev_info);\nout:\n    release_device_reference(dev_lock);\n    return (err < 0) ? err : bytes_written;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t device_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {\n    if (count > MAX_ALLOWED_SIZE) {\n        return -EINVAL;\n    }\n\n    struct device_data *dev_data = filp->private_data;\n    struct mutex *lock = &dev_data->lock;\n    struct element_info *elem;\n    ssize_t bytes_written = 0;\n    int ret = 0;\n\n    mutex_lock(lock);\n\n    if (!dev_data->device_connected) {\n        mutex_unlock(lock);\n        return -ENODEV;\n    }\n\n    elem = kzalloc(sizeof(*elem), GFP_KERNEL);\n    if (!elem) {\n        mutex_unlock(lock);\n        return -ENOMEM;\n    }\n\n    elem->data = kmalloc(count, GFP_KERNEL);\n    if (!elem->data) {\n        kfree(elem);\n        mutex_unlock(lock);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(elem->data, buf, count)) {\n        kfree(elem->data);\n        kfree(elem);\n        mutex_unlock(lock);\n        return -EFAULT;\n    }\n\n    elem->length = count;\n    elem->sequence_number = dev_data->next_seq_num++;\n    list_add_tail(&elem->list, &dev_data->queue);\n\n    bytes_written = count;\n    dev_data->pending_bytes += count;\n\n    mutex_unlock(lock);\n\n    wake_up_process(dev_data->processing_thread);\n\n    return bytes_written;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {\n    ssize_t ret = -EFAULT;\n\n    if (count > MAX_ALLOWED_SIZE)\n        return -EINVAL;\n\n    struct dev_lock *lock = get_dev_lock();\n    if (!lock)\n        return -ENODEV;\n\n    lock_acquire(lock);\n    struct dev_info *dev = get_active_device();\n    if (!dev || !dev->connected) {\n        lock_release(lock);\n        return -ENODEV;\n    }\n\n    struct elem_info *elem = alloc_elem_info();\n    if (!elem) {\n        lock_release(lock);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(elem->data, buf, count)) {\n        release_elem_info(elem);\n        lock_release(lock);\n        return -EFAULT;\n    }\n\n    elem->seq_num = get_next_seq_num();\n    elem->len = count;\n\n    queue_elem(dev, elem);\n\n    ret = count;\n    lock_release(lock);\n    release_dev_lock(lock);\n    put_dev(dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {\n    int ret;\n    struct dev_info *dev;\n    struct element_info *einfo;\n\n    if (count > MAX_ALLOWED_SIZE)\n        return -EINVAL;\n\n    dev = get_active_dev();\n    if (!dev)\n        return -ENODEV;\n\n    einfo = kmalloc(sizeof(struct element_info), GFP_KERNEL);\n    if (!einfo) {\n        put_dev(dev);\n        return -ENOMEM;\n    }\n\n    ret = -EFAULT;\n    if (copy_from_user(einfo->data, buf, count))\n        goto out;\n\n    einfo->seq_num = atomic_inc_return(&dev->seq_counter);\n    einfo->length = count;\n\n    spin_lock(&dev->lock);\n    list_add_tail(&einfo->list, &dev->queue);\n    spin_unlock(&dev->lock);\n\n    wake_up_process(dev->worker_task);\n\n    *fpos += count;\n    ret = count;\n\nout:\n    kfree(einfo);\n    put_dev(dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+OM_uint32 spnego_init_reselect_context(
+    OM_uint32 *minor_status,
+    spnego_gss_ctx_id_t sc,
+    OM_uint32 acc_negState,
+    gss_OID supportedMech,
+    gss_buffer_t *responseToken,
+    gss_buffer_t *mechListMIC,
+    OM_uint32 *negState,
+    send_token_flag *tokflag)
+{
+    OM_uint32 major_status;
+    gss_OID_set mech_set = NULL;
+    int found = 0;
+
+    *minor_status = 0;
+
+    /* Delete the current security context */
+    if (sc != GSS_C_NO_CONTEXT) {
+        gss_delete_sec_context(&minor_status, &sc, NULL);
+    }
+
+    /* Check if the supported mechanism is in the mechanism set */
+    major_status = gss_indicate_mechs(&minor_status, &mech_set);
+    if (major_status != GSS_S_COMPLETE) {
+        return major_status;
+    }
+
+    found = gss_test_oid_set_member(minor_status, supportedMech, mech_set, NULL);
+    if (!found) {
+        gss_release_oid_set(minor_status, mech_set);
+        return GSS_S_BAD_MECH;
+    }
+
+    gss_release_oid_set(minor_status, mech_set);
+
+    /* Validate the negotiation state */
+    if (acc_negState != SPNEGO_NG_Accepted) {
+        return GSS_S_BAD_SIG;
+    }
+
+    /* Set the internal mechanism */
+    sc->internal_mech = supportedMech;
+
+    /* Update the negotiation state */
+    *negState = SPNEGO_NG_Selected;
+
+    /* Update the token send flag */
+    *tokflag = SEND_TOKEN_RESPONSE;
+
+    return GSS_S_COMPLETE;
+}

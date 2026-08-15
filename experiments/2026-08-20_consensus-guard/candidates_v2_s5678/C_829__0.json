@@ -1,0 +1,34 @@
+{
+  "case_id": "C_829__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n\nint get_rfcomm_devices(void __user *arg) {\n    int ret = 0;\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_list *user_dev_list = NULL;\n    int count = 0;\n\n    if (copy_from_user(&count, arg, sizeof(count)))\n        return -EFAULT;\n\n    if (count <= 0)\n        return -EINVAL;\n\n    user_dev_list = kmalloc(sizeof(*user_dev_list) + count * sizeof(user_dev_list->devs[0]), GFP_KERNEL);\n    if (!user_dev_list)\n        return -ENOMEM;\n\n    user_dev_list->count = 0;\n\n    mutex_lock(&rfcomm_dev_lock);\n    list_for_each_entry(dev, &rfcomm_dev_list_head, list) {\n        if (dev->state != BT_CONNECTED)\n            continue;\n\n        if (user_dev_list->count >= count) {\n            ret = -ENOSPC;\n            break;\n        }\n\n        user_dev_list->devs[user_dev_list->count] = *dev;\n        user_dev_list->count++;\n    }\n    mutex_unlock(&rfcomm_dev_lock);\n\n    if (ret < 0)\n        goto out;\n\n    if (copy_to_user(arg, user_dev_list, sizeof(*user_dev_list) + user_dev_list->count * sizeof(user_dev_list->devs[0]))) {\n        ret = -EFAULT;\n    }\n\nout:\n    kfree(user_dev_list);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/mutex.h>\n#include <net/bluetooth/bluetooth.h>\n#include <net/bluetooth/rfcomm.h>\n\nint get_rfcomm_dev_list(void __user *arg)\n{\n    int n = 0;\n    int err;\n    struct rfcomm_dev *d;\n    struct rfcomm_dev_info *info = NULL;\n    size_t size = 0;\n\n    if (get_user(n, (int __user *)arg))\n        return -EFAULT;\n\n    if (n < 0 || n > RFCOMM_MAX_DEV)\n        return -EINVAL;\n\n    if (n) {\n        size = n * sizeof(struct rfcomm_dev_info);\n        info = kmalloc(size, GFP_KERNEL);\n        if (!info)\n            return -ENOMEM;\n    }\n\n    mutex_lock(&rfcomm_dev_list_mutex);\n\n    d = NULL;\n    while ((d = rfcomm_dev_iter_next(d))) {\n        if (!try_module_get(d->owner))\n            continue;\n\n        if (n <= 0) {\n            mutex_unlock(&rfcomm_dev_list_mutex);\n            err = -ENOBUFS;\n            goto out;\n        }\n\n        info[n - 1].id = d->id;\n        info[n - 1].flags = d->flags;\n        info[n - 1].mtu = d->mtu;\n        module_put(d->owner);\n        n--;\n    }\n\n    if (n) {\n        err = -ENODEV;\n        mutex_unlock(&rfcomm_dev_list_mutex);\n        goto out;\n    }\n\n    mutex_unlock(&rfcomm_dev_list_mutex);\n\n    if (copy_to_user(arg, info, size)) {\n        err = -EFAULT;\n        goto out;\n    }\n\n    err = 0;\n\nout:\n    kfree(info);\n    return err;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/user_namespace.h>\n#include <linux/slab.h>\n#include <linux/uaccess.h>\n\nint rfcomm_get_devices(void __user *arg) {\n    int num_devices;\n    struct rfcomm_dev *dev;\n    struct rfcomm_dev_info *info;\n    struct rfcomm_dev_info *user_info;\n    int i = 0;\n\n    if (get_user(num_devices, (int __user *)arg))\n        return -EFAULT;\n\n    if (num_devices <= 0)\n        return -EINVAL;\n\n    info = kmalloc_array(num_devices, sizeof(struct rfcomm_dev_info), GFP_KERNEL);\n    if (!info)\n        return -ENOMEM;\n\n    mutex_lock(&rfcomm_dev_list_lock);\n\n    list_for_each_entry(dev, &rfcomm_dev_list, list) {\n        if (i >= num_devices)\n            break;\n        if (!dev->released) {\n            info[i].id = dev->id;\n            info[i].flags = dev->flags;\n            strscpy(info[i].name, dev->name, sizeof(info[i].name));\n            info[i].inuse = dev->inuse;\n            i++;\n        }\n    }\n\n    mutex_unlock(&rfcomm_dev_list_lock);\n\n    if (copy_to_user(arg, info, num_devices * sizeof(struct rfcomm_dev_info))) {\n        kfree(info);\n        return -EFAULT;\n    }\n\n    kfree(info);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n#include <linux/rfcomm/core.h>\n#include <linux/rfcomm/dev.h>\n\nint rfcomm_get_dev_list(void __user *arg)\n{\n    int result = -EFAULT;\n    int count;\n    struct rfcomm_dev **d;\n    struct rfcomm_dev_list list;\n\n    if (get_user(count, (int __user *)arg))\n        return -EFAULT;\n\n    if (count <= 0)\n        return -EINVAL;\n\n    d = kmalloc_array(count, sizeof(*d), GFP_KERNEL);\n    if (!d)\n        return -ENOMEM;\n\n    spin_lock_bh(&rfcomm_dev_list_lock);\n\n    list.num_devs = 0;\n    list.dev = d;\n\n    for (int i = 0; i < RFCOMM_DEV_NUM; i++) {\n        struct rfcomm_dev *dev = rfcomm_devs[i];\n\n        if (!dev || dev->state == RFCOMM_DEV_RELEASED)\n            continue;\n\n        if (list.num_devs < count)\n            list.dev[list.num_devs++] = dev;\n        else\n            break;\n    }\n\n    spin_unlock_bh(&rfcomm_dev_list_lock);\n\n    if (copy_to_user(arg, &list, sizeof(list))) {\n        kfree(d);\n        return -EFAULT;\n    }\n\n    kfree(d);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/slab.h>\n#include <linux/uaccess.h>\n#include <linux/rfcomm.h>\n\nint rfcomm_get_dev_list(void __user *arg)\n{\n    int __user *n = arg;\n    int ndev, len;\n    struct rfcomm_dev *d;\n    struct rfcomm_dev **devs;\n    int ret = 0;\n\n    if (get_user(ndev, n))\n        return -EFAULT;\n\n    if (ndev <= 0)\n        return -EINVAL;\n\n    len = ndev * sizeof(struct rfcomm_dev *);\n    devs = kmalloc(len, GFP_KERNEL);\n    if (!devs)\n        return -ENOMEM;\n\n    spin_lock_bh(&rfcomm_dev_lock);\n\n    ndev = 0;\n    list_for_each_entry(d, &rfcomm_dev_list, list) {\n        if (d->owner != NULL)\n            continue;  /* Skip released devices */\n        if (ndev < len / sizeof(struct rfcomm_dev *)) {\n            devs[ndev] = d;\n            ndev++;\n        }\n    }\n\n    spin_unlock_bh(&rfcomm_dev_lock);\n\n    if (copy_to_user(arg, devs, len)) {\n        ret = -EFAULT;\n    }\n\n    kfree(devs);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

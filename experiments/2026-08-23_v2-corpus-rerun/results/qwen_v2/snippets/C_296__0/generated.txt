@@ -1,0 +1,29 @@
+int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,
+                        struct key *keyring, struct key *authkey) {
+    int ret;
+
+    if (!key || !keyring) {
+        return -EINVAL;
+    }
+
+    key->flags |= 1 << 1; /* mark as negatively instantiated */
+    key->expiry = get_current_time() + timeout;
+    key_schedule_gc(key);
+
+    if (keyring) {
+        ret = key_link(key, keyring);
+        if (ret != 0) {
+            return ret;
+        }
+    }
+
+    if (authkey) {
+        key_revoke(authkey);
+    }
+
+    if (key->flags & 1 << 0) {
+        wake_up_all_waiting(key);
+    }
+
+    return 0;
+}

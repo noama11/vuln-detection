@@ -1,0 +1,62 @@
+{
+  "case_id": "C_275__0",
+  "sample_id": "D/C/275",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-6516",
+  "cve_summary": "Race condition in the ioctl_file_dedupe_range function in fs/ioctl.c in the Linux kernel through 4.7 allows local users to cause a denial of service (heap-based buffer overflow) or possibly gain privileges by changing a certain count value, aka a *double fetch* vulnerability.",
+  "changed_file": "fs/ioctl.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * Handles the deduplication of file ranges by performing an ioctl operation.  \n *  \n * Parameters:  \n * file (struct file *): Pointer to the file structure for which deduplication is requested.  \n * arg (void __user *): Pointer to user space structure containing deduplication parameters.  \n *  \n * Returns:  \n * long: Returns 0 on success, or a negative error code on failure.  \n *  \n * Logic:  \n * The function retrieves the destination count from the user-provided structure, allocates memory for a copy of the structure, and calls the deduplication function. It then copies the result back to the user space and handles any errors that occur during these operations.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "explicit bounds check on dest_count before using it in allocation",
+        "performed_by_count": 4,
+        "why_it_matters": "If a malicious or malformed `dest_count` is provided, it could cause excessive memory allocation or overflow in the size calculation, leading to resource exhaustion or denial of service."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation uses `memdup_user` to copy the user structure into kernel space, which includes a bounds check based on the `dest_count` field. However, it does not explicitly validate the `dest_count` to ensure it is within a reasonable or safe range before using it to compute the size of the allocation. A majority of the independent implementations explicitly retrieve `dest_count` and perform a `copy_from_user` of a fixed-size structure, ensuring that only a known size is copied. The target omits this explicit validation and bounds checking of the `dest_count` field, which could lead to a large or maliciously crafted `dest_count` causing excessive memory allocation or other resource issues.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "explicit validation of dest_count before allocation and copy",
+        "performed_by_count": 4,
+        "why_it_matters": "If an attacker provides an unreasonably large `dest_count`, it could lead to excessive memory allocation or buffer overflow, depending on how `memdup_user` is implemented. This could cause resource exhaustion or memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation uses `memdup_user` to copy the user structure into kernel space, which includes a bounds check based on the `dest_count` field. However, it does not explicitly validate the `dest_count` to ensure it is within a reasonable or safe range (e.g., to prevent excessive memory allocation). A majority of the independent implementations explicitly retrieve `dest_count` and perform a `copy_from_user` of a fixed-size structure, ensuring memory safety and error handling. The target omits this explicit validation and bounds checking of the `dest_count` field before using it in the allocation and copy operations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

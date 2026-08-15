@@ -1,0 +1,56 @@
+{
+  "case_id": "C_846__3",
+  "sample_id": "D/C/846",
+  "func_idx": 3,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a sound timer device into a user-provided buffer.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sound timer device.\nbuffer (char __user *): Pointer to the user buffer where data will be copied.\ncount (size_t): The maximum number of bytes to read from the device.\noffset (loff_t *): Pointer to the offset in the file from which to read.\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: \nThe function locks the device's mutex and spinlock to ensure thread safety while reading data. It checks if there is data available to read and waits if the queue is empty, handling non-blocking and interruptible conditions. Data is copied from the device's queue to the user buffer, and the function updates the read position accordingly. It handles errors during the read process and returns the number of bytes successfully read or an error code if applicable.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    struct sound_timer_dev *dev = file->private_data;\n    ssize_t bytes_read = 0;\n    int ret;\n\n    if (!dev)\n        return -EINVAL;\n\n    spin_lock(&dev->spinlock);\n    mutex_lock(&dev->mutex);\n\n    while (dev->queue_head == dev->queue_tail) {\n        if ((file->f_flags & O_NONBLOCK) || (signal_pending(current))) {\n            mutex_unlock(&dev->mutex);\n            spin_unlock(&dev->spinlock);\n            return -EAGAIN;\n        }\n\n        ret = wait_for_completion_interruptible(&dev->data_available);\n        if (ret) {\n            mutex_unlock(&dev->mutex);\n            spin_unlock(&dev->spinlock);\n            return ret;\n        }\n    }\n\n    while (bytes_read < count && dev->queue_head != dev->queue_tail) {\n        char data = dev->queue[dev->queue_head];\n        dev->queue_head = (dev->queue_head + 1) % SOUND_TIMER_QUEUE_SIZE;\n        if (copy_to_user(buffer + bytes_read, &data, 1)) {\n            mutex_unlock(&dev->mutex);\n            spin_unlock(&dev->spinlock);\n            return -EFAULT;\n        }\n        bytes_read++;\n    }\n\n    mutex_unlock(&dev->mutex);\n    spin_unlock(&dev->spinlock);\n\n    return bytes_read;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their locking strategy and data handling. The candidate implementation uses a spinlock and a mutex together, while the reference implementation uses a spinlock with interrupts disabled. Additionally, the candidate implementation reads one byte at a time, while the reference implementation reads data in chunks of `unit` size (depending on `tread`). These differences could lead to different behaviors in edge cases, such as when the queue is partially filled or when multiple threads are accessing the device. However, these differences are not security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their locking order and error handling. The candidate implementation locks the mutex first and then the spinlock, while the reference implementation locks the spinlock first and then the mutex. This inversion could lead to deadlocks if other parts of the codebase use the same locks in the opposite order. Additionally, the candidate implementation returns -EFAULT on copy_to_user failure, while the reference implementation returns the error code directly. These differences are security-relevant as they could lead to deadlocks or incorrect error propagation.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

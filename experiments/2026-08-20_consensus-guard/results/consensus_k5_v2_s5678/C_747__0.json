@@ -1,0 +1,67 @@
+{
+  "case_id": "C_747__0",
+  "sample_id": "D/C/747",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "memcached/memcached",
+  "cve_id": "CVE-2019-15026",
+  "cve_summary": "memcached 1.5.16, when UNIX sockets are used, has a stack-based buffer over-read in conn_to_str in memcached.c.",
+  "changed_file": "memcached.c",
+  "docstring": "/**\n * Summary: Converts a socket address to a human-readable string representation.\n * \n * Parameters:\n * c (const conn*): Pointer to a connection structure containing transport information.\n * af (const int): Address family (e.g., AF_INET, AF_INET6, AF_UNIX).\n * addr (char*): Buffer to store the resulting address string.\n * sock_addr (struct sockaddr*): Pointer to the socket address structure to convert.\n * \n * Returns: None\n * \n * Logic: The function uses the address family to determine how to format the socket address. \n * For AF_INET and AF_INET6, it uses `inet_ntop` to convert the IP address to a string and \n * retrieves the port number. For AF_UNIX, it copies the socket path into the address string. \n * If the address string is empty, it defaults to a placeholder indicating the address family. \n * Finally, it formats the output string to include the protocol name, address, and port if available.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 2,
+    "net_exposure": 4,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "bounds check on strncpy for UNIX socket path",
+        "performed_by_count": 4,
+        "why_it_matters": "If the UNIX socket path is longer than MAXPATHLEN, strncpy could overflow the buffer, leading to memory corruption."
+      },
+      {
+        "step": "null check for inet_ntop result",
+        "performed_by_count": 3,
+        "why_it_matters": "If inet_ntop fails, the target uses an uninitialized buffer, leading to undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a bounds check when copying the UNIX socket path into the buffer, which could lead to a buffer overflow if the path is longer than MAXPATHLEN. It also lacks a null check for the result of inet_ntop in the IPv4 case, which could lead to undefined behavior if the call fails. These are defensive steps performed by a majority of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "bounds check before strncpy for AF_UNIX",
+        "performed_by_count": 4,
+        "why_it_matters": "If the sun_path is not null-terminated, strncpy could read past the end of the buffer, leading to undefined behavior or memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a majority-consensus defensive step: a bounds check before using strncpy for AF_UNIX. Most implementations perform a bounds check or use safer alternatives to prevent buffer overflow. The target uses strncpy with a calculated pathlen but does not ensure the destination buffer size is respected in all cases, potentially leading to buffer overflow if the source string is not null-terminated.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": true,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

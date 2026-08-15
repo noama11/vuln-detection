@@ -1,0 +1,34 @@
+{
+  "case_id": "C_844__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void handle_timer_callback(struct snd_timer_instance *timeri, int event,\n                           struct timespec *tstamp, unsigned long resolution)\n{\n    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)\n        return;\n\n    if (!timeri->filter[event])\n        return;\n\n    if (!snd_timer_read_available(timeri))\n        return;\n\n    struct snd_timer_read *tr = &timeri->tread;\n    tr->event = event;\n    tr->tstamp = *tstamp;\n    tr->resolution = resolution;\n\n    spin_lock(&timeri->queue_lock);\n    list_add_tail(&tr->queue, &timeri->queue);\n    spin_unlock(&timeri->queue_lock);\n\n    wake_up(&timeri->wait_queue);\n    wake_up_interruptible(&timeri->sleep_queue);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void handle_timer_callback(struct snd_timer_instance *timeri, int event, struct timespec *tstamp, unsigned long resolution) {\n    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)\n        return;\n\n    if (timeri->filter & (1 << event)) {\n        struct snd_timer_read *tr;\n\n        if (timeri->qlock)\n            spin_lock_irq(timeri->qlock);\n\n        tr = kmem_cache_alloc(timeri->readq, GFP_ATOMIC);\n        if (!tr) {\n            if (timeri->qlock)\n                spin_unlock_irq(timeri->qlock);\n            return;\n        }\n\n        tr->event = event;\n        tr->tstamp = *tstamp;\n        tr->resolution = resolution;\n\n        list_add_tail(&tr->list, &timeri->queue);\n        if (timeri->qlock)\n            spin_unlock_irq(timeri->qlock);\n\n        wake_up(&timeri->wait_queue);\n        kill_fasync(&timeri->fasync, SIGIO, POLL_IN);\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void handle_timer_callback(struct snd_timer_instance *timeri, int event, struct timespec *tstamp, unsigned long resolution) {\n    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)\n        return;\n\n    if (tstamp)\n        memcpy(&timeri->timestamp, tstamp, sizeof(*tstamp));\n\n    if ((timeri->filter & (1 << event)) == 0)\n        return;\n\n    if (timeri->q)\n        return;\n\n    struct snd_timer_read *tm = kmalloc(sizeof(*tm), GFP_KERNEL);\n    if (!tm)\n        return;\n\n    tm->event = event;\n    tm->resolution = resolution;\n    tm->timestamp = timeri->timestamp;\n\n    spin_lock_irq(&timeri->qlock);\n    list_add_tail(&tm->list, &timeri->queue);\n    spin_unlock_irq(&timeri->qlock);\n\n    wake_up(&timeri->wait);\n    wake_up_interruptible(&timeri->sleep_wait);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void handle_timer_event(struct snd_timer_instance *timeri, int event, struct timespec *tstamp, unsigned long resolution) {\n    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)\n        return;\n\n    if (!timeri->tread || (timeri->filter & (1 << event)) == 0)\n        return;\n\n    struct snd_timer_read *tmread;\n    tmread = kmalloc(sizeof(*tmread), GFP_KERNEL);\n    if (!tmread)\n        return;\n\n    tmread->event = event;\n    tmread->timestamp = *tstamp;\n    tmread->resolution = resolution;\n\n    spin_lock_irq(&timeri->qlock);\n    list_add_tail(&tmread->list, &timeri->qhead);\n    spin_unlock_irq(&timeri->qlock);\n\n    wake_up(&timeri->qwait);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void handle_timer_event(struct snd_timer_instance *timeri, int event,\n                        struct timespec *tstamp, unsigned long resolution)\n{\n    if (event < 0 || event >= SNDRV_TIMER_EVENT_MAX)\n        return;\n\n    if (timeri->filter && !(timeri->filter & (1 << event)))\n        return;\n\n    if (!snd_pcm_read_available(timeri->queue->subscribers))\n        return;\n\n    struct snd_timer_read *tr = &timeri->read;\n    tr->event = event;\n    tr->tstamp = *tstamp;\n\n    snd_pcm_lock(timeri->queue);\n    snd_pcm_enqueue(timeri->queue, tr);\n    snd_pcm_unlock(timeri->queue);\n\n    wake_up(&timeri->queue->wait);\n    wake_up_interruptible(&timeri->queue->sleep);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

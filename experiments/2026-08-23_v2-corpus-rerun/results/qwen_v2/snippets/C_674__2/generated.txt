@@ -1,0 +1,59 @@
+int git_index_parse(git_index *index, const char *buffer, size_t buffer_size) {
+    if (!index || !buffer || buffer_size < sizeof(git_index_header)) {
+        return -1;
+    }
+
+    // Calculate SHA1 checksum of the buffer
+    unsigned char checksum[20];
+    SHA1((const unsigned char *)buffer, buffer_size, checksum);
+
+    // Read index header
+    git_index_header *header = (git_index_header *)buffer;
+    if (memcmp(header->signature, "DIRC", 4) != 0) {
+        return -2;
+    }
+
+    index->version = header->version;
+    index->entry_count = header->entry_count;
+
+    // Process each index entry
+    const char *entry_start = buffer + sizeof(git_index_header);
+    size_t entry_size = 0;
+    for (size_t i = 0; i < index->entry_count; ++i) {
+        git_index_entry *entry = (git_index_entry *)entry_start;
+        entry_size = sizeof(git_index_entry) + entry->path_length;
+
+        if (entry_start + entry_size > buffer + buffer_size) {
+            return -3;
+        }
+
+        // Insert entry into index structure
+        // (Assuming a helper function git_index_insert_entry exists)
+        if (git_index_insert_entry(index, entry) < 0) {
+            return -4;
+        }
+
+        entry_start += entry_size;
+    }
+
+    // Read extensions
+    // (Assuming a helper function git_index_read_extensions exists)
+    if (git_index_read_extensions(index, entry_start, buffer + buffer_size - entry_start) < 0) {
+        return -5;
+    }
+
+    // Verify checksum
+    const unsigned char *expected_checksum = buffer + buffer_size - 20;
+    if (memcmp(checksum, expected_checksum, 20) != 0) {
+        return -6;
+    }
+
+    // Update index checksum
+    memcpy(index->checksum, checksum, 20);
+
+    // Sort entries if necessary
+    // (Assuming a helper function git_index_sort_entries exists)
+    git_index_sort_entries(index);
+
+    return 0;
+}

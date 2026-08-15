@@ -1,0 +1,31 @@
+int sendto(int fd, void __user *buff, size_t len, unsigned int flags,
+           struct sockaddr __user *addr, int addr_len)
+{
+    struct socket *sock;
+    struct msghdr msg;
+    int ret = -EFAULT;
+
+    if (!buff || len == 0)
+        return -EINVAL;
+
+    sock = sockfd_lookup(fd, &ret);
+    if (!sock)
+        return ret;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_name = addr;
+    msg.msg_namelen = addr_len;
+    msg.msg_iov = &((struct iovec){.iov_base = buff, .iov_len = len});
+    msg.msg_iovlen = 1;
+    msg.msg_flags = flags;
+
+    if (sock->file->f_flags & O_NONBLOCK)
+        msg.msg_flags |= MSG_DONTWAIT;
+
+    ret = sock_sendmsg(sock, &msg, len);
+    if (ret >= 0)
+        return ret;
+
+    sockfd_put(sock);
+    return ret;
+}

@@ -1,0 +1,52 @@
+void process_postgresql_packet(struct packet* packet) {
+    if (packet->direction == CLIENT_TO_SERVER) {
+        guint32 length = tvb_get_ntohl(packet->tvb, 0);
+        if (length < 5) {
+            return; // Invalid packet length
+        }
+
+        guint8* data = tvb_get_ptr(packet->tvb, 4, length - 4);
+        gchar* user = NULL;
+        gchar* database = NULL;
+
+        // Parse user and database from the packet data
+        guint32 offset = 0;
+        while (offset < length - 4) {
+            guint8* str = &data[offset];
+            guint32 str_len = strlen((const char*)str) + 1;
+            if (user == NULL) {
+                user = g_strdup((const char*)str);
+            } else if (database == NULL) {
+                database = g_strdup((const char*)str);
+            }
+            offset += str_len;
+        }
+
+        // Check if session exists, create if not
+        Session* session = find_session(packet->conversation);
+        if (!session) {
+            session = create_session(packet->conversation);
+            session->status = CONNECTION_STARTED;
+        }
+
+        // Handle authentication types
+        if (strncmp((const char*)data, "md5", 3) == 0) {
+            session->auth_type = AUTH_MD5;
+        } else if (strncmp((const char*)data, "user", 4) == 0) {
+            session->auth_type = AUTH_CLEARTEXT;
+        }
+
+        g_free(user);
+        g_free(database);
+    } else if (packet->direction == SERVER_TO_CLIENT) {
+        guint8* data = tvb_get_ptr(packet->tvb, 0, packet->tvb->length);
+        Session* session = find_session(packet->conversation);
+        if (session) {
+            if (strncmp((const char*)data, "AuthenticationOK", 16) == 0) {
+                session->status = CONNECTION_AUTHORIZED;
+            } else if (strncmp((const char*)data, "AuthenticationMD5", 17) == 0) {
+                session->auth_type = AUTH_MD5;
+            }
+        }
+    }
+}

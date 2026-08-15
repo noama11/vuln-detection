@@ -1,0 +1,40 @@
+int set_color_map(struct fb_cmap *cmap, struct fb_info *info) {
+    if (info->var.bits_per_pixel <= 8) {
+        if (cmap->start + cmap->len > 256)
+            return -EINVAL;
+
+        u16 *red = kmalloc(cmap->len * sizeof(u16), GFP_KERNEL);
+        u16 *green = kmalloc(cmap->len * sizeof(u16), GFP_KERNEL);
+        u16 *blue = kmalloc(cmap->len * sizeof(u16), GFP_KERNEL);
+        u16 *transp = kmalloc(cmap->len * sizeof(u16), GFP_KERNEL);
+
+        if (!red || !green || !blue || !transp) {
+            kfree(red);
+            kfree(green);
+            kfree(blue);
+            kfree(transp);
+            return -ENOMEM;
+        }
+
+        for (int i = 0; i < cmap->len; i++) {
+            red[i] = cmap->red[i] << (16 - info->var.red.length);
+            green[i] = cmap->green[i] << (16 - info->var.green.length);
+            blue[i] = cmap->blue[i] << (16 - info->var.blue.length);
+            transp[i] = cmap->transp[i];
+        }
+
+        int ret = uvesafb_setpalette(cmap->start, cmap->len, red, green, blue, transp, info);
+        kfree(red);
+        kfree(green);
+        kfree(blue);
+        kfree(transp);
+        return ret;
+    } else {
+        for (int i = 0; i < cmap->len; i++) {
+            int ret = uvesafb_setcolreg(i + cmap->start, cmap->red[i], cmap->green[i], cmap->blue[i], cmap->transp[i], info);
+            if (ret)
+                return ret;
+        }
+        return 0;
+    }
+}

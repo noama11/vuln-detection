@@ -1,0 +1,34 @@
+{
+  "case_id": "C_374__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/sched.h>\n#include <linux/signal.h>\n#include <linux/err.h>\n\nint handle_waitid(int which, pid_t upid, struct siginfo __user *infop, int options, struct rusage __user *ru) {\n    struct task_struct *task;\n    int retval;\n\n    task = find_get_task_by_vpid(upid);\n    if (!task)\n        return -ESRCH;\n\n    if (!infop) {\n        put_task_struct(task);\n        return -EINVAL;\n    }\n\n    retval = 0;\n\n    if (task->exit_state == 0) {\n        put_task_struct(task);\n        return -ECHILD;\n    }\n\n    if (copy_siginfo_to_user(infop, &task->pending.siginfo)) {\n        put_task_struct(task);\n        return -EFAULT;\n    }\n\n    if (ru && (options & WNOWAIT)) {\n        if (do_getrusage(task, ru)) {\n            put_task_struct(task);\n            return -EFAULT;\n        }\n    }\n\n    put_task_struct(task);\n    return retval;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "#include <sys/types.h>\n#include <sys/wait.h>\n#include <sys/time.h>\n#include <sys/resource.h>\n#include <unistd.h>\n#include <errno.h>\n#include <signal.h>\n\nint sys_waitid(int which, pid_t upid, struct siginfo __user *infop, int options, struct rusage __user *ru) {\n    struct rusage rusage_data;\n    siginfo_t si;\n    int ret;\n\n    if ((options & ~(WALL | WNOHANG | WSTOPPED | WCONTINUED | WNOWAIT | WEXITED | WUNTRACED)) != 0) {\n        return -EINVAL;\n    }\n\n    ret = waitid(which, upid, &si, options, ru ? &rusage_data : NULL);\n\n    if (ret == -1) {\n        return -errno;\n    }\n\n    if (infop) {\n        if (copy_to_user(infop, &si, sizeof(si)) != 0) {\n            return -EFAULT;\n        }\n    }\n\n    if (ru) {\n        if (copy_to_user(ru, &rusage_data, sizeof(rusage_data)) != 0) {\n            return -EFAULT;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <sys/types.h>\n#include <sys/time.h>\n#include <sys/resource.h>\n#include <unistd.h>\n#include <sys/wait.h>\n#include <errno.h>\n#include <signal.h>\n#include <linux/unistd.h>\n#include <linux/wait.h>\n#include <linux/err.h>\n\n#include <linux/sched.h>\n#include <linux/slab.h>\n#include <linux/mm.h>\n#include <linux/ptrace.h>\n#include <linux/user_namespace.h>\n#include <linux/sched/task.h>\n#include <linux/syscalls.h>\n#include <linux/tracehook.h>\n#include <linux/uaccess.h>\n\nSYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *, infop,\n                int, options, struct rusage __user *, ru)\n{\n    struct waitid_info info;\n    int retval;\n\n    if (options & ~(WSTOPPED | WCONTINUED | WNOHANG | WEXITED | WNOWAIT))\n        return -EINVAL;\n\n    if (infop && (verify_area_user(VERIFY_WRITE, infop, sizeof(*infop)) < 0))\n        return -EFAULT;\n\n    if (ru && (verify_area_user(VERIFY_WRITE, ru, sizeof(*ru)) < 0))\n        return -EFAULT;\n\n    info.flags = options;\n    info.pid = upid;\n    info.uid = 0;\n    info.utime = 0;\n    info.stime = 0;\n    info.maxrss = 0;\n\n    switch (which) {\n    case P_PID:\n        retval = do_wait_id(WAITID_PID, upid, &info, options);\n        break;\n    case P_PGID:\n        retval = do_wait_id(WAITID_PGRP, upid, &info, options);\n        break;\n    case P_ALL:\n        retval = do_wait_id(WAITID_ANY, 0, &info, options);\n        break;\n    default:\n        return -EINVAL;\n    }\n\n    if (retval < 0)\n        return retval;\n\n    if (infop) {\n        if (copy_siginfo_to_user(infop, &info.info.si) < 0)\n            return -EFAULT;\n    }\n\n    if (ru) {\n        struct rusage *r = (struct rusage *)__get_free_page(GFP_KERNEL);\n        if (!r)\n            return -ENOMEM;\n\n        r->ru_utime.tv_sec = info.utime / 1000000;\n        r->ru_utime.tv_usec = info.utime % 1000000;\n        r->ru_stime.tv_sec = info.stime / 1000000;\n        r->ru_stime.tv_usec = info.stime % 1000000;\n        r->ru_maxrss = info.maxrss;\n\n        if (copy_to_user(ru, r, sizeof(*ru)) < 0) {\n            free_page((unsigned long)r);\n            return -EFAULT;\n        }\n\n        free_page((unsigned long)r);\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <sys/types.h>\n#include <sys/wait.h>\n#include <sys/time.h>\n#include <sys/resource.h>\n#include <unistd.h>\n#include <errno.h>\n#include <signal.h>\n\nint handle_waitid(int which, pid_t upid, struct siginfo __user *infop, int options, struct rusage __user *ru) {\n    struct rusage kru;\n    struct siginfo ksiginfo;\n    int ret;\n\n    if (upid == 0) {\n        errno = EINVAL;\n        return -errno;\n    }\n\n    ret = waitid(which, upid, &ksiginfo, options, (ru == NULL) ? NULL : &kru);\n\n    if (ret < 0) {\n        return -errno;\n    }\n\n    if (infop != NULL) {\n        if (copy_to_user(infop, &ksiginfo, sizeof(struct siginfo))) {\n            return -EFAULT;\n        }\n    }\n\n    if (ru != NULL) {\n        if (copy_to_user(ru, &kru, sizeof(struct rusage))) {\n            return -EFAULT;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <sys/types.h>\n#include <sys/wait.h>\n#include <sys/time.h>\n#include <sys/resource.h>\n#include <unistd.h>\n#include <sys/user.h>\n#include <signal.h>\n\nint handle_waitid(int which, pid_t upid, struct siginfo __user *infop, int options, struct rusage __user *ru) {\n    struct rusage rusage_data;\n    struct siginfo siginfo_data;\n    int ret;\n\n    if (which < 0 || which > __WCLONE) {\n        return -EINVAL;\n    }\n\n    if (infop) {\n        // Clear the siginfo structure before populating it\n        memset(&siginfo_data, 0, sizeof(struct siginfo));\n    }\n\n    // Perform the waitid call\n    ret = waitid(which, upid, &siginfo_data, options, ru ? &rusage_data : NULL);\n\n    if (ret < 0) {\n        return ret;\n    }\n\n    // Copy the siginfo data to user space if required\n    if (infop && copy_to_user(infop, &siginfo_data, sizeof(struct siginfo))) {\n        return -EFAULT;\n    }\n\n    // Copy the resource usage data to user space if required\n    if (ru && copy_to_user(ru, &rusage_data, sizeof(struct rusage))) {\n        return -EFAULT;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

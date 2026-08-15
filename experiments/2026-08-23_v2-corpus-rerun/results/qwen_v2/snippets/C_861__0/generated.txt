@@ -1,0 +1,38 @@
+int find_dnxhd_frame_end(DNXHDParserContext *dctx, const uint8_t *buf, int buf_size) {
+    if (!dctx->frame_start_found) {
+        for (int i = 0; i < buf_size - 3; i++) {
+            if (buf[i] == 0x00 && buf[i+1] == 0x00 && buf[i+2] == 0x01) {
+                dctx->frame_start_found = 1;
+                dctx->frame_start = i;
+                break;
+            }
+        }
+    }
+
+    if (dctx->frame_start_found) {
+        int frame_size = 0;
+        int width = 0;
+        int height = 0;
+
+        if (dctx->frame_start + 4 <= buf_size) {
+            uint32_t header = AV_RB32(buf + dctx->frame_start);
+            width = (header >> 16) & 0x3FF;
+            height = header & 0x3FF;
+            frame_size = width * height * 3 / 2;
+        }
+
+        if (frame_size > 0) {
+            int remaining = frame_size - dctx->frame_offset;
+            if (remaining <= buf_size) {
+                dctx->frame_start_found = 0;
+                dctx->frame_offset = 0;
+                return remaining;
+            } else {
+                dctx->frame_offset += buf_size;
+                return END_NOT_FOUND;
+            }
+        }
+    }
+
+    return END_NOT_FOUND;
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_418__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct bio *bio_map_user_iovec(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask) {\n    struct bio *bio;\n    struct bio_vec *bvec;\n    unsigned int nr_pages;\n    int i, nr_bvecs;\n    int ret;\n\n    nr_pages = iov_iter_npages(iter, BIO_MAX_PAGES);\n    if (!nr_pages)\n        return ERR_PTR(-EINVAL);\n\n    bio = bio_alloc(gfp_mask, nr_pages);\n    if (!bio)\n        return ERR_PTR(-ENOMEM);\n\n    bio->bi_iter = iter->iov;\n    bio->bi_end_io = NULL;\n\n    ret = iov_iter_get_pages(iter, bio->bi_io_vec, nr_pages, &nr_bvecs);\n    if (ret < 0) {\n        bio_free(bio);\n        return ERR_PTR(ret);\n    }\n\n    bio->bi_vcnt = nr_bvecs;\n    bio->bi_flags |= (1 << BIO_USER_MAPPED);\n\n    return bio;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct bio *bio_map_user_iovec(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    struct bio *bio = NULL;\n    struct page **pages = NULL;\n    unsigned long nr_pages;\n    ssize_t ret;\n\n    ret = iov_iter_npages(iter, INT_MAX);\n    if (ret < 0)\n        return ERR_PTR(ret);\n\n    nr_pages = ret;\n    pages = kcalloc(nr_pages, sizeof(struct page *), gfp_mask);\n    if (!pages)\n        return ERR_PTR(-ENOMEM);\n\n    bio = bio_alloc(gfp_mask, nr_pages);\n    if (!bio) {\n        kfree(pages);\n        return ERR_PTR(-ENOMEM);\n    }\n\n    ret = __bio_map_user_iovec(bio, iter, pages, gfp_mask);\n    if (ret) {\n        bio_put(bio);\n        kfree(pages);\n        return ERR_PTR(ret);\n    }\n\n    bio->bi_flags |= BIO_USER_MAPPED;\n\n    return bio;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "struct bio *bio_map_user_iovec(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    struct bio *bio;\n    struct page **pages;\n    size_t nr_pages, i;\n    ssize_t ret;\n\n    ret = iov_iter_npages(iter, BIO_MAX_PAGES);\n    if (ret < 0)\n        return ERR_PTR(ret);\n    nr_pages = ret;\n\n    bio = bio_alloc(gfp_mask, nr_pages);\n    if (!bio)\n        return ERR_PTR(-ENOMEM);\n\n    pages = kmalloc_array(nr_pages, sizeof(struct page *), gfp_mask);\n    if (!pages) {\n        bio_put(bio);\n        return ERR_PTR(-ENOMEM);\n    }\n\n    ret = iov_iter_get_pages(iter, pages, iov_iter_count(iter), nr_pages, NULL);\n    if (ret < 0) {\n        kfree(pages);\n        bio_put(bio);\n        return ERR_PTR(ret);\n    }\n\n    for (i = 0; i < nr_pages; i++) {\n        bio_add_page(bio, pages[i], PAGE_SIZE, 0);\n    }\n\n    kfree(pages);\n\n    bio->bi_private = NULL;\n    bio->bi_flags |= (1 << BIO_USER_MAPPED);\n\n    return bio;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "struct bio *bio_map_user_iovec(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    struct bio *bio;\n    unsigned long nr_pages;\n    int i, ret;\n\n    nr_pages = iov_iter_npages(iter, BIO_MAX_PAGES);\n    if (!nr_pages)\n        return ERR_PTR(-EINVAL);\n\n    bio = bio_alloc(gfp_mask, nr_pages);\n    if (!bio)\n        return ERR_PTR(-ENOMEM);\n\n    for (i = 0; i < nr_pages; i++) {\n        struct page *page;\n        unsigned long offset;\n        size_t size;\n\n        iov_iter_get_pages2(iter, &page, &offset, &size, 1);\n        if (!page) {\n            ret = -EFAULT;\n            goto unmap_bio;\n        }\n\n        ret = bio_add_page(bio, page, size, offset);\n        if (!ret) {\n            ret = -EFAULT;\n            goto unmap_bio;\n        }\n    }\n\n    if (bio_sectors(bio) == 0) {\n        ret = -EFAULT;\n        goto unmap_bio;\n    }\n\n    bio->bi_flags |= BIO_USER_MAPPED;\n    return bio;\n\nunmap_bio:\n    bio_unmap_user(bio);\n    bio_put(bio);\n    return ERR_PTR(ret);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "struct bio *bio_map_user_iov(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask)\n{\n    struct bio *bio;\n    struct iov_iter i;\n    size_t nr_pages;\n    int ret;\n\n    iov_iter_init(&i, *iter);\n\n    nr_pages = iov_iter_npages(&i, 0);\n    if (!nr_pages)\n        return ERR_PTR(-EINVAL);\n\n    bio = bio_alloc(gfp_mask, nr_pages);\n    if (!bio)\n        return ERR_PTR(-ENOMEM);\n\n    ret = bio_iov_iter_get_pages(bio, &i);\n    if (ret < 0) {\n        bio_put(bio);\n        return ERR_PTR(ret);\n    }\n\n    if (i iov_iter_count() != 0) {\n        bio_put(bio);\n        return ERR_PTR(-EFAULT);\n    }\n\n    bio->bi_flags |= BIO_USER_MAPPED;\n    return bio;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

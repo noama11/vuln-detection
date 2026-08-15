@@ -1,0 +1,34 @@
+{
+  "case_id": "C_11__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t get_acl_uncached(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages;\n    int num_pages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n    ssize_t ret;\n    int i;\n\n    pages = kmalloc_array(num_pages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (i = 0; i < num_pages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i > 0) {\n                i--;\n                __free_page(pages[i]);\n            }\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    ret = nfs_call_get_acl(inode, pages, num_pages);\n    if (ret < 0) {\n        for (i = 0; i < num_pages; i++)\n            __free_page(pages[i]);\n        kfree(pages);\n        return ret;\n    }\n\n    for (i = 0; i < num_pages; i++) {\n        char *page_data = kmap(pages[i]);\n        size_t copy_size = min(buflen, (size_t)PAGE_SIZE);\n        if (copy_size > 0)\n            memcpy(buf, page_data, copy_size);\n        buf += copy_size;\n        buflen -= copy_size;\n        kunmap(pages[i]);\n        __free_page(pages[i]);\n    }\n\n    kfree(pages);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t get_acl_no_cache(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages;\n    int num_pages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n    ssize_t ret;\n    size_t i;\n\n    pages = kmalloc_array(num_pages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (i = 0; i < num_pages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i--) {\n                __free_page(pages[i]);\n            }\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    ret = nfs_call_get_acl(inode, pages, num_pages);\n    if (ret < 0) {\n        for (i = 0; i < num_pages; i++)\n            __free_page(pages[i]);\n        kfree(pages);\n        return ret;\n    }\n\n    for (i = 0; i < num_pages && buflen > 0; i++) {\n        size_t len = min(PAGE_SIZE, buflen);\n        memcpy(buf, page_address(pages[i]), len);\n        buf = (void *)((char *)buf + len);\n        buflen -= len;\n    }\n\n    for (i = 0; i < num_pages; i++)\n        __free_page(pages[i]);\n    kfree(pages);\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t get_acl_uncached(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages;\n    size_t num_pages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n    ssize_t ret;\n    int i;\n\n    pages = kmalloc_array(num_pages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (i = 0; i < num_pages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i--)\n                __free_page(pages[i]);\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    // Prepare and send the synchronous NFS call\n    ret = nfs_call_getacl(inode, pages, num_pages);\n    if (ret < 0) {\n        // Free pages if the call fails\n        for (i = 0; i < num_pages; i++)\n            __free_page(pages[i]);\n        kfree(pages);\n        return ret;\n    }\n\n    // Copy ACL data into the provided buffer\n    for (i = 0; i < num_pages && buflen > 0; i++) {\n        size_t len = min(PAGE_SIZE, buflen);\n        char *page_addr = kmap(pages[i]);\n\n        memcpy(buf, page_addr, len);\n        buf = (void *)((char *)buf + len);\n        buflen -= len;\n        kunmap(pages[i]);\n    }\n\n    // Free allocated pages\n    for (i = 0; i < num_pages; i++)\n        __free_page(pages[i]);\n    kfree(pages);\n\n    return (ssize_t)(len - buflen);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t get_acl_uncached(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages;\n    ssize_t ret = 0;\n    size_t num_pages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n\n    pages = kmalloc_array(num_pages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (size_t i = 0; i < num_pages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i--)\n                __free_page(pages[i]);\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    ret = nfs_call_getacl(inode, pages, buflen);\n    if (ret < 0) {\n        while (num_pages--)\n            __free_page(pages[num_pages]);\n        kfree(pages);\n        return ret;\n    }\n\n    for (size_t i = 0; i < num_pages; i++) {\n        void *page_data = kmap(pages[i]);\n        size_t copy_len = min(PAGE_SIZE, (size_t)(ret - i * PAGE_SIZE));\n        memcpy(buf + i * PAGE_SIZE, page_data, copy_len);\n        kunmap(pages[i]);\n        __free_page(pages[i]);\n    }\n\n    kfree(pages);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t get_acl_uncached(struct inode *inode, void *buf, size_t buflen) {\n    struct page **pages = NULL;\n    size_t npages = (buflen + PAGE_SIZE - 1) / PAGE_SIZE;\n    ssize_t ret = 0;\n\n    pages = kmalloc_array(npages, sizeof(struct page *), GFP_KERNEL);\n    if (!pages)\n        return -ENOMEM;\n\n    for (size_t i = 0; i < npages; i++) {\n        pages[i] = alloc_page(GFP_KERNEL);\n        if (!pages[i]) {\n            while (i--)\n                __free_page(pages[i]);\n            kfree(pages);\n            return -ENOMEM;\n        }\n    }\n\n    struct nfs4_getacl args = {\n        .ino = inode->i_ino,\n        .pages = pages,\n        .nr_pages = npages,\n    };\n\n    ret = nfs4_call_sync(inode->i_sb, &args, NULL, 0, 0);\n    if (ret < 0)\n        goto out;\n\n    for (size_t i = 0; i < npages; i++) {\n        void *page_data = kmap(pages[i]);\n        size_t copy_len = min(PAGE_SIZE, (size_t)ret);\n\n        if (buf) {\n            memcpy(buf, page_data, copy_len);\n            buf += copy_len;\n        }\n\n        kunmap(pages[i]);\n        ret -= copy_len;\n        if (ret <= 0)\n            break;\n    }\n\n    ret = buflen - (size_t)ret;\nout:\n    for (size_t i = 0; i < npages; i++)\n        __free_page(pages[i]);\n    kfree(pages);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

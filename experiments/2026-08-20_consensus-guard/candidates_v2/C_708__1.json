@@ -1,0 +1,34 @@
+{
+  "case_id": "C_708__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm) {\n    bool success = false;\n\n    down_read(&mm->mmap_sem);\n    if (!atomic_read(&mm->mm_users)) {\n        up_read(&mm->mmap_sem);\n        return false;\n    }\n\n    if (atomic_read(&mm->oom_skip)) {\n        up_read(&mm->mmap_sem);\n        return false;\n    }\n\n    mm->oom_vma = NULL;\n    mm->oom_stable = false;\n\n    struct vm_area_struct *vma, *tmp;\n    for (vma = mm->mmap; vma; vma = tmp) {\n        tmp = vma->vm_next;\n        if ((vma->vm_flags & (VM_ANON | VM_SHARED)) == VM_ANON) {\n            do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);\n        }\n    }\n\n    up_read(&mm->mmap_sem);\n    success = true;\n    return success;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm) {\n    bool success = false;\n\n    task_lock(tsk);\n    if (down_read_trylock(&mm->mmap_lock)) {\n        if (!atomic_read(&mm->mm_notifier_count) && !test_bit(MMF_OOM_SKIP, &mm->flags)) {\n            set_bit(MMF_UNSTABLE, &mm->flags);\n            struct vm_area_struct *vma, *vma_next;\n            for (vma = mm->mmap; vma; vma = vma_next) {\n                vma_next = vma->vm_next;\n                if ((vma->vm_flags & (VM_ANON | VM_SHARED)) == VM_ANON) {\n                    do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);\n                }\n            }\n            success = true;\n        }\n        up_read(&mm->mmap_lock);\n    }\n    task_unlock(tsk);\n\n    return success;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm) {\n    down_read(&mm->mmap_lock);\n    if (atomic_read(&mm->mm_count) < 1) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    if (test_bit(MMF_OOM_SKIP, &mm->flags)) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    set_bit(MMF_UNSTABLE, &mm->flags);\n\n    struct vm_area_struct *vma, *vma_next;\n    for (vma = mm->mmap; vma; vma = vma_next) {\n        vma_next = vma->vm_next;\n        if (vma->vm_flags & (VM_ANON | VM_SHARED)) {\n            do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);\n        }\n    }\n\n    clear_bit(MMF_OOM_SKIP, &mm->flags);\n    up_read(&mm->mmap_lock);\n\n    return true;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm) {\n    int ret = false;\n\n    task_lock(tsk);\n    if (down_read_trylock(&mm->mmap_lock)) {\n        if (!atomic_read(&mm->mm_users) || !mm->oom_skip) {\n            mm->oom_skip = 1;\n\n            struct vm_area_struct *vma, *tmp;\n            for (vma = mm->mmap; vma; vma = tmp) {\n                tmp = vma->vm_next;\n\n                if (vma->vm_flags & (VM_ANON | VM_SHARED)) {\n                    do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);\n                }\n            }\n\n            log_oom_reaping_results(tsk, mm);\n            ret = true;\n        }\n        up_read(&mm->mmap_lock);\n    }\n    task_unlock(tsk);\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "bool reap_task_mm(struct task_struct *tsk, struct mm_struct *mm)\n{\n    down_read(&mm->mmap_lock);\n\n    if (test_and_set_bit(MMF_OOM_SKIP, &mm->flags)) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    if (!atomic_read(&mm->mm_users)) {\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    lock_task_sighand(tsk);\n    if (unlikely(!tsk->sighand)) {\n        unlock_task_sighand(tsk);\n        up_read(&mm->mmap_lock);\n        return false;\n    }\n\n    mm->oom_reap_in_progress = true;\n\n    do {\n        struct vm_area_struct *vma, *tmp;\n        for (vma = mm->mmap; vma; vma = tmp) {\n            tmp = vma->vm_next;\n\n            if ((vma->vm_flags & (VM_SHARED | VM_ANON)) == VM_ANON) {\n                unmap_anon_vma(vma);\n            }\n        }\n    } while (unlikely(mm->oom_reap_in_progress));\n\n    mm->oom_reap_in_progress = false;\n    unlock_task_sighand(tsk);\n\n    up_read(&mm->mmap_lock);\n\n    return true;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

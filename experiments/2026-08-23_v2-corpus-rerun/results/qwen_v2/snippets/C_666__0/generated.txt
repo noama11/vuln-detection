@@ -1,0 +1,72 @@
+#include <linux/platform_device.h>
+#include <linux/mailbox/client.h>
+#include <linux/clk-provider.h>
+#include <linux/io.h>
+#include <linux/slab.h>
+
+int hi3660_stub_clock_probe(struct platform_device *pdev)
+{
+    struct mbox_client *client;
+    struct mbox_channel *chan;
+    void __iomem *regs;
+    struct resource *res;
+    int ret;
+    struct clk_hw *hw;
+    struct clk_hw **hws;
+    int num_clocks = 4; // Example number of clocks; adjust as needed
+
+    client = devm_kzalloc(&pdev->dev, sizeof(*client), GFP_KERNEL);
+    if (!client)
+        return -ENOMEM;
+
+    client->dev = &pdev->dev;
+    client->tx_block = true;
+    client->tx_tmo = 1000;
+    client->rx_callback = NULL;
+
+    chan = mbox_request_channel(client, 0);
+    if (IS_ERR(chan)) {
+        dev_err(&pdev->dev, "Failed to request mailbox channel\n");
+        return PTR_ERR(chan);
+    }
+
+    res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+    regs = devm_ioremap_resource(&pdev->dev, res);
+    if (IS_ERR(regs)) {
+        ret = PTR_ERR(regs);
+        goto err_mbox_release;
+    }
+
+    hws = devm_kcalloc(&pdev->dev, num_clocks, sizeof(*hws), GFP_KERNEL);
+    if (!hws) {
+        ret = -ENOMEM;
+        goto err_mbox_release;
+    }
+
+    for (int i = 0; i < num_clocks; i++) {
+        hws[i] = devm_clk_hw_register_fixed_rate(&pdev->dev, NULL, 0, NULL, 0);
+        if (IS_ERR(hws[i])) {
+            ret = PTR_ERR(hws[i]);
+            goto err_unregister_clocks;
+        }
+    }
+
+    ret = of_clk_add_provider(pdev->dev.of_node, of_clk_hw_onecell_get, hws);
+    if (ret) {
+        dev_err(&pdev->dev, "Failed to add clock provider\n");
+        goto err_unregister_clocks;
+    }
+
+    platform_set_drvdata(pdev, hws);
+
+    return 0;
+
+err_unregister_clocks:
+    for (int i = 0; i < num_clocks; i++) {
+        if (!IS_ERR(hws[i]))
+            clk_hw_unregister(hws[i]);
+    }
+err_mbox_release:
+    mbox_release_channel(chan);
+    return ret;
+}

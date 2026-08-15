@@ -1,0 +1,61 @@
+krb5_error_code check_kdc_public_key_identifier(krb5_context context,
+                                              pkinit_plg_crypto_context plg_cryptoctx,
+                                              pkinit_req_crypto_context req_cryptoctx,
+                                              pkinit_identity_crypto_context id_cryptoctx,
+                                              unsigned char *pdid_buf,
+                                              unsigned int pkid_len,
+                                              int *valid_kdcPkId) {
+    krb5_error_code retval = 0;
+    krb5_data pkid_data;
+    pkinit_pkeyid pkeyid = NULL;
+    krb5_principal kdc_principal = NULL;
+    krb5_X509_CERTIFICATE *cert = NULL;
+    krb5_CRYPTO_X509_STORE_CTX *csc = NULL;
+    krb5_CRYPTO_X509_STORE *store = NULL;
+    krb5_CRYPTO_X509 *x509 = NULL;
+
+    pkid_data.data = (char *)pdid_buf;
+    pkid_data.length = pkid_len;
+
+    if ((retval = pkinit_decode_pkeyid(context, &pkid_data, &pkeyid)))
+        goto cleanup;
+
+    if ((retval = krb5_build_principal_simple(context, &kdc_principal, 0, NULL, "krbtgt", "REALM", NULL)))
+        goto cleanup;
+
+    if ((retval = pkinit_get_kdc_cert(context, plg_cryptoctx, req_cryptoctx, id_cryptoctx, kdc_principal, &cert)))
+        goto cleanup;
+
+    if ((retval = krb5_crypto_x509_get_cert(context, cert, &x509)))
+        goto cleanup;
+
+    if ((retval = krb5_crypto_x509_store_new(context, &store)))
+        goto cleanup;
+
+    if ((retval = krb5_crypto_x509_store_add_cert(context, store, x509)))
+        goto cleanup;
+
+    if ((retval = krb5_crypto_x509_store_ctx_new(context, store, &csc)))
+        goto cleanup;
+
+    if ((retval = krb5_crypto_x509_verify_cert(context, csc, x509, pkeyid->issuer, pkeyid->serialNumber)))
+        goto cleanup;
+
+    *valid_kdcPkId = 1;
+
+cleanup:
+    if (pkeyid)
+        pkinit_free_pkeyid(context, pkeyid);
+    if (kdc_principal)
+        krb5_free_principal(context, kdc_principal);
+    if (cert)
+        krb5_free_X509_CERTIFICATE(context, cert);
+    if (x509)
+        krb5_crypto_x509_free_cert(context, x509);
+    if (store)
+        krb5_crypto_x509_store_free(context, store);
+    if (csc)
+        krb5_crypto_x509_store_ctx_free(context, csc);
+
+    return retval;
+}

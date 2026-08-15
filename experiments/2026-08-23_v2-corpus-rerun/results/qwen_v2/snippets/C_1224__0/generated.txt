@@ -1,0 +1,41 @@
+void GetNamedProperty(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value>& info) {
+  v8::Isolate* isolate = info.GetIsolate();
+  v8::Local<v8::Object> holder = info.Holder();
+
+  // Retrieve the associated LocalDOMWindow
+  LocalDOMWindow* window = ToLocalDOMWindow(holder);
+  if (!window || !window->IsAttached()) {
+    return;
+  }
+
+  // Convert the name to a string
+  v8::String::Utf8Value utf8_name(isolate, name);
+  if (!utf8_name) {
+    return;
+  }
+
+  const std::string& name_str = std::string(*utf8_name);
+
+  // Check for sub-frames and named items in the document
+  Frame* frame = window->GetFrame();
+  if (frame && frame->IsLocalFrame()) {
+    LocalFrame* local_frame = ToLocalFrame(frame);
+    Document* document = local_frame->GetDocument();
+    if (document) {
+      Element* element = document->GetElementById(name_str);
+      if (element) {
+        info.GetReturnValue().Set(V8PerIsolateData::GetCurrent()->GetObjectFor(context, element));
+        return;
+      }
+
+      Node* node = document->GetNodeForId(name_str);
+      if (node) {
+        info.GetReturnValue().Set(V8PerIsolateData::GetCurrent()->GetObjectFor(context, node));
+        return;
+      }
+    }
+  }
+
+  // No matching item found
+  info.GetReturnValue().Set(v8::Null(isolate));
+}

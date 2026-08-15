@@ -1,0 +1,157 @@
+int load_segment_descriptor(struct x86_emulate_ctxt *ctxt, u16 selector, int seg, u8 cpl, bool in_task_switch, struct desc_struct *desc) {
+    struct desc_struct *d = NULL;
+    int rc = X86EMUL_CONTINUE;
+
+    if (!selector) {
+        if (seg == VMENTRY_SEG_INDEX_CS || seg == VMENTRY_SEG_INDEX_SS) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        d = &ctxt->seg_desc[seg];
+        memset(d, 0, sizeof(*d));
+        d->type = 0;
+        d->s = 1;
+        d->dpl = 3;
+        d->p = 1;
+        d->avl = 1;
+        d->l = 0;
+        d->db = 1;
+        d->gran = 1;
+        d->base = 0;
+        d->limit = 0xffff;
+        goto done;
+    }
+
+    if (ctxt->mode == X86EMUL_MODE_REAL) {
+        d = &ctxt->seg_desc[seg];
+        d->type = 3;
+        d->s = 1;
+        d->dpl = 0;
+        d->p = 1;
+        d->avl = 0;
+        d->l = 0;
+        d->db = 1;
+        d->gran = 0;
+        d->base = selector << 4;
+        d->limit = 0xffff;
+        goto done;
+    }
+
+    if (ctxt->mode == X86EMUL_MODE_VM86) {
+        d = &ctxt->seg_desc[seg];
+        d->type = 3;
+        d->s = 1;
+        d->dpl = 0;
+        d->p = 1;
+        d->avl = 0;
+        d->l = 0;
+        d->db = 1;
+        d->gran = 0;
+        d->base = selector << 4;
+        d->limit = 0xffff;
+        goto done;
+    }
+
+    if (seg == VMENTRY_SEG_INDEX_TR) {
+        if ((selector & 0x07) != 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if ((selector >> 3) >=ctxt->gdt.size) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        d = &ctxt->gdt.base[selector >> 3];
+        if (!(d->type & 0x08)) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->dpl < cpl) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->p == 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        goto done;
+    }
+
+    if (seg == VMENTRY_SEG_INDEX_CS) {
+        if ((selector & 0x07) != 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if ((selector >> 3) >=ctxt->gdt.size) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        d = &ctxt->gdt.base[selector >> 3];
+        if (!(d->type & 0x18)) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->dpl < cpl) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->p == 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        goto done;
+    }
+
+    if (seg == VMENTRY_SEG_INDEX_SS) {
+        if ((selector & 0x07) != 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if ((selector >> 3) >=ctxt->gdt.size) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        d = &ctxt->gdt.base[selector >> 3];
+        if (!(d->type & 0x10)) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->dpl < cpl) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        if (d->p == 0) {
+            ctxt->exception = EXC_GP;
+            return X86EMUL_EXCEPTION;
+        }
+        goto done;
+    }
+
+    if ((selector & 0x07) != 0) {
+        ctxt->exception = EXC_GP;
+        return X86EMUL_EXCEPTION;
+    }
+    if ((selector >> 3) >=ctxt->gdt.size) {
+        ctxt->exception = EXC_GP;
+        return X86EMUL_EXCEPTION;
+    }
+    d = &ctxt->gdt.base[selector >> 3];
+    if (!(d->type & 0x18)) {
+        ctxt->exception = EXC_GP;
+        return X86EMUL_EXCEPTION;
+    }
+    if (d->dpl < cpl) {
+        ctxt->exception = EXC_GP;
+        return X86EMUL_EXCEPTION;
+    }
+    if (d->p == 0) {
+        ctxt->exception = EXC_GP;
+        return X86EMUL_EXCEPTION;
+    }
+
+done:
+    if (desc)
+        *desc = *d;
+    ctxt->seg_desc[seg] = *d;
+    return rc;
+}

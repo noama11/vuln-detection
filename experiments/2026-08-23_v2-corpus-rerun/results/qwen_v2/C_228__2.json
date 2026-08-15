@@ -1,0 +1,56 @@
+{
+  "case_id": "C_228__2",
+  "sample_id": "D/C/228",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-9730",
+  "cve_summary": "The udf_pc_to_char function in fs/udf/symlink.c in the Linux kernel before 3.18.2 relies on component lengths that are unused, which allows local users to cause a denial of service (system crash) via a crafted UDF filesystem image.",
+  "changed_file": "fs/udf/symlink.c",
+  "docstring": "Summary: Converts a path component structure to a character string representation.\n\nParameters: \n- sb (struct super_block *): The super block representing the filesystem.\n- from (unsigned char *): Pointer to the input path component data.\n- fromlen (int): Length of the input path component data.\n- to (unsigned char *): Pointer to the output character string buffer.\n- tolen (int): Length of the output buffer.\n\nReturns: int: Returns 0 on success, or a negative error code on failure.\n\nLogic: The function processes each path component from the input buffer, converting it into a string format. It handles different component types, including symlinks, directory indicators, and file names, while ensuring that the output buffer does not overflow. The function terminates the output string with a null character and returns appropriate error codes for various failure conditions, such as exceeding buffer limits or invalid input data.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int path_component_to_string(struct super_block *sb, unsigned char *from, int fromlen, unsigned char *to, int tolen) {\n    int i = 0;\n    int j = 0;\n\n    if (tolen <= 0 || fromlen <= 0) {\n        return -EINVAL;\n    }\n\n    while (i < fromlen && j < tolen - 1) {\n        unsigned char c = from[i];\n\n        if (c == '\\0') {\n            // Null character in input, treat as end of component\n            break;\n        } else if (c == '/') {\n            // Handle directory separator\n            if (j < tolen - 1) {\n                to[j++] = '/';\n            } else {\n                return -ENAMETOOLONG;\n            }\n        } else if (c == '.') {\n            // Handle directory indicator\n            if (i + 1 < fromlen && from[i + 1] == '/') {\n                // Skip './'\n                i++;\n                continue;\n            } else if (i + 2 < fromlen && from[i + 1] == '.' && from[i + 2] == '/') {\n                // Handle '../'\n                if (j > 0) {\n                    // Remove last component\n                    while (j > 0 && to[j - 1] != '/') {\n                        j--;\n                    }\n                    if (j > 0) {\n                        j--; // Skip the slash\n                    }\n                    i += 2;\n                    continue;\n                } else {\n                    return -EINVAL;\n                }\n            } else {\n                // Regular dot\n                if (j < tolen - 1) {\n                    to[j++] = '.';\n                } else {\n                    return -ENAMETOOLONG;\n                }\n            }\n        } else if (c == '\\n') {\n            // Handle symlink\n            if (j < tolen - 1) {\n                to[j++] = '@';\n            } else {\n                return -ENAMETOOLONG;\n            }\n        } else if (c >= 32 && c < 127) {\n            // Printable ASCII character\n            if (j < tolen - 1) {\n                to[j++] = c;\n            } else {\n                return -ENAMETOOLONG;\n            }\n        } else {\n            // Invalid character\n            return -EINVAL;\n        }\n\n        i++;\n    }\n\n    // Null-terminate the output string\n    if (j < tolen) {\n        to[j] = '\\0';\n    } else {\n        return -ENAMETOOLONG;\n    }\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they process path components. The candidate implementation processes the input character by character, handling cases like slashes, dots, and invalid characters directly. The reference implementation processes the input as structured pathComponent objects, parsing based on componentType and length. These differences lead to distinct behaviors for inputs that include structured path components (e.g., symlinks or directory indicators). The reference implementation may handle malformed or structured inputs differently, potentially leading to security-relevant issues like buffer overflows if it improperly parses component lengths. This is a behavioral difference that is reachable via attacker-influenced input and touches input validation and buffer safety.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their approach to parsing and converting path components. The candidate implementation processes the input character by character, handling cases like slashes, dots, and invalid characters directly. The reference implementation, however, treats the input as a sequence of structured path components, using a switch-case on component types. This leads to different behaviors for malformed or non-standard inputs, such as embedded nulls or non-ASCII characters. Additionally, the reference implementation includes a specific case for symlinks (componentType 1) that is ignored, while the candidate implementation treats newline characters as symlinks. These differences are observable and may affect the output for certain inputs, making the implementations functionally distinct.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

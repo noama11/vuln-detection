@@ -1,0 +1,56 @@
+{
+  "case_id": "C_372__1",
+  "sample_id": "D/C/372",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15102",
+  "cve_summary": "The tower_probe function in drivers/usb/misc/legousbtower.c in the Linux kernel before 4.8.1 allows local users (who are physically proximate for inserting a crafted USB device) to gain privileges by leveraging a write-what-where condition that occurs after a race condition and a NULL pointer dereference.",
+  "changed_file": "drivers/usb/misc/legousbtower.c",
+  "docstring": "\"\"\"\nSummary: \nInitializes a LEGO USB Tower device by probing the USB interface and setting up necessary resources.\n\nParameters: \ninterface (struct usb_interface*): Pointer to the USB interface structure for the device.\nid (const struct usb_device_id*): Pointer to the USB device ID structure.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function allocates memory for the device state, initializes various locks and buffers, and sets up endpoint information for interrupt transfers. It checks for the presence of required endpoints and allocates additional memory for read and write buffers. The firmware version is retrieved and logged. If all steps are successful, the device is registered with the USB subsystem. In case of errors, appropriate cleanup is performed, and error codes are returned.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id) {\n    struct usb_device *udev = interface_to_usbdev(interface);\n    struct lego_usb_tower_dev *dev;\n    int retval = -ENOMEM;\n\n    dev = kzalloc(sizeof(*dev), GFP_KERNEL);\n    if (!dev)\n        goto error;\n\n    spin_lock_init(&dev->lock);\n    mutex_init(&dev->data_mutex);\n\n    dev->interface = interface;\n    dev->udev = usb_get_dev(udev);\n    usb_set_intfdata(interface, dev);\n\n    if (usb_find_common_endpoint(udev, &dev->int_in, NULL, NULL, NULL, USB_DIR_IN, USB_ENDPOINT_XFER_INT, NULL)) {\n        dev_err(&udev->dev, \"Could not find interrupt in endpoint\\n\");\n        goto error;\n    }\n\n    dev->read_buffer = kmalloc(LEGOWARE_READ_BUFFER_SIZE, GFP_KERNEL);\n    if (!dev->read_buffer)\n        goto error;\n\n    dev->write_buffer = kmalloc(LEGOWARE_WRITE_BUFFER_SIZE, GFP_KERNEL);\n    if (!dev->write_buffer)\n        goto error;\n\n    retval = usb_submit_urb(dev->int_in, GFP_KERNEL);\n    if (retval) {\n        dev_err(&udev->dev, \"Failed to submit interrupt urb: %d\\n\", retval);\n        goto error;\n    }\n\n    /* Retrieve and log firmware version */\n    if (lego_usb_get_firmware_version(dev)) {\n        dev_err(&udev->dev, \"Failed to get firmware version\\n\");\n        goto error;\n    }\n\n    return 0;\n\nerror:\n    if (dev) {\n        usb_set_intfdata(interface, NULL);\n        usb_put_dev(dev->udev);\n        kfree(dev->read_buffer);\n        kfree(dev->write_buffer);\n        kfree(dev);\n    }\n    return retval;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several behavioral aspects. The candidate implementation uses `kzalloc` and `usb_submit_urb` to initialize the device and submit the interrupt URB, while the reference implementation manually iterates over endpoints to find both in and out interrupt endpoints and uses `usb_alloc_urb` and `usb_control_msg` to retrieve firmware version information. These differences affect how resources are allocated and how firmware version is retrieved, which could lead to different behaviors on malformed or edge-case inputs. The reference implementation also includes additional state tracking (e.g., `open_count`, `read_buffer_length`) and more detailed logging, which are not present in the candidate implementation. These differences are not security-relevant but could affect functional correctness in some edge cases.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of USB endpoints and buffer allocation. The candidate implementation uses `usb_find_common_endpoint` to find the interrupt in endpoint, while the reference implementation manually iterates through endpoints to find both interrupt in and out endpoints. Additionally, the candidate implementation allocates a single read and write buffer, while the reference implementation uses more detailed buffer management and allocates separate buffers for interrupt in and out. These differences could lead to different behaviors when handling malformed or unexpected USB device configurations, particularly in how endpoints are validated and used. This could be security-relevant if an attacker could influence the USB device configuration to trigger undefined behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

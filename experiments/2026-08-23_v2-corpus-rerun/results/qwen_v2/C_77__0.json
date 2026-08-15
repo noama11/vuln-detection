@@ -1,0 +1,56 @@
+{
+  "case_id": "C_77__0",
+  "sample_id": "D/C/77",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3223",
+  "cve_summary": "The ax25_recvmsg function in net/ax25/af_ax25.c in the Linux kernel before 3.9-rc7 does not initialize a certain data structure, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/ax25/af_ax25.c",
+  "docstring": "\"\"\"\nSummary: \nReceives a message from a socket and processes it for the AX.25 protocol.\n\nParameters: \niocb (struct kiocb *): The I/O control block associated with the operation.\nsock (struct socket *): The socket from which the message is received.\nmsg (struct msghdr *): The message header structure to fill with received data.\nsize (size_t): The maximum size of the message to receive.\nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns: \nint: The number of bytes copied to the message header, or an error code on failure.\n\nLogic: \nThe function first locks the socket and checks if the socket type is SOCK_SEQPACKET and its state is not TCP_ESTABLISHED, returning an error if so. It then attempts to receive a datagram from the socket. If successful, it processes the received data, potentially adjusting the message length and populating the message name with AX.25 address information. Finally, it releases the socket lock and returns the number of bytes copied or an error code.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int ax25_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t size, int flags)\n{\n    int err, len;\n    struct sock *sk = sock->sk;\n\n    lock_sock(sk);\n\n    if (sk->sk_type == SOCK_SEQPACKET && sk->sk_state != TCP_ESTABLISHED) {\n        err = -ENOTCONN;\n        goto out;\n    }\n\n    len = sock->ops->recvmsg(iocb, sock, msg, size, flags);\n    if (len < 0) {\n        err = len;\n        goto out;\n    }\n\n    if (msg->msg_name) {\n        struct sockaddr_ax25 *sa = (struct sockaddr_ax25 *)msg->msg_name;\n        sa->sax25_family = AF_AX25;\n        sa->sax25_call   = sk->sk_dst;\n        sa->sax25_ndig   = sk->sk_ndig;\n        memcpy(sa->sax25_dig, sk->sk_dig, AX25_MAX_DIGIS * sizeof(struct ax25_address));\n    }\n\n    err = len;\n\nout:\n    release_sock(sk);\n    return err;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they handle the received data and populate the message name with AX.25 address information. The candidate implementation directly copies data from the socket structure, while the reference implementation processes the skb (socket buffer), potentially removing a PID and parsing the MAC header. Additionally, the reference implementation includes logic for handling digipeater information and adjusts the message name length accordingly. These differences could lead to different results for the message name and message flags (e.g., MSG_TRUNC) under certain conditions, particularly for malformed or edge-case inputs. The difference is not clearly security-relevant but affects functional behavior.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they handle the received data and populate the message name. The candidate implementation directly copies the destination address and digipeater information from the socket, while the reference implementation parses the data from the received skb. This could lead to different behavior if the skb contains malformed or unexpected data, particularly in how the AX.25 address and digipeater information are extracted and formatted. This difference is not directly security-relevant but could affect correctness in edge cases.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_291__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int tipc_dump(struct sk_buff *skb, struct netlink_callback *cb)\n{\n    int ret = 0;\n    int port_id;\n    struct tipc_sock *tsk;\n\n    if (cb->args[0]) {\n        port_id = cb->args[1];\n    } else {\n        port_id = nla_get_u32(skb);\n        if (!port_id)\n            return -EINVAL;\n    }\n\n    if (cb->args[2]) {\n        return skb->len;\n    }\n\n    tsk = tipc_sk_lookup(port_id);\n    if (!tsk)\n        return -ENOENT;\n\n    lock_sock(tsk);\n\n    ret = tipc_sk_publish_info(skb, cb->args[0], cb->args[2]);\n    if (ret < 0)\n        goto out;\n\n    cb->args[0] = port_id;\n    cb->args[2] = 1;\n\n    skb->len = ret;\n\nout:\n    release_sock(tsk);\n    sock_put(&tsk->sk);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int tipc_dump(struct sk_buff *skb, struct netlink_callback *cb)\n{\n    int port_id;\n    struct tipc_socket *sock;\n    int ret = 0;\n\n    if (!cb->args[0]) {\n        port_id = nla_get_u32(cb->nlh->nlmsg_data);\n    } else {\n        port_id = cb->args[1];\n    }\n\n    if (cb->args[2])\n        return skb->len;\n\n    sock = tipc_sk_lookup_portid(port_id);\n    if (!sock)\n        return -ENOENT;\n\n    mutex_lock(&sock->lock);\n\n    if (sock->last_publ) {\n        tipc_dump_list(skb, sock, cb);\n        cb->args[2] = 1;\n    }\n\n    cb->args[0] = port_id;\n    cb->args[1] = sock->last_publ;\n    mutex_unlock(&sock->lock);\n\n    return skb->len;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int tipc_dump_sk(struct sk_buff *skb, struct netlink_callback *cb)\n{\n    int pid = NETLINK_CB(skb).portid;\n    int family = 0;\n    int done = 0;\n    int last_publ = 0;\n    struct tipc_sock *tsk;\n\n    if (!pid)\n        return -EINVAL;\n\n    if (done)\n        return skb->len;\n\n    tsk = tipc_sk_lookup(pid);\n    if (!tsk)\n        return -ENOENT;\n\n    tipc_sk_lock(tsk);\n\n    if (!last_publ)\n        tipc_sk_publish(tsk, family, skb, cb);\n\n    tipc_sk_unlock(tsk);\n    done = 1;\n    cb->args[0] = family;\n    cb->args[1] = last_publ;\n    cb->args[2] = done;\n\n    return skb->len;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int tipc_sk_dump(struct sk_buff *skb, struct netlink_callback *cb)\n{\n    int portid = 0;\n\n    if (!cb->args[0])\n        portid = nlmsg_parse(skb, cb->nlh, NULL, 0, NULL);\n\n    if (cb->args[1])\n        return skb->len;\n\n    if (!portid)\n        return -EINVAL;\n\n    struct tipc_port *port = tipc_port_get(portid);\n    if (!port)\n        return -ENOENT;\n\n    spin_lock_bh(&port->lock);\n    if (!port->published)\n        goto out;\n\n    if (!cb->args[0]) {\n        cb->args[0] = portid;\n        cb->args[1] = 1;\n    }\n\n    if (port->published > cb->args[2]) {\n        cb->args[2]++;\n        skb->data_len += port->published_len;\n    } else {\n        cb->done = 1;\n    }\n\n    spin_unlock_bh(&port->lock);\n    return skb->len;\n\nout:\n    spin_unlock_bh(&port->lock);\n    return -EIO;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int tipc_sk_dump(struct sk_buff *skb, struct netlink_callback *cb)\n{\n    int port_id;\n\n    if (!cb->args[0])\n        port_id = nlmsg_parse(skb, 0, &cb->msg, 0, NULL);\n\n    if (cb->args[1])\n        return skb->len;\n\n    port_id = (int)cb->args[0];\n    if (port_id <= 0)\n        return -EINVAL;\n\n    struct tipc_port *port = tipc_port_find(port_id);\n    if (!port)\n        return -ENOENT;\n\n    spin_lock_bh(&port->lock);\n    if (!port->publ_list)\n        goto skip_publish;\n\n    struct tipc_publish *publ = port->last_publ;\n    if (!publ) {\n        publ = list_first_entry(&port->publ_list, struct tipc_publish, list);\n    } else {\n        publ = list_next_entry(publ, list);\n        if (&publ->list == &port->publ_list)\n            cb->args[1] = 1;\n    }\n\n    if (!cb->args[1]) {\n        port->last_publ = publ;\n        cb->args[0] = publ;\n    }\n\nskip_publish:\n    spin_unlock_bh(&port->lock);\n\n    cb->args[0] = port_id;\n    cb->args[1] = cb->args[1] ? 1 : 0;\n\n    return skb->len;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

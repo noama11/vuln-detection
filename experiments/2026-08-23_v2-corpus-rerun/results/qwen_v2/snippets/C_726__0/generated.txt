@@ -1,0 +1,52 @@
+TEE_Result generate_cryptographic_key(unsigned long obj,
+                                      unsigned long key_size,
+                                      const struct utee_attribute *usr_params,
+                                      unsigned long param_count) {
+    TEE_Result result = TEE_SUCCESS;
+    void *session = NULL;
+    struct key_attributes *attributes = NULL;
+    unsigned long alloc_size = 0;
+
+    session = TEE_GetCurrentSession();
+    if (!session) {
+        return TEE_ERROR_BAD_STATE;
+    }
+
+    result = validate_object_state(obj);
+    if (result != TEE_SUCCESS) {
+        return result;
+    }
+
+    result = validate_key_size(obj, key_size);
+    if (result != TEE_SUCCESS) {
+        return result;
+    }
+
+    alloc_size = sizeof(struct key_attributes) * param_count;
+    attributes = TEE_Malloc(alloc_size, TEE_MALLOC_FILL_ZERO);
+    if (!attributes) {
+        return TEE_ERROR_OUT_OF_MEMORY;
+    }
+
+    result = copy_user_attributes(usr_params, param_count, attributes);
+    if (result != TEE_SUCCESS) {
+        TEE_Free(attributes);
+        return result;
+    }
+
+    if (is_rsa_object(obj)) {
+        result = generate_rsa_key(obj, key_size, attributes, param_count);
+    } else if (is_aes_object(obj)) {
+        result = generate_aes_key(obj, key_size, attributes, param_count);
+    } else if (is_dsa_object(obj)) {
+        result = generate_dsa_key(obj, key_size, attributes, param_count);
+    } else {
+        result = TEE_ERROR_NOT_SUPPORTED;
+    }
+
+    if (result != TEE_SUCCESS) {
+        TEE_Free(attributes);
+    }
+
+    return result;
+}

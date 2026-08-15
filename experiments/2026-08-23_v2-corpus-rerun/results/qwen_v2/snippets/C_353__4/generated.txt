@@ -1,0 +1,53 @@
+struct key *construct_and_link_key(struct keyring_search_context *ctx,
+                                   const char *callout_info,
+                                   size_t callout_len,
+                                   void *aux,
+                                   struct key *dest_keyring,
+                                   unsigned long flags) {
+    struct key *key = NULL;
+    struct key *dest = NULL;
+    struct user_struct *user = NULL;
+    int ret;
+
+    if (!ctx || !dest_keyring) {
+        return ERR_PTR(-EINVAL);
+    }
+
+    ret = keyring_search(ctx, &dest);
+    if (ret < 0) {
+        return ERR_PTR(ret);
+    }
+
+    user = get_current_user();
+    if (!user) {
+        key_put(dest);
+        return ERR_PTR(-ENOMEM);
+    }
+
+    key = key_alloc(&key_type_user, callout_info, callout_len, user, flags, NULL);
+    if (IS_ERR(key)) {
+        put_user(user);
+        key_put(dest);
+        return key;
+    }
+
+    ret = key_instantiate(key, aux, callout_len);
+    if (ret < 0) {
+        key_put(key);
+        put_user(user);
+        key_put(dest);
+        return ERR_PTR(ret);
+    }
+
+    ret = key_link(key, dest_keyring);
+    if (ret < 0) {
+        key_put(key);
+        put_user(user);
+        key_put(dest);
+        return ERR_PTR(ret);
+    }
+
+    key_put(dest);
+    put_user(user);
+    return key;
+}

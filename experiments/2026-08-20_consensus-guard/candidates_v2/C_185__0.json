@@ -1,0 +1,34 @@
+{
+  "case_id": "C_185__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t tty_write(struct tty_struct *tty, struct file *file, const unsigned char *buf, size_t nr) {\n    ssize_t ret = 0;\n    int count;\n    int nonblocking = (file->f_flags & O_NONBLOCK);\n\n    if (tty->flags & (1 << TTY_IO_ERROR))\n        return -EIO;\n\n    if (tty->termios.c_lflag & ECHO)\n        process_echoes(tty);\n\n    while (ret < (ssize_t)nr) {\n        count = tty->driver->write(tty, file, buf + ret, nr - ret);\n        if (count < 0) {\n            if (nonblocking)\n                break;\n            if (signal_pending(current))\n                break;\n            schedule();\n            continue;\n        } else if (count == 0) {\n            if (nonblocking)\n                break;\n            if (signal_pending(current))\n                break;\n            schedule();\n            continue;\n        }\n        ret += count;\n    }\n\n    if (ret < 0)\n        return ret;\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t tty_write(struct tty_struct *tty, struct file *file, const unsigned char *buf, size_t nr)\n{\n    ssize_t ret = 0;\n    int nonblocking = (file->f_flags & O_NONBLOCK);\n\n    while (ret < (ssize_t)nr) {\n        if (tty_check_job_control(tty))\n            return -EIO;\n\n        down_read(&tty->sem);\n\n        if (tty->icanon && L_ECHO(tty)) {\n            process_echoes(tty);\n        }\n\n        if (test_bit(TTY_OPOST, &tty->flags)) {\n            ret = process_output_block(tty, buf + ret, nr - ret);\n        } else {\n            ret = do_tty_write(tty, buf + ret, nr - ret);\n        }\n\n        up_read(&tty->sem);\n\n        if (ret < 0) {\n            if (ret == -ERESTARTSYS || (nonblocking && ret == -EAGAIN)) {\n                return ret;\n            }\n            break;\n        }\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t tty_write(struct tty_struct *tty, struct file *file, const unsigned char *buf, size_t nr)\n{\n    ssize_t count = 0;\n    int i;\n    unsigned int c;\n\n    for (i = 0; i < nr; i++) {\n        c = buf[i];\n\n        if (tty->driver->ops->write) {\n            if (tty->driver->ops->write(tty, &c, 1) != 1) {\n                if (!count)\n                    return -EAGAIN;\n                break;\n            }\n        }\n        count++;\n    }\n\n    return count;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t tty_write(struct tty_struct *tty, struct file *file, const unsigned char *buf, size_t nr)\n{\n    ssize_t count = 0;\n    int result;\n\n    if (tty->flags & TTY_IO_ERROR)\n        return -EIO;\n\n    if (tty->termios.c_lflag & ECHO)\n        process_echoes(tty);\n\n    while (count < nr) {\n        result = do_tty_write(tty, file, buf + count, nr - count);\n\n        if (result <= 0) {\n            if (result != -EAGAIN || (file->f_flags & O_NONBLOCK))\n                break;\n            wait_for_space(tty);\n            continue;\n        }\n\n        count += result;\n    }\n\n    return count ? count : result;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t tty_write(struct tty_struct *tty, struct file *file, const unsigned char *buf, size_t nr) {\n    ssize_t written = 0;\n    size_t count = nr;\n\n    if (tty_jobctl(tty))\n        tty_wait_until_sent(tty, 0);\n\n    down_read(&tty->termios_sem);\n\n    if (tty->ldisc->ops->write) {\n        while (written < count) {\n            ssize_t result = tty->ldisc->ops->write(tty, buf + written, count - written);\n\n            if (result < 0) {\n                if (!written)\n                    written = result;\n                break;\n            }\n\n            written += result;\n        }\n    } else {\n        written = -EINVAL;\n    }\n\n    up_read(&tty->termios_sem);\n\n    return written;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "case_id": "C_228__0",
+  "sample_id": "D/C/228",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-9730",
+  "cve_summary": "The udf_pc_to_char function in fs/udf/symlink.c in the Linux kernel before 3.18.2 relies on component lengths that are unused, which allows local users to cause a denial of service (system crash) via a crafted UDF filesystem image.",
+  "changed_file": "fs/udf/symlink.c",
+  "docstring": "Summary: Converts a path component structure into a character string representation.\n\nParameters: \n- sb (struct super_block *): Pointer to the super block structure.\n- from (unsigned char *): Pointer to the input path component data.\n- fromlen (int): Length of the input path component data.\n- to (unsigned char *): Pointer to the output character string buffer.\n- tolen (int): Length of the output buffer.\n\nReturns: \n- int: Returns 0 on success, or a negative error code on failure (e.g., -ENAMETOOLONG, -EIO).\n\nLogic: The function iterates through the input path components, converting each component based on its type. It handles symlinks, directory indicators, and file names, ensuring the output string is properly formatted and null-terminated. It checks for buffer overflows and adjusts the output buffer size accordingly, returning appropriate error codes when necessary.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int convert_path_component(struct super_block *sb, unsigned char *from, int fromlen, unsigned char *to, int tolen) {\n    int ret = 0;\n    int pos = 0;\n    int i = 0;\n\n    while (i < fromlen) {\n        if (pos >= tolen - 1) {\n            return -ENAMETOOLONG;\n        }\n\n        if (from[i] == 0) {\n            to[pos++] = '.';\n            i++;\n        } else if (from[i] == 1) {\n            to[pos++] = '.';\n            to[pos++] = '.';\n            i++;\n        } else if (from[i] > 1) {\n            int len = from[i];\n            if (i + len > fromlen) {\n                return -EIO;\n            }\n\n            if (pos + len >= tolen) {\n                return -ENAMETOOLONG;\n            }\n\n            for (int j = 0; j < len; j++) {\n                to[pos++] = from[i + 1 + j];\n            }\n\n            i += len + 1;\n        } else {\n            return -EIO;\n        }\n    }\n\n    to[pos] = '\\0';\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they interpret the input path component data. The candidate implementation treats each byte as a component type (0 for '.', 1 for '..', and values >1 as the length of a filename), while the reference implementation uses a struct pathComponent and interprets componentType values differently (e.g., case 1 is a symlink, case 2 is a directory indicator). These differences in input parsing logic lead to different behaviors for the same input, including how components are processed and how the output buffer is updated. This is a functional mismatch that could affect the correctness of the output string for realistic inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they interpret the input path components. The candidate implementation treats the input as a sequence of bytes where each byte represents a component type (0 for '.', 1 for '..', and values >1 for filenames), while the reference implementation interprets the input as a sequence of structured path components with a component type and length. The candidate implementation does not handle symlinks or structured parsing, and it does not include slashes between components. These differences are significant and affect the output format and correctness for realistic inputs, making the implementations behaviorally different.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "C_739__0",
+  "sample_id": "D/C/739",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-15921",
+  "cve_summary": "An issue was discovered in the Linux kernel before 5.0.6. There is a memory leak issue when idr_alloc() fails in genl_register_family() in net/netlink/genetlink.c.",
+  "changed_file": "net/netlink/genetlink.c",
+  "docstring": "/**\n * Summary: Registers a new generic netlink family.\n * \n * Parameters:\n * family (struct genl_family *): Pointer to the generic netlink family structure to be registered.\n * \n * Returns:\n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function first validates the operations associated with the family. It then locks all generic netlink families and checks if a family with the same name already exists, returning an error if so. Special cases for certain families are handled to ensure proper ID allocation. Memory for attributes is allocated if needed. The family is assigned an ID, and multicast group validation is performed. Events are sent to notify about the new family and its multicast groups. If any step fails, appropriate cleanup is performed before returning the error code.\n */",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 4,
+    "n_steps_majority": 4,
+    "n_steps_target_only": 3,
+    "steps": [
+      {
+        "step": "null-pointer check for family and family->name",
+        "performed_by_count": 4,
+        "why_it_matters": "If family or family->name is null, dereferencing it would cause a crash or undefined behavior."
+      },
+      {
+        "step": "check for duplicate family names before acquiring the lock",
+        "performed_by_count": 4,
+        "why_it_matters": "If the family name check is done after acquiring the lock, a race condition could allow duplicate registration under high-concurrency scenarios."
+      },
+      {
+        "step": "validate family operations (doit/dumpit) before registration",
+        "performed_by_count": 3,
+        "why_it_matters": "If an operation lacks doit or dumpit, it could lead to invalid function calls or undefined behavior during use."
+      },
+      {
+        "step": "validate family attributes and attribute policy",
+        "performed_by_count": 3,
+        "why_it_matters": "If family->maxattr is non-zero but no attribute policy is provided, it could lead to invalid attribute accesses or memory issues."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a majority-consensus defensive step: validating the family's name is not null and checking for duplicate family names before acquiring the lock. It also lacks validation of the family's operations and attributes before proceeding with registration. These omissions could allow invalid or duplicate family registrations under certain hostile inputs.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 7,
+    "consensus_exposure": 0,
+    "net_exposure": 7,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 4,
+    "steps": [
+      {
+        "step": "Check for duplicate family name",
+        "performed_by_count": 5,
+        "why_it_matters": "If a family with the same name already exists, the function should return -EEXIST. Omitting this check allows duplicate families to be registered, violating the specification and leading to resource conflicts or incorrect behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target omits a majority-consensus step of checking for duplicate family names before registration. Independent implementations 1–5 all perform this check explicitly, either by iterating over a list or using a lookup function. The target uses `genl_family_find_byname`, which is likely equivalent, but the omission of this check would allow duplicate family names to be registered, violating the specification's logic. This is a reachable and serious issue.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

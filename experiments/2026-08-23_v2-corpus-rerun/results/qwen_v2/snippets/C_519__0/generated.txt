@@ -1,0 +1,110 @@
+cmsMLU* ReadMLUFromStream(struct _cms_typehandler_struct* self, cmsIOHANDLER* io, cmsUInt32Number* nItems, cmsUInt32Number SizeOfTag) {
+    cmsUInt32Number Count = 0;
+    cmsUInt32Number RecordLength = 0;
+    cmsUInt32Number i;
+    cmsMLU* mlu = NULL;
+    cmsUInt16Number* LangCode = NULL;
+    cmsUInt16Number* CountryCode = NULL;
+    cmsUInt32Number* StringLength = NULL;
+    cmsUInt32Number* StringOffset = NULL;
+    cmsUInt32Number MaxPos = 0;
+    cmsUInt8Number* StringData = NULL;
+    cmsUInt32Number TotalSize = 0;
+
+    if (!io || !nItems || SizeOfTag < 8)
+        return NULL;
+
+    if (!io->Read(io, &Count, sizeof(cmsUInt32Number), 1))
+        return NULL;
+
+    if (!io->Read(io, &RecordLength, sizeof(cmsUInt32Number), 1))
+        return NULL;
+
+    if (RecordLength != 8)
+        return NULL;
+
+    if (Count == 0)
+        return NULL;
+
+    mlu = (cmsMLU*)calloc(1, sizeof(cmsMLU));
+    if (!mlu)
+        return NULL;
+
+    mlu->nItems = Count;
+
+    LangCode = (cmsUInt16Number*)malloc(Count * sizeof(cmsUInt16Number));
+    CountryCode = (cmsUInt16Number*)malloc(Count * sizeof(cmsUInt16Number));
+    StringLength = (cmsUInt32Number*)malloc(Count * sizeof(cmsUInt32Number));
+    StringOffset = (cmsUInt32Number*)malloc(Count * sizeof(cmsUInt32Number));
+
+    if (!LangCode || !CountryCode || !StringLength || !StringOffset) {
+        free(LangCode);
+        free(CountryCode);
+        free(StringLength);
+        free(StringOffset);
+        free(mlu);
+        return NULL;
+    }
+
+    for (i = 0; i < Count; i++) {
+        if (!io->Read(io, &LangCode[i], sizeof(cmsUInt16Number), 1) ||
+            !io->Read(io, &CountryCode[i], sizeof(cmsUInt16Number), 1) ||
+            !io->Read(io, &StringLength[i], sizeof(cmsUInt32Number), 1) ||
+            !io->Read(io, &StringOffset[i], sizeof(cmsUInt32Number), 1)) {
+            free(LangCode);
+            free(CountryCode);
+            free(StringLength);
+            free(StringOffset);
+            free(mlu);
+            return NULL;
+        }
+
+        if (StringOffset[i] > MaxPos)
+            MaxPos = StringOffset[i];
+
+        if (StringLength[i] > MaxPos)
+            MaxPos = StringLength[i];
+    }
+
+    TotalSize = MaxPos;
+    StringData = (cmsUInt8Number*)malloc(TotalSize);
+    if (!StringData) {
+        free(LangCode);
+        free(CountryCode);
+        free(StringLength);
+        free(StringOffset);
+        free(mlu);
+        return NULL;
+    }
+
+    for (i = 0; i < Count; i++) {
+        if (StringOffset[i] + StringLength[i] > TotalSize) {
+            free(LangCode);
+            free(CountryCode);
+            free(StringLength);
+            free(StringOffset);
+            free(StringData);
+            free(mlu);
+            return NULL;
+        }
+
+        if (!io->Read(io, &StringData[StringOffset[i]], StringLength[i], 1)) {
+            free(LangCode);
+            free(CountryCode);
+            free(StringLength);
+            free(StringOffset);
+            free(StringData);
+            free(mlu);
+            return NULL;
+        }
+    }
+
+    mlu->LangCode = LangCode;
+    mlu->CountryCode = CountryCode;
+    mlu->StringLength = StringLength;
+    mlu->StringOffset = StringOffset;
+    mlu->Strings = StringData;
+
+    *nItems = Count;
+    return (void*)mlu;
+}

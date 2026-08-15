@@ -1,0 +1,59 @@
+int dccp_process_incoming_packet(struct sock *sk, struct sk_buff *skb,
+                                 struct dccp_hdr *dh, unsigned int len)
+{
+    switch (sk->sk_state) {
+    case DCCP_LISTEN:
+        if (dh->dccph_type != DCCP_PKT_REQUEST)
+            return 1;
+        if (len < sizeof(struct dccp_hdr))
+            return 1;
+        if (dccp_handle_options(sk, skb, dh) != 0)
+            return 1;
+        dccp_set_state(sk, DCCP_REQUESTING);
+        break;
+
+    case DCCP_CLOSED:
+        return 1;
+
+    case DCCP_REQUESTING:
+        if (dh->dccph_type != DCCP_PKT_RESPONSE)
+            return 1;
+        if (len < sizeof(struct dccp_hdr))
+            return 1;
+        if (dccp_validate_response(sk, skb, dh) != 0)
+            return 1;
+        dccp_set_state(sk, DCCP_RESPOND);
+        break;
+
+    case DCCP_RESPOND:
+        if (dh->dccph_type != DCCP_PKT_ACK)
+            return 1;
+        if (len < sizeof(struct dccp_hdr))
+            return 1;
+        if (dccp_validate_ack(sk, skb, dh) != 0)
+            return 1;
+        dccp_set_state(sk, DCCP_OPEN);
+        break;
+
+    case DCCP_PARTOPEN:
+    case DCCP_OPEN:
+        if (dh->dccph_type == DCCP_PKT_RESET) {
+            dccp_terminate_connection(sk);
+            return 0;
+        }
+        if (len < sizeof(struct dccp_hdr))
+            return 1;
+        if (dccp_validate_ack(sk, skb, dh) != 0)
+            return 1;
+        if (dh->dccph_type == DCCP_PKT_SYNC) {
+            if (dccp_handle_sync(sk, skb, dh) != 0)
+                return 1;
+        }
+        break;
+
+    default:
+        return 1;
+    }
+
+    return 0;
+}

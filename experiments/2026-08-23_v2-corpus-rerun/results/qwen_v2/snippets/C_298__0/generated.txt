@@ -1,0 +1,53 @@
+int read_7z_substream_info(struct archive_read *a, struct _7z_substream_info *ss,
+                           struct _7z_folder *f, size_t numFolders) {
+  size_t i;
+  int r;
+
+  ss->num_unpack_streams = 0;
+  ss->unpack_sizes = NULL;
+  ss->digests = NULL;
+
+  for (i = 0; i < numFolders; ++i) {
+    if (f[i].num_unpack_streams > ss->num_unpack_streams)
+      ss->num_unpack_streams = f[i].num_unpack_streams;
+  }
+
+  ss->unpack_sizes = (size_t *)malloc(ss->num_unpack_streams * sizeof(size_t));
+  if (ss->unpack_sizes == NULL) {
+    archive_set_error(&a->archive, ENOMEM, "Out of memory");
+    return (-1);
+  }
+
+  ss->digests = (uint32_t *)malloc(ss->num_unpack_streams * sizeof(uint32_t));
+  if (ss->digests == NULL) {
+    free(ss->unpack_sizes);
+    archive_set_error(&a->archive, ENOMEM, "Out of memory");
+    return (-1);
+  }
+
+  for (i = 0; i < ss->num_unpack_streams; ++i) {
+    r = archive_read_data_block(a, (const void **)&ss->unpack_sizes[i], sizeof(size_t));
+    if (r != ARCHIVE_OK) {
+      free(ss->unpack_sizes);
+      free(ss->digests);
+      return (-1);
+    }
+
+    r = archive_read_data_block(a, (const void **)&ss->digests[i], sizeof(uint32_t));
+    if (r != ARCHIVE_OK) {
+      free(ss->unpack_sizes);
+      free(ss->digests);
+      return (-1);
+    }
+  }
+
+  int type;
+  r = archive_read_data_block(a, (const void **)&type, sizeof(int));
+  if (r != ARCHIVE_OK || type != kEnd) {
+    free(ss->unpack_sizes);
+    free(ss->digests);
+    return (-1);
+  }
+
+  return (0);
+}

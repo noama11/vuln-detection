@@ -1,0 +1,34 @@
+{
+  "case_id": "C_246__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int netlink_dump(struct sock *sk) {\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&sk->sk_lock);\n    if (sk->sk_callback_running) {\n        mutex_unlock(&sk->sk_lock);\n        return -EBUSY;\n    }\n\n    if (sk->sk_rcvbuf_used >= sk->sk_rcvbuf) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOBUFS;\n    }\n\n    skb = alloc_skb(sk->sk_rcvbuf / 2, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOMEM;\n    }\n\n    err = sk->sk_dump(skb, sk);\n    if (err < 0) {\n        kfree_skb(skb);\n        mutex_unlock(&sk->sk_lock);\n        return err;\n    }\n\n    if (sk->sk_filter) {\n        skb = sk_filter(sk, skb);\n        if (!skb) {\n            mutex_unlock(&sk->sk_lock);\n            return -EINVAL;\n        }\n    }\n\n    sk->sk_rcvbuf_used += skb->len;\n    netlink_unicast(sk, skb, sk->sk_peer_pid, 0);\n\n    mutex_unlock(&sk->sk_lock);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int netlink_dump(struct sock *sk) {\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&sk->sk_lock);\n    if (sk->sk_callback_running) {\n        mutex_unlock(&sk->sk_lock);\n        return -EBUSY;\n    }\n\n    if (sk->sk_rcvbuf * 3 / 4 > sk->sk_rmem_alloc)\n        skb = alloc_skb(sk->sk_rcvbuf, GFP_KERNEL);\n    else\n        skb = alloc_skb(sk->sk_rcvbuf / 2, GFP_KERNEL);\n\n    if (!skb) {\n        mutex_unlock(&sk->sk_lock);\n        return -ENOMEM;\n    }\n\n    sk->sk_callback_running = 1;\n    mutex_unlock(&sk->sk_lock);\n\n    err = sk->sk_prot->dump(skb, sk);\n    if (err < 0) {\n        kfree_skb(skb);\n        return err;\n    }\n\n    if (skb->len > 0) {\n        if (sk_filter(sk, skb))\n            kfree_skb(skb);\n        else\n            sock_queue_rcv_skb(sk, skb);\n    } else {\n        kfree_skb(skb);\n    }\n\n    mutex_lock(&sk->sk_lock);\n    sk->sk_callback_running = 0;\n    mutex_unlock(&sk->sk_lock);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int nl_dump_messages(struct sock *sk) {\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&dump_mutex);\n    if (dump_callback_running) {\n        mutex_unlock(&dump_mutex);\n        return -EBUSY;\n    }\n\n    if (sk_rmem_alloc_get(sk) >= sk->sk_rcvbuf) {\n        mutex_unlock(&dump_mutex);\n        return -ENOBUFS;\n    }\n\n    skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&dump_mutex);\n        return -ENOMEM;\n    }\n\n    dump_callback_running = true;\n\n    err = sk->sk_protocol_ops->dump(skb, sk);\n    if (err < 0) {\n        kfree_skb(skb);\n        dump_callback_running = false;\n        mutex_unlock(&dump_mutex);\n        return err;\n    }\n\n    if (check_filters(skb)) {\n        netlink_unicast(sk, skb, 0);\n    } else {\n        kfree_skb(skb);\n    }\n\n    dump_callback_running = false;\n    mutex_unlock(&dump_mutex);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int netlink_dump(struct sock *sk)\n{\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&nl_mutex);\n    if (callback_running) {\n        mutex_unlock(&nl_mutex);\n        return -EBUSY;\n    }\n\n    if (sk->sk_rmem_alloc >= sk->sk_rcvbuf) {\n        mutex_unlock(&nl_mutex);\n        return -ENOBUFS;\n    }\n\n    skb = alloc_skb(sk->sk_rcvbuf, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&nl_mutex);\n        return -ENOMEM;\n    }\n\n    callback_running = 1;\n    err = dump_callback(sk, skb);\n    if (err < 0) {\n        kfree_skb(skb);\n        callback_running = 0;\n        mutex_unlock(&nl_mutex);\n        return err;\n    }\n\n    if (apply_filters(skb)) {\n        netlink_unicast(sk, skb, pid);\n    } else {\n        kfree_skb(skb);\n    }\n\n    callback_running = 0;\n    mutex_unlock(&nl_mutex);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int nlmsg_dumphandler(struct sock *sk)\n{\n    struct sk_buff *skb;\n    int err = 0;\n\n    mutex_lock(&sk->sk_mutex);\n    if (sk->sk_callback_running) {\n        mutex_unlock(&sk->sk_mutex);\n        return -EBUSY;\n    }\n\n    if (sk_rmem_limit && (atomic_read(&sk->sk_rmem_alloc) >= sk_rmem_limit)) {\n        mutex_unlock(&sk->sk_mutex);\n        return -ENOBUFS;\n    }\n\n    skb = alloc_skb(NLMSG_GOODSIZE, GFP_KERNEL);\n    if (!skb) {\n        mutex_unlock(&sk->sk_mutex);\n        return -ENOMEM;\n    }\n\n    sk->sk_callback_running = 1;\n    mutex_unlock(&sk->sk_mutex);\n\n    err = sk->sk_prot->dump(skb, sk);\n    if (err < 0) {\n        kfree_skb(skb);\n        return err;\n    }\n\n    if (sk->sk_filter) {\n        skb_set_owner_r(skb, sk);\n        sock_queue_rcv_skb(sk, skb);\n    } else {\n        kfree_skb(skb);\n    }\n\n    mutex_lock(&sk->sk_mutex);\n    sk->sk_callback_running = 0;\n    mutex_unlock(&sk->sk_mutex);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

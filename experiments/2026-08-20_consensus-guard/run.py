@@ -299,7 +299,17 @@ def main():
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--run", default="consensus_k5")
     p.add_argument("--force", action="store_true")
+    # Corpus override. Defaults reproduce the published arm byte for byte. A
+    # re-run on a different corpus MUST pass a distinct --cand-dir, or it will
+    # reuse candidates generated from the old snippets.
+    p.add_argument("--cases-dir", default=None,
+                   help="corpus directory (default: cases/)")
+    p.add_argument("--cand-dir", default="candidates",
+                   help="candidate directory, relative to this arm")
     args = p.parse_args()
+
+    global CAND_DIR
+    CAND_DIR = HERE / args.cand_dir
 
     base_url = V.read_endpoint(args.base_url)
     try:
@@ -309,7 +319,7 @@ def main():
               f"Start it with: bash scripts/serve_qwen.sh")
         return 1
     client = V.Client(base_url, served_model, False, args.seed, args.timeout)
-    cases = load_cases()
+    cases = load_cases(args.cases_dir)
     if args.stage == "generate":
         if args.limit:
             cases = dict(sorted(cases.items())[:args.limit])

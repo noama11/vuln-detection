@@ -1,0 +1,56 @@
+{
+  "case_id": "C_315__0",
+  "sample_id": "D/C/315",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2016-2117",
+  "cve_summary": "The atl2_probe function in drivers/net/ethernet/atheros/atlx/atl2.c in the Linux kernel through 4.5.2 incorrectly enables scatter/gather I/O, which allows remote attackers to obtain sensitive information from kernel memory by reading packet data.",
+  "changed_file": "drivers/net/ethernet/atheros/atlx/atl2.c",
+  "docstring": "/**\n * Summary: Probes a PCI device for the ATL2 network driver and initializes it.\n * \n * Parameters:\n * pdev (struct pci_dev *): Pointer to the PCI device structure.\n * ent (const struct pci_device_id *): Pointer to the PCI device ID structure.\n * \n * Returns: int: 0 on success, or a negative error code on failure.\n * \n * Logic: The function enables the PCI device, sets up DMA masks, requests PCI regions, \n * allocates a network device structure, and initializes hardware settings. It configures \n * the network device operations, sets up timers for watchdog and PHY configuration, \n * and registers the network device. If any step fails, it performs cleanup and returns \n * an appropriate error code. The function also handles MAC address retrieval and \n * ensures the device is in a known good state before returning success.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent) {\n    struct net_device *netdev;\n    int err;\n\n    err = pci_enable_device(pdev);\n    if (err < 0)\n        return err;\n\n    err = pci_set_dma_mask(pdev, DMA_32BIT_MASK);\n    if (err < 0) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    err = pci_request_regions(pdev, \"atl2\");\n    if (err < 0) {\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    netdev = alloc_etherdev(sizeof(struct atl2_adapter));\n    if (!netdev) {\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return -ENOMEM;\n    }\n\n    SET_NETDEV_DEV(netdev, &pdev->dev);\n    netdev->irq = pdev->irq;\n    netdev->netdev_ops = &atl2_netdev_ops;\n\n    setup_timer(&((struct atl2_adapter *)netdev_priv(netdev))->watchdog_timer,\n                atl2_watchdog, (unsigned long)netdev);\n    setup_timer(&((struct atl2_adapter *)netdev_priv(netdev))->phy_config_timer,\n                atl2_phy_config, (unsigned long)netdev);\n\n    err = register_netdev(netdev);\n    if (err) {\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    err = atl2_read_mac_address(pdev, netdev);\n    if (err < 0) {\n        unregister_netdev(netdev);\n        free_netdev(netdev);\n        pci_release_regions(pdev);\n        pci_disable_device(pdev);\n        return err;\n    }\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation lacks several key steps present in the reference implementation, including setting up the `ethtool_ops`, initializing the `watchdog_timeo`, mapping hardware memory with `ioremap`, and calling `atl2_setup_pcicmd`. Additionally, the reference implementation includes error handling for reading the MAC address from the EEPROM and checks for a valid MAC address, which the candidate implementation does not. These differences affect the correctness and robustness of the device initialization, particularly in handling hardware resources and ensuring a valid device state. These are functional mismatches that could lead to incorrect behavior or crashes.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The candidate implementation lacks several key steps present in the reference implementation, including ioremap for hardware memory mapping, initialization of the adapter structure, setup of ethtool operations, and additional error handling paths. These differences could lead to incomplete device initialization or failure to handle certain error conditions, potentially affecting reliability and correctness. However, these differences are not directly security-relevant.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

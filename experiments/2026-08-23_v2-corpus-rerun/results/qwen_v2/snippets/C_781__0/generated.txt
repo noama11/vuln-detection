@@ -1,0 +1,42 @@
+int ext4_ext_grow(struct inode *inode, handle_t *handle, unsigned int flags)
+{
+    int ret = 0;
+    struct ext4_inode_info *ei = EXT4_I(inode);
+    struct ext4_extent_header *eh;
+    struct ext4_extent_idx *ex;
+    struct buffer_head *bh = NULL;
+    ext4_lblk_t goal;
+    int depth = ei->i_depth;
+    int max = 0;
+    int count = 0;
+
+    goal = ext4_ext_get_goal(inode, depth);
+
+    bh = ext4_alloc_block(handle, goal, flags);
+    if (IS_ERR(bh)) {
+        ret = PTR_ERR(bh);
+        goto out;
+    }
+
+    ex = (struct ext4_extent_idx *)bh->b_data;
+    ext4_extent_idx_init(ex, 0, 0);
+
+    eh = ext4_extent_header(inode);
+    count = le16_to_cpu(eh->eh_entries);
+    max = le16_to_cpu(eh->eh_max);
+
+    if (count >= max) {
+        ret = -ENOSPC;
+        goto out;
+    }
+
+    eh->eh_entries = cpu_to_le16(count + 1);
+    eh->eh_max = cpu_to_le16(max + 1);
+
+    ext4_mark_inode_dirty(handle, inode);
+
+out:
+    if (bh)
+        brelse(bh);
+    return ret;
+}

@@ -1,0 +1,35 @@
+bool parse_import_ptr(struct MACH0_(obj_t)* bin, struct reloc_t* reloc, int idx) {
+    if (idx < 0 || idx >= bin->symtab->nsyms) {
+        return false;
+    }
+
+    uint8_t desc = bin->symtab->desc[idx];
+    uint32_t sym_type = (desc >> 4) & 0xF;
+    if (sym_type != N_POINT) {
+        return false;
+    }
+
+    reloc->type = (bin->file->header->filetype == MH_OBJECT) ? R_MACHO_IMPORT32 : R_MACHO_IMPORT64;
+
+    for (int i = 0; i < bin->file->header->ncmds; i++) {
+        struct segment_command* seg = (struct segment_command*)MACH0_(get_segment)(bin, i);
+        if (!seg) {
+            continue;
+        }
+
+        for (int j = 0; j < seg->nsects; j++) {
+            struct section* sect = (struct section*)MACH0_(get_section)(bin, i, j);
+            if (!sect) {
+                continue;
+            }
+
+            if (sect->reserved1 == idx) {
+                reloc->offset = sect->offset;
+                reloc->addr = sect->addr;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}

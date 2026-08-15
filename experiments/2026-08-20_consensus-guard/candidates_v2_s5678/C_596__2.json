@@ -1,0 +1,34 @@
+{
+  "case_id": "C_596__2",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int videobuf_mmap(struct videobuf_queue *q, struct vm_area_struct *vma)\n{\n        struct videobuf_buffer *b;\n\n        if (!(vma->vm_flags & VM_WRITE) || !(vma->vm_flags & VM_SHARED))\n                return -EINVAL;\n\n        list_for_each_entry(b, &q->maclist, q) {\n                if ((unsigned long)vma->vm_start >= b->dma_addr &&\n                    (unsigned long)vma->vm_end <= b->dma_addr + b->size) {\n                        struct videobuf_mapping *map;\n\n                        map = kzalloc(sizeof(*map), GFP_KERNEL);\n                        if (!map)\n                                return -ENOMEM;\n\n                        map->vma = vma;\n                        map->buf = b;\n                        list_add(&map->list, &q->mappings);\n\n                        vma->vm_ops = &videobuf_vm_ops;\n                        vma->vm_private_data = map;\n\n                        if (remap_pfn_range(vma,\n                                            vma->vm_start,\n                                            PFN_DOWN(b->dma_addr),\n                                            vma->vm_end - vma->vm_start,\n                                            vma->vm_page_prot)) {\n                                vma->vm_ops = NULL;\n                                vma->vm_private_data = NULL;\n                                kfree(map);\n                                return -EAGAIN;\n                        }\n\n                        videobuf_vm_open(vma);\n                        return 0;\n                }\n        }\n\n        return -EINVAL;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int videobuf_mmap(struct videobuf_queue *q, struct vm_area_struct *vma)\n{\n\tint ret = -EINVAL;\n\tstruct videobuf_buffer *buf = NULL;\n\tunsigned long offset = vma->vm_start - q->vb->baddr;\n\n\tif (vma->vm_flags & VM_WRITE && vma->vm_flags & VM_SHARED) {\n\t\tbuf = videobuf_queue_find(q, offset);\n\t\tif (!buf)\n\t\t\treturn -EINVAL;\n\n\t\tif (offset > buf->bsize)\n\t\t\treturn -EINVAL;\n\n\t\tvma->vm_ops = &videobuf_vm_ops;\n\t\tvma->vm_private_data = buf;\n\n\t\tif (remap_pfn_range(vma, vma->vm_start, buf->dma_addr >> PAGE_SHIFT,\n\t\t\t\t    vma->vm_end - vma->vm_start, vma->vm_page_prot)) {\n\t\t\tvma->vm_flags &= ~VM_SHARED;\n\t\t\tvma->vm_flags |= VM_MAYSHARE;\n\t\t\tvma->vm_ops = NULL;\n\t\t\tvma->vm_private_data = NULL;\n\t\t\treturn -ENOMEM;\n\t\t}\n\n\t\tvma->vm_flags |= VM_RESERVED;\n\t\tvma->vm_private_data = buf;\n\t\treturn 0;\n\t}\n\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int videobuf_mmap(struct videobuf_queue *q, struct vm_area_struct *vma)\n{\n\t/* Check if the memory area is writable and shared */\n\tif (!(vma->vm_flags & VM_WRITE) || !(vma->vm_flags & VM_SHARED))\n\t\treturn -EINVAL;\n\n\t/* Search for the first buffer in the queue that can be mapped */\n\tstruct videobuf_buffer *b = NULL;\n\tfor (int i = 0; i < q->num_buffers; ++i) {\n\t\tif (q->bufs[i] && q->bufs[i]->boff) {\n\t\t\tb = q->bufs[i];\n\t\t\tbreak;\n\t\t}\n\t}\n\n\tif (!b)\n\t\treturn -EINVAL;\n\n\t/* Validate the buffer offset */\n\tif (vma->vm_start != b->boff)\n\t\treturn -EINVAL;\n\n\t/* Allocate mapping structure */\n\tstruct videobuf_mapping *map;\n\tmap = kmalloc(sizeof(*map), GFP_KERNEL);\n\tif (!map)\n\t\treturn -ENOMEM;\n\n\t/* Set up virtual memory area operations */\n\tvma->vm_ops = &videobuf_vm_ops;\n\tvma->vm_private_data = map;\n\n\t/* Remap virtual memory to physical memory */\n\tif (remap_pfn_range(vma, vma->vm_start, b->boff >> PAGE_SHIFT,\n\t\t\t    vma->vm_end - vma->vm_start,\n\t\t\t    vma->vm_page_prot)) {\n\t\t/* Store the virtual memory area for later use */\n\t\tmap->vmas = vma;\n\t} else {\n\t\tvma->vm_flags |= VM_IO | VM_RESERVED;\n\t}\n\n\t/* Log the mapping details and open the virtual memory area */\n\tprintk(KERN_INFO \"Mapped buffer %p to address range 0x%lx-0x%lx\\n\",\n\t       b, vma->vm_start, vma->vm_end);\n\n\treturn 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int videobuf_mmap(struct videobuf_queue *q, struct vm_area_struct *vma)\n{\n    struct videobuf_buffer *b = NULL;\n    int ret;\n\n    if (vma->vm_flags & (VM_WRITE | VM_SHARED)) {\n        vma->vm_flags |= VM_MAYSHARE | VM_MAYREAD;\n    } else {\n        return -EINVAL;\n    }\n\n    vma->vm_ops = &videobuf_vm_ops;\n    vma->vm_private_data = NULL;\n\n    list_for_each_entry(b, &q->queued_list, q) {\n        if (vma->vm_start >= b->boff) {\n            if ((vma->vm_start - b->boff) + vma->vm_end <= b->size) {\n                vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);\n                ret = remap_pfn_range(vma, vma->vm_start, b->dma_addr >> PAGE_SHIFT,\n                                      vma->vm_end - vma->vm_start, vma->vm_page_prot);\n                if (!ret) {\n                    vma->vm_private_data = b;\n                    break;\n                }\n            }\n        }\n    }\n\n    if (!vma->vm_private_data) {\n        return -ENOMEM;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int videobuf_mmap_setup(struct videobuf_queue *q, struct vm_area_struct *vma)\n{\n    struct videobuf_buffer *buf;\n\n    if (!(vma->vm_flags & VM_WRITE) || !(vma->vm_flags & VM_SHARED))\n        return -EINVAL;\n\n    list_for_each_entry(buf, &q->stream, q) {\n        if (buf->boff != vma->vm_start - q->offset)\n            continue;\n\n        if (!buf->boff || !buf->bsize)\n            return -EINVAL;\n\n        vma->vm_ops = &videobuf_vm_ops;\n        vma->vm_private_data = buf;\n\n        if (remap_pfn_range(vma, vma->vm_start, buf->phys_addr >> PAGE_SHIFT,\n                            vma->vm_end - vma->vm_start, vma->vm_page_prot)) {\n            vma->vm_flags |= VM_MIXEDMAP;\n            return 0;\n        }\n\n        q->vmas = vma;\n        return 0;\n    }\n\n    return -EINVAL;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

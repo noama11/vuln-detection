@@ -1,0 +1,46 @@
+class PageFormAnalyserLogger {
+public:
+    struct LogEntry {
+        std::string message;
+        std::vector<WebNode> nodes;
+    };
+
+    PageFormAnalyserLogger(WebLocalFrame& frame) : frame_(frame) {}
+    ~PageFormAnalyserLogger() {}
+
+    void Send(ConsoleMessageLevel level, const std::string& message, const WebNode& node) {
+        LogEntry entry;
+        entry.message = message;
+        entry.nodes.push_back(node);
+        buffer_.push_back(std::move(entry));
+    }
+
+    void Send(ConsoleMessageLevel level, const std::string& message, const std::vector<WebNode>& nodes) {
+        LogEntry entry;
+        entry.message = message;
+        entry.nodes = nodes;
+        buffer_.push_back(std::move(entry));
+    }
+
+    void Flush() {
+        for (auto& entry : buffer_) {
+            std::string formatted_message = entry.message;
+            for (const auto& node : entry.nodes) {
+                if (node.isNull())
+                    continue;
+
+                std::string node_value = node.value().utf8().data();
+                if (node.hasAttribute("type") && node.getAttribute("type").utf8().data() == "password") {
+                    node_value = "****";
+                }
+                formatted_message += " [Node: " + node_value + "]";
+            }
+            frame_.addMessageToConsole(formatted_message.c_str(), level);
+        }
+        buffer_.clear();
+    }
+
+private:
+    WebLocalFrame& frame_;
+    std::vector<LogEntry> buffer_;
+};

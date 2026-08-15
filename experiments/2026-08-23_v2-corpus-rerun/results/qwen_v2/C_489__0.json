@@ -1,0 +1,56 @@
+{
+  "case_id": "C_489__0",
+  "sample_id": "D/C/489",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-5986",
+  "cve_summary": "Race condition in the sctp_wait_for_sndbuf function in net/sctp/socket.c in the Linux kernel before 4.9.11 allows local users to cause a denial of service (assertion failure and panic) via a multithreaded application that peels off an association in a certain buffer-full state.",
+  "changed_file": "net/sctp/socket.c",
+  "docstring": "\"\"\"\nSummary: \nWaits for available send buffer space in a specified SCTP association.\n\nParameters: \nasoc (struct sctp_association*): Pointer to the SCTP association to check for send buffer space.\ntimeo_p (long*): Pointer to a timeout value for waiting.\nmsg_len (size_t): Length of the message to be sent.\n\nReturns: \nint: Returns 0 on success, -EPIPE if an error occurs, -EAGAIN if the operation is non-blocking and no space is available.\n\nLogic: \nThe function increments the reference count of the association and enters a loop to wait for sufficient send buffer space. It checks for errors, state conditions, and signals that may interrupt the wait. If the message length is less than or equal to the available space, it breaks the loop. If interrupted or if a timeout occurs, it handles these cases appropriately. Finally, it releases the association's reference count and returns the error code or success.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int sctp_wait_for_sndbuf(struct sctp_association *asoc, long *timeo_p, size_t msg_len)\n{\n    int err = 0;\n    long timeout = *timeo_p;\n    int result;\n\n    sctp_association_hold(asoc);\n\n    while (1) {\n        if (unlikely(!asoc->base.dead)) {\n            err = -EPIPE;\n            break;\n        }\n\n        if (msg_len <= sctp_free_space(asoc)) {\n            break;\n        }\n\n        if (!timeout) {\n            err = -EAGAIN;\n            break;\n        }\n\n        if (signal_pending(current)) {\n            err = -EINTR;\n            break;\n        }\n\n        result = schedule_timeout_interruptible(timeout);\n        timeout = result;\n    }\n\n    sctp_association_put(asoc);\n    *timeo_p = timeout;\n    return err ? err : 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of the wait logic and error conditions. The candidate implementation lacks the use of `prepare_to_wait_exclusive` and `finish_wait`, which are used in the reference to manage wait queues and avoid race conditions. Additionally, the candidate implementation does not check `sk->sk_err` or `asoc->state`, which could lead to missing error conditions. These differences could affect the correctness and robustness of the wait behavior, particularly in concurrent or error-prone scenarios. However, the core logic of waiting for send buffer space and handling timeouts is preserved.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their handling of the wait logic and error conditions. The candidate implementation lacks the use of `prepare_to_wait_exclusive` and `finish_wait`, which are used in the reference to manage wait queues and avoid race conditions. Additionally, the candidate implementation does not check `sk->sk_err` or `asoc->state >= SCTP_STATE_SHUTDOWN_PENDING`, which are important for detecting errors or shutdown conditions in the association. These differences could lead to incorrect behavior or race conditions when waiting for send buffer space, especially under adversarial or high-concurrency scenarios. This is a security-relevant issue as it could lead to memory safety or correctness problems.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

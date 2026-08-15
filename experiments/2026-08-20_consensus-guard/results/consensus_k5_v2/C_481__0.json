@@ -1,0 +1,67 @@
+{
+  "case_id": "C_481__0",
+  "sample_id": "D/C/481",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "libimobiledevice/libplist",
+  "cve_id": "CVE-2017-6435",
+  "cve_summary": "The parse_string_node function in bplist.c in libimobiledevice libplist 1.12 allows local users to cause a denial of service (memory corruption) via a crafted plist file.",
+  "changed_file": "src/bplist.c",
+  "docstring": "Summary: Parses a string node from a given byte node and size, creating a plist data structure.\n\nParameters: \n- bnode (const char **): Pointer to the byte node containing the string data.\n- size (uint64_t): The size of the string to be parsed.\n\nReturns: plist_t: A pointer to the newly created plist node containing the string data, or NULL if allocation fails.\n\nLogic: The function initializes a new plist data structure, allocates memory for the string based on the provided size, and checks for successful allocation. If allocation fails, it frees the allocated data and logs an error message. If successful, it copies the string data from the byte node, null-terminates the string, updates the length, and creates a new node containing the plist data before returning it.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 6,
+    "consensus_exposure": 0,
+    "net_exposure": 6,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Check for successful memory allocation",
+        "performed_by_count": 5,
+        "why_it_matters": "If `malloc` fails and returns NULL, dereferencing `data->strval` will cause a null-pointer dereference, leading to undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "high",
+    "rationale": "The target omits a check for the success of the `malloc` call before using the result. A majority of the independent implementations perform this check, which is critical for avoiding use-after-free or null-pointer dereference issues. Additionally, the target uses `strlen` to set the length, which is unnecessary and potentially misleading if the input contains embedded nulls.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 6,
+    "consensus_exposure": 0,
+    "net_exposure": 6,
+    "n_steps_reported": 2,
+    "n_steps_majority": 2,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "freeing allocated data on node creation failure",
+        "performed_by_count": 4,
+        "why_it_matters": "If `node_create` fails, the `plist_data_t` object is not freed, leading to a memory leak."
+      },
+      {
+        "step": "null-terminating the string before using `strlen`",
+        "performed_by_count": 5,
+        "why_it_matters": "If the input string is not null-terminated, `strlen` could read beyond the allocated buffer, leading to undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation allocates memory for the string and checks for allocation failure, which is consistent with the majority of the independent implementations. However, it does not null-terminate the string before calling `strlen`, which could lead to undefined behavior if the input string is not null-terminated. Additionally, it does not free the `plist_data_t` object in the error path if `node_create` fails, which is a defensive step performed by most of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

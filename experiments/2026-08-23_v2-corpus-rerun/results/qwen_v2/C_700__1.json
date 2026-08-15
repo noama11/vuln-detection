@@ -1,0 +1,56 @@
+{
+  "case_id": "C_700__1",
+  "sample_id": "D/C/700",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-18344",
+  "cve_summary": "The timer_create syscall implementation in kernel/time/posix-timers.c in the Linux kernel before 4.14.8 doesn't properly validate the sigevent->sigev_notify field, which leads to out-of-bounds access in the show_timer function (called when /proc/$PID/timers is read). This allows userspace applications to read arbitrary kernel memory (on a kernel built with CONFIG_POSIX_TIMERS and CONFIG_CHECKPOINT_RESTORE).",
+  "changed_file": "kernel/time/posix-timers.c",
+  "docstring": "/**\n * Summary: Sets the timer with new settings and manages its state.\n * \n * Parameters:\n * timr (struct k_itimer*): Pointer to the timer to be set.\n * flags (int): Flags that modify the behavior of the timer.\n * new_setting (struct itimerspec64*): New timer settings including value and interval.\n * old_setting (struct itimerspec64*): Pointer to store the previous timer settings, if applicable.\n * \n * Returns: \n * int: Returns 0 on success, or TIMER_RETRY if the timer could not be canceled.\n * \n * Logic: The function first retrieves the current timer settings if old_setting is provided. It then clears the timer's interval to prevent rearming. If the timer is active, it attempts to cancel it. If successful, it updates the timer's settings based on new_setting, including the interval and expiration time. If the new expiration time is zero, it disables the timer. Finally, it arms the timer with the new settings and updates its active state.\n */",
+  "heuristic_leakage_flag": true,
+  "generated_code": "int set_timer_settings(struct k_itimer *timr, int flags, struct itimerspec64 *new_setting, struct itimerspec64 *old_setting) {\n    struct itimerspec64 old;\n    int ret = 0;\n\n    if (old_setting)\n        *old_setting = timr->it;\n\n    timr->it_interval = 0;\n\n    if (timr->active) {\n        ret = timer_cancel(timr);\n        if (ret != 0)\n            return TIMER_RETRY;\n    }\n\n    timr->it = *new_setting;\n\n    if (timr->it.it_value.tv_sec == 0 && timr->it.it_value.tv_nsec == 0)\n        timr->active = 0;\n    else\n        timr->active = 1;\n\n    timer_arm(timr);\n\n    return 0;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation sets `timr->it` directly to `*new_setting`, while the reference implementation converts `new_setting->it_interval` and `new_setting->it_value` to `ktime_t` using `timespec64_to_ktime`. Additionally, the reference implementation includes logic for handling `sigev_none`, updating `it_active` and `it_requeue_pending`, and calling `timer_arm` with additional parameters like `flags & TIMER_ABSTIME` and `sigev_none`. These differences could affect how the timer is armed and whether it is active, potentially leading to different behaviors in edge cases or adversarial inputs. The candidate implementation also lacks some of the state management and cleanup logic present in the reference implementation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation sets `timr->it` directly to `new_setting`, while the reference implementation converts `new_setting->it_interval` and `new_setting->it_value` to `ktime_t` using `timespec64_to_ktime`. Additionally, the reference implementation includes logic for handling `sigev_none`, updating `it_active` and `it_requeue_pending`, and calling `kc->timer_arm` with additional parameters like `flags & TIMER_ABSTIME` and `sigev_none`. These differences affect the internal state of the timer and how it is armed, which could lead to different behaviors in edge cases or adversarial inputs, particularly in how the timer is scheduled and whether it is active or not. These differences are security-relevant as they touch on resource management and timer behavior.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

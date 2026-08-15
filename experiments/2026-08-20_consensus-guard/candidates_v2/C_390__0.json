@@ -1,0 +1,34 @@
+{
+  "case_id": "C_390__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ACPI_STATUS AcpiPsCompleteScope(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status)\n{\n    ACPI_PARSE_OBJECT *Next;\n\n    if (!WalkState || !Op) {\n        return (AE_BAD_PARAMETER);\n    }\n\n    /* Process the last operation in the parsing state */\n    while (Op) {\n        Next = Op->Common.Next;\n\n        switch (Status) {\n        case AE_CTRL_PENDING:\n            /* Handle pending state */\n            break;\n\n        case AE_CTRL_TRANSFER:\n            /* Handle control transfer */\n            break;\n\n        case AE_CTRL_TERMINATE:\n            /* Terminate the operation and clear the scope */\n            AcpiPsClearScope(WalkState);\n            return (AE_OK);\n\n        default:\n            /* Handle any other status */\n            break;\n        }\n\n        Op = Next;\n    }\n\n    /* Terminate the parsing state and clear the scope stack */\n    AcpiPsClearScope(WalkState);\n\n    return (Status);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ACPI_STATUS AcpiPsCompleteFinalOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status)\n{\n    ACPI_PARSE_OBJECT *NextOp;\n    ACPI_PARSE_OBJECT *PrevOp;\n    ACPI_STATUS Status2;\n\n    if (WalkState->ScopeDepth > 0) {\n        WalkState->ScopeDepth--;\n    }\n\n    while (Op) {\n        if (Op->Common.Value.ArgList) {\n            NextOp = Op->Common.Value.ArgList;\n            Op->Common.Value.ArgList = NULL;\n        }\n        else {\n            NextOp = Op->Common.Next;\n        }\n\n        if (Op->Common.Type & ACPI_PTYPE_CONTROL) {\n            switch (Status) {\n                case AE_CTRL_PENDING:\n                    PrevOp = Op->Common.Parent;\n                    if (PrevOp && (PrevOp->Common.Type & ACPI_PTYPE_CONTROL)) {\n                        Status2 = AcpiPsCompleteOp(WalkState, PrevOp, AE_OK);\n                        if (Status2 != AE_CTRL_PENDING) {\n                            Status = Status2;\n                        }\n                    }\n                    break;\n                case AE_CTRL_TERMINATE:\n                    break;\n                default:\n                    break;\n            }\n        }\n\n        Op = NextOp;\n    }\n\n    if (WalkState->ScopeStack && (WalkState->ScopeDepth == 0)) {\n        WalkState->ScopeStack = NULL;\n    }\n\n    return Status;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ACPI_STATUS AcpiPsCompleteFinalOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status) {\n    ACPI_PARSE_OBJECT *Next;\n\n    do {\n        /* Complete the current operation */\n        if (Op && Op->Common.Value.Arg) {\n            AcpiUtRemoveReference(Op->Common.Value.Arg);\n            Op->Common.Value.Arg = NULL;\n        }\n\n        /* Check if a callback is registered for the current op */\n        if (WalkState->DescendingCallback) {\n            Status = WalkState->DescendingCallback(WalkState, Op, WalkState->ClientData);\n            if (ACPI_FAILURE(Status)) {\n                return Status;\n            }\n        }\n\n        /* Update the state of the walk */\n        WalkState->CurrentOp = Op;\n        if (Op) {\n            Op = Op->Common.Next;\n        }\n\n        /* Handle any control flow */\n        if (Status == AE_CTRL_PENDING) {\n            Status = AE_OK;\n        }\n    } while (Status != AE_CTRL_TERMINATE);\n\n    return Status;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ACPI_STATUS AcpiPsCompleteFinalOp(ACPI_WALK_STATE *WalkState, ACPI_PARSE_OBJECT *Op, ACPI_STATUS Status)\n{\n    ACPI_PARSE_OBJECT *Next;\n\n    /* Complete the final operation and clear the scope stack */\n\n    if (WalkState->ScopeInfo) {\n        WalkState->ScopeInfo = WalkState->ScopeInfo->Prev;\n    }\n\n    if (WalkState->ControlState) {\n        WalkState->ControlState = NULL;\n    }\n\n    while (Op) {\n        Next = Op->Common.Next;\n\n        if (Op->Common.Value.Arg) {\n            AcpiUtDeleteInternalObjectDesc(Op->Common.Value.Arg);\n        }\n\n        if (Op->Common.Value.Node) {\n            AcpiNsRemoveReference(Op->Common.Value.Node);\n        }\n\n        AcpiPsFreeOp(Op);\n\n        Op = Next;\n    }\n\n    return (Status);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ACPI_STATUS AcpiPsCompleteOp(\n    ACPI_WALK_STATE       *WalkState,\n    ACPI_PARSE_OBJECT     *Op,\n    ACPI_STATUS           Status)\n{\n    ACPI_PARSE_OBJECT     *Parent;\n    ACPI_PARSE_OBJECT     *Next;\n\n    if (!WalkState || !Op)\n    {\n        return (AE_BAD_PARAMETER);\n    }\n\n    if (Status == AE_CTRL_PENDING)\n    {\n        WalkState->CtrlState = Op;\n        return (AE_OK);\n    }\n\n    while (Op)\n    {\n        if (Op->Common.DisassembleHandle)\n        {\n            AcpiUtReleaseAcpiObject(Op->Common.DisassembleHandle);\n            Op->Common.DisassembleHandle = NULL;\n        }\n\n        Parent = Op->Common.Parent;\n        Next = Op->Common.Next;\n\n        if (Parent)\n        {\n            if (Parent->Common.Value.Arg)\n            {\n                if (Parent->Common.Value.Arg->Common.Type == ACPI_PTYPE_NAMESTRING)\n                {\n                    ACPI_FREE(Parent->Common.Value.Arg->Common.Value.String);\n                }\n            }\n\n            if (Parent->Common.Value.Arg == Op)\n            {\n                Parent->Common.Value.Arg = NULL;\n            }\n        }\n\n        AcpiPsDeleteObject (Op);\n        Op = Next;\n    }\n\n    if (Status != AE_OK && Status != AE_CTRL_TRANSFERRED)\n    {\n        AcpiUtWalkStack(WalkState->ParserState.Scope, NULL, NULL);\n        WalkState->ParserState.Scope = NULL;\n    }\n\n    return (Status);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

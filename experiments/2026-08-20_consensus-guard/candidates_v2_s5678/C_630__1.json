@@ -1,0 +1,34 @@
+{
+  "case_id": "C_630__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len)\n{\n    struct rdma_mcast *mcast;\n    struct rdma_cm_id *id;\n    int ret;\n\n    if (out_len < sizeof(*cmd)) {\n        return -EINVAL;\n    }\n\n    id = ucma_get_id(file);\n    if (!id)\n        return -ENODEV;\n\n    if (cmd->addr_size > sizeof(cmd->addr))\n        return -EINVAL;\n\n    mcast = kmalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    mcast->id = id;\n    memcpy(&mcast->addr, &cmd->addr, cmd->addr_size);\n    mcast->flags = cmd->flags;\n\n    ret = rdma_join_ip_multicast(id, &mcast->addr, cmd->flags);\n    if (ret) {\n        kfree(mcast);\n        goto out;\n    }\n\n    id->mcast = mcast;\n\n    cmd->addr_size = sizeof(cmd->addr);\n    ret = 0;\n\nout:\n    ucma_put_id(id);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len) {\n    int ret;\n    struct rdma_mcast *mcast;\n    struct rdma_user_mcast *umcast;\n    struct rdma_cm_id *id;\n\n    if (out_len < sizeof(*umcast))\n        return -EINVAL;\n\n    if (cmd->addr_len < sizeof(struct sockaddr))\n        return -EINVAL;\n\n    if (cmd->flags & RDMA_MCAST_JOIN_FLAG)\n        return -EINVAL;\n\n    id = file->id;\n    if (!id)\n        return -EINVAL;\n\n    mcast = kzalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast)\n        return -ENOMEM;\n\n    mcast->id = id;\n    mcast->addr_len = cmd->addr_len;\n    memcpy(&mcast->addr, &cmd->addr, cmd->addr_len);\n    mcast->join_state = RDMA_MCAST_JOIN;\n\n    ret = rdma_mcast_join(id, &mcast->addr, mcast->addr_len);\n    if (ret < 0) {\n        kfree(mcast);\n        return ret;\n    }\n\n    umcast = kmalloc(sizeof(*umcast), GFP_KERNEL);\n    if (!umcast) {\n        ret = -ENOMEM;\n        goto err_out;\n    }\n\n    umcast->id = id->id;\n    umcast->addr_len = mcast->addr_len;\n    memcpy(&umcast->addr, &mcast->addr, mcast->addr_len);\n\n    if (copy_to_user((void __user *)(uintptr_t)cmd->response, umcast, sizeof(*umcast))) {\n        ret = -EFAULT;\n        kfree(umcast);\n        goto err_out;\n    }\n\n    kfree(umcast);\n    return 0;\n\nerr_out:\n    rdma_mcast_leave(id, &mcast->addr);\n    kfree(mcast);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len)\n{\n    struct rdma_mcast *mcast;\n    struct sockaddr *addr;\n    struct rdma_cm_id *id;\n    int ret;\n\n    if (out_len < sizeof(*cmd))\n        return -EINVAL;\n\n    if (cmd->addr_len < sizeof(*addr))\n        return -EINVAL;\n\n    if (cmd->flags & RDMA_MCAST_JOIN_FLAG)\n        return -EINVAL;\n\n    id = ucma_get_id(file);\n    if (!id)\n        return -EINVAL;\n\n    addr = (struct sockaddr *)cmd + sizeof(*cmd);\n    mcast = kmalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast) {\n        ret = -ENOMEM;\n        goto out;\n    }\n\n    ret = rdma_join_ip_multicast(id, addr, cmd->qpn, mcast);\n    if (ret)\n        goto out_free;\n\n    cmd->response = RDMA_MCAST_RESP_SUCCESS;\n    if (copy_to_user(file->umem, cmd, sizeof(*cmd))) {\n        ret = -EFAULT;\n        goto out_free;\n    }\n\n    return 0;\n\nout_free:\n    kfree(mcast);\nout:\n    rdma_put_id(id);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len)\n{\n    int ret;\n    struct rdma_mcast *mcast;\n    struct rdma_cm_id *id = file->context;\n\n    if (out_len < sizeof(*cmd)) {\n        return -EINVAL;\n    }\n\n    if (cmd->addr_len != sizeof(struct sockaddr_in) &&\n        cmd->addr_len != sizeof(struct sockaddr_in6)) {\n        return -EINVAL;\n    }\n\n    mcast = kmalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast)\n        return -ENOMEM;\n\n    mcast->addr_len = cmd->addr_len;\n    memcpy(&mcast->addr, &cmd->addr, cmd->addr_len);\n    mcast->id = id;\n\n    ret = rdma_join_ip_multicast(id, &mcast->addr, cmd->flags);\n    if (ret) {\n        kfree(mcast);\n        return ret;\n    }\n\n    cmd->cookie = (uintptr_t)mcast;\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t ucma_join_multicast(struct ucma_file *file, struct rdma_ucm_join_mcast *cmd, int out_len)\n{\n    struct rdma_ucm_join_mcast_resp resp = {};\n    struct rdma_mcast *mcast;\n    struct rdma_cm_id *id;\n    int ret;\n\n    if (out_len < sizeof(resp))\n        return -EINVAL;\n\n    if (cmd->addr_len < sizeof(struct sockaddr_in))\n        return -EINVAL;\n\n    if (cmd->flags & RDMA_MCAST_JOIN_FLAG_LEAVE)\n        return -EINVAL;\n\n    id = ucma_get_ctx(file);\n    if (!id)\n        return -EBADF;\n\n    mcast = kzalloc(sizeof(*mcast), GFP_KERNEL);\n    if (!mcast) {\n        ret = -ENOMEM;\n        goto err;\n    }\n\n    mcast->id = id;\n    mcast->group_id = cmd->group_id;\n    mcast->addr_len = cmd->addr_len;\n    memcpy(&mcast->addr, &cmd->addr, cmd->addr_len);\n\n    ret = rdma_mcast_join(id, &mcast->addr, cmd->flags);\n    if (ret)\n        goto err_free;\n\n    resp.group_id = mcast->group_id;\n    if (copy_to_user(cmd->resp, &resp, sizeof(resp)))\n        ret = -EFAULT;\n\n    return 0;\n\nerr_free:\n    kfree(mcast);\nerr:\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

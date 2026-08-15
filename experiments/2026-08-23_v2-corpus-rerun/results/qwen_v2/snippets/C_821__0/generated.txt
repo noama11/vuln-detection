@@ -1,0 +1,41 @@
+int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *index)
+{
+        int i;
+        int err = 0;
+        struct mlx4_mac_table *table = &dev->mac_table[port - 1];
+
+        mutex_lock(&table->mutex);
+
+        for (i = 0; i < MLX4_MAC_TABLE_SIZE; ++i) {
+                if (table->entries[i].mac == mac) {
+                        table->entries[i].ref_count++;
+                        *index = i;
+                        goto out;
+                }
+        }
+
+        for (i = 0; i < MLX4_MAC_TABLE_SIZE; ++i) {
+                if (!table->entries[i].ref_count) {
+                        table->entries[i].mac = mac;
+                        table->entries[i].ref_count = 1;
+                        *index = i;
+                        break;
+                }
+        }
+
+        if (i == MLX4_MAC_TABLE_SIZE) {
+                err = -ENOSPC;
+                goto out;
+        }
+
+        err = mlx4_WRITE_MAC_ADDR(dev, port, mac);
+        if (err) {
+                table->entries[i].mac = 0;
+                table->entries[i].ref_count = 0;
+                *index = -1;
+        }
+
+out:
+        mutex_unlock(&table->mutex);
+        return err;
+}

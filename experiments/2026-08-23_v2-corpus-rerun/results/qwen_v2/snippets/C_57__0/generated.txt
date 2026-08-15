@@ -1,0 +1,43 @@
+ssize_t dev_write(struct file *filp, const char __user *buf, size_t count, loff_t *fpos) {
+    struct dev_info *dev;
+    struct element_info *elem;
+    ssize_t bytes_written = 0;
+    int ret;
+
+    if (count > MAX_WRITE_SIZE)
+        return -EINVAL;
+
+    dev = get_active_device();
+    if (!dev)
+        return -ENODEV;
+
+    mutex_lock(&dev->lock);
+    if (!dev->is_connected) {
+        mutex_unlock(&dev->lock);
+        return -EIO;
+    }
+
+    elem = kzalloc(sizeof(*elem), GFP_KERNEL);
+    if (!elem) {
+        mutex_unlock(&dev->lock);
+        return -ENOMEM;
+    }
+
+    ret = copy_from_user(elem->data, buf, count);
+    if (ret) {
+        kfree(elem);
+        mutex_unlock(&dev->lock);
+        return -EFAULT;
+    }
+
+    elem->length = count;
+    elem->seq_num = dev->next_seq_num++;
+    dev->next_seq_num %= MAX_SEQ_NUM;
+
+    queue_element(dev, elem);
+
+    bytes_written = count;
+    mutex_unlock(&dev->lock);
+
+    return bytes_written;
+}

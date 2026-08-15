@@ -1,0 +1,34 @@
+{
+  "case_id": "C_303__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *priv;\n    struct usb_host_interface *iface;\n    struct usb_endpoint_descriptor *ep_desc;\n    int i;\n\n    iface = port->port->config->interface->cur_altsetting;\n\n    for (i = 0; i < iface->desc.bNumEndpoints; ++i) {\n        ep_desc = &iface->endpoint[i].desc;\n        if (usb_endpoint_dir_out(ep_desc) && usb_endpoint_xfer_int(ep_desc))\n            break;\n    }\n\n    if (i == iface->desc.bNumEndpoints)\n        return -ENODEV;\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    spin_lock_init(&priv->lock);\n    usb_fill_int_urb(priv->interrupt_urb, port->serial->dev,\n                     usb_rcvintpipe(port->serial->dev, ep_desc->bEndpointAddress),\n                     priv->interrupt_data, sizeof(priv->interrupt_data),\n                     cypress_interrupt_read, priv, ep_desc->bInterval);\n\n    priv->interrupt_urb->transfer_flags |= URB_AUTO_CLEAR_TRANSFER_BUFFER;\n\n    if (iface->endpoint[i].extralen >= 2) {\n        u8 *extra = iface->endpoint[i].extra;\n        priv->pkt_size = get_unaligned_le16(extra);\n    } else {\n        priv->pkt_size = 64;\n    }\n\n    priv->read_urb_size = priv->pkt_size;\n    priv->write_urb_size = priv->pkt_size;\n\n    port->port->read_interval = ep_desc->bInterval;\n    port->port->write_interval = ep_desc->bInterval;\n\n    port->private = priv;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *priv;\n    int i;\n\n    /* Check for required endpoints */\n    if (!port->port.open_count) {\n        return -ENODEV;\n    }\n\n    /* Allocate memory for the private data structure */\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    /* Initialize locks and FIFO buffers */\n    mutex_init(&priv->mutex);\n    for (i = 0; i < CY_MAX_NPORTS; ++i) {\n        spin_lock_init(&priv->lock[i]);\n        setup_timer(&priv->timer[i], cypress_timer, (unsigned long)port);\n    }\n\n    /* Configure packet format based on interrupt output size */\n    if (port->interrupt_out_urb && port->interrupt_out_urb->ep->desc.wMaxPacketSize > 8) {\n        priv->packet_format = PACKET_FORMAT_LARGE;\n    } else {\n        priv->packet_format = PACKET_FORMAT_SMALL;\n    }\n\n    /* Handle special cases for certain devices */\n    if (port->serial->dev->descriptor.idVendor == 0x0403 && port->serial->dev->descriptor.idProduct == 0x6001) {\n        priv->special_case = 1;\n    }\n\n    /* Set read/write intervals based on provided values or defaults */\n    priv->read_interval = port->serial->dev->descriptor.bMaxPacketSize ? : 16;\n    priv->write_interval = port->serial->dev->descriptor.bNumConfigurations ? : 8;\n\n    /* Associate the private data with the port */\n    usb_set_serial_port_data(port, priv);\n\n    /* Set drain delay */\n    priv->drain_delay = 10;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    struct cypress_private *priv;\n    int endpoint;\n    int i;\n    int packet_size;\n    int ret;\n\n    /* Check for required endpoints */\n    for (i = 0; i < USB_SERIAL_NUM_ENDPOINTS; i++) {\n        if (port->port->write_urb && port->port->write_urb->ep->desc.bEndpointAddress == i) {\n            endpoint = i;\n            break;\n        }\n    }\n    if (i == USB_SERIAL_NUM_ENDPOINTs)\n        return -ENODEV;\n\n    /* Allocate private data */\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv)\n        return -ENOMEM;\n\n    /* Initialize locks and FIFO buffers */\n    spin_lock_init(&priv->lock);\n    usb_serial_init_port(port);\n\n    /* Determine packet size based on interrupt output size */\n    packet_size = usb_endpoint_maxp(port->port->write_urb->ep->desc);\n\n    /* Handle special cases for certain devices */\n    if (port->serial->dev->descriptor.idVendor == 0x0403 && port->serial->dev->descriptor.idProduct == 0x6001) {\n        packet_size = 64;\n    }\n\n    /* Set read/write intervals */\n    priv->write_interval = 16;\n    priv->read_interval = 16;\n\n    /* Associate private data with port */\n    usb_set_serial_port_data(port, priv);\n\n    /* Set drain delay */\n    priv->drain_delay = 10;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret = 0;\n    struct usb_endpoint_descriptor *ep;\n    unsigned int read_interval = 0x10;\n    unsigned int write_interval = 0x10;\n    unsigned int drain_delay = 0x10;\n    struct cypress_private *priv;\n\n    ep = usb_endpoint_num_desc(port->serial->interface, USB_DIR_OUT);\n    if (!ep) {\n        return -ENODEV;\n    }\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv) {\n        return -ENOMEM;\n    }\n\n    spin_lock_init(&priv->lock);\n    priv->bulk_in_size = le16_to_cpu(ep->wMaxPacketSize);\n    init_usb_anchor(&priv->delayed_work);\n\n    if (priv->bulk_in_size == 64) {\n        read_interval = 0x10;\n        write_interval = 0x10;\n    } else {\n        read_interval = 0x10;\n        write_interval = 0x10;\n    }\n\n    priv->read_urb = usb_alloc_urb(0, GFP_KERNEL);\n    if (!priv->read_urb) {\n        ret = -ENOMEM;\n        goto error;\n    }\n\n    priv->write_urb = usb_alloc_urb(0, GFP_KERNEL);\n    if (!priv->write_urb) {\n        ret = -ENOMEM;\n        goto error;\n    }\n\n    usb_serial_set_private_data(port, priv);\n    port->bulk_in_size = priv->bulk_in_size;\n    port->private = priv;\n\n    port->read_interval = read_interval;\n    port->write_interval = write_interval;\n    port->drain_delay = drain_delay;\n\n    return 0;\n\nerror:\n    kfree(priv);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int cypress_probe(struct usb_serial_port *port)\n{\n    int ret;\n    struct usb_endpoint_descriptor *ep;\n    struct cypress_private *priv;\n\n    ep = usb_endpoint_ptr(port->port_num, USB_DIR_OUT | USB_ENDPOINT_XFER_INT);\n    if (!ep) {\n        return -ENODEV;\n    }\n\n    priv = kzalloc(sizeof(*priv), GFP_KERNEL);\n    if (!priv) {\n        return -ENOMEM;\n    }\n\n    spin_lock_init(&priv->lock);\n    ret = usb_serial_fifo_alloc(port, &priv->bulk_in, 16 * 1024);\n    if (ret < 0) {\n        kfree(priv);\n        return ret;\n    }\n\n    priv->packet_size = le16_to_cpu(ep->wMaxPacketSize);\n\n    port->private_data = priv;\n    port->drain_delay = 500;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

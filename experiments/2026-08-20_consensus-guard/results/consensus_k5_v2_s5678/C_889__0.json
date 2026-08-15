@@ -1,0 +1,62 @@
+{
+  "case_id": "C_889__0",
+  "sample_id": "D/C/889",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2019-14763",
+  "cve_summary": "In the Linux kernel before 4.16.4, a double-locking error in drivers/usb/dwc3/gadget.c may potentially cause a deadlock with f_hid.",
+  "changed_file": "drivers/usb/gadget/function/f_hid.c",
+  "docstring": "\"\"\"\nSummary: \nHandles writing data to a HID (Human Interface Device) gadget.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the device.\nbuffer (const char __user *): Pointer to the user buffer containing data to write.\ncount (size_t): Number of bytes to write from the buffer.\noffp (loff_t *): Pointer to the file offset.\n\nReturns: \nssize_t: The number of bytes written on success, or a negative error code on failure.\n\nLogic: \nThe function first checks if the user buffer is accessible. It then acquires a spinlock to manage concurrent access to the write queue. If a write is pending, it waits until the condition allows for a new write. It copies data from the user buffer to a request structure and queues it for transmission over USB. If the request cannot be queued, it logs an error and releases the write pending state. Finally, it wakes up any waiting processes on the write queue.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Bounds check on 'count' before copying data from user space",
+        "performed_by_count": 3,
+        "why_it_matters": "If a malicious user provides a 'count' larger than the allocated buffer size, the 'copy_from_user' call could overwrite adjacent memory, leading to memory corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a bounds check on the 'count' parameter before copying data from user space, which is a step performed by a majority of the independent implementations. This omission could allow a malicious user to request a write of an arbitrary size, potentially leading to memory corruption.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "buffer size check against maximum report length",
+        "performed_by_count": 3,
+        "why_it_matters": "If the user buffer is larger than the maximum report length, copying it could cause an overflow or invalid write, leading to memory corruption or undefined behavior."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target omits a check for the size of the user buffer against the maximum report length before copying data from user space. A majority of the independent implementations perform this check to prevent overflows or invalid writes.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

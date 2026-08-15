@@ -1,0 +1,56 @@
+{
+  "case_id": "C_821__1",
+  "sample_id": "D/C/821",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2010-5332",
+  "cve_summary": "In the Linux kernel before 2.6.37, an out of bounds array access happened in drivers/net/mlx4/port.c. When searching for a free entry in either mlx4_register_vlan() or mlx4_register_mac(), and there is no free entry, the loop terminates without updating the local variable free thus causing out of array bounds access.",
+  "changed_file": "drivers/net/mlx4/port.c",
+  "docstring": "/**\n * Summary: Registers a VLAN for a specified port on a given device.\n * \n * Parameters:\n * dev (struct mlx4_dev *): Pointer to the device structure.\n * port (u8): The port number to register the VLAN on.\n * vlan (u16): The VLAN ID to register.\n * index (int *): Pointer to store the index of the registered VLAN.\n * \n * Returns: int - Returns 0 on success, or a negative error code on failure.\n * \n * Logic: The function locks the VLAN table mutex and checks for an available \n * entry to register the VLAN. If the VLAN is already registered, it \n * increments the reference count. If a new entry is needed, it checks \n * for available space and registers the VLAN. It updates the VLAN table \n * and unlocks the mutex before returning the result.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int register_vlan(struct mlx4_dev *dev, u8 port, u16 vlan, int *index)\n{\n\tint err = -ENOSPC;\n\tint i;\n\n\tmutex_lock(&dev->port_vlans[port].vlan_table_mutex);\n\n\tfor (i = 0; i < MLX4_MAX_VLAN_ENTRIES; ++i) {\n\t\tstruct mlx4_vlan_entry *entry = &dev->port_vlans[port].vlan_table[i];\n\n\t\tif (entry->vlan == vlan) {\n\t\t\t/* VLAN already exists, increment reference count */\n\t\t\tentry->ref_count++;\n\t\t\t*index = i;\n\t\t\terr = 0;\n\t\t\tgoto out;\n\t\t}\n\t}\n\n\t/* Find an empty slot */\n\tfor (i = 0; i < MLX4_MAX_VLAN_ENTRIES; ++i) {\n\t\tstruct mlx4_vlan_entry *entry = &dev->port_vlans[port].vlan_table[i];\n\n\t\tif (entry->vlan == 0) {\n\t\t\tentry->vlan = vlan;\n\t\t\tentry->ref_count = 1;\n\t\t\t*index = i;\n\t\t\terr = 0;\n\t\t\tbreak;\n\t\t}\n\t}\n\nout:\n\tmutex_unlock(&dev->port_vlans[port].vlan_table_mutex);\n\treturn err;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation and reference implementation differ in how they manage VLAN registration. The candidate implementation iterates through all entries to find an existing VLAN or an empty slot, while the reference implementation uses a dedicated 'free' variable to track the first available slot. Additionally, the reference implementation includes a check for the total number of VLAN entries against a maximum limit and calls an external function to update the hardware VLAN table, which the candidate implementation lacks. These differences are security-relevant as they affect input validation and resource limits, potentially leading to DoS or incorrect VLAN registration.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in how they manage VLAN registration. The candidate implementation uses a simple approach where it checks for an existing VLAN and increments the reference count, or finds an empty slot to register a new VLAN. The reference implementation, however, includes additional logic for tracking the total number of VLANs, calling an external function (mlx4_set_port_vlan_table) to update hardware, and handling error recovery (e.g., rolling back on failure). These differences are not just in style but in actual behavior, particularly in how VLANs are tracked and updated in hardware. This is a functional mismatch that could affect correctness and completeness of VLAN registration.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

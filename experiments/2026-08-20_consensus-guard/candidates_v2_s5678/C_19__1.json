@@ -1,0 +1,34 @@
+{
+  "case_id": "C_19__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "#include <linux/personality.h>\n#include <linux/version.h>\n#include <string.h>\n#include <asm/uaccess.h>\n\nint modify_version_string(char __user *release, size_t len) {\n    char version_buf[32];\n    int version_len;\n    unsigned int version = LINUX_VERSION_CODE;\n\n    if (personality(current->personality) & UNAME26) {\n        if (version >= KERNEL_VERSION(3, 0, 0)) {\n            version_len = snprintf(version_buf, sizeof(version_buf), \"Linux 2.6.%u\", version - KERNEL_VERSION(3, 0, 0));\n        } else {\n            version_len = snprintf(version_buf, sizeof(version_buf), \"Linux 2.6.%u\", version);\n        }\n    } else {\n        version_len = snprintf(version_buf, sizeof(version_buf), \"Linux %u.%u.%u\",\n                               KERNEL_VERSION_MAJOR, KERNEL_VERSION_MINOR, KERNEL_VERSION_PATCHLEVEL);\n    }\n\n    if (version_len < 0 || version_len >= (int)sizeof(version_buf)) {\n        return -EINVAL;\n    }\n\n    if (len < version_len + 1) {\n        return -ENAMETOOLONG;\n    }\n\n    if (copy_to_user(release, version_buf, version_len + 1)) {\n        return -EFAULT;\n    }\n\n    return version_len + 1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "#include <linux/personality.h>\n#include <linux/version.h>\n#include <linux/uaccess.h>\n#include <linux/limits.h>\n\nint construct_compat_uname(char __user *release, size_t len) {\n    int ret = 0;\n    char compat_release[32] = \"Linux 2.6.\";\n\n    if (personality(current->personality) & (UNAME26 | UNAME32)) {\n        unsigned int ver = LINUX_VERSION_CODE;\n\n        if (ver < LINUX_VERSION(2, 6, 0)) {\n            return -EINVAL;\n        }\n\n        // Compute the appropriate \"x\" in 2.6.x\n        unsigned int major = (ver - LINUX_VERSION(2, 6, 0)) / 1000000;\n        unsigned int minor = ((ver - LINUX_VERSION(2, 6, 0)) % 1000000) / 1000;\n        unsigned int patch = (ver - LINUX_VERSION(2, 6, 0)) % 1000;\n\n        int total_len = snprintf(compat_release + strlen(compat_release), sizeof(compat_release) - strlen(compat_release),\n                                 \"%u.%u.%u\", major, minor, patch);\n\n        if (total_len < 0)\n            return total_len;\n\n        if (len < total_len) {\n            return -ENAMETOOLONG;\n        }\n\n        if (copy_to_user(release, compat_release, total_len)) {\n            return -EFAULT;\n        }\n\n        ret = total_len;\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <linux/personality.h>\n#include <linux/unistd.h>\n#include <linux/version.h>\n#include <string.h>\n#include <stdarg.h>\n#include <limits.h>\n#include <asm/uaccess.h>\n\nint format_uname_26(char __user *release, size_t len) {\n    char buffer[32];\n    int version = LINUX_VERSION_CODE;\n    int major = 2, minor = 6, patch;\n\n    if (len == 0)\n        return 0;\n\n    if (current->personality & UNAME26_FMT) {\n        patch = (version >> 16) & 0xFF;\n        if (patch > UCHAR_MAX)\n            patch = UCHAR_MAX;\n        snprintf(buffer, sizeof(buffer), \"Linux 2.6.%d\", patch);\n    } else {\n        snprintf(buffer, sizeof(buffer), \"Linux %d.%d.%d\", \n                 (version >> 16) & 0xFF,\n                 (version >> 8) & 0xFF,\n                 version & 0xFF);\n    }\n\n    strncat(buffer, \"\\n\", 1);\n\n    if (strlen(buffer) >= len)\n        return -ENAMETOOLONG;\n\n    if (copy_to_user(release, buffer, strlen(buffer)))\n        return -EFAULT;\n\n    return strlen(buffer);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "#include <string.h>\n#include <linux/personality.h>\n#include <linux/unistd.h>\n#include <linux/version.h>\n#include <linux/uaccess.h>\n\nint modify_linux_version_string(char __user *release, size_t len) {\n    unsigned long personality = personality(current->personality);\n    char version_string[27];\n    int version_code = LINUX_VERSION_CODE;\n    int major = 2;\n    int minor = 6;\n    int patch = version_code / 1000;\n    int ret;\n\n    if (personality & (PER_LINUX | PER_LINUX_32BIT)) {\n        if (version_code >= KERNEL_VERSION(3, 0, 0)) {\n            patch = version_code / 1000;\n        }\n\n        snprintf(version_string, sizeof(version_string), \"Linux 2.6.%d\", patch);\n        ret = strnlen(version_string, sizeof(version_string));\n        if (ret > 0 && copy_to_user(release, version_string, ret))\n            return -EFAULT;\n        return ret;\n    }\n\n    return -EPERM;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "#include <linux/personality.h>\n#include <linux/version.h>\n#include <string.h>\n#include <unistd.h>\n#include <limits.h>\n\nint modify_version_string(char __user *release, size_t len) {\n    char version_str[27];\n    int version = LINUX_VERSION_CODE;\n    int major = 2;\n    int minor = 6;\n    int patch = (version - KERNEL_VERSION(major, minor, 0)) / 1000;\n\n    if (personality(PER_LINUX) == 0) {\n        return -EPERM;\n    }\n\n    if (patch < 0) {\n        return -EINVAL;\n    }\n\n    snprintf(version_str, sizeof(version_str), \"Linux 2.%d.%d\", minor, patch);\n\n    if (len < strlen(version_str)) {\n        return -ENOMEM;\n    }\n\n    if (copy_to_user(release, version_str, strlen(version_str) + 1)) {\n        return -EFAULT;\n    }\n\n    return strlen(version_str) + 1;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_889__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    ssize_t bytes_written = 0;\n    int ret;\n\n    if (!access_ok(buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        wait_event_interruptible(write_queue_wait, !write_pending);\n        if (signal_pending(current)) {\n            spin_unlock(&write_queue_lock);\n            return -ERESTARTSYS;\n        }\n    }\n\n    ret = copy_from_user(write_request_buffer, buffer, count);\n    if (ret) {\n        spin_unlock(&write_queue_lock);\n        return -EFAULT;\n    }\n\n    bytes_written = queue_hid_request(write_request_buffer, count);\n    if (bytes_written < 0) {\n        pr_err(\"Failed to queue HID request: %zd\\n\", bytes_written);\n        write_pending = false;\n        wake_up_interruptible(&write_queue_wait);\n        spin_unlock(&write_queue_lock);\n        return bytes_written;\n    }\n\n    write_pending = true;\n    wake_up_interruptible(&write_queue_wait);\n    spin_unlock(&write_queue_lock);\n\n    return count;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    struct hid_gadget *hid;\n    ssize_t ret = 0;\n    int status;\n\n    hid = file->private_data;\n    if (!hid)\n        return -ENODEV;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock_irq(&hid->write_queue_lock);\n\n    while (!hid->write_pending) {\n        status = wait_event_interruptible(hid->write_queue_wait, hid->write_pending);\n        if (status < 0) {\n            ret = status;\n            goto out;\n        }\n    }\n\n    if (copy_from_user(hid->write_req->buf, buffer, count)) {\n        ret = -EFAULT;\n        goto out;\n    }\n\n    hid->write_req->length = count;\n    usb_ep_queue(hid->ep_out, hid->write_req, GFP_ATOMIC);\n    hid->write_pending = false;\n\n    ret = count;\n    wake_up(&hid->write_queue_wait);\n\nout:\n    spin_unlock_irq(&hid->write_queue_lock);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    struct hid_request *req;\n    ssize_t bytes_written = 0;\n    int ret;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_lock);\n\n    while (write_pending) {\n        wait_event_interruptible(write_queue, !write_pending);\n        if (signal_pending(current)) {\n            spin_unlock(&write_lock);\n            return -ERESTARTSYS;\n        }\n    }\n\n    req = hid_request_alloc(count);\n    if (!req) {\n        spin_unlock(&write_lock);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(req->data, buffer, count)) {\n        hid_request_free(req);\n        spin_unlock(&write_lock);\n        return -EFAULT;\n    }\n\n    write_pending = true;\n    usb_submit_request(req);\n    spin_unlock(&write_lock);\n\n    bytes_written = count;\n\n    wake_up_all(&write_queue);\n\n    return bytes_written;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp)\n{\n    ssize_t ret = 0;\n    struct hid_gadget_request *req;\n    int bytes_copied;\n\n    if (!access_ok(VERIFY_READ, buffer, count))\n        return -EFAULT;\n\n    spin_lock(&write_queue_lock);\n\n    while (write_pending) {\n        wait_event_interruptible(write_queue_wait, !write_pending);\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto unlock;\n        }\n    }\n\n    req = kmalloc(sizeof(*req), GFP_ATOMIC);\n    if (!req) {\n        ret = -ENOMEM;\n        goto unlock;\n    }\n\n    req->length = count;\n\n    bytes_copied = copy_from_user(req->data, buffer, count);\n    if (bytes_copied) {\n        kfree(req);\n        ret = -EFAULT;\n        goto unlock;\n    }\n\n    if (queue_hid_request(req) < 0) {\n        kfree(req);\n        ret = -EIO;\n        write_pending = false;\n        wake_up_all(&write_queue_wait);\n        goto unlock;\n    }\n\n    write_pending = true;\n\nunlock:\n    spin_unlock(&write_queue_lock);\n    return ret ? ret : count;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t hid_gadget_write(struct file *file, const char __user *buffer, size_t count, loff_t *offp) {\n    ssize_t ret = 0;\n    struct hid_gadget *hid_gadget = file->private_data;\n    DECLARE_WAITQUEUE(wait, current);\n    int err = 0;\n\n    if (!access_ok(buffer, count))\n        return -EFAULT;\n\n    spin_lock_irq(&hid_gadget->write_queue_lock);\n\n    add_wait_queue(&hid_gadget->write_queue, &wait);\n\n    while (hid_gadget->write_pending) {\n        set_current_state(TASK_INTERRUPTIBLE);\n        spin_unlock_irq(&hid_gadget->write_queue_lock);\n\n        schedule();\n\n        spin_lock_irq(&hid_gadget->write_queue_lock);\n        if (signal_pending(current)) {\n            ret = -ERESTARTSYS;\n            goto out;\n        }\n    }\n\n    hid_gadget->write_pending = true;\n\n    spin_unlock_irq(&hid_gadget->write_queue_lock);\n\n    err = copy_from_user(hid_gadget->request_buffer, buffer, count);\n    if (err) {\n        ret = -EFAULT;\n        goto error;\n    }\n\n    hid_gadget->request_length = count;\n\n    err = usb_submit_urb(hid_gadget->write_urb, GFP_KERNEL);\n    if (err) {\n        ret = err;\n        goto error;\n    }\n\n    return count;\n\nerror:\n    hid_gadget->write_pending = false;\n    wake_up_interruptible(&hid_gadget->write_queue);\nout:\n    set_current_state(TASK_RUNNING);\n    remove_wait_queue(&hid_gadget->write_queue, &wait);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+int receive_socket_data(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {
+    int bytes_copied = 0;
+    struct sk_buff *skb;
+    size_t remaining = buf_len;
+
+    if (!sock || !m || !buf_len) {
+        return -EINVAL;
+    }
+
+    lock_sock(sock->sk);
+
+    while (remaining > 0) {
+        skb = skb_dequeue(&sock->sk->sk_receive_queue);
+        if (!skb) {
+            if (signal_pending(current) || sock->sk->sk_shutdown & RCV_SHUTDOWN) {
+                unlock_sock(sock->sk);
+                return (sock->sk->sk_shutdown & RCV_SHUTDOWN) ? 0 : -EINTR;
+            }
+
+            if (flags & MSG_DONTWAIT) {
+                unlock_sock(sock->sk);
+                return -EAGAIN;
+            }
+
+            wait_for_message(sock, flags);
+            continue;
+        }
+
+        size_t copy_len = min(remaining, skb->len);
+        if (memcpy_to_msg(m, skb->data, copy_len) != copy_len) {
+            kfree_skb(skb);
+            unlock_sock(sock->sk);
+            return -EFAULT;
+        }
+
+        bytes_copied += copy_len;
+        remaining -= copy_len;
+        kfree_skb(skb);
+
+        if (flags & MSG_WAITALL && bytes_copied < (int)buf_len) {
+            continue;
+        }
+
+        break;
+    }
+
+    unlock_sock(sock->sk);
+    return bytes_copied ? bytes_copied : -EAGAIN;
+}

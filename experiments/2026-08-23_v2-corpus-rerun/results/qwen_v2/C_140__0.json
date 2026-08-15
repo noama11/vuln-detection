@@ -1,0 +1,56 @@
+{
+  "case_id": "C_140__0",
+  "sample_id": "D/C/140",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2014-7145",
+  "cve_summary": "The SMB2_tcon function in fs/cifs/smb2pdu.c in the Linux kernel before 3.16.3 allows remote CIFS servers to cause a denial of service (NULL pointer dereference and client system crash) or possibly have unspecified other impact by deleting the IPC$ share during resolution of DFS referrals.",
+  "changed_file": "fs/cifs/smb2pdu.c",
+  "docstring": "\"\"\"\nSummary: \nEstablishes a connection to a specified SMB2 share.\n\nParameters: \nxid (unsigned int): Transaction ID for the request.\nses (struct cifs_ses *): Pointer to the CIFS session structure.\ntree (const char *): Name of the SMB share to connect to.\ntcon (struct cifs_tcon *): Pointer to the CIFS tree connection structure.\ncp (const struct nls_table *): Pointer to the NLS table for character conversion.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function first validates the session and share name, allocates memory for the UNC path, and converts the share name to UTF-16 format. It initializes a tree connect request and sends it to the server. Based on the response, it updates the tree connection structure with share type, capabilities, and other relevant information. If any errors occur during the process, appropriate error handling is performed, including setting flags for reconnecting or marking the network name as bad. Finally, it cleans up allocated resources before returning the result.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int cifs_tree_connect(unsigned int xid, struct cifs_ses *ses, const char *tree,\n                      struct cifs_tcon *tcon, const struct nls_table *cp) {\n    int rc = 0;\n    char *utf16_path = NULL;\n    int utf16_path_len = 0;\n    struct smb2_tree_connect_req *req = NULL;\n    struct smb2_tree_connect_rsp *rsp = NULL;\n    struct kvec iov[1];\n    struct kvec rsp_iov;\n    int resp_buftype;\n    void *resp_buf;\n\n    if (!ses || !tree || !tcon || !cp) {\n        rc = -EINVAL;\n        goto out;\n    }\n\n    utf16_path_len = cifs_str_to_utf16le(tree, NULL, 0, cp);\n    if (utf16_path_len < 0) {\n        rc = utf16_path_len;\n        goto out;\n    }\n\n    utf16_path = kmalloc(utf16_path_len + 2, GFP_KERNEL);\n    if (!utf16_path) {\n        rc = -ENOMEM;\n        goto out;\n    }\n\n    utf16_path_len = cifs_str_to_utf16le(tree, utf16_path, utf16_path_len + 2, cp);\n    if (utf16_path_len < 0) {\n        rc = utf16_path_len;\n        goto out;\n    }\n\n    req = cifs_smb2_init(SMB2_TREE_CONNECT, NULL, 0, &iov, 1);\n    if (!req) {\n        rc = -ENOMEM;\n        goto out;\n    }\n\n    req->path_offset = cpu_to_le16(offsetof(struct smb2_tree_connect_req, path));\n    req->path_length = cpu_to_le16(utf16_path_len);\n    memcpy(req->path, utf16_path, utf16_path_len);\n\n    rc = cifs_call_async(ses, tcon, iov, 1, &rsp_iov, &resp_buftype, 0, NULL, NULL);\n    if (rc < 0)\n        goto out;\n\n    rsp = (struct smb2_tree_connect_rsp *)rsp_iov.iov_base;\n    if (rsp->Capabilities && rsp->Capabilities != tcon->capabilities) {\n        tcon->capabilities = le32_to_cpu(rsp->Capabilities);\n    }\n\n    tcon->share_type = le32_to_cpu(rsp->ShareType);\n    tcon->maximal_access = le32_to_cpu(rsp->MaximalAccess);\n\n    if (resp_buftype == CIFS_SMALL_BUFFER) {\n        cifs_small_buf_release(rsp_iov.iov_base);\n    } else if (resp_buftype == CIFS_LARGE_BUFFER) {\n        cifs_large_buf_release(rsp_iov.iov_base);\n    }\n\n    kfree(utf16_path);\n    return 0;\n\nout:\n    kfree(utf16_path);\n    if (req)\n        cifs_smb2_free(req);\n    if (resp_buftype == CIFS_SMALL_BUFFER)\n        cifs_small_buf_release(rsp_iov.iov_base);\n    else if (resp_buftype == CIFS_LARGE_BUFFER)\n        cifs_large_buf_release(rsp_iov.iov_base);\n    return rc;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation uses `cifs_smb2_init` and `cifs_call_async`, while the reference implementation uses `small_smb2_init` and `SendReceive2`. The candidate implementation does not handle the `tcon->bad_network_name` flag or the `ses->ipc_tid` assignment, which are present in the reference. Additionally, the reference implementation includes detailed logging and error handling for different share types (disk, pipe, print), which the candidate implementation lacks. These differences could affect error reporting and recovery behavior, particularly in edge cases or malformed inputs. However, these differences are not directly related to security-critical operations like memory safety or input validation.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation uses `cifs_smb2_init` and `cifs_call_async`, while the reference implementation uses `small_smb2_init` and `SendReceive2`. The reference implementation also includes additional error handling, such as setting `tcon->bad_network_name` and `tcon->need_reconnect`, and performs more detailed validation of the share type. These differences could affect how the function handles malformed or adversarial inputs, particularly in error propagation and reconnect logic, which may have security implications.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

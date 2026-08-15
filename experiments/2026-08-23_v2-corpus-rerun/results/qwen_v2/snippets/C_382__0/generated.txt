@@ -1,0 +1,56 @@
+int read_tfra_box(MOVContext *mov, AVIOContext *f) {
+    uint32_t box_type;
+    int64_t box_size;
+    int version, track_id, field_length, item_count;
+    int i;
+
+    box_size = avio_rb32(f);
+    box_type = avio_rl32(f);
+
+    if (box_type != MKTAG('t', 'f', 'r', 'a')) {
+        avio_seek(f, box_size - 4 - 4, SEEK_CUR);
+        return AVERROR_INVALIDDATA;
+    }
+
+    version = avio_r8(f);
+    track_id = avio_rb16(f);
+    field_length = avio_r8(f);
+    item_count = avio_rb32(f);
+
+    if (version > 1 || track_id <= 0 || field_length < 1 || field_length > 4 || item_count <= 0) {
+        avio_seek(f, box_size - 4 - 4 - 1 - 2 - 1 - 4, SEEK_CUR);
+        return AVERROR_INVALIDDATA;
+    }
+
+    if (!(mov->fragment_index)) {
+        mov->fragment_index = av_mallocz(sizeof(MOVFragmentIndex));
+        if (!mov->fragment_index)
+            return AVERROR(ENOMEM);
+    }
+
+    mov->fragment_index->track_id = track_id;
+    mov->fragment_index->field_length = field_length;
+    mov->fragment_index->item_count = item_count;
+
+    mov->fragment_index->items = av_mallocz(item_count * sizeof(MOVFragmentIndexItem));
+    if (!mov->fragment_index->items)
+        return AVERROR(ENOMEM);
+
+    for (i = 0; i < item_count; i++) {
+        int64_t time, offset;
+
+        if (version == 0) {
+            time = avio_rb32(f);
+            offset = avio_rb32(f);
+        } else {
+            time = avio_rb64(f);
+            offset = avio_rb64(f);
+        }
+
+        mov->fragment_index->items[i].time = time;
+        mov->fragment_index->items[i].offset = offset;
+    }
+
+    avio_seek(f, box_size - 4 - 4, SEEK_CUR);
+    return 0;
+}

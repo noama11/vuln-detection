@@ -1,0 +1,34 @@
+{
+  "case_id": "C_439__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int create_graphics_buffer_surface(struct drm_device *dev, void *data,\n                                   struct drm_file *file_priv) {\n    int ret = -EINVAL;\n    struct drm_surface_create_args *args = data;\n    struct graphics_surface *surface = NULL;\n\n    if (!dev || !args || !file_priv)\n        return ret;\n\n    surface = kzalloc(sizeof(*surface), GFP_KERNEL);\n    if (!surface)\n        return -ENOMEM;\n\n    mutex_lock(&dev->mode_config.mutex);\n\n    ret = allocate_and_map_buffer(dev, args, &surface->buffer);\n    if (ret) {\n        goto error_cleanup;\n    }\n\n    ret = init_surface_resources(surface, args, file_priv);\n    if (ret) {\n        goto error_cleanup;\n    }\n\n    surface->refcount = 1;\n    surface->dev = dev;\n    surface->file_priv = file_priv;\n\n    args->handle = add_surface_to_global_list(surface);\n\n    mutex_unlock(&dev->mode_config.mutex);\n\n    return 0;\n\nerror_cleanup:\n    release_surface_resources(surface);\n    kfree(surface);\n    mutex_unlock(&dev->mode_config.mutex);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int create_graphics_buffer_surface(struct drm_device *dev, void *data,\n                                   struct drm_file *file_priv) {\n    struct drm_mode_create_dumb *args = data;\n    struct drm_gem_object *obj;\n    struct drm_plane *plane;\n    struct drm_framebuffer *fb;\n    int ret;\n\n    if (!args || !dev || !file_priv)\n        return -EINVAL;\n\n    if (args->width == 0 || args->height == 0 || args->bpp == 0)\n        return -EINVAL;\n\n    obj = drm_gem_object_create(dev, args->width * args->height * args->bpp / 8);\n    if (IS_ERR(obj))\n        return PTR_ERR(obj);\n\n    fb = drm_framebuffer_alloc(dev, args->width, args->height, args->bpp, 0, obj);\n    if (IS_ERR(fb)) {\n        drm_gem_object_put(obj);\n        return PTR_ERR(fb);\n    }\n\n    plane = drm_plane_find(dev, DRM_PLANE_TYPE_OVERLAY);\n    if (!plane) {\n        drm_framebuffer_put(fb);\n        drm_gem_object_put(obj);\n        return -ENODEV;\n    }\n\n    ret = drm_mode_attach_plane(dev, fb, plane);\n    if (ret) {\n        drm_framebuffer_put(fb);\n        drm_gem_object_put(obj);\n        return ret;\n    }\n\n    args->handle = obj->handle;\n    args->pitch = obj->size / args->height;\n    args->offset = 0;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int create_graphics_buffer_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {\n    struct drm_mode_create_dumb args;\n    struct drm_gem_object *obj;\n    int ret;\n\n    if (!dev || !data || !file_priv)\n        return -EINVAL;\n\n    memcpy(&args, data, sizeof(args));\n\n    obj = drm_gem_object_create(dev, args.size);\n    if (IS_ERR(obj))\n        return PTR_ERR(obj);\n\n    /* Initialize user surface with obj and args */\n    ret = drm_mode_attach_mode(dev, args.width, args.height, obj);\n    if (ret)\n        goto error_free_gem;\n\n    return 0;\n\nerror_free_gem:\n    drm_gem_object_put(obj);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int create_graphics_buffer_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {\n    struct my_surface *surface;\n    int ret = 0;\n\n    if (!dev || !data || !file_priv) {\n        return -EINVAL;\n    }\n\n    surface = kzalloc(sizeof(*surface), GFP_KERNEL);\n    if (!surface) {\n        return -ENOMEM;\n    }\n\n    mutex_lock(&dev->mode_config.mutex);\n    ret = allocate_and_init_surface(dev, data, surface, file_priv);\n    if (ret < 0) {\n        kfree(surface);\n        mutex_unlock(&dev->mode_config.mutex);\n        return ret;\n    }\n\n    ret = manage_surface_resources(dev, surface, file_priv);\n    if (ret < 0) {\n        cleanup_surface(surface);\n        kfree(surface);\n        mutex_unlock(&dev->mode_config.mutex);\n        return ret;\n    }\n\n    prepare_surface_response(surface, data);\n    mutex_unlock(&dev->mode_config.mutex);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int create_guest_graphics_surface(struct drm_device *dev, void *data, struct drm_file *file_priv) {\n    struct drm_mode_create_guest_graphics_surface *args = data;\n    struct guest_graphics_surface *surface;\n    int ret = -EINVAL;\n\n    if (!args)\n        return ret;\n\n    surface = kzalloc(sizeof(*surface), GFP_KERNEL);\n    if (!surface)\n        return -ENOMEM;\n\n    mutex_init(&surface->lock);\n\n    ret = guest_graphics_buffer_init(dev, surface, args->width, args->height, args->format);\n    if (ret)\n        goto err_free_surface;\n\n    ret = drm_gem_object_init(dev, &surface->gem, args->size);\n    if (ret)\n        goto err_cleanup_buffer;\n\n    surface->handle = drm_gem_handle_create(file_priv, &surface->gem);\n    if (!surface->handle) {\n        ret = -ENOENT;\n        goto err_cleanup_gem;\n    }\n\n    args->handle = surface->handle;\n\n    return 0;\n\nerr_cleanup_gem:\n    drm_gem_object_put(&surface->gem);\nerr_cleanup_buffer:\n    guest_graphics_buffer_cleanup(surface);\nerr_free_surface:\n    mutex_destroy(&surface->lock);\n    kfree(surface);\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

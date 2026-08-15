@@ -1,0 +1,34 @@
+{
+  "case_id": "C_771__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int register_mii_bus(struct mii_bus *bus, struct module *owner) {\n    int ret;\n    struct phy_device *phy;\n    int i;\n\n    if (!bus || !bus->read || !bus->write) {\n        return -EINVAL;\n    }\n\n    mutex_init(&bus->mutex);\n\n    ret = device_register(&bus->dev);\n    if (ret < 0) {\n        return ret;\n    }\n\n    bus->dev.driver = NULL;\n    bus->dev.release = mii_bus_release;\n    bus->owner = owner;\n\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        phy = phy_device_create(bus, i);\n        if (!phy) {\n            while (--i >= 0) {\n                phy_device_remove(phy);\n            }\n            device_unregister(&bus->dev);\n            return -ENOMEM;\n        }\n\n        ret = phy_device_register(phy);\n        if (ret < 0) {\n            phy_device_remove(phy);\n            while (--i >= 0) {\n                phy_device_unregister(bus, i);\n                phy_device_remove(bus->phy[i]);\n            }\n            device_unregister(&bus->dev);\n            return ret;\n        }\n    }\n\n    dev_info(&bus->dev, \"Probed MII bus %s with %d PHY devices\\n\",\n             bus->id, PHY_MAX_ADDR);\n\n    bus->state = MII_BUS_READY;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int mii_bus_register(struct mii_bus *bus, struct module *owner)\n{\n    int ret;\n    int i;\n    struct phy_device *phy_dev;\n\n    if (!bus || !bus->name || !bus->read || !bus->write)\n        return -EINVAL;\n\n    ret = device_register(&bus->dev);\n    if (ret) {\n        return ret;\n    }\n\n    mutex_init(&bus->bus_mutex);\n\n    if (bus->reset) {\n        ret = bus->reset(bus);\n        if (ret < 0) {\n            device_unregister(&bus->dev);\n            return ret;\n        }\n    }\n\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        phy_dev = get_phy_device(bus, i, false);\n        if (IS_ERR(phy_dev)) {\n            ret = PTR_ERR(phy_dev);\n            while (--i >= 0) {\n                phy_device_remove(i);\n                phy_device_free(i);\n            }\n            device_unregister(&bus->dev);\n            return ret;\n        }\n\n        if (phy_dev) {\n            ret = phy_device_register(phy_dev);\n            if (ret) {\n                while (--i >= 0) {\n                    phy_device_remove(i);\n                    phy_device_free(i);\n                }\n                device_unregister(&bus->dev);\n                return ret;\n            }\n        }\n    }\n\n    bus->state = mii_bus_polling;\n    dev_info(&bus->dev, \"Probed MII bus: %s\\n\", bus->name);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int register_mii_bus(struct mii_bus *bus, struct module *owner)\n{\n    int ret;\n    int i;\n\n    if (!bus || !bus->name || !bus->phy_mask || !bus->read || !bus->write)\n        return -EINVAL;\n\n    mutex_init(&bus->bus_mutex);\n\n    ret = device_register(&bus->dev);\n    if (ret) {\n        return ret;\n    }\n\n    bus->dev.class = &mii_bus_class;\n    dev_set_drvdata(&bus->dev, bus);\n    dev_set_owner(&bus->dev, owner);\n\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        if (bus->phy_mask & (1 << i))\n            continue;\n\n        ret = phy_scan(bus, i);\n        if (ret < 0)\n            goto out_unregister;\n    }\n\n    netdev_info(bus->dev.parent, \"Probing MII bus %s\\n\", bus->name);\n    bus->state = MII_BUS_READY;\n\n    return 0;\n\nout_unregister:\n    while (--i >= 0) {\n        if (bus->phy[i]) {\n            phy_disconnect(bus->phy[i]);\n            phy_free(bus->phy[i]);\n        }\n    }\n    device_unregister(&bus->dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int register_mii_bus(struct mii_bus *bus, struct module *owner)\n{\n    int ret = 0;\n    struct phy_device *phy;\n    int i;\n\n    if (!bus || !bus->read || !bus->write || !bus->name) {\n        return -EINVAL;\n    }\n\n    mutex_init(&bus->bus_mutex);\n\n    /* Register the MII bus as a device */\n    ret = device_register(&bus->dev);\n    if (ret < 0) {\n        pr_err(\"Failed to register MII bus device\\n\");\n        return ret;\n    }\n\n    bus->dev.class = &mii_bus_class;\n    dev_set_drvdata(&bus->dev, bus);\n\n    /* Handle GPIO reset */\n    if (bus->reset_gpio) {\n        gpio_set_value(bus->reset_gpio, 0);\n        msleep(100);\n        gpio_set_value(bus->reset_gpio, 1);\n        msleep(100);\n    }\n\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        phy = get_phy_device(bus, i, false);\n        if (IS_ERR(phy)) {\n            ret = PTR_ERR(phy);\n            if (ret != -ENODEV) {\n                pr_err(\"Failed to get PHY device at address %d\\n\", i);\n                goto error_cleanup;\n            }\n        } else {\n            if (!phy->phy_id) {\n                ret = phy_device_register(phy);\n                if (ret < 0) {\n                    pr_err(\"Failed to register new PHY device at address %d\\n\", i);\n                    put_device(&phy->dev);\n                    goto error_cleanup;\n                }\n            }\n        }\n    }\n\n    bus->state = MII_BUS_READY;\n    pr_info(\"MII bus '%s' probed successfully\\n\", bus->name);\n\n    return 0;\n\nerror_cleanup:\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        phy = get_phy_device(bus, i, true);\n        if (!IS_ERR(phy)) {\n            phy_device_unregister(phy);\n            put_device(&phy->dev);\n        }\n    }\n\n    device_unregister(&bus->dev);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int register_mii_bus(struct mii_bus *bus, struct module *owner) {\n    int ret;\n    int i;\n\n    if (!bus || !bus->name || !bus->read || !bus->write) {\n        return -EINVAL;\n    }\n\n    mutex_init(&bus->bus_mutex);\n\n    ret = device_register(&bus->dev);\n    if (ret) {\n        return ret;\n    }\n\n    if (bus->reset) {\n        ret = bus->reset(bus);\n        if (ret) {\n            device_unregister(&bus->dev);\n            return ret;\n        }\n    }\n\n    for (i = 0; i < PHY_MAX_ADDR; i++) {\n        struct phy_device *phydev;\n\n        phydev = phy_probe(bus, i);\n        if (!IS_ERR(phydev)) {\n            list_add_tail(&phydev->link, &bus->phy_list);\n        } else if (PTR_ERR(phydev) != -ENODEV) {\n            device_unregister(&bus->dev);\n            return PTR_ERR(phydev);\n        }\n    }\n\n    dev_info(&bus->dev, \"Probing for MII devices\\n\");\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

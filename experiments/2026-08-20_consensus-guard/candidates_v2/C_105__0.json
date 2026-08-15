@@ -1,0 +1,34 @@
+{
+  "case_id": "C_105__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "krb5_int32 prepare_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = 0;\n    krb5_data *server_name = NULL;\n\n    if ((request->kdc_options & KDC_OPT_CANONICALIZE) == 0) {\n        return 0;\n    }\n\n    server_name = krb5_principal_get_name(krb5_context, *krbtgt_princ);\n    if (server_name == NULL) {\n        return KRB5_ERR_NO_REALM;\n\n    }\n\n    if (!is_valid_fqdn(server_name->data)) {\n        krb5_free_data(krb5_context, server_name);\n        return KRB5_ERR_WRONG_REALM;\n    }\n\n    ret = map_fqdn_to_realm(server_name->data, &request->realm);\n    if (ret != 0) {\n        krb5_free_data(krb5_context, server_name);\n        return ret;\n    }\n\n    request->client = *krbtgt_princ;\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "krb5_int32 prepare_and_reprocess_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = 0;\n    krb5_data *realm = NULL;\n    krb5_principal new_server = NULL;\n    krb5_boolean is_canonicalized = FALSE;\n\n    if (!request || !krbtgt_princ)\n        return KRB5KDC_ERR_BADOPTION;\n\n    if (request->kdc_options & KDC_OPT_CANONICALIZE) {\n        /* Check server principal name for valid FQDN format */\n        if (krb5_principal_compare_fqdn_name(request->client, request->server)) {\n            /* Map FQDN to realm */\n            ret = krb5_kdc_map_fqdn_to_realm(krb5_context, request->server, &realm);\n            if (ret != 0)\n                return ret;\n\n            /* Construct new cross-realm TGT principal */\n            ret = krb5_build_cross_realm_principal(krb5_context, realm, krbtgt_princ, &new_server);\n            if (ret != 0) {\n                krb5_free_data(krb5_context, realm);\n                return ret;\n            }\n\n            /* Free old server principal and replace with new one */\n            krb5_free_principal(krb5_context, request->server);\n            request->server = new_server;\n\n            is_canonicalized = TRUE;\n        }\n    }\n\n    if (is_canonicalized) {\n        /* Modify request to reprocess with updated server principal */\n        ret = krb5_kdc_reprocess_request(krb5_context, request);\n        if (ret != 0)\n            return ret;\n    }\n\n    /* Clean up */\n    if (realm) {\n        krb5_free_data(krb5_context, realm);\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "krb5_int32 prepare_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = 0;\n    char *server_name = NULL;\n\n    if ((request->kdc_options & KDC_OPT_CANONICALIZE) == 0) {\n        return 0;\n    }\n\n    if (krb5_principal_get_name(NULL, *krbtgt_princ, &server_name) != 0) {\n        return KRB5_ERR_GENERIC;\n    }\n\n    if (strstr(server_name, \"fqdn\")) {\n        char *realm_name = NULL;\n        krb5_principal new_tgt = NULL;\n\n        if (krb5_kdc_resolve_fqdn_to_realm(NULL, server_name, &realm_name) != 0) {\n            free(server_name);\n            return KRB5_ERR_GENERIC;\n        }\n\n        if (krb5_build_principal_simple(NULL, &new_tgt, realm_name, \"host\", server_name, NULL) != 0) {\n            free(server_name);\n            free(realm_name);\n            return KRB5_ERR_GENERIC;\n        }\n\n        if (request->client != NULL) {\n            krb5_free_principal(NULL, request->client);\n        }\n\n        request->client = new_tgt;\n    }\n\n    free(server_name);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "krb5_int32 prepare_and_reprocess_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = 0;\n    krb5_data *realm = NULL;\n    krb5_principal new_princ = NULL;\n    krb5_boolean is_canonicalized = FALSE;\n\n    if (request->kdc_options & KDC_OPT_CANONICALIZE) {\n        if (krb5_principal_get_realm(request->client, &realm) != 0) {\n            return KRB5_BAD_MSIZE;\n        }\n\n        if (strcmp(realm->data, \"NO_CANN\") != 0) {\n            if (krb5_build_principal_simple(&new_princ, realm->data, 1, \"krbtgt\", krbtgt_princ->realm, NULL) != 0) {\n                krb5_free_data_contents(realm);\n                return KRB5_KDC_PRINCIPAL_NOT_FOUND;\n            }\n\n            krb5_free_principal(request->server);\n            request->server = new_princ;\n            is_canonicalized = TRUE;\n        }\n    }\n\n    if (is_canonicalized) {\n        if (krb5_kdc_reprocess_request(request) != 0) {\n            krb5_free_principal(new_princ);\n            return KRB5_KDC_REPROCESS_FAILURE;\n        }\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "krb5_int32 prepare_and_reprocess_kdc_request(krb5_kdc_req *request, krb5_principal *krbtgt_princ) {\n    krb5_int32 ret = 0;\n    krb5_principal server_principal = NULL;\n    krb5_principal cross_realm_tgt = NULL;\n    krb5_data *fqdn = NULL;\n\n    if (request->flags & KDC_OPT_CANONICALIZE) {\n        server_principal = request->server;\n\n        if (krb5_is_krbtgt_principal(server_principal)) {\n            ret = krb5_build_principal_simple(kdc_context, &cross_realm_tgt,\n                                              krbtgt_princ->length, krbtgt_princ->data,\n                                              server_principal->realm.length, server_principal->realm.data,\n                                              NULL);\n            if (ret != 0) {\n                goto cleanup;\n            }\n\n            ret = krb5_unparse_name(kdc_context, cross_realm_tgt, &fqdn);\n            if (ret != 0) {\n                goto cleanup;\n            }\n\n            krb5_free_principal(kdc_context, request->server);\n            request->server = cross_realm_tgt;\n\n            ret = krb5_kdc_reprocess_request(kdc_context, request);\n        }\n    }\n\ncleanup:\n    if (fqdn) {\n        krb5_free_data(kdc_context, fqdn);\n    }\n    if (cross_realm_tgt) {\n        krb5_free_principal(kdc_context, cross_realm_tgt);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

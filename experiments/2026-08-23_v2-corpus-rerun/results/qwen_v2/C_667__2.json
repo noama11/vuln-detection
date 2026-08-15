@@ -1,0 +1,56 @@
+{
+  "case_id": "C_667__2",
+  "sample_id": "D/C/667",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2018-10021",
+  "cve_summary": "** DISPUTED ** drivers/scsi/libsas/sas_scsi_host.c in the Linux kernel before 4.16 allows local users to cause a denial of service (ata qc leak) by triggering certain failure conditions. NOTE: a third party disputes the relevance of this report because the failure can only occur for physically proximate attackers who unplug SAS Host Bus Adapter cables.",
+  "changed_file": "drivers/scsi/libsas/sas_scsi_host.c",
+  "docstring": "Summary: This code fragment implements a loop that processes a list of SAS commands, handling task recovery and error management for each command in the list.\n\nParameters: N/A\n\nReturns: N/A\n\nLogic: The loop iterates over a list of commands using `list_for_each_entry_safe`, checking each command's associated task for a reset requirement. If a reset is needed, it attempts to recover the logical unit (LU) or initiator-target (I_T) connection based on the task's state. The function utilizes various state checks, logging messages for each significant action, and employs locking mechanisms to ensure thread safety when accessing task state flags. If recovery attempts fail, it logs an error message indicating the inability to recover the device. The loop continues until all commands are processed, with specific actions taken based on the task's state, including clearing queues and resetting devices as necessary.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "void process_sas_commands(void) {\n    struct sas_command *cmd, *tmp;\n\n    list_for_each_entry_safe(cmd, tmp, &command_list, entry) {\n        struct sas_task *task = cmd->task;\n        unsigned long flags;\n\n        if (!task)\n            continue;\n\n        spin_lock_irqsave(&task->state_lock, flags);\n\n        if (task_needs_reset(task)) {\n            int rc;\n\n            if (task->state == SAS_TASK_STATE_LOGGED_IN) {\n                rc = sas_recover_lu(task);\n                if (rc) {\n                    dev_err(&task->dev, \"Failed to recover LU for task %p\\n\", task);\n                } else {\n                    dev_info(&task->dev, \"Recovered LU for task %p\\n\", task);\n                }\n            } else if (task->state == SAS_TASK_STATE_I_T_NEXUS_LOST) {\n                rc = sas_recover_i_t(task);\n                if (rc) {\n                    dev_err(&task->dev, \"Failed to recover I_T nexus for task %p\\n\", task);\n                } else {\n                    dev_info(&task->dev, \"Recovered I_T nexus for task %p\\n\", task);\n                }\n            } else {\n                dev_warn(&task->dev, \"Unexpected task state %d for task %p during recovery\\n\",\n                         task->state, task);\n            }\n\n            task_clear_reset_needed(task);\n        }\n\n        spin_unlock_irqrestore(&task->state_lock, flags);\n    }\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of task recovery. The candidate implementation only checks for `SAS_TASK_NEED_RESET` and performs LU or I_T recovery based on the task's state, while the reference implementation includes additional fallback mechanisms such as `try_to_reset_cmd_device`, `lldd_clear_nexus_port`, and `lldd_clear_nexus_ha`. These additional recovery steps in the reference implementation may provide more robust error handling, especially in cases where the device or HA is unresponsive. This difference is security-relevant as it could affect the system's resilience to adversarial input or hardware failure.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 5,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation processes SAS commands by checking for a reset requirement and attempting recovery based on the task's state. It uses `dev_err` and `dev_info` for logging and performs recovery actions for LU or I_T nexus. The reference implementation, however, is part of a larger error-handling function for SCSI hosts and includes additional logic for handling task dispositions, retrying recovery, and clearing queues. It also includes more complex recovery paths, such as attempting to clear nexus at the port or host level, and includes fallback mechanisms if recovery fails. These differences in recovery logic and error handling suggest a behavioral mismatch, particularly in how recovery is attempted and what actions are taken after failure.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

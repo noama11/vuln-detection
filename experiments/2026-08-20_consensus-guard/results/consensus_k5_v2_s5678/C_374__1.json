@@ -1,0 +1,62 @@
+{
+  "case_id": "C_374__1",
+  "sample_id": "D/C/374",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-14954",
+  "cve_summary": "The waitid implementation in kernel/exit.c in the Linux kernel through 4.13.4 accesses rusage data structures in unintended cases, which allows local users to obtain sensitive information, and bypass the KASLR protection mechanism, via a crafted system call.",
+  "changed_file": "kernel/exit.c",
+  "docstring": "Summary: This function implements a compatibility syscall for waiting on a process, retrieving information about its termination status.\n\nParameters:\n- which (int): Specifies the type of wait operation.\n- pid (compat_pid_t): The process ID to wait for.\n- infop (struct compat_siginfo __user *): Pointer to a user-space structure to store signal information.\n- options (int): Options for the wait operation.\n- uru (struct compat_rusage __user *): Pointer to a user-space structure to store resource usage information.\n\nReturns: int - Returns 0 on success, or a negative error code on failure.\n\nLogic: The function calls `kernel_waitid` to wait for the specified process and retrieve its status. If successful, it populates the user-space `infop` structure with signal information and resource usage data if requested. It handles potential errors during data copying to user space and ensures proper access control for user memory. If `infop` is NULL, it skips populating signal information. The function also manages error handling for user access violations.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "safe copying of siginfo to user space",
+        "performed_by_count": 4,
+        "why_it_matters": "If the infop pointer is invalid or the structure is partially written, it can lead to memory corruption or data inconsistency."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: validating and copying the signal information (`siginfo`) to user space using a safe and complete method. Most independent implementations use `copy_to_user` or a helper like `copy_siginfo_to_user` to ensure the entire structure is copied safely. The target instead uses `unsafe_put_user` to manually write individual fields of the `siginfo` structure, which is more error-prone and lacks the same level of safety and completeness. This exposes the target to potential memory-safety issues if the `infop` pointer is invalid or if the structure layout changes.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "copy_siginfo_to_user or equivalent full copy",
+        "performed_by_count": 4,
+        "why_it_matters": "If the `infop` structure is non-NULL, the target writes only a subset of fields directly without using a helper. This could lead to incomplete or incorrect data in the user-space `infop` structure if the layout or expectations change."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation omits a key consensus step: validating and populating the `infop` structure with full signal information from the `info` struct. Instead, it only writes a subset of fields directly without using a helper like `copy_siginfo_to_user` or `copy_to_user`. This could lead to incomplete or incorrect data in the user-space `infop` structure if the layout or expectations change. The majority of independent implementations use `copy_to_user` or a helper to ensure full and correct copying of the `siginfo` structure.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

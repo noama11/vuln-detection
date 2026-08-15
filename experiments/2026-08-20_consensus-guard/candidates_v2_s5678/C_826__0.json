@@ -1,0 +1,34 @@
+{
+  "case_id": "C_826__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "bool check_new_id_mapping_permitted(const struct file *file,\n                                    struct user_namespace *ns,\n                                    int cap_setid,\n                                    struct uid_gid_map *new_map) {\n    struct user_namespace *parent;\n    kuid_t f_kuid;\n    kgid_t f_kgid;\n    struct inode *inode = file_inode(file);\n\n    if ((new_map->nr_extents == 1) &&\n        (new_map->map[0].lower_first == new_map->lowest_mapped) &&\n        (new_map->map[0].count == 1)) {\n        if (cap_setid == CAP_SETUID) {\n            f_kuid = I_UID(inode);\n            if (uid_eq(kuid_t_to_uid(f_kuid), current_uid()))\n                return true;\n        } else {\n            f_kgid = I_GID(inode);\n            if (gid_eq(kgid_t_to_gid(f_kgid), current_gid()))\n                return true;\n        }\n    }\n\n    if (ns == &init_user_ns)\n        return false;\n\n    parent = ns->parent;\n    if (!parent)\n        return false;\n\n    if (cap_setid == CAP_SETUID)\n        return ns_capable(parent, CAP_SETUID);\n    else\n        return ns_capable(parent, CAP_SETGID);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "bool check_new_id_mapping(const struct file *file, struct user_namespace *ns,\n                          int cap_setid, struct uid_gid_map *new_map) {\n    if (new_map->nr_extents == 1) {\n        struct uid_gid_map_extent *extent = &new_map->extents[0];\n        if (extent->count == 1) {\n            // Mapping is a single extent of length one\n            if (cap_setid == CAP_SETUID) {\n                if (extent->lower_first == current_fsuid()) {\n                    return true;\n                }\n            } else if (cap_setid == CAP_SETGID) {\n                if (extent->lower_first == current_fsgid()) {\n                    return true;\n                }\n            }\n        }\n    }\n\n    if (!ns_capable(ns->parent, cap_setid)) {\n        return false;\n    }\n\n    // Check if the opener has the capability to grant the mapping\n    struct inode *inode = file_inode(file);\n    if (inode && ns_capable(inode->i_sb->s_user_ns, cap_setid)) {\n        return true;\n    }\n\n    return false;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "bool check_new_id_mapping_permitted(const struct file *file,\n                                    struct user_namespace *ns,\n                                    int cap_setid,\n                                    struct uid_gid_map *new_map)\n{\n    if (new_map->nr_extents == 1 &&\n        new_map->map[0].lower_first == new_map->lowest_mapped &&\n        new_map->map[0].count == 1) {\n        return true;\n    }\n\n    if (cap_setid == CAP_SETUID) {\n        if (ns->uid_mapping_permitted &&\n            ns->uid_eq(file->f_cred->uid, new_map->lowest_mapped)) {\n            return true;\n        }\n    } else if (cap_setid == CAP_SETGID) {\n        if (ns->gid_mapping_permitted &&\n            ns->gid_eq(file->f_cred->gid, new_map->lowest_mapped)) {\n            return true;\n        }\n    }\n\n    return ns->has_cap && file->f_op->can_set_mapping(new_map);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "bool check_new_id_mapping(const struct file *file, struct user_namespace *ns,\n                          int cap_setid, struct uid_gid_map *new_map)\n{\n    struct user_namespace *old_ns = ns->parent;\n    kuid_t *old_id = cap_setid == CAP_SETUID ? &new_map->lowest_id : &new_map->lowest_id;\n    kgid_t *new_id = cap_setid == CAP_SETUID ? &new_map->lowest_id : &new_map->lowest_id;\n\n    if (new_map->nr_extents == 1 && new_map->extents[0].count == 1 &&\n        (cap_setid == CAP_SETUID ? kuid_eq(*old_id, current_uid()) : kgid_eq(*new_id, current_gid())))\n        return true;\n\n    if (!ns_capable(old_ns, cap_setid))\n        return false;\n\n    if (!ns_capable(current_user_ns(), cap_setid))\n        return false;\n\n    return true;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "bool check_new_id_mapping_permitted(const struct file *file,\n                                    struct user_namespace *ns,\n                                    int cap_setid,\n                                    struct uid_gid_map *new_map)\n{\n    if (new_map->nr_extents == 1) {\n        struct uid_gid_map_entry *entry = &new_map->extents[0];\n        if (entry->count == 1) {\n            kuid_t fsuid = current_fsuid();\n            kgid_t fsgid = current_fsgid();\n\n            if (cap_setid == CAP_SETUID && kuid_eq(entry->lower, fsuid)) {\n                return true;\n            }\n            if (cap_setid == CAP_SETGID && kgid_eq(entry->lower, fsgid)) {\n                return true;\n            }\n        }\n    }\n\n    if (ns == &init_user_ns) {\n        return true;\n    }\n\n    if (ns->parent &&\n        ns_capable(ns->parent, cap_setid) &&\n        file_ns_capable(file, cap_setid)) {\n        return true;\n    }\n\n    return false;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+int ceph_auth_client_process_ticket(struct ceph_auth_client *ac,
+                                    struct ceph_crypto_key *secret,
+                                    void **p, void *end)
+{
+    int ret = -EINVAL;
+    struct ceph_auth_ticket *ticket;
+    struct ceph_auth_handler *handler = NULL;
+    void *ticket_data = NULL;
+    size_t ticket_len = 0;
+    struct ceph_crypto_key new_key;
+    struct ceph_timespec session_valid_since, session_valid_until;
+    void *blob = NULL;
+    size_t blob_len = 0;
+
+    if (!ac || !secret || !p || !*p || !end || *p > end) {
+        goto out;
+    }
+
+    /* decode ticket type and version */
+    if ((end - *p) < sizeof(__le32) * 2) {
+        goto out;
+    }
+
+    u32 type = ceph_decode_32(p);
+    u32 version = ceph_decode_32(p);
+
+    handler = ceph_get_auth_handler(ac, type);
+    if (!handler) {
+        goto out;
+    }
+
+    if ((end - *p) < sizeof(u32)) {
+        goto out;
+    }
+
+    ticket_len = ceph_decode_32(p);
+    if (ticket_len > (end - *p)) {
+        goto out;
+    }
+
+    ticket_data = *p;
+    *p += ticket_len;
+
+    /* decrypt ticket data if necessary */
+    if (handler->decrypt_ticket) {
+        ret = handler->decrypt_ticket(ticket_data, ticket_len, secret,
+                                      &new_key, &session_valid_since,
+                                      &session_valid_until, &blob, &blob_len);
+        if (ret < 0) {
+            goto out;
+        }
+    } else {
+        /* handle unencrypted ticket */
+        ret = ceph_decode_ticket(ticket_data, ticket_len, &new_key,
+                                 &session_valid_since, &session_valid_until,
+                                 &blob, &blob_len);
+        if (ret < 0) {
+            goto out;
+        }
+    }
+
+    /* update session key and ticket info in handler */
+    ret = handler->update_session_key(ac, &new_key, &session_valid_since,
+                                      &session_valid_until, blob, blob_len);
+    if (ret < 0) {
+        goto out;
+    }
+
+    ret = 0;
+
+out:
+    if (blob) {
+        kfree(blob);
+    }
+    if (new_key.key) {
+        ceph_crypto_key_free(&new_key);
+    }
+    return ret;
+}

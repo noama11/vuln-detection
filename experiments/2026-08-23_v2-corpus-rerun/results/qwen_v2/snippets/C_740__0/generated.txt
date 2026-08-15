@@ -1,0 +1,42 @@
+int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec) {
+    int rc = 0;
+    struct smb2_write_request *req;
+    struct smb2_write_response *resp;
+    struct cifs_tcon *tcon = io_parms->tcon;
+    struct TCP_Server_Info *server = tcon->ses->server;
+
+    if (!server || !server->smb30) {
+        return -EOPNOTSUPP;
+    }
+
+    req = cifs_buf_get();
+    if (!req) {
+        return -ENOMEM;
+    }
+
+    resp = cifs_buf_get();
+    if (!resp) {
+        cifs_buf_release(req);
+        return -ENOMEM;
+    }
+
+    req->hdr.MessageId = cpu_to_le64(xid);
+    req->PersistentFileId = io_parms->persistent_fid;
+    req->VolatileFileId = io_parms->volatile_fid;
+    req->Offset = cpu_to_le64(io_parms->offset);
+    req->Length = cpu_to_le32(io_parms->length);
+    req->Channel = 0;
+    req->RemainingBytes = 0;
+
+    rc = cifs_send_recv(server, req, iov, n_vec, resp, 0);
+    if (rc) {
+        cifs_buf_release(req);
+        cifs_buf_release(resp);
+        return rc;
+    }
+
+    *nbytes = le32_to_cpu(resp->DataLength);
+    cifs_buf_release(req);
+    cifs_buf_release(resp);
+    return 0;
+}

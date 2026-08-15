@@ -1,0 +1,56 @@
+{
+  "case_id": "C_860__0",
+  "sample_id": "D/C/860",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "FFmpeg/FFmpeg",
+  "cve_id": "CVE-2017-9608",
+  "cve_summary": "The dnxhd decoder in FFmpeg before 3.2.6, and 3.3.x before 3.3.3 allows remote attackers to cause a denial of service (NULL pointer dereference) via a crafted mov file.",
+  "changed_file": "libavcodec/dnxhd_parser.c",
+  "docstring": "\"\"\"\nSummary: \nFinds the end of a DNXHD frame in the provided buffer.\n\nParameters: \ndctx (DNXHDParserContext *): The parser context containing state information.\nbuf (const uint8_t *): The buffer containing the data to be parsed.\nbuf_size (int): The size of the buffer.\n\nReturns: \nint: The number of bytes remaining in the frame if found, or END_NOT_FOUND if the end is not found.\n\nLogic: \nThe function checks if a frame start has been found. If not, it scans the buffer for a header prefix. Once a frame start is detected, it processes the buffer to determine the frame dimensions and remaining bytes. If the end of the frame is reached, it resets the parser state and returns the remaining bytes. If the end is not found, it updates the parser state and returns a constant indicating that the end was not found.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int find_dnxhd_frame_end(DNXHDParserContext *dctx, const uint8_t *buf, int buf_size) {\n    int i;\n    int pos;\n\n    if (!dctx->frame_start_found) {\n        for (i = 0; i < buf_size - 3; i++) {\n            if (buf[i] == 0x1f && buf[i+1] == 0x40 && (buf[i+2] & 0xf0) == 0x20) {\n                dctx->frame_start_found = 1;\n                dctx->frame_offset = i;\n                break;\n            }\n        }\n        if (!dctx->frame_start_found)\n            return END_NOT_FOUND;\n    }\n\n    pos = dctx->frame_offset;\n\n    if (pos + 4 > buf_size)\n        return END_NOT_FOUND;\n\n    dctx->width = ((buf[pos + 2] & 0x0f) << 4) | ((buf[pos + 3] >> 4) & 0x0f);\n    dctx->height = ((buf[pos + 3] & 0x0f) << 8) | (buf[pos + 4] & 0xff);\n\n    if (dctx->width == 0 || dctx->height == 0)\n        return END_NOT_FOUND;\n\n    dctx->frame_size = dctx->width * dctx->height * 3 / 2;\n\n    if (buf_size - pos >= dctx->frame_size) {\n        dctx->frame_start_found = 0;\n        return buf_size - pos;\n    }\n\n    dctx->frame_offset += buf_size - pos;\n    return END_NOT_FOUND;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they detect the start of a DNXHD frame and how they compute frame size and dimensions. The candidate implementation uses a direct check for a specific byte pattern and derives width and height from specific bytes, while the reference implementation uses a state machine and helper functions to determine the frame size and dimensions. These differences can lead to different behaviors for certain inputs, particularly in how the frame size is computed and validated. This could affect whether the end of the frame is correctly identified, which is relevant to memory safety and parsing correctness.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in how they detect and process the DNXHD frame. The candidate implementation directly checks for a specific header prefix and calculates frame size based on hardcoded logic, while the reference implementation uses a state machine and external helper functions (e.g., `ff_dnxhd_check_header_prefix`, `avpriv_dnxhd_get_frame_size`) to determine frame boundaries. These differences in logic and helper usage can lead to divergent behavior for certain inputs, particularly in how frame size is determined and whether the frame is considered complete. This is a functional mismatch that could affect parsing correctness.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

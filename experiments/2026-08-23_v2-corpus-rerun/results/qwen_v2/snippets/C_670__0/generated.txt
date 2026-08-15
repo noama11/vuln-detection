@@ -1,0 +1,63 @@
+#include <windows.h>
+#include <stdio.h>
+
+BOOL RetrieveStartupData(HANDLE pipe, STARTUP_DATA* sud) {
+    DWORD bytesAvailable = 0;
+    DWORD bytesRead = 0;
+    BOOL result = FALSE;
+    char* buffer = NULL;
+
+    // Check if data is available in the named pipe
+    if (!PeekNamedPipe(pipe, NULL, 0, &bytesRead, &bytesAvailable, NULL)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_MORE_DATA) {
+            // Log error
+            fprintf(stderr, "PeekNamedPipe failed with error %d\n", error);
+            return FALSE;
+        }
+    }
+
+    if (bytesAvailable == 0) {
+        // No data available
+        return FALSE;
+    }
+
+    // Allocate memory to read the data
+    buffer = (char*)malloc(bytesAvailable + 1);
+    if (!buffer) {
+        // Log error
+        fprintf(stderr, "Failed to allocate memory for buffer\n");
+        return FALSE;
+    }
+
+    // Read data asynchronously
+    if (!ReadFile(pipe, buffer, bytesAvailable, &bytesRead, NULL)) {
+        DWORD error = GetLastError();
+        // Log error
+        fprintf(stderr, "ReadFile failed with error %d\n", error);
+        free(buffer);
+        return FALSE;
+    }
+
+    // Ensure NULL termination
+    buffer[bytesRead] = '\0';
+
+    // Extract working directory, command line options, and standard input
+    // This is a placeholder for the actual parsing logic
+    sud->workingDirectory = _strdup(buffer);
+    sud->commandLine = _strdup(buffer);
+    sud->standardInput = _strdup(buffer);
+
+    if (!sud->workingDirectory || !sud->commandLine || !sud->standardInput) {
+        // Log error
+        fprintf(stderr, "Failed to duplicate strings\n");
+        free(buffer);
+        free(sud->workingDirectory);
+        free(sud->commandLine);
+        free(sud->standardInput);
+        return FALSE;
+    }
+
+    free(buffer);
+    return TRUE;
+}

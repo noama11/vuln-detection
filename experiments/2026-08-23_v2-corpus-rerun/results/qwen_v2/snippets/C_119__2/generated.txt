@@ -1,0 +1,66 @@
+ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,
+                         const struct iovec *iv, unsigned long total_len,
+                         size_t count, int noblock) {
+    struct sk_buff *skb;
+    struct virtio_net_hdr *hdr = NULL;
+    ssize_t ret;
+    size_t len;
+    int err;
+
+    if (!total_len)
+        return 0;
+
+    if (q->vnet_hdr) {
+        if (total_len < sizeof(*hdr))
+            return -EINVAL;
+        hdr = kmalloc(sizeof(*hdr), GFP_KERNEL);
+        if (!hdr)
+            return -ENOMEM;
+        len = sizeof(*hdr);
+        if (copy_from_user(hdr, iv[0].iov_base, len)) {
+            ret = -EFAULT;
+            goto free_hdr;
+        }
+        iv++;
+        count--;
+        total_len -= len;
+    }
+
+    skb = alloc_skb(0, GFP_KERNEL);
+    if (!skb) {
+        ret = -ENOMEM;
+        goto free_hdr;
+    }
+
+    skb->data = NULL;
+    skb->len = 0;
+
+    if (total_len > 0) {
+        ret = skb_copy_datagram_from_iovec(skb, 0, iv, total_len, 0);
+        if (ret) {
+            kfree_skb(skb);
+            goto free_hdr;
+        }
+    }
+
+    if (q->vnet_hdr) {
+        skb_push(skb, sizeof(*hdr));
+        memcpy(skb->data, hdr, sizeof(*hdr));
+        skb_reset_network_header(skb);
+    }
+
+    if (q->vlan) {
+        skb->vlan_tci = q->vlan;
+        skb->vlan_proto = htons(ETH_P_8021Q);
+    }
+
+    skb->dev = q->dev;
+    skb->protocol = eth_type_trans(skb, q->dev);
+
+    netif_receive_skb(skb);
+
+    ret = total_len;
+free_hdr:
+    kfree(hdr);
+    return ret;
+}

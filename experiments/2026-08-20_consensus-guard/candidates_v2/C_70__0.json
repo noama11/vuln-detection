@@ -1,0 +1,34 @@
+{
+  "case_id": "C_70__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t len, int flags)\n{\n    int bytes_received;\n    struct sk_buff *skb;\n    struct sockaddr *addr;\n\n    if (sock->sk->sk_state != TCP_ESTABLISHED && sock->sk->sk_state != TCP_LISTEN) {\n        return -EINVAL;\n    }\n\n    if (skb_queue_empty(&sock->sk->sk_receive_queue)) {\n        if (flags & MSG_DONTWAIT) {\n            return -EAGAIN;\n        }\n        schedule();\n    }\n\n    skb = skb_dequeue(&sock->sk->sk_receive_queue);\n    if (!skb) {\n        return -EAGAIN;\n    }\n\n    bytes_received = skb->len;\n    if (len < (size_t)skb->len) {\n        bytes_received = len;\n    }\n\n    if (memcpy_to_msg(msg, skb->data, bytes_received) < 0) {\n        skb_queue_head(&sock->sk->sk_receive_queue, skb);\n        return -EFAULT;\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        addr = (struct sockaddr *)&skb->cb;\n        msg->msg_name = addr;\n        msg->msg_namelen = sizeof(struct sockaddr);\n    }\n\n    if (sock->type == SOCK_STREAM) {\n        kfree_skb(skb);\n    } else {\n        skb_queue_head(&sock->sk->sk_receive_queue, skb);\n    }\n\n    return bytes_received;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    ssize_t res = -EAGAIN;\n\n    if (sk->sk_state == TCP_CLOSE)\n        return 0;\n\n    if (sk->sk_data_qlen == 0) {\n        if ((flags & MSG_DONTWAIT) || (sk->sk_shutdown & RCV_SHUTDOWN))\n            return -EAGAIN;\n\n        while (sk->sk_data_qlen == 0) {\n            if (signal_pending(current))\n                return -EINTR;\n            schedule();\n        }\n    }\n\n    struct sk_buff *skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb)\n        return -EAGAIN;\n\n    if (sock->type == SOCK_DGRAM) {\n        msg->msg_name = (void *)&skb->pkt_type;\n        msg->msg_namelen = sizeof(skb->pkt_type);\n    }\n\n    res = skb->len;\n    if (res > len)\n        res = len;\n\n    memcpy(msg->msg_iov->iov_base, skb->data, res);\n    msg->msg_iov->iov_base += res;\n    msg->msg_iov->iov_len -= res;\n\n    if (sock->type == SOCK_STREAM)\n        kfree_skb(skb);\n    else\n        skb_queue_head(&sk->sk_receive_queue, skb);\n\n    return res;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,\n                 size_t len, int flags) {\n    struct sock *sk = sock->sk;\n    int error;\n    int data_len;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -ENOTCONN;\n\n    if (sk->sk_type == SOCK_DGRAM && sock->ops->recvmsg == NULL)\n        return -EOPNOTSUPP;\n\n    if (flags & MSG_OOB) {\n        error = sk->prot->recvmsg(sk, msg, len, flags);\n        if (error >= 0)\n            data_len = error;\n        return error;\n    }\n\n    if (sk->sk_type == SOCK_DGRAM) {\n        if (sk->sk_data_len == 0)\n            return -EAGAIN;\n\n        data_len = sk->sk_data_len;\n        if (data_len > len)\n            data_len = len;\n\n        error = memcpy_to_msg(msg, sk->sk_data, data_len);\n        if (error)\n            return error;\n\n        sk->sk_data_len -= data_len;\n        if (sk->sk_data_len == 0)\n            sk->sk_data = NULL;\n\n        return data_len;\n    }\n\n    if (sk->sk_type == SOCK_STREAM) {\n        if (sk->sk_rcv_queue == NULL)\n            return -EAGAIN;\n\n        data_len = sk->sk_rcv_queue->len;\n        if (data_len > len)\n            data_len = len;\n\n        error = memcpy_to_msg(msg, sk->sk_rcv_queue->data, data_len);\n        if (error)\n            return error;\n\n        sk->sk_rcv_queue->len -= data_len;\n        return data_len;\n    }\n\n    return -EINVAL;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int recv_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags) {\n    struct sk_buff *skb;\n    int copied = 0;\n    int err = 0;\n\n    if (sock->type == SOCK_DGRAM) {\n        skb = skb_dequeue(&sock->sk->sk_receive_queue);\n        if (!skb) {\n            return -EAGAIN;\n        }\n    } else {\n        skb = skb_recv_datagram(sock->sk, flags, &err);\n        if (!skb) {\n            return err;\n        }\n    }\n\n    copied = skb->len;\n    if (len < copied) {\n        if (!(flags & MSG_TRUNC)) {\n            copied = len;\n        } else {\n            msg->msg_flags |= MSG_TRUNC;\n        }\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        if (msg->msg_name) {\n            struct sockaddr_in *addr = (struct sockaddr_in *)msg->msg_name;\n            addr->sin_family = AF_INET;\n            addr->sin_addr.s_addr = skb->sp->saddr;\n            msg->msg_namelen = sizeof(*addr);\n        }\n    }\n\n    if (skb_copy_datagram_msg(skb, 0, msg, 0, copied)) {\n        kfree_skb(skb);\n        return -EFAULT;\n    }\n\n    if (sock->type == SOCK_DGRAM) {\n        kfree_skb(skb);\n    } else {\n        skb_consume_datagram(sock->sk, skb);\n    }\n\n    return copied;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t sock_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len, int flags)\n{\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n    int copied = 0;\n    int err;\n\n    if (sk->sk_state == TCP_LISTEN)\n        return -ENOTCONN;\n\n    if (sk->sk_data_qlen == 0)\n        return -EAGAIN;\n\n    if (flags & MSG_OOB) {\n        skb = sk->sk_urg_data;\n        if (!skb)\n            return -EINVAL;\n\n        copied = skb->len;\n        err = skb_copy_datagram_const_msg(msg, 0, skb, 0, copied);\n        if (err)\n            return err;\n\n        sk->sk_urg_data = NULL;\n        return copied;\n    }\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb)\n        return -EAGAIN;\n\n    copied = skb->len;\n    err = skb_copy_datagram_const_msg(msg, 0, skb, 0, copied);\n    if (err)\n        goto out_free_skb;\n\n    if (sock->type == SOCK_DGRAM)\n        memcpy(&msg->msg_name, &skb->cb, sizeof(struct sockaddr));\n\n    if (skb->len > 0 && (flags & MSG_PEEK)) {\n        skb_queue_head(&sk->sk_receive_queue, skb);\n        copied = 0;\n    } else {\n        kfree_skb(skb);\n    }\n\n    return copied;\n\nout_free_skb:\n    kfree_skb(skb);\n    return err;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

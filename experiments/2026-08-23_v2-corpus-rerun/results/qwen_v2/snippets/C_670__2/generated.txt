@@ -1,0 +1,60 @@
+BOOL RetrieveStartupData(HANDLE pipe, STARTUP_DATA *sud) {
+    DWORD dwRead = 0;
+    DWORD dwAvail = 0;
+    DWORD dwMsgSize = 0;
+    BOOL bResult = FALSE;
+    LPVOID lpvData = NULL;
+
+    // Check for available data in the pipe
+    if (!PeekNamedPipe(pipe, NULL, 0, NULL, &dwAvail, &dwMsgSize)) {
+        LogError("Failed to peek into the named pipe.");
+        return FALSE;
+    }
+
+    if (dwAvail == 0 || dwMsgSize == 0) {
+        LogError("No data available in the named pipe.");
+        return FALSE;
+    }
+
+    // Allocate memory to read the data
+    lpvData = HeapAlloc(GPTR, dwAvail);
+    if (lpvData == NULL) {
+        LogError("Failed to allocate memory for pipe data.");
+        return FALSE;
+    }
+
+    // Read data from the pipe
+    if (!ReadFile(pipe, lpvData, dwAvail, &dwRead, NULL) || dwRead != dwAvail) {
+        LogError("Failed to read data from the named pipe.");
+        HeapFree(lpvData);
+        return FALSE;
+    }
+
+    // Ensure the data is NULL-terminated
+    if (((char *)lpvData)[dwRead - 1] != '\0') {
+        LogError("Received data is not NULL-terminated.");
+        HeapFree(lpvData);
+        return FALSE;
+    }
+
+    // Parse the data into the STARTUP_DATA structure
+    char *data = (char *)lpvData;
+    sud->working_directory = _strdup(data);
+    char *cmd_line = strchr(data, '\0');
+    if (cmd_line != NULL) {
+        sud->command_line = _strdup(cmd_line + 1);
+        char *stdin_data = strchr(cmd_line + 1, '\0');
+        if (stdin_data != NULL) {
+            sud->standard_input = _strdup(stdin_data + 1);
+        } else {
+            sud->standard_input = NULL;
+        }
+    } else {
+        sud->command_line = NULL;
+        sud->standard_input = NULL;
+    }
+
+    // Clean up and return success
+    HeapFree(lpvData);
+    return TRUE;
+}

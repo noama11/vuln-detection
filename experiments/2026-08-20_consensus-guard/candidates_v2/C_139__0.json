@@ -1,0 +1,34 @@
+{
+  "case_id": "C_139__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "void xfs_da_fix_hash_path(struct xfs_da_state *state, struct xfs_da_state_path *path)\n{\n    struct xfs_da_intnode *node;\n    struct xfs_dir2_leaf *leaf;\n    struct xfs_dir2_leaf_entry *lep;\n    struct xfs_dir2_block *block;\n    xfs_dir2_data_off_t hashval;\n    int i, j;\n\n    hashval = 0;\n    for (i = 0; i < path->active; i++) {\n        node = path->paths[i].bp->b_addr;\n        if (be32_to_cpu(node->magic) == XFS_DA_NODE_MAGIC) {\n            for (j = 0; j < node->count; j++) {\n                if (hashval == 0) {\n                    hashval = be32_to_cpu(node->hashval[j]);\n                } else {\n                    node->hashval[j] = cpu_to_be32(hashval);\n                }\n            }\n        } else if (be32_to_cpu(node->magic) == XFS_DIR2_LEAFN_MAGIC) {\n            leaf = (struct xfs_dir2_leaf *)node;\n            lep = leaf->entries;\n            for (j = 0; j < be16_to_cpu(leaf->count); j++) {\n                if (hashval == 0) {\n                    hashval = be32_to_cpu(lep[j].hashval);\n                } else {\n                    lep[j].hashval = cpu_to_be32(hashval);\n                }\n            }\n        } else if (be32_to_cpu(node->magic) == XFS_DIR2_BLOCK_MAGIC) {\n            block = (struct xfs_dir2_block *)node;\n            for (j = 0; j < be16_to_cpu(block->count); j++) {\n                if (hashval == 0) {\n                    hashval = be32_to_cpu(block->entries[j].hashval);\n                } else {\n                    block->entries[j].hashval = cpu_to_be32(hashval);\n                }\n            }\n        }\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "void fix_hash_path(struct xfs_da_state *state, struct xfs_da_state_path *path) {\n    xfs_hash_t hash;\n    int level;\n    struct xfs_da_node_entry *bnode;\n    struct xfs_dir2_leaf *leaf;\n    struct xfs_dir2_leaf_entry *leafent;\n    struct xfs_dir2_data_entry *dp;\n    struct xfs_da_state_path *pathp;\n\n    pathp = path;\n    hash = pathp->at_tail->hashval;\n    for (level = pathp->active_levels - 1; level >= 0; level--) {\n        switch (be32_to_cpu(pathp->path[level].magic)) {\n        case XFS_DA_NODE_MAGIC:\n            bnode = (struct xfs_da_node_entry *)pathp->path[level].bp->data;\n            hash = be32_to_cpu(bnode->hashval[level]);\n            break;\n        case XFS_DIR2_LEAFN_MAGIC:\n            leaf = (struct xfs_dir2_leaf *)pathp->path[level].bp->data;\n            leafent = (struct xfs_dir2_leaf_entry *)leaf->entries;\n            hash = be32_to_cpu(leafent[level].hash);\n            break;\n        case XFS_DIR2_DATA_MAGIC:\n            dp = (struct xfs_dir2_data_entry *)pathp->path[level].bp->data;\n            hash = be32_to_cpu(dp[level].hash);\n            break;\n        }\n\n        if (hash == pathp->at_tail->hashval)\n            break;\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "void fix_hash_path(struct xfs_da_state *state, struct xfs_da_state_path *path) {\n    __u16 hashval;\n    struct xfs_da_intnode *node;\n    int i, j;\n\n    hashval = xfs_da_get_hashval(path->leaf);\n    for (i = path->active_leaves; i > 0; i--) {\n        node = path->nodes[i - 1];\n        for (j = 0; j < node->count; j++) {\n            if (node->hashval[j] == hashval) {\n                node->hashval[j] = state->hashval;\n                xfs_trans_log_block(state->tp, node->bp, XFS_DA_LOG_CHANGE);\n                break;\n            }\n            hashval = node->hashval[j];\n        }\n        if (j < node->count)\n            break;\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "void xfs_da_fix_hash_path(struct xfs_da_state *state, struct xfs_da_state_path *path)\n{\n    struct xfs_da_intnode *node;\n    struct xfs_dir2_leaf *leaf;\n    struct xfs_dir2_data_entry *bestent = NULL;\n    struct xfs_dir2_leaf_entry *best;\n    __u32 hashval, curhash;\n    int level, i;\n\n    hashval = 0;\n\n    for (level = path->active - 1; level >= 0; level--) {\n        node = path->path[level].bp->data;\n        if (be16_to_cpu(node->magic) == XFS_DIR2_LEAFN_MAGIC) {\n            leaf = (struct xfs_dir2_leaf *)node;\n            curhash = be32_to_cpu(leaf->hdr.info.hashval);\n            if (curhash == 0)\n                hashval = 0;\n            else {\n                for (i = 0; i < be16_to_cpu(leaf->hdr.count); i++) {\n                    if (be32_to_cpu(leaf->ents[i].hashval) == hashval) {\n                        best = &leaf->ents[i];\n                        bestent = (struct xfs_dir2_data_entry *)((char *)leaf +\n                                be16_to_cpu(best->address));\n                        break;\n                    }\n                }\n            }\n        } else {\n            curhash = be32_to_cpu(node->hashval);\n            if (curhash == 0)\n                hashval = 0;\n            else {\n                for (i = 0; i < be16_to_cpu(node->count); i++) {\n                    if (be32_to_cpu(node->hashes[i]) == hashval) {\n                        node = (struct xfs_da_intnode *)((char *)node + node->offs[i]);\n                        break;\n                    }\n                }\n            }\n        }\n    }\n\n    if (bestent)\n        xfs_da_log_data_entry(state->args->trans, bestent);\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "void xfs_da_fix_hashpath(struct xfs_da_state *state, struct xfs_da_state_path *path) {\n    struct xfs_da_intnode *node;\n    xfs_dahash_t hash;\n    int i, j;\n\n    hash = xfs_da_get_hashval(path->path_val, path->path_size);\n\n    for (i = 0; i < path->active; i++) {\n        struct xfs_buf *bp = path->path[i].bp;\n        struct xfs_dir2_leaf_hdr *hdr = XFS_BUF_TO_DIR2_LEAF_HDR(bp);\n\n        if (be32_to_cpu(hdr->magic) == cpu_to_be32(XFS_DIR2_LEAF1_MAGIC)) {\n            struct xfs_dir2_leaf1 *leaf1 = XFS_BUF_TO_DIR2_LEAF1_HDR(bp);\n            hash = be32_to_cpu(leaf1->hashval);\n        } else if (be32_to_cpu(hdr->magic) == cpu_to_be32(XFS_DIR2_LEAFN_MAGIC)) {\n            struct xfs_dir2_leaf *leafn = XFS_BUF_TO_DIR2_LEAF_HDR(bp);\n            hash = be32_to_cpu(leafn->hashval);\n        }\n\n        for (j = 0; j < path->path[i].blkno + 1; j++) {\n            if (hash == 0)\n                break;\n\n            xfs_da_set_hashval(path->path[i].hashval, hash);\n            xfs_trans_log_block(state->tp, bp, XFS_DA_LOGCHANGE);\n            hash = xfs_da_get_hashval(path->path[i].hashval, sizeof(xfs_dahash_t));\n        }\n    }\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

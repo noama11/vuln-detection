@@ -1,0 +1,56 @@
+{
+  "case_id": "C_717__0",
+  "sample_id": "D/C/717",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-15129",
+  "cve_summary": "A use-after-free vulnerability was found in network namespaces code affecting the Linux kernel before 4.14.11. The function get_net_ns_by_id() in net/core/net_namespace.c does not check for the net::count value after it has found a peer network in netns_ids idr, which could lead to double free and memory corruption. This vulnerability could allow an unprivileged local user to induce kernel memory corruption on the system, leading to a crash. Due to the nature of the flaw, privilege escalation cannot be fully ruled out, although it is thought to be unlikely.",
+  "changed_file": "net/core/net_namespace.c",
+  "docstring": "\"\"\"\nSummary: Retrieves a network namespace pointer by its identifier.\n\nParameters:\nnet (struct net *): Pointer to the current network namespace.\nid (int): The identifier of the network namespace to retrieve.\n\nReturns:\nstruct net *: Pointer to the network namespace associated with the given id, or NULL if the id is invalid or not found.\n\nLogic: The function first checks if the provided id is negative, returning NULL if so. It then acquires read and spin locks to safely access the network namespace ID registry. It attempts to find the network namespace corresponding to the given id. If found, it increments the reference count of the retrieved network namespace before releasing the locks and returning the pointer.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "struct net *get_net_ns_by_id(struct net *net, int id) {\n    struct net *result = NULL;\n\n    if (id < 0)\n        return NULL;\n\n    read_lock(&net->ns_id_lock);\n    spin_lock(&net->ns_id_spinlock);\n\n    result = idr_find(&net->ns_idr, id);\n    if (result) {\n        get_net(result);\n    }\n\n    spin_unlock(&net->ns_id_spinlock);\n    read_unlock(&net->ns_id_lock);\n\n    return result;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 10,
+    "category": "equivalent_implementation_difference",
+    "security_relevant": false,
+    "confidence": "high",
+    "rationale": "The two implementations differ in the names of the lock variables and the ID registry (e.g., `ns_idr` vs. `netns_ids`, `ns_id_lock` vs. `nsid_lock`). However, these are naming differences and do not affect behavior. Both implementations perform the same logic: check for a negative ID, acquire locks, find the network namespace by ID, increment its reference count if found, and release the locks before returning the result. There is no observable behavioral difference for any input.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in the locking mechanisms and data structures used. The candidate implementation uses `read_lock` and `spin_lock`, while the reference uses `rcu_read_lock` and `spin_lock_bh`. Additionally, the candidate implementation accesses `net->ns_idr`, while the reference accesses `net->netns_ids`. These differences could lead to different behaviors in concurrent or high-load scenarios, particularly with respect to lock contention and RCU (Read-Copy-Update) semantics. The use of `spin_lock_bh` in the reference suggests it disables bottom halves, which is a subtle but potentially security-relevant difference in concurrency control.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

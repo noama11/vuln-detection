@@ -1,0 +1,36 @@
+void HandleNavigationCommit(RenderFrameHostImpl* rfh,
+                            const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
+                            bool is_in_page,
+                            bool replace_entry,
+                            NavigationHandleImpl* handle) {
+  // Check if the navigation is in-page and clone the current entry if needed
+  SessionStorageEntry* current_entry = nullptr;
+  if (is_in_page) {
+    current_entry = CloneCurrentEntry(rfh);
+  }
+
+  // Check if a pending entry matches the navigation handle
+  SessionStorageEntry* pending_entry = FindPendingEntry(handle);
+  SessionStorageEntry* new_entry = pending_entry;
+
+  // If no matching entry exists, create a new one
+  if (!new_entry) {
+    new_entry = CreateNewEntry(params);
+    SetEntryProperties(new_entry, params);
+  }
+
+  // Update the virtual URL based on the navigation parameters
+  UpdateVirtualURL(new_entry, params.url);
+
+  // Manage the session history based on the navigation state
+  if (replace_entry) {
+    ReplaceHistoryEntry(rfh, new_entry);
+  } else {
+    InsertHistoryEntry(rfh, new_entry);
+  }
+
+  // Clean up if an in-page clone was made
+  if (is_in_page && current_entry) {
+    FreeEntry(current_entry);
+  }
+}

@@ -1,0 +1,112 @@
+int decode_lazy_entry(char const* start, char const* end, lazy_entry& ret, error_code& ec, int* error_pos, int depth_limit, int item_limit) {
+    std::stack<int> depth_stack;
+    std::stack<int> item_stack;
+    char const* pos = start;
+
+    if (pos == end) {
+        ec = error_code::unexpected_end;
+        if (error_pos)
+            *error_pos = static_cast<int>(pos - start);
+        return 1;
+    }
+
+    try {
+        while (pos < end) {
+            if (depth_stack.size() >= static_cast<size_t>(depth_limit)) {
+                ec = error_code::depth_limit_exceeded;
+                if (error_pos)
+                    *error_pos = static_cast<int>(pos - start);
+                return 1;
+            }
+
+            if (item_stack.size() >= static_cast<size_t>(item_limit)) {
+                ec = error_code::item_limit_exceeded;
+                if (error_pos)
+                    *error_pos = static_cast<int>(pos - start);
+                return 1;
+            }
+
+            switch (*pos) {
+                case 'd':
+                    ret.type = lazy_entry::type_dict;
+                    depth_stack.push(depth_stack.size() + 1);
+                    item_stack.push(0);
+                    pos++;
+                    break;
+                case 'l':
+                    ret.type = lazy_entry::type_list;
+                    depth_stack.push(depth_stack.size() + 1);
+                    item_stack.push(0);
+                    pos++;
+                    break;
+                case 'i':
+                    // Parse integer
+                    pos++;
+                    if (pos == end) {
+                        ec = error_code::unexpected_end;
+                        if (error_pos)
+                            *error_pos = static_cast<int>(pos - start);
+                        return 1;
+                    }
+                    // Assume a helper function parse_integer is available
+                    int64_t value = 0;
+                    if (!parse_integer(pos, end, value)) {
+                        ec = error_code::invalid_integer;
+                        if (error_pos)
+                            *error_pos = static_cast<int>(pos - start);
+                        return 1;
+                    }
+                    ret.integer = value;
+                    pos++;
+                    item_stack.top()++;
+                    break;
+                case 'e':
+                    // End of a list or dictionary
+                    if (!depth_stack.empty()) {
+                        depth_stack.pop();
+                        item_stack.pop();
+                    }
+                    pos++;
+                    break;
+                case 's':
+                    // Parse string
+                    if (pos + 1 >= end) {
+                        ec = error_code::unexpected_end;
+                        if (error_pos)
+                            *error_pos = static_cast<int>(pos - start);
+                        return 1;
+                    }
+                    int len = 0;
+                    if (!parse_integer(pos + 1, end, len)) {
+                        ec = error_code::invalid_string_length;
+                        if (error_pos)
+                            *error_pos = static_cast<int>(pos - start);
+                        return 1;
+                    }
+                    if (pos + 1 + len > end) {
+                        ec = error_code::unexpected_end;
+                        if (error_pos)
+                            *error_pos = static_cast<int>(pos - start);
+                        return 1;
+                    }
+                    ret.string = std::string(pos + 1 + len, pos + 1 + len + len);
+                    item_stack.top()++;
+                    pos += 1 + len;
+                    break;
+                default:
+                    ec = error_code::invalid_token;
+                    if (error_pos)
+                        *error_pos = static_cast<int>(pos - start);
+                    return 1;
+            }
+        }
+    } catch (const std::bad_alloc&) {
+        ec = error_code::memory_allocation_failed;
+        if (error_pos)
+            *error_pos = static_cast<int>(pos - start);
+        return 1;
+    }
+
+    ec = error_code::no_error;
+    return 0;
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "C_435__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int read_gab2_subtitle(AVFormatContext *s, AVStream *st, AVPacket *pkt) {\n    AVIOContext *pb = NULL;\n    uint8_t *buffer;\n    int buffer_size, ret = 0;\n    Gab2SubtitleContext *sub_ctx;\n\n    if (pkt->size < 4)\n        return 0;\n\n    if (AV_RL32(pkt->data) != AV_RL32(\"GAB2\"))\n        return 0;\n\n    buffer_size = pkt->size;\n    buffer = av_malloc(buffer_size);\n    if (!buffer)\n        goto fail;\n\n    pb = avio_alloc_context(buffer, buffer_size, 0, NULL, NULL, NULL, NULL);\n    if (!pb)\n        goto fail;\n\n    sub_ctx = av_mallocz(sizeof(Gab2SubtitleContext));\n    if (!sub_ctx)\n        goto fail;\n\n    avio_skip(pb, 4); // Skip GAB2 identifier\n\n    sub_ctx->width = avio_rl16(pb);\n    sub_ctx->height = avio_rl16(pb);\n\n    if (avio_get_str(pb, INT_MAX, sub_ctx->title, sizeof(sub_ctx->title)) <= 0)\n        goto fail;\n\n    st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;\n    st->codecpar->codec_tag = 0;\n    st->codecpar->format = AV_PIX_FMT_NONE;\n\n    st->priv_data = sub_ctx;\n    st->pts = pkt->pts;\n    st->duration = pkt->duration;\n\n    ret = 1;\n    goto end;\n\nfail:\n    av_freep(&buffer);\n    avio_context_free(&pb);\n    av_freep(&sub_ctx);\nend:\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int read_gab2_subtitle_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt) {\n    if (!pkt || pkt->size < 4)\n        return 0;\n\n    if (AV_RB32(pkt->data) != AV_RB32(\"GAB2\"))\n        return 0;\n\n    AVIOContext *gb = avio_alloc_context(pkt->data, pkt->size, 0, NULL, NULL, NULL, NULL);\n    if (!gb)\n        return 0;\n\n    avio_skip(gb, 4); // Skip GAB2 identifier\n    int format = avio_r8(gb);\n    if (format != 0x01) {\n        av_freep(&gb->buffer);\n        av_free(gb);\n        return 0;\n    }\n\n    int64_t duration = avio_rl32(gb);\n    int64_t start_time = avio_rl32(gb);\n\n    AVSubtitleContext *sub = av_mallocz(sizeof(AVSubtitleContext));\n    if (!sub) {\n        av_freep(&gb->buffer);\n        av_free(gb);\n        return 0;\n    }\n\n    sub->start_display_time = start_time;\n    sub->end_display_time = duration + start_time;\n\n    st->codecpar->format = format;\n    st->codecpar->extradata = av_malloc(pkt->size);\n    if (!st->codecpar->extradata) {\n        av_freep(&gb->buffer);\n        av_free(gb);\n        av_freep(&sub);\n        return 0;\n    }\n\n    memcpy(st->codecpar->extradata, pkt->data, pkt->size);\n    st->codecpar->extradata_size = pkt->size;\n\n    avpriv_set_pts_info(st, 64, 1, 1000); // 64 bits, 1kHz time base\n\n    av_freep(&gb->buffer);\n    av_free(gb);\n\n    return 1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int read_gab2_subtitle_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt) {\n    if (!pkt || pkt->size < 4)\n        return 0;\n\n    if (AV_RB32(pkt->data) != MKTAG('G', 'A', 'B', '2'))\n        return 0;\n\n    AVIOContext *gb = NULL;\n    int ret = avio_open2(&gb, \"pipe:\", AVIO_FLAG_READ, NULL, NULL);\n    if (ret < 0) {\n        return 0;\n    }\n\n    avio_write(gb, pkt->data, pkt->size);\n    avio_seek(gb, 0, SEEK_SET);\n\n    uint32_t format = avio_rl32(gb);\n    if (format != MKTAG('S', 'U', 'B', 'T')) {\n        avio_closep(&gb);\n        return 0;\n    }\n\n    FFDemuxSubtitlesQueue *q = av_mallocz(sizeof(*q));\n    if (!q) {\n        avio_closep(&gb);\n        return 0;\n    }\n\n    st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;\n    st->codecpar->codec_id = AV_CODEC_ID_GAB2;\n\n    q->pts = pkt->pts;\n    q->end_display_time = 1000; // default duration in milliseconds\n\n    st->priv_data = q;\n\n    avio_closep(&gb);\n    return 1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int read_gab2_subtitle_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt) {\n    if (!pkt || pkt->size < 4) {\n        return 0;\n    }\n\n    if (memcmp(pkt->data, \"GAB2\", 4) != 0) {\n        return 0;\n    }\n\n    AVIOContext *bc = avio_alloc_context(pkt->data, pkt->size, 0, NULL, NULL, NULL, NULL);\n    if (!bc) {\n        return 0;\n    }\n\n    avio_skip(bc, 4); // Skip GAB2 identifier\n\n    int format = avio_rb16(bc);\n    if (format != 0x0001) {\n        avio_free(bc);\n        return 0;\n    }\n\n    AVCodecParameters *par = avcodec_parameters_alloc();\n    if (!par) {\n        avio_free(bc);\n        return 0;\n    }\n\n    par->codec_type = AVMEDIA_TYPE_SUBTITLE;\n    par->codec_id = AV_CODEC_ID_GAB2;\n\n    if (avcodec_parameters_copy(st->codecpar, par) < 0) {\n        avio_free(bc);\n        avcodec_parameters_free(&par);\n        return 0;\n    }\n\n    st->time_base = (AVRational){ 1, 100 };\n\n    avio_free(bc);\n    avcodec_parameters_free(&par);\n\n    st->pts = pkt->pts;\n    st->duration = pkt->duration;\n\n    return 1;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int read_gab2_subtitle_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt) {\n    if (!pkt || pkt->size < 4)\n        return 0;\n\n    if (memcmp(pkt->data, \"GAB2\", 4) != 0)\n        return 0;\n\n    AVIOContext *pb = avio_alloc_context(pkt->data, pkt->size, 0, NULL, NULL, NULL, NULL);\n    if (!pb)\n        return 0;\n\n    uint32_t format = avio_rl32(pb);\n    if (format != MKTAG('G', 'A', 'B', '2')) {\n        avio_context_free(&pb);\n        return 0;\n    }\n\n    AVCodecParameters *par = avcodec_parameters_alloc();\n    if (!par) {\n        avio_context_free(&pb);\n        return 0;\n    }\n\n    par->codec_type = AVMEDIA_TYPE_SUBTITLE;\n    par->codec_id = AV_CODEC_ID_GAB2;\n\n    if ((st->codecpar = avcodec_parameters_alloc()) == NULL) {\n        avio_context_free(&pb);\n        avcodec_parameters_free(&par);\n        return 0;\n    }\n\n    if (avcodec_parameters_copy(st->codecpar, par) < 0) {\n        avio_context_free(&pb);\n        avcodec_parameters_free(&par);\n        return 0;\n    }\n\n    st->time_base = (AVRational){1, 1000};\n    st->pts = avio_rb32(pb);\n\n    avio_context_free(&pb);\n    avcodec_parameters_free(&par);\n\n    return 1;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+bool stratum_init(struct pool *pool) {
+    json_t *req, *resp;
+    char *sid = NULL;
+    bool ret = false;
+    int retry = 0;
+
+    do {
+        req = json_object();
+        json_object_set_new(req, "id", json_integer(1));
+        json_object_set_new(req, "method", json_string("mining.subscribe"));
+        json_object_set_new(req, "params", json_array());
+
+        if (!stratum_send_recv(pool, req, &resp)) {
+            applog(LOG_ERR, "Stratum subscribe failed for %s", pool->rpc_url);
+            goto out;
+        }
+
+        if (!json_is_array(resp)) {
+            applog(LOG_ERR, "Stratum subscribe response is not an array for %s", pool->rpc_url);
+            goto out;
+        }
+
+        json_t *session_id = json_array_get(resp, 1);
+        json_t *extradata = json_array_get(resp, 2);
+
+        if (!json_is_string(session_id) || !json_is_string(extradata)) {
+            applog(LOG_ERR, "Stratum subscribe response has invalid format for %s", pool->rpc_url);
+            goto out;
+        }
+
+        sid = strdup(json_string_value(session_id));
+        if (!sid) {
+            applog(LOG_ERR, "Failed to allocate memory for session ID");
+            goto out;
+        }
+
+        pool->session_id = sid;
+        pool->extradata = strdup(json_string_value(extradata));
+        if (!pool->extradata) {
+            applog(LOG_ERR, "Failed to allocate memory for extradata");
+            goto out;
+        }
+
+        ret = true;
+        break;
+    } while (retry++ < 1);
+
+out:
+    if (!ret) {
+        free(pool->session_id);
+        pool->session_id = NULL;
+        free(pool->extradata);
+        pool->extradata = NULL;
+    }
+
+    return ret;
+}

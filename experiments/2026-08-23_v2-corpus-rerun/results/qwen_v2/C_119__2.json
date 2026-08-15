@@ -1,0 +1,56 @@
+{
+  "case_id": "C_119__2",
+  "sample_id": "D/C/119",
+  "func_idx": 2,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2012-2119",
+  "cve_summary": "Buffer overflow in the macvtap device driver in the Linux kernel before 3.4.5, when running in certain configurations, allows privileged KVM guest users to cause a denial of service (crash) via a long descriptor with a long vector length.",
+  "changed_file": "drivers/net/macvtap.c",
+  "docstring": "/******************************************************************************  \n * Summary:  \n * This function retrieves user data from a macvtap queue and processes it  \n * into a socket buffer (skb), handling optional virtio network headers and  \n * zero-copy mechanisms.  \n *  \n * Parameters:  \n * q (struct macvtap_queue*): Pointer to the macvtap queue from which to get data.  \n * m (struct msghdr*): Pointer to the message header for the socket.  \n * iv (const struct iovec*): Pointer to an array of I/O vectors for data transfer.  \n * total_len (unsigned long): Total length of data to retrieve.  \n * count (size_t): Number of I/O vectors.  \n * noblock (int): Flag indicating non-blocking operation.  \n *  \n * Returns:  \n * ssize_t: The number of bytes retrieved on success, or an error code on failure.  \n *  \n * Logic:  \n * The function checks for valid conditions, processes virtio headers if needed,  \n * and allocates an skb for the data. It handles zero-copy scenarios and  \n * transmits the skb if a VLAN is associated with the queue. Errors are managed  \n * throughout, ensuring proper cleanup and statistics updates.  \n ******************************************************************************/",
+  "heuristic_leakage_flag": false,
+  "generated_code": "ssize_t macvtap_get_user(struct macvtap_queue *q, struct msghdr *m,\n                         const struct iovec *iv, unsigned long total_len,\n                         size_t count, int noblock) {\n    struct sk_buff *skb;\n    struct virtio_net_hdr *hdr = NULL;\n    ssize_t ret;\n    size_t len;\n    int err;\n\n    if (!total_len)\n        return 0;\n\n    if (q->vnet_hdr) {\n        if (total_len < sizeof(*hdr))\n            return -EINVAL;\n        hdr = kmalloc(sizeof(*hdr), GFP_KERNEL);\n        if (!hdr)\n            return -ENOMEM;\n        len = sizeof(*hdr);\n        if (copy_from_user(hdr, iv[0].iov_base, len)) {\n            ret = -EFAULT;\n            goto free_hdr;\n        }\n        iv++;\n        count--;\n        total_len -= len;\n    }\n\n    skb = alloc_skb(0, GFP_KERNEL);\n    if (!skb) {\n        ret = -ENOMEM;\n        goto free_hdr;\n    }\n\n    skb->data = NULL;\n    skb->len = 0;\n\n    if (total_len > 0) {\n        ret = skb_copy_datagram_from_iovec(skb, 0, iv, total_len, 0);\n        if (ret) {\n            kfree_skb(skb);\n            goto free_hdr;\n        }\n    }\n\n    if (q->vnet_hdr) {\n        skb_push(skb, sizeof(*hdr));\n        memcpy(skb->data, hdr, sizeof(*hdr));\n        skb_reset_network_header(skb);\n    }\n\n    if (q->vlan) {\n        skb->vlan_tci = q->vlan;\n        skb->vlan_proto = htons(ETH_P_8021Q);\n    }\n\n    skb->dev = q->dev;\n    skb->protocol = eth_type_trans(skb, q->dev);\n\n    netif_receive_skb(skb);\n\n    ret = total_len;\nfree_hdr:\n    kfree(hdr);\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The candidate implementation lacks support for zero-copy mechanisms and does not handle virtio header checksum validation, which are present in the reference implementation. These differences could affect performance and correctness in specific scenarios, such as when using the zero-copy feature or when the virtio header requires checksum validation. However, these are not security-critical issues and are unlikely to cause crashes or expose sensitive information.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 3,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The candidate implementation lacks several key features present in the reference implementation, including zero-copy handling, validation of the number of I/O vectors against UIO_MAXIOV, and proper handling of virtio_net_hdr flags and header length constraints. These differences could lead to incorrect behavior or crashes on certain inputs, particularly when handling malformed or adversarial data. Additionally, the candidate implementation does not handle the zero-copy mechanism, which could affect performance and memory safety in some scenarios.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

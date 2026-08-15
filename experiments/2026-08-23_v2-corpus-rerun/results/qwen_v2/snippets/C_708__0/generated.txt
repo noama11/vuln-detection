@@ -1,0 +1,37 @@
+bool oom_reap_task(struct task_struct *tsk, struct mm_struct *mm)
+{
+    bool success = false;
+    struct vm_area_struct *vma;
+
+    mutex_lock(&mm->mmap_lock);
+    if (!down_read_trylock(&mm->mmap_sem)) {
+        pr_info("Failed to acquire mmap semaphore for task %d\n", tsk->pid);
+        goto out_unlock;
+    }
+
+    if (atomic_read(&mm->mm_count) > 1) {
+        pr_info("Yielding to allow OOM victim more time for task %d\n", tsk->pid);
+        schedule_timeout_uninterruptible(HZ / 10);
+    }
+
+    if (mm->flags & MMF_OOM_SKIP) {
+        pr_info("OOM reaping skipped for task %d\n", tsk->pid);
+        goto out_unlock;
+    }
+
+    mm->flags |= MMF_OOM_SKIP;
+
+    for (vma = mm->mmap; vma; vma = vma->vm_next) {
+        if (vma->vm_flags & (VM_ANON | VM_SHARED)) {
+            do_munmap(mm, vma->vm_start, vma->vm_end - vma->vm_start, 0);
+        }
+    }
+
+    pr_info("Successfully reaped memory for task %d\n", tsk->pid);
+    success = true;
+
+out_unlock:
+    up_read(&mm->mmap_sem);
+    mutex_unlock(&mm->mmap_lock);
+    return success;
+}

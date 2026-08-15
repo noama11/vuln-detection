@@ -1,0 +1,42 @@
+struct bio *bio_map_user_iov(struct request_queue *q, const struct iov_iter *iter, gfp_t gfp_mask) {
+    struct bio *bio;
+    struct page **pages;
+    size_t nr_pages, i;
+    ssize_t ret;
+    size_t iov_count;
+
+    iov_count = iov_iter_count(iter);
+    if (!iov_count)
+        return ERR_PTR(-EINVAL);
+
+    nr_pages = iov_iter_npages(iter, BIO_MAX_PAGES);
+    if (nr_pages > BIO_MAX_PAGES)
+        return ERR_PTR(-EMSGSIZE);
+
+    bio = bio_alloc(gfp_mask, nr_pages);
+    if (!bio)
+        return ERR_PTR(-ENOMEM);
+
+    pages = kmalloc_array(nr_pages, sizeof(struct page *), gfp_mask);
+    if (!pages) {
+        bio_put(bio);
+        return ERR_PTR(-ENOMEM);
+    }
+
+    ret = iov_iter_get_pages(iter, pages, iov_count, nr_pages, NULL);
+    if (ret < 0) {
+        kfree(pages);
+        bio_put(bio);
+        return ERR_PTR(ret);
+    }
+
+    for (i = 0; i < nr_pages; i++) {
+        bio_add_page(bio, pages[i], ret, 0);
+    }
+
+    kfree(pages);
+
+    bio->bi_flags |= BIO_USER_MAPPED;
+
+    return bio;
+}

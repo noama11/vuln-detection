@@ -1,0 +1,56 @@
+{
+  "case_id": "C_69__1",
+  "sample_id": "D/C/69",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2013-3235",
+  "cve_summary": "net/tipc/socket.c in the Linux kernel before 3.9-rc7 does not initialize a certain data structure and a certain length variable, which allows local users to obtain sensitive information from kernel stack memory via a crafted recvmsg or recvfrom system call.",
+  "changed_file": "net/tipc/socket.c",
+  "docstring": "Summary:  \nReceives a message from a socket, handling various states and conditions, including timeouts and message validity.\n\nParameters:  \niocb (struct kiocb*): The I/O control block associated with the operation.  \nsock (struct socket*): The socket from which to receive the message.  \nm (struct msghdr*): The message header to populate with received data.  \nbuf_len (size_t): The length of the buffer for the message data.  \nflags (int): Flags that modify the behavior of the receive operation.\n\nReturns:  \nint: The number of bytes received, or a negative error code indicating failure.\n\nLogic:  \nThe function first checks for invalid requests and locks the socket. It handles various socket states, waits for messages if the receive queue is empty, and processes the first message in the queue. It captures the sender's address and ancillary data, then copies the message data to the provided buffer, adjusting for size constraints. If the message is empty or errored, it handles those cases accordingly. Finally, it updates the socket state and releases the lock before returning the result.",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int receive_message_from_socket(struct kiocb *iocb, struct socket *sock, struct msghdr *m, size_t buf_len, int flags) {\n    int bytes_received = 0;\n    struct sock *sk = sock->sk;\n    struct sk_buff *skb;\n\n    if (!sock || !m || !sk) {\n        return -EINVAL;\n    }\n\n    lock_sock(sk);\n\n    if (sk->sk_state == TCP_LISTEN) {\n        release_sock(sk);\n        return -EOPNOTSUPP;\n    }\n\n    while ((skb = skb_peek(&sk->sk_receive_queue)) == NULL) {\n        if (sk->sk_err || (sk->sk_shutdown & RCV_SHUTDOWN) || (flags & MSG_DONTWAIT)) {\n            release_sock(sk);\n            return (sk->sk_err ? -sk->sk_err : 0);\n        }\n\n        if (wait_for_event_interruptible(sk->sk_wq, !skb_queue_empty(&sk->sk_receive_queue))) {\n            release_sock(sk);\n            return -ERESTARTSYS;\n        }\n    }\n\n    skb = skb_dequeue(&sk->sk_receive_queue);\n    if (!skb) {\n        release_sock(sk);\n        return -EFAULT;\n    }\n\n    if (skb->len > buf_len) {\n        m->msg_flags |= MSG_TRUNC;\n        bytes_received = buf_len;\n    } else {\n        bytes_received = skb->len;\n    }\n\n    if (memcpy_to_msg(m, skb->data, bytes_received) < 0) {\n        kfree_skb(skb);\n        release_sock(sk);\n        return -EFAULT;\n    }\n\n    if (skb->pkt_type == PACKET_OTHERHOST) {\n        m->msg_flags |= MSG_TRUNC;\n    }\n\n    if (skb->ip_summed == CHECKSUM_NONE) {\n        m->msg_flags |= MSG_CSUM_NONE;\n    }\n\n    if (skb->len < 0) {\n        sk->sk_err = EPROTO;\n    }\n\n    kfree_skb(skb);\n    release_sock(sk);\n    return bytes_received;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of socket states and message processing. The candidate implementation checks for `TCP_LISTEN` state and returns `-EOPNOTSUPP`, while the reference implementation checks for `SS_UNCONNECTED` and returns `-ENOTCONN`. Additionally, the reference implementation includes logic for handling TIPC-specific message structures, checksum flags, and flow control, which the candidate implementation lacks. These differences affect behavior on malformed or edge-case inputs, particularly in socket state handling and message validation, and could be security-relevant if an attacker can trigger invalid states or malformed messages.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": false,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of socket states and message processing. The candidate implementation checks for TCP_LISTEN state and returns -EOPNOTSUPP, while the reference implementation checks for SS_UNCONNECTED state and returns -ENOTCONN. Additionally, the reference implementation includes logic for handling ancillary data, capturing sender addresses, and managing flow control, which the candidate implementation lacks. These differences could affect behavior for certain socket states and message types, but none of the differences appear to be security-critical or reachable via adversarial input.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": true,
+  "paired_flag_correct": true,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

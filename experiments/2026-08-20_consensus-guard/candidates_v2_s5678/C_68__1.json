@@ -1,0 +1,34 @@
+{
+  "case_id": "C_68__1",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int smb_send_rqst(struct TCP_Server_Info *server, struct smb_rqst *rqst)\n{\n\tint ret = 0;\n\tint i;\n\tint cork = 1;\n\tstruct kvec *iov;\n\tsize_t total_len = 0;\n\n\tif (server == NULL || rqst == NULL || rqst->iov == NULL)\n\t\treturn -EINVAL;\n\n\tif (server->sock == NULL)\n\t\treturn -ENOTCONN;\n\n\tif (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork)) < 0)\n\t\treturn -errno;\n\n\tiov = rqst->iov;\n\tfor (i = 0; i < rqst->nr_iovecs; i++)\n\t\ttotal_len += iov[i].iov_len;\n\n\tret = smb_send_kvec(server, rqst->iov, rqst->nr_iovecs);\n\tif (ret < 0)\n\t\tgoto out;\n\n\tfor (i = 1; i < rqst->nr_pages; i++) {\n\t\tret = smb_send_page(server, rqst->pages[i], rqst->offsets[i], rqst->offsets[i] + rqst->lengths[i]);\n\t\tif (ret < 0)\n\t\t\tgoto out;\n\t}\n\nout:\n\tcork = 0;\n\tsetsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &cork, sizeof(cork));\n\n\tif (ret < 0)\n\t\tserver->tcp_status = -1;\n\telse if (ret != total_len)\n\t\tserver->tcp_status = -1;\n\n\tif (ret < 0)\n\t\tprintk(KERN_ERR \"Failed to send SMB request: %d\\n\", ret);\n\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst)\n{\n\tint ret = 0;\n\tint i;\n\tsize_t total_len = 0;\n\tstruct kvec *vec;\n\tstruct page **pages;\n\tunsigned long offset;\n\tint nr_vec;\n\n\tif (!server || !server->ssocket) {\n\t\tpr_err(\"Invalid server or socket\\n\");\n\t\treturn -EINVAL;\n\t}\n\n\tif (server->tcp_state == TCP_CLOSING)\n\t\treturn -ENOTCONN;\n\n\tif (set_cork(server->ssocket, 1) < 0) {\n\t\tpr_err(\"Failed to cork socket\\n\");\n\t\treturn -EIO;\n\t}\n\n\tvec = rqst->rq_iov;\n\tnr_vec = rqst->rq_nvec;\n\tpages = rqst->rq_pages;\n\toffset = rqst->rq_offset;\n\ttotal_len = rqst->rq_length;\n\n\tret = smb_send_kvec(server, vec, nr_vec);\n\tif (ret < 0)\n\t\tgoto uncork;\n\n\tfor (i = 0; i < rqst->rq_npages; i++) {\n\t\tret = smb_send_page(server, pages[i], offset, PAGE_SIZE);\n\t\tif (ret < 0)\n\t\t\tgoto uncork;\n\t\toffset += ret;\n\t}\n\nuncork:\n\tif (set_cork(server->ssocket, 0) < 0)\n\t\tpr_err(\"Failed to uncork socket\\n\");\n\n\tif (total_len != (size_t)ret) {\n\t\tserver->tcp_status = TCP_RECONNECT;\n\t\tpr_err(\"Sent only %d bytes of %zu expected\\n\", ret, total_len);\n\t\treturn -EIO;\n\t}\n\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "#include <netinet/tcp.h>\n#include <linux/socket.h>\n\nint send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst) {\n    int ret = 0;\n    int corked = 0;\n    size_t total_len = 0;\n    struct kvec *iov;\n    int iov_idx;\n\n    if (!server || !server->sock) {\n        return -EINVAL;\n    }\n\n    /* Set TCP_CORK option */\n    if (setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){1}, sizeof(int)) == 0) {\n        corked = 1;\n    }\n\n    iov = rqst->rq_iov;\n    for (iov_idx = 0; iov_idx < rqst->rq_nvec; iov_idx++) {\n        total_len += iov[iov_idx].iov_len;\n    }\n\n    ret = smb_send_kvec(server, rqst->rq_iov, rqst->rq_nvec, 0);\n    if (ret < 0) {\n        goto out;\n    }\n\n    for (iov_idx = 1; iov_idx < rqst->rq_nvec; iov_idx++) {\n        ret = smb_send_kvec(server, &rqst->rq_iov[iov_idx], 1, MSG_MORE);\n        if (ret < 0) {\n            goto out;\n        }\n    }\n\n    /* Uncork the socket */\n    if (corked) {\n        setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int));\n        corked = 0;\n    }\n\n    /* Check if the total bytes sent match expected length */\n    if (ret != total_len) {\n        server->tcp_status = -1;\n        ret = -EIO;\n    }\n\nout:\n    if (corked) {\n        setsockopt(server->sock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int));\n    }\n\n    if (ret < 0) {\n        // Log the error\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst)\n{\n    int ret = 0;\n    struct kvec *iov;\n    int iov_count;\n    int i;\n\n    if (!server || !server->sock) {\n        return -ENOTCONN;\n    }\n\n    if (set_sockopt_cork(server->sock, 1) < 0) {\n        return -EFAULT;\n    }\n\n    iov = rqst->rq_iov;\n    iov_count = rqst->rq_nvec;\n\n    ret = smb_send_kvec(server->sock, iov, iov_count, 0);\n    if (ret < 0) {\n        goto uncork;\n    }\n\n    for (i = 0; i < rqst->rq_npages; i++) {\n        ret = smb_sendpage(server->sock, rqst->rq_pages[i], 0, rqst->rq_pagecnt[i], MSG_MORE);\n        if (ret < 0) {\n            goto uncork;\n        }\n    }\n\n    ret = 0;\n\nuncork:\n    set_sockopt_cork(server->sock, 0);\n    if (ret < 0) {\n        server->tcp_status = 0;\n        cifs_dbg(VFS, \"Failed to send SMB request: %d\\n\", ret);\n    }\n\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int send_smb_request(struct TCP_Server_Info *server, struct smb_rqst *rqst)\n{\n\tint ret = 0;\n\tint total_sent = 0;\n\tstruct kvec *iov = rqst->rq_iov;\n\tint iovcnt = rqst->rq_nvec;\n\tstruct smb_hdr *hdr = (struct smb_hdr *)iov[0].iov_base;\n\tsize_t total_len = iov[0].iov_len;\n\tstruct msghdr msg = {0};\n\tunsigned long flags;\n\n\tif (!server || !server->ssock) {\n\t\tpr_err(\"Invalid server or socket\\n\");\n\t\treturn -EINVAL;\n\t}\n\n\tif (setsockopt(server->ssock, IPPROTO_TCP, TCP_CORK, &(int){1}, sizeof(int)) < 0) {\n\t\tpr_err(\"Failed to cork socket\\n\");\n\t\treturn -EIO;\n\t}\n\n\tret = smb_send_kvec(server, iov, iovcnt, 0);\n\tif (ret < 0) {\n\t\tpr_err(\"Failed to send initial SMB request\\n\");\n\t\tgoto uncork_and_out;\n\t}\n\n\ttotal_sent = ret;\n\n\tif (rqst->rq_npages) {\n\t\tint i;\n\t\tfor (i = 0; i < rqst->rq_npages; i++) {\n\t\t\tret = smb_sendpage(server, rqst->rq_pages[i], 0, rqst->rq_pages[i]->length, MSG_MORE);\n\t\t\tif (ret < 0) {\n\t\t\t\tpr_err(\"Failed to send SMB request pages\\n\");\n\t\t\t\tgoto uncork_and_out;\n\t\t\t}\n\t\t\ttotal_sent += ret;\n\t\t}\n\t}\n\nuncork_and_out:\n\tif (setsockopt(server->ssock, IPPROTO_TCP, TCP_CORK, &(int){0}, sizeof(int)) < 0)\n\t\tpr_err(\"Failed to uncork socket\\n\");\n\n\tif (total_sent != total_len) {\n\t\tserver->tcp_status = -1;\n\t\tpr_err(\"Incomplete SMB request sent, reconnect required\\n\");\n\t\tret = -EIO;\n\t}\n\n\treturn ret;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

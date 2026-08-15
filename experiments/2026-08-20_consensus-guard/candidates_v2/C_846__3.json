@@ -1,0 +1,34 @@
+{
+  "case_id": "C_846__3",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    struct sound_timer_dev *dev = file->private_data;\n    ssize_t bytes_read = 0;\n    int ret;\n\n    if (!dev)\n        return -EINVAL;\n\n    mutex_lock(&dev->mutex);\n    spin_lock_irq(&dev->spinlock);\n\n    while (dev->queue_size == 0) {\n        if ((file->f_flags & O_NONBLOCK) || (file->f_flags & O_CLOEXEC)) {\n            spin_unlock_irq(&dev->spinlock);\n            mutex_unlock(&dev->mutex);\n            return -EAGAIN;\n        }\n\n        ret = wait_event_interruptible(dev->read_wait, dev->queue_size > 0);\n        if (ret < 0) {\n            spin_unlock_irq(&dev->spinlock);\n            mutex_unlock(&dev->mutex);\n            return ret;\n        }\n    }\n\n    while (count > 0 && dev->queue_size > 0) {\n        unsigned int chunk_size = min(count, (size_t)dev->sample_size);\n        if (copy_to_user(buffer, dev->queue + dev->read_pos, chunk_size)) {\n            spin_unlock_irq(&dev->spinlock);\n            mutex_unlock(&dev->mutex);\n            return -EFAULT;\n        }\n\n        dev->read_pos = (dev->read_pos + chunk_size) % dev->buffer_size;\n        dev->queue_size -= chunk_size;\n        bytes_read += chunk_size;\n        count -= chunk_size;\n        buffer += chunk_size;\n    }\n\n    spin_unlock_irq(&dev->spinlock);\n    mutex_unlock(&dev->mutex);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "ssize_t read_sound_timer(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n    int result;\n\n    mutex_lock(&sound_timer_mutex);\n    spin_lock(&sound_timer_spinlock);\n\n    if (sound_timer_queue_empty()) {\n        if (file->f_flags & O_NONBLOCK) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -EAGAIN;\n        }\n        DECLARE_WAITQUEUE(wait, current);\n        add_wait_queue(&sound_timer_wait_queue, &wait);\n        set_current_state(TASK_INTERRUPTIBLE);\n\n        spin_unlock(&sound_timer_spinlock);\n        mutex_unlock(&sound_timer_mutex);\n\n        schedule();\n\n        remove_wait_queue(&sound_timer_wait_queue, &wait);\n        if (signal_pending(current)) {\n            return -ERESTARTSYS;\n        }\n\n        mutex_lock(&sound_timer_mutex);\n        spin_lock(&sound_timer_spinlock);\n    }\n\n    while (bytes_read < count && !sound_timer_queue_empty()) {\n        char data = sound_timer_peek();\n        if (copy_to_user(buffer + bytes_read, &data, 1) != 0) {\n            spin_unlock(&sound_timer_spinlock);\n            mutex_unlock(&sound_timer_mutex);\n            return -EFAULT;\n        }\n\n        sound_timer_dequeue();\n        bytes_read++;\n        *offset += 1;\n    }\n\n    spin_unlock(&sound_timer_spinlock);\n    mutex_unlock(&sound_timer_mutex);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n\n    mutex_lock(&device_mutex);\n    spin_lock(&device_spinlock);\n\n    if (device_queue_empty) {\n        // Wait for data to become available, handling non-blocking and interruptible conditions\n        if (wait_for_data() < 0) {\n            spin_unlock(&device_spinlock);\n            mutex_unlock(&device_mutex);\n            return -EINTR;\n        }\n    }\n\n    if (count > device_data_available) {\n        count = device_data_available;\n    }\n\n    if (copy_to_user(buffer, device_queue + read_position, count)) {\n        spin_unlock(&device_spinlock);\n        mutex_unlock(&device_mutex);\n        return -EFAULT;\n    }\n\n    read_position += count;\n    bytes_read = count;\n    device_data_available -= count;\n\n    spin_unlock(&device_spinlock);\n    mutex_unlock(&device_mutex);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset)\n{\n    ssize_t bytes_read = 0;\n    int ret;\n\n    spin_lock(&device_spinlock);\n    mutex_lock(&device_mutex);\n\n    while (device_queue_empty()) {\n        if (file->f_flags & O_NONBLOCK) {\n            mutex_unlock(&device_mutex);\n            spin_unlock(&device_spinlock);\n            return -EAGAIN;\n        }\n\n        ret = wait_event_interruptible(device_wait_queue, !device_queue_empty());\n        if (ret < 0) {\n            mutex_unlock(&device_mutex);\n            spin_unlock(&device_spinlock);\n            return ret;\n        }\n    }\n\n    while (bytes_read < count && !device_queue_empty()) {\n        char data = device_peek_data();\n        ret = copy_to_user(buffer + bytes_read, &data, 1);\n        if (ret != 0) {\n            mutex_unlock(&device_mutex);\n            spin_unlock(&device_spinlock);\n            return -EFAULT;\n        }\n        device_dequeue_data();\n        bytes_read++;\n    }\n\n    mutex_unlock(&device_mutex);\n    spin_unlock(&device_spinlock);\n    *offset += bytes_read;\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {\n    ssize_t bytes_read = 0;\n    struct sound_timer_dev *dev = file->private_data;\n    struct sound_timer_queue *queue = &dev->queue;\n\n    if (!dev || !queue)\n        return -EINVAL;\n\n    if (count == 0)\n        return 0;\n\n    spin_lock(&dev->lock);\n\n    while (queue->read_index == queue->write_index) {\n        if (file->f_flags & O_NONBLOCK) {\n            spin_unlock(&dev->lock);\n            return -EAGAIN;\n        }\n\n        if (wait_event_interruptible(queue->wait_read, queue->read_index != queue->write_index)) {\n            spin_unlock(&dev->lock);\n            return -ERESTARTSYS;\n        }\n    }\n\n    while (bytes_read < count && queue->read_index != queue->write_index) {\n        unsigned char data = queue->buffer[queue->read_index];\n        if (copy_to_user(buffer + bytes_read, &data, 1)) {\n            spin_unlock(&dev->lock);\n            return -EFAULT;\n        }\n        queue->read_index = (queue->read_index + 1) % SOUND_TIMER_BUFFER_SIZE;\n        bytes_read++;\n    }\n\n    spin_unlock(&dev->lock);\n    wake_up_interruptible(&queue->wait_write);\n\n    return bytes_read;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

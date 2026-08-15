@@ -1,0 +1,49 @@
+int register_mii_bus(struct mii_bus *bus, struct module *owner)
+{
+    int ret;
+    int phy_id;
+
+    if (!bus || !bus->name || !bus->read || !bus->write) {
+        return -EINVAL;
+    }
+
+    mutex_init(&bus->bus_mutex);
+
+    ret = device_register(&bus->dev);
+    if (ret) {
+        return ret;
+    }
+
+    bus->dev.class = &mii_bus_class;
+    bus->dev.parent = NULL;
+    bus->dev.release = mii_bus_release;
+
+    for (phy_id = 0; phy_id < PHY_MAX_ADDR; phy_id++) {
+        struct phy_device *phydev;
+
+        phydev = phy_device_create(bus, phy_id);
+        if (!phydev) {
+            while (phy_id > 0) {
+                phy_id--;
+                phy_device_free(phydev);
+            }
+            device_unregister(&bus->dev);
+            return -ENOMEM;
+        }
+
+        if (phydev->is_valid) {
+            phydev->irq = PHY_POLL;
+            phydev->state = PHY_READY;
+            phydev->dev.driver = NULL;
+            phydev->dev.parent = &bus->dev;
+            device_register(&phydev->dev);
+        } else {
+            phy_device_free(phydev);
+        }
+    }
+
+    bus->state = MII_BUS_READY;
+    dev_info(&bus->dev, "Probed MII bus %s\n", bus->name);
+
+    return 0;
+}

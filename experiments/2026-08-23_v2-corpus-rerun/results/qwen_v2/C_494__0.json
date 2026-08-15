@@ -1,0 +1,56 @@
+{
+  "case_id": "C_494__0",
+  "sample_id": "D/C/494",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-5576",
+  "cve_summary": "Integer overflow in the vc4_get_bcl function in drivers/gpu/drm/vc4/vc4_gem.c in the VideoCore DRM driver in the Linux kernel before 4.9.7 allows local users to cause a denial of service or possibly have unspecified other impact via a crafted size value in a VC4_SUBMIT_CL ioctl call.",
+  "changed_file": "drivers/gpu/drm/vc4/vc4_gem.c",
+  "docstring": "/**\n * Summary: \n * Retrieves and prepares the binary command list and shader records for execution in the VC4 graphics driver.\n * \n * Parameters: \n * dev (struct drm_device *): Pointer to the DRM device structure.\n * exec (struct vc4_exec_info *): Pointer to the execution information structure containing submission arguments.\n * \n * Returns: \n * int: Returns 0 on success, or a negative error code on failure.\n * \n * Logic: \n * The function validates the sizes of the command lists and shader records, allocates memory for them, and copies data from user space. It creates a buffer object for execution, sets up various pointers for shader records and uniforms, and performs validation checks on the command list and shader records. Finally, it ensures that any previous rendering operations are complete before proceeding. If any step fails, it cleans up allocated resources and returns an error code.\n */",
+  "heuristic_leakage_flag": false,
+  "generated_code": "int vc4_prepare_cmdlist_and_shaders(struct drm_device *dev, struct vc4_exec_info *exec)\n{\n    int ret;\n    struct vc4_dev *vc4 = to_vc4_dev(dev);\n    struct vc4_bo *bo;\n    void *cmdlist, *shaders;\n    unsigned int cmdlist_size, shader_size;\n\n    if (exec->cmdlist_size == 0 || exec->shader_record_size == 0)\n        return -EINVAL;\n\n    cmdlist_size = exec->cmdlist_size;\n    shader_size = exec->shader_record_size;\n\n    cmdlist = kvmalloc(cmdlist_size, GFP_KERNEL);\n    if (!cmdlist)\n        return -ENOMEM;\n\n    shaders = kvmalloc(shader_size, GFP_KERNEL);\n    if (!shaders) {\n        kfree(cmdlist);\n        return -ENOMEM;\n    }\n\n    if (copy_from_user(cmdlist, u64_to_user_ptr(exec->cmdlist_ptr), cmdlist_size)) {\n        ret = -EFAULT;\n        goto fail;\n    }\n\n    if (copy_from_user(shaders, u64_to_user_ptr(exec->shader_record_ptr), shader_size)) {\n        ret = -EFAULT;\n        goto fail;\n    }\n\n    ret = vc4_bo_create(dev, cmdlist_size + shader_size, 0, &bo);\n    if (ret)\n        goto fail;\n\n    ret = vc4_bo_map(bo);\n    if (ret)\n        goto fail;\n\n    memcpy(bo->vaddr, cmdlist, cmdlist_size);\n    memcpy(bo->vaddr + cmdlist_size, shaders, shader_size);\n\n    exec->bo = bo;\n    exec->cmdlist = bo->vaddr;\n    exec->shader_records = bo->vaddr + cmdlist_size;\n\n    ret = vc4_validate_cmdlist(exec->cmdlist, cmdlist_size);\n    if (ret)\n        goto fail;\n\n    ret = vc4_validate_shader_records(exec->shader_records, shader_size);\n    if (ret)\n        goto fail;\n\n    vc4_wait_for_render_complete(vc4);\n\n    kfree(cmdlist);\n    kfree(shaders);\n\n    return 0;\n\nfail:\n    kfree(cmdlist);\n    kfree(shaders);\n    return ret;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 3,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in their handling of command lists and shader records. The candidate implementation directly copies the command list and shader records into a single buffer object and performs validation, while the reference implementation uses a more complex approach with additional memory allocations and validation steps, including checking for overflow and using separate offsets for different data types. These differences could lead to different behaviors for malformed or adversarial inputs, particularly in overflow checks and memory layout, which may be security-relevant.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 2,
+    "category": "security_vulnerability_concern",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in their memory allocation and validation strategies. The candidate implementation directly uses `kvmalloc` and `copy_from_user` for command list and shader records, while the reference implementation performs additional overflow checks and uses a temporary buffer for validation. The reference implementation also includes more detailed error handling and validation of offsets and sizes, which could prevent potential buffer overflow or memory corruption issues. These differences are security-relevant as they involve input validation and memory safety.",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

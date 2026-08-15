@@ -1,0 +1,35 @@
+enum fetch_step
+handle_backend_fetch_failure(struct worker *wrk, struct busyobj *bo)
+{
+	AN(wrk);
+	AN(bo);
+	AN(bo->http);
+	AN(bo->bereq);
+
+	wrk->stats.fetch_failed++;
+
+	http_SetReason(bo->http, "Backend fetch failure");
+	http_SetStatus(bo->http, HTTP_503);
+
+	bo->objcore->t_origin = W_TIMENOW(wrk);
+	bo->objcore->t_firstbyte = 0.0;
+	bo->objcore->t_lastbyte = 0.0;
+	bo->objcore->t_expires = 0.0;
+	bo->objcore->t_grace = 0.0;
+	bo->objcore->t_keep = 0.0;
+
+	if (bo->waitinglist != NULL)
+		bo->objcore->t_expires = W_TIMENOW(wrk) + 60.0;
+
+	bo->do_esp = 1;
+	bo->do_gunzip = 0;
+	bo->do_stream = 0;
+
+	VCL_error(wrk, bo);
+
+	if (wrk->handling == VCL_RET_RETRY)
+		return (F_STP_RETRY);
+	if (wrk->handling == VCL_RET_DELIVER)
+		return (F_STP_DONE);
+	return (F_STP_FAIL);
+}

@@ -1,0 +1,55 @@
+int atl2_probe(struct pci_dev *pdev, const struct pci_device_id *ent) {
+    struct net_device *netdev;
+    int err;
+
+    err = pci_enable_device(pdev);
+    if (err < 0)
+        return err;
+
+    err = pci_set_dma_mask(pdev, DMA_32BIT_MASK);
+    if (err < 0) {
+        pci_disable_device(pdev);
+        return err;
+    }
+
+    err = pci_request_regions(pdev, "atl2");
+    if (err < 0) {
+        pci_disable_device(pdev);
+        return err;
+    }
+
+    netdev = alloc_etherdev(sizeof(struct atl2_adapter));
+    if (!netdev) {
+        pci_release_regions(pdev);
+        pci_disable_device(pdev);
+        return -ENOMEM;
+    }
+
+    SET_NETDEV_DEV(netdev, &pdev->dev);
+    netdev->irq = pdev->irq;
+    netdev->netdev_ops = &atl2_netdev_ops;
+
+    setup_timer(&((struct atl2_adapter *)netdev_priv(netdev))->watchdog_timer,
+                atl2_watchdog, (unsigned long)netdev);
+    setup_timer(&((struct atl2_adapter *)netdev_priv(netdev))->phy_config_timer,
+                atl2_phy_config, (unsigned long)netdev);
+
+    err = register_netdev(netdev);
+    if (err) {
+        free_netdev(netdev);
+        pci_release_regions(pdev);
+        pci_disable_device(pdev);
+        return err;
+    }
+
+    err = atl2_read_mac_address(pdev, netdev);
+    if (err < 0) {
+        unregister_netdev(netdev);
+        free_netdev(netdev);
+        pci_release_regions(pdev);
+        pci_disable_device(pdev);
+        return err;
+    }
+
+    return 0;
+}

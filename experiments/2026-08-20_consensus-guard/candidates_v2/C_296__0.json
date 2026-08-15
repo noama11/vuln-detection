@@ -1,0 +1,34 @@
+{
+  "case_id": "C_296__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,\n                        struct key *keyring, struct key *authkey) {\n    int ret;\n\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    key_get(key);\n    key_get(keyring);\n\n    down_write(&key->sem);\n\n    if (key->type->vtype && key->payload.data) {\n        ret = -EEXIST;\n        goto error;\n    }\n\n    key->flags |= 1 << KEY_FLAG_NEGATIVE;\n    key->expiry = jiffies + timeout;\n    key->uid = current_uid();\n    key->gid = current_gid();\n\n    if (keyring) {\n        ret = key_instantiate_and_link(key, NULL, 0, keyring, authkey);\n        if (ret < 0)\n            goto error;\n    }\n\n    key->perm |= KEY_POS_GARBAGE;\n    key->usage++;\n    key_revoke(authkey);\n    key_put(authkey);\n\n    up_write(&key->sem);\n    key_put(key);\n    key_put(keyring);\n\n    wake_up_interruptible(&key->wait_queue_head);\n\n    return 0;\n\nerror:\n    key_put(key);\n    key_put(keyring);\n    up_write(&key->sem);\n    return ret;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error,\n                        struct key *keyring, struct key *authkey)\n{\n    int ret = 0;\n\n    if (!key || (keyring && !keyring))\n        return -EINVAL;\n\n    key->flags |= 1 << (KEY_FLAG_NEGATIVE - 1);\n    key->expiry = getrawmonotonic() + timeout;\n    key->datalen = 0;\n    key->payload.data = NULL;\n    key->perm &= ~KEY_POS_ALL;\n    key->perm |= (KEY_PERM_INSTANTIATE | KEY_PERM_READ_METADATA);\n\n    if (keyring) {\n        ret = key_instantiate_and_link(key, NULL, 0, keyring, authkey);\n        if (ret < 0)\n            return ret;\n    }\n\n    key_revoke(authkey);\n    key_put(authkey);\n    key_put(keyring);\n    key_put(key);\n\n    key_notify(key);\n    key_gc_enqueue();\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int key_reject_and_link(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    int ret = 0;\n\n    if (!key || (keyring && !keyring)) {\n        return -EINVAL;\n    }\n\n    down_write(&key->sem);\n    if (key->type->v1.reject) {\n        ret = key->type->v1.reject(key, error, authkey);\n        if (ret < 0) {\n            up_write(&key->sem);\n            return ret;\n        }\n    }\n\n    key->flags |= 1 << (KEY_FLAG_INstantiated - 1);\n    key->expiry = get_seconds() + timeout;\n    key_schedule_gc(key->expiry, key);\n\n    if (keyring) {\n        ret = key_link(keyring, key);\n        if (ret < 0) {\n            up_write(&key->sem);\n            return ret;\n        }\n\n        key_revoke(authkey);\n    }\n\n    up_write(&key->sem);\n    key_notify(key, 0, 0);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int reject_key_and_link(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    int ret = 0;\n\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    /* Ensure the key is not already instantiated */\n    if (key->type->v1.instantiate && key->type->v1.instantiate(key, NULL, NULL)) {\n        return -EINVAL;\n    }\n\n    /* Mark the key as negatively instantiated with the provided error */\n    key->error = error;\n    key->flags |= 1 << (KEY_FLAG_NEGATIVE_INSTANTIATED - 1);\n\n    /* Set the key's expiry time */\n    key->expiry = jiffies + timeout * HZ;\n\n    /* Schedule garbage collection if necessary */\n    key_schedule_gc(key);\n\n    if (keyring) {\n        /* Link the key to the keyring */\n        ret = key_link(keyring, key);\n        if (ret < 0) {\n            return ret;\n        }\n\n        /* Revoke the authorization key if provided */\n        if (authkey) {\n            key_revoke(authkey);\n        }\n    }\n\n    /* Wake up any waiting processes if the key was constructed */\n    if (key->wait_queue) {\n        wake_up(key->wait_queue);\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int reject_key_and_link_to_keyring(struct key *key, unsigned timeout, unsigned error, struct key *keyring, struct key *authkey) {\n    if (!key || !keyring) {\n        return -EINVAL;\n    }\n\n    if (key->instanced) {\n        return -EEXIST;\n    }\n\n    key->negative = 1;\n    key->expiry = get_current_time() + timeout;\n    key->error = error;\n\n    if (keyring) {\n        if (link_key_to_keyring(key, keyring) < 0) {\n            return -ENOKEY;\n        }\n    }\n\n    if (authkey) {\n        revoke_authorization_key(authkey);\n    }\n\n    schedule_key_garbage_collection();\n\n    if (key->constructed) {\n        wake_up_key_waiters(key);\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

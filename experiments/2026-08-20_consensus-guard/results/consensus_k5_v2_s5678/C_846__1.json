@@ -1,0 +1,62 @@
+{
+  "case_id": "C_846__1",
+  "sample_id": "D/C/846",
+  "func_idx": 1,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-1000380",
+  "cve_summary": "sound/core/timer.c in the Linux kernel before 4.11.5 is vulnerable to a data race in the ALSA /dev/snd/timer driver resulting in local users being able to read information belonging to other users, i.e., uninitialized memory contents may be disclosed when a read and an ioctl happen at the same time.",
+  "changed_file": "sound/core/timer.c",
+  "docstring": "\"\"\"\nSummary: \nReads data from a sound timer device into a user-provided buffer.\n\nParameters: \nfile (struct file *): Pointer to the file structure representing the sound timer device.\nbuffer (char __user *): Pointer to the user buffer where the read data will be stored.\ncount (size_t): The maximum number of bytes to read from the device.\noffset (loff_t *): Pointer to the current read offset in the device.\n\nReturns: \nssize_t: The number of bytes read on success, or a negative error code on failure.\n\nLogic: \nThe function locks the device's mutex and spinlock to ensure thread safety while reading data. It checks if there is data available in the queue and waits if necessary. It reads data from the queue into the user buffer, handling both blocking and non-blocking scenarios. If an error occurs during reading or if the device is disconnected, it returns an appropriate error code. The function ensures to unlock the locks before returning.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Check for null or invalid 'file->private_data'",
+        "performed_by_count": 3,
+        "why_it_matters": "If 'file->private_data' is invalid or null, dereferencing it could cause a null pointer dereference or use-after-free vulnerability."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a check for the validity of the 'file->private_data' pointer before using it, which is a defensive step performed by a majority of the independent implementations. Additionally, the target uses a spinlock and mutex in a nested fashion, which is not a consensus step but is not widely adopted by the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 0,
+    "net_exposure": 4,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 1,
+    "steps": [
+      {
+        "step": "Bounds check on data read from queue before copy to user space",
+        "performed_by_count": 4,
+        "why_it_matters": "If the count exceeds the available data in the queue, the target may attempt to copy more data than is available, potentially leading to undefined behavior or data corruption."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation does not perform a bounds check on the number of bytes read from the queue before copying to user space, which is a step performed by a majority of the independent implementations. This could lead to overreading the queue if the count exceeds the available data.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": true,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 5678,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

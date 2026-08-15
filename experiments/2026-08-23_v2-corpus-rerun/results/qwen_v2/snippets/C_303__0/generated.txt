@@ -1,0 +1,44 @@
+int cypress_probe(struct usb_serial_port *port)
+{
+    int ret = -ENOMEM;
+    struct usb_endpoint_descriptor *ep;
+    struct cypress_private *priv;
+
+    ep = usb_serial_get_endpoint(port, 0);
+    if (!ep)
+        return -ENODEV;
+
+    priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+    if (!priv)
+        goto error;
+
+    spin_lock_init(&priv->lock);
+    priv->read_fifo = usb_fifo_create(USB_FIFO_SIZE);
+    if (!priv->read_fifo)
+        goto error_free_priv;
+
+    priv->write_fifo = usb_fifo_create(USB_FIFO_SIZE);
+    if (!priv->write_fifo)
+        goto error_free_read_fifo;
+
+    if (ep->wMaxPacketSize == 64)
+        priv->packet_format = PACKET_FORMAT_64;
+    else
+        priv->packet_format = PACKET_FORMAT_16;
+
+    priv->read_interval = port->read_urb->interval;
+    priv->write_interval = port->write_urb->interval;
+
+    usb_set_serial_port_data(port, priv);
+
+    priv->drain_delay = 10;
+
+    return 0;
+
+error_free_read_fifo:
+    usb_fifo_free(priv->read_fifo);
+error_free_priv:
+    kfree(priv);
+error:
+    return ret;
+}

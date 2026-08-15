@@ -1,0 +1,42 @@
+ssize_t read_sound_timer_data(struct file *file, char __user *buffer, size_t count, loff_t *offset) {
+    struct sound_timer_dev *dev = file->private_data;
+    ssize_t bytes_read = 0;
+    int ret;
+
+    if (!dev)
+        return -EINVAL;
+
+    spin_lock(&dev->spinlock);
+    mutex_lock(&dev->mutex);
+
+    while (dev->queue_head == dev->queue_tail) {
+        if ((file->f_flags & O_NONBLOCK) || (signal_pending(current))) {
+            mutex_unlock(&dev->mutex);
+            spin_unlock(&dev->spinlock);
+            return -EAGAIN;
+        }
+
+        ret = wait_for_completion_interruptible(&dev->data_available);
+        if (ret) {
+            mutex_unlock(&dev->mutex);
+            spin_unlock(&dev->spinlock);
+            return ret;
+        }
+    }
+
+    while (bytes_read < count && dev->queue_head != dev->queue_tail) {
+        char data = dev->queue[dev->queue_head];
+        dev->queue_head = (dev->queue_head + 1) % SOUND_TIMER_QUEUE_SIZE;
+        if (copy_to_user(buffer + bytes_read, &data, 1)) {
+            mutex_unlock(&dev->mutex);
+            spin_unlock(&dev->spinlock);
+            return -EFAULT;
+        }
+        bytes_read++;
+    }
+
+    mutex_unlock(&dev->mutex);
+    spin_unlock(&dev->spinlock);
+
+    return bytes_read;
+}

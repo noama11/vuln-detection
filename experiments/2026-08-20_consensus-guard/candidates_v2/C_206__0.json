@@ -1,0 +1,34 @@
+{
+  "case_id": "C_206__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "struct rds_connection *rds_conn_create(struct net *net, __be32 laddr,\n                                      __be32 faddr,\n                                      struct rds_transport *trans,\n                                      gfp_t gfp, int is_outgoing)\n{\n    struct rds_connection *conn;\n\n    /* Check for an existing connection */\n    conn = rds_conn_find(laddr, faddr);\n    if (conn)\n        return conn;\n\n    /* Allocate a new connection */\n    conn = kzalloc(sizeof(*conn), gfp);\n    if (!conn)\n        return ERR_PTR(-ENOMEM);\n\n    /* Initialize the connection */\n    conn->laddr = laddr;\n    conn->faddr = faddr;\n    conn->transport = trans;\n    conn->net = net;\n    conn->is_outgoing = is_outgoing;\n\n    spin_lock_init(&conn->spinlock);\n    atomic_set(&conn->refcount, 1);\n    INIT_LIST_HEAD(&conn->list);\n\n    /* Handle loopback connections */\n    if (laddr == faddr)\n        conn->loopback = 1;\n\n    /* Add connection to global data structure with locking */\n    spin_lock(&rds_conn_table_lock);\n    list_add(&conn->list, &rds_conn_table);\n    spin_unlock(&rds_conn_table_lock);\n\n    return conn;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "struct rds_connection *rds_connection_get(struct net *net, __be32 laddr, __be32 faddr,\n                                          struct rds_transport *trans, gfp_t gfp,\n                                          int is_outgoing)\n{\n    struct rds_connection *conn;\n\n    conn = rds_conn_lookup(net, laddr, faddr);\n    if (conn)\n        return conn;\n\n    conn = kzalloc(sizeof(*conn), gfp);\n    if (!conn)\n        return ERR_PTR(-ENOMEM);\n\n    conn->c_laddr = laddr;\n    conn->c_faddr = faddr;\n    conn->c_transport = trans;\n    conn->c_net = net;\n    conn->c_is_outgoing = is_outgoing;\n\n    if (is_outgoing) {\n        rds_conn_setup(conn);\n        rds_loopback(conn);\n    }\n\n    spin_lock(&rds_conn_table_lock);\n    rds_conn_add(conn);\n    spin_unlock(&rds_conn_table_lock);\n\n    return conn;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "struct rds_connection *rds_conn_create(struct net *net, __be32 laddr,\n                                      __be32 faddr,\n                                      struct rds_transport *trans, gfp_t gfp,\n                                      int is_outgoing)\n{\n    struct rds_connection *conn;\n\n    conn = rds_conn_find(laddr, faddr);\n    if (conn)\n        return conn;\n\n    conn = kzalloc(sizeof(*conn), gfp);\n    if (!conn)\n        return ERR_PTR(-ENOMEM);\n\n    conn->laddr = laddr;\n    conn->faddr = faddr;\n    conn->transport = trans;\n    conn->is_outgoing = is_outgoing;\n\n    rds_conn_init(conn);\n\n    if (is_outgoing) {\n        rds_conn_connect(conn);\n    } else {\n        rds_conn_add_to_list(conn);\n        rds_conn_notify_new(conn);\n    }\n\n    return conn;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "struct rds_connection *rds_conn_create_or_get(struct net *net, __be32 laddr, __be32 faddr,\n                                              struct rds_transport *trans, gfp_t gfp,\n                                              int is_outgoing)\n{\n    struct rds_connection *conn;\n\n    conn = rds_conn_find(net, laddr, faddr);\n    if (conn)\n        return conn;\n\n    conn = kzalloc(sizeof(*conn), gfp);\n    if (!conn)\n        return ERR_PTR(-ENOMEM);\n\n    conn->net = net;\n    conn->laddr = laddr;\n    conn->faddr = faddr;\n    conn->transport = trans;\n    conn->is_outgoing = is_outgoing;\n\n    if (is_outgoing) {\n        if (laddr == faddr) {\n            rds_conn_set_loopback(conn);\n        }\n    }\n\n    spin_lock(&rds_conn_table_lock);\n    if (rds_conn_find(net, laddr, faddr)) {\n        spin_unlock(&rds_conn_table_lock);\n        kfree(conn);\n        return ERR_PTR(-EEXIST);\n    }\n\n    rds_conn_add(conn);\n    spin_unlock(&rds_conn_table_lock);\n\n    rds_transport_init(conn);\n\n    return conn;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "struct rds_connection *rds_conn_create_or_get(struct net *net, __be32 laddr, __be32 faddr,\n                                              struct rds_transport *trans, gfp_t gfp,\n                                              int is_outgoing)\n{\n    struct rds_connection *conn;\n\n    conn = rds_conn_find(laddr, faddr);\n    if (conn)\n        return conn;\n\n    conn = kzalloc(sizeof(*conn), gfp);\n    if (!conn)\n        return ERR_PTR(-ENOMEM);\n\n    conn->net = net;\n    conn->laddr = laddr;\n    conn->faddr = faddr;\n    conn->transport = trans;\n    conn->is_outgoing = is_outgoing;\n\n    if (is_outgoing) {\n        if (!rds_loopback_allowed(laddr, faddr))\n            goto free_conn;\n    }\n\n    spin_lock(&rds_connection_lock);\n    if (rds_conn_find(laddr, faddr)) {\n        spin_unlock(&rds_connection_lock);\n        goto free_conn;\n    }\n\n    rds_conn_add(conn);\n    spin_unlock(&rds_connection_lock);\n\n    return conn;\n\nfree_conn:\n    kfree(conn);\n    return ERR_PTR(-EEXIST);\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

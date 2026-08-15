@@ -1,0 +1,62 @@
+{
+  "case_id": "C_418__0",
+  "sample_id": "D/C/418",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "torvalds/linux",
+  "cve_id": "CVE-2017-12190",
+  "cve_summary": "The bio_map_user_iov and bio_unmap_user functions in block/bio.c in the Linux kernel before 4.13.8 do unbalanced refcounting when a SCSI I/O vector has small consecutive buffers belonging to the same page. The bio_add_pc_page function merges them into one, but the page reference is never dropped. This causes a memory leak and possible system lockup (exploitable against the host OS by a guest OS user, if a SCSI disk is passed through to a virtual machine) due to an out-of-memory condition.",
+  "changed_file": "block/bio.c",
+  "docstring": "Summary:  \nMaps user-space I/O vectors to a bio structure for a given request queue.\n\nParameters:  \nq (struct request_queue *): The request queue to which the bio will be associated.  \niter (const struct iov_iter *): The I/O vector iterator containing user-space addresses.  \ngfp_mask (gfp_t): The memory allocation flags for kernel memory allocation.\n\nReturns:  \nstruct bio *: A pointer to the allocated bio structure on success, or an error pointer on failure.\n\nLogic:  \nThe function first calculates the number of pages required based on the user-space addresses provided in the iov_iter. It checks for alignment and overflow errors. If valid, it allocates memory for the bio and the pages. It then maps the user pages into the bio, handling any necessary page references and merging. If any errors occur during mapping, it cleans up allocated resources and returns an error pointer. Finally, it sets a flag indicating the bio is user-mapped and returns the bio pointer.",
+  "heuristic_leakage_flag": false,
+  "k": 5,
+  "judge_vs_vulnerable": {
+    "target_exposure": 1,
+    "consensus_exposure": 3,
+    "net_exposure": -2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Bounds check on number of pages before allocation",
+        "performed_by_count": 4,
+        "why_it_matters": "If the number of pages is unbounded or incorrect, the allocation of the pages array could fail or lead to resource exhaustion."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs a detailed per-iov alignment check and uses get_user_pages_fast, which is more defensive than the majority of the independent implementations. However, it does not perform a bounds check on the number of pages before allocating memory for the pages array, which is a step performed by a majority of the independent implementations.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "target_exposure": 4,
+    "consensus_exposure": 2,
+    "net_exposure": 2,
+    "n_steps_reported": 1,
+    "n_steps_majority": 1,
+    "n_steps_target_only": 2,
+    "steps": [
+      {
+        "step": "Validate total number of pages with iov_iter_npages",
+        "performed_by_count": 4,
+        "why_it_matters": "If the iov_iter provides an invalid or overflowed page count, the target proceeds with allocation and mapping, risking memory corruption or invalid page references."
+      }
+    ],
+    "k_used": 5,
+    "confidence": "medium",
+    "rationale": "The target implementation performs several defensive steps that are not present in the majority of the independent implementations, such as checking for page mapping errors and releasing unused pages. However, it does not perform a majority-consensus step of validating the total number of pages before allocation using iov_iter_npages, which could lead to overflow or invalid page counts.",
+    "finish_reason": "stop"
+  },
+  "correct_direction": false,
+  "tied": false,
+  "runtime": {
+    "arm": "consensus_guard",
+    "backend": "vllm",
+    "served_model": "qwen3-32b-awq",
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "judge_prompt_sha": "b7f3b3ae1a5c",
+    "generator_prompt_sha": "1de29ae28c7d"
+  }
+}

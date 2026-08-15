@@ -1,0 +1,27 @@
+int handle_kex_init(int type, u_int32_t seq, void *ctxt) {
+    ssh_session *session = ctxt;
+    int r;
+
+    if (session->kex == NULL) {
+        return SSH_ERR_NO_KEX;
+    }
+
+    dispatch_set(SSH_MSG_KEXINIT, NULL, session);
+    r = sshpkt_get_end(session);
+    if (r != 0) {
+        return r;
+    }
+
+    if (session->kex->first_kex_follows) {
+        if (session->kex->kex_follows_sent) {
+            return SSH_ERR_KEX_INIT_ALREADY_SENT;
+        }
+        r = kex_send_kex_init(session);
+        if (r != 0) {
+            return r;
+        }
+        session->kex->kex_follows_sent = 1;
+    }
+
+    return kex_select_method(session);
+}

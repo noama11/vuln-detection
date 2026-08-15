@@ -1,0 +1,59 @@
+int kvm_dev_create(struct kvm *kvm, struct kvm_create_device *cd)
+{
+	int r;
+	struct kvm_device_ops *ops;
+	struct kvm_device *dev;
+	int fd;
+
+	if (!cd->type || cd->type >= KVM_DEV_TYPE_MAX) {
+		r = -EINVAL;
+		goto out;
+	}
+
+	ops = kvm_device_ops[cd->type];
+	if (!ops) {
+		r = -ENODEV;
+		goto out;
+	}
+
+	if (cd->flags & KVM_CREATE_DEVICE_TEST)
+		return 0;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev) {
+		r = -ENOMEM;
+		goto out;
+	}
+
+	mutex_lock(&kvm->lock);
+	r = ops->create(dev, kvm);
+	if (r)
+		goto unlock;
+
+	list_add(&dev->list, &kvm->devices);
+	mutex_unlock(&kvm->lock);
+
+	if (ops->init) {
+		r = ops->init(dev);
+		if (r)
+			goto destroy;
+	}
+
+	fd = kvm_dev_ioctl_create_fd(dev);
+	if (fd < 0) {
+		r = fd;
+		goto destroy;
+	}
+
+	cd->fd = fd;
+	return 0;
+
+destroy:
+	ops->destroy(dev);
+	mutex_lock(&kvm->lock);
+	list_del(&dev->list);
+	mutex_unlock(&kvm->lock);
+	kfree(dev);
+out:
+	return r;
+}

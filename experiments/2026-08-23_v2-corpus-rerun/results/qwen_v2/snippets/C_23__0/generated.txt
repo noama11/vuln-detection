@@ -1,0 +1,48 @@
+struct posix_acl *convert_xfs_acl_to_posix(struct xfs_acl *aclp) {
+    int count = aclp->acl_count;
+    struct posix_acl *posix_acl;
+    int i;
+
+    if (count < 0 || count > XFS_ACL_MAX_ENTRIES)
+        return ERR_PTR(-EINVAL);
+
+    posix_acl = kmalloc(sizeof(struct posix_acl) + count * sizeof(struct posix_acl_entry), GFP_KERNEL);
+    if (!posix_acl)
+        return ERR_PTR(-ENOMEM);
+
+    posix_acl->a_count = count;
+    for (i = 0; i < count; i++) {
+        struct xfs_acl_entry *entry = &aclp->acl_entry[i];
+        struct posix_acl_entry *posix_entry = &posix_acl->a_entries[i];
+
+        switch (entry->e_tag) {
+            case XFS_ACL_USER_OBJ:
+                posix_entry->e_tag = POSIX_ACL_USER_OBJ;
+                break;
+            case XFS_ACL_GROUP_OBJ:
+                posix_entry->e_tag = POSIX_ACL_GROUP_OBJ;
+                break;
+            case XFS_ACL_OWNER:
+                posix_entry->e_tag = POSIX_ACL_OWNER;
+                break;
+            case XFS_ACL_EVERYONE:
+                posix_entry->e_tag = POSIX_ACL_EVERYONE;
+                break;
+            case XFS_ACL_USER:
+                posix_entry->e_tag = POSIX_ACL_USER;
+                posix_entry->e_id = entry->e_id;
+                break;
+            case XFS_ACL_GROUP:
+                posix_entry->e_tag = POSIX_ACL_GROUP;
+                posix_entry->e_id = entry->e_id;
+                break;
+            default:
+                kfree(posix_acl);
+                return ERR_PTR(-EINVAL);
+        }
+
+        posix_entry->e_perm = entry->e_perm;
+    }
+
+    return posix_acl;
+}

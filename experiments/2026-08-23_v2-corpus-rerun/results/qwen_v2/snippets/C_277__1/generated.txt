@@ -1,0 +1,39 @@
+int set_apparmor_process_attr(struct task_struct *task, char *name, void *value, size_t size) {
+    if (size == 0) {
+        return -EINVAL;
+    }
+
+    if (current != task) {
+        return -EPERM;
+    }
+
+    char *val_str = value;
+    char *null_terminator = strchr(val_str, '\0');
+    if (!null_terminator) {
+        return -EINVAL;
+    }
+
+    char *command = strsep(&val_str, ":");
+    if (!command) {
+        return -EINVAL;
+    }
+
+    int ret = 0;
+    if (strcmp(name, "security") == 0) {
+        if (strcmp(command, "change_hat") == 0) {
+            ret = apparmor_change_hat(task, val_str);
+        } else if (strcmp(command, "change_profile") == 0) {
+            ret = apparmor_change_profile(task, val_str);
+        } else {
+            ret = -EINVAL;
+        }
+    } else {
+        ret = -EINVAL;
+    }
+
+    if (ret < 0) {
+        audit_log_message("AppArmor attribute change failed", "task", task->pid, "attribute", name, "value", value, "error", ret);
+    }
+
+    return ret < 0 ? ret : size;
+}

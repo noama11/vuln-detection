@@ -1,0 +1,34 @@
+{
+  "case_id": "C_164__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 1234,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int write_to_task_data(struct task_struct *child, addr_t addr, addr_t data) {\n    if (addr >= PSW_REGISTER_OFFSET && addr < (PSW_REGISTER_OFFSET + sizeof(psw_t))) {\n        // Processor status word register\n        psw_t *psw = (psw_t *)((char *)child + addr);\n        if (sizeof(psw_t) != sizeof(data)) {\n            return -EINVAL;\n        }\n        *psw = data;\n        return 0;\n    } else if (addr >= GPRS_REGISTER_OFFSET && addr < (GPRS_REGISTER_OFFSET + sizeof(gprs_t))) {\n        // General purpose registers\n        gprs_t *gprs = (gprs_t *)((char *)child + addr);\n        if (sizeof(gprs_t) != sizeof(data) && sizeof(gprs_t) != 8) {\n            return -EINVAL;\n        }\n        if (sizeof(gprs_t) == 8 && (addr % 8) == 4) {\n            // Prevent writing to padding holes\n            return -EINVAL;\n        }\n        *gprs = data;\n        return 0;\n    } else if (addr >= FPRS_REGISTER_OFFSET && addr < (FPRS_REGISTER_OFFSET + sizeof(fprs_t))) {\n        // Floating-point registers\n        fprs_t *fprs = (fprs_t *)((char *)child + addr);\n        if (sizeof(fprs_t) != sizeof(data)) {\n            return -EINVAL;\n        }\n        *fprs = data;\n        return 0;\n    } else if (addr >= PER_INFO_OFFSET && addr < (PER_INFO_OFFSET + sizeof(per_info_t))) {\n        // per_info structure\n        per_info_t *per_info = (per_info_t *)((char *)child + addr);\n        if (sizeof(per_info_t) != sizeof(data)) {\n            return -EINVAL;\n        }\n        *per_info = data;\n        return 0;\n    } else {\n        // Invalid address\n        return -EINVAL;\n    }\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int write_child_register_data(struct task_struct *child, addr_t addr, addr_t data) {\n    if (addr >= PSW_ADDR_START && addr <= PSW_ADDR_END) {\n        if (addr == PSW_ADDR) {\n            if ((data & PSW_VALID_MASK) != data)\n                return -EINVAL;\n            child->thread.psw = data;\n        } else if (addr >= GPRS_ADDR_START && addr <= GPRS_ADDR_END) {\n            int reg_index = addr - GPRS_ADDR_START;\n            if (reg_index >= 0 && reg_index < NUM_GPRS) {\n                if ((data & GPR_VALID_MASK) != data)\n                    return -EINVAL;\n                child->thread.gprs[reg_index] = data;\n            } else {\n                return -EINVAL;\n            }\n        } else if (addr >= FPRS_ADDR_START && addr <= FPRS_ADDR_END) {\n            int reg_index = addr - FPRS_ADDR_START;\n            if (reg_index >= 0 && reg_index < NUM_FPRS) {\n                if ((data & FPR_VALID_MASK) != data)\n                    return -EINVAL;\n                child->thread.fprs[reg_index] = data;\n            } else {\n                return -EINVAL;\n            }\n        } else if (addr == PER_INFO_ADDR) {\n            if ((data & PER_INFO_VALID_MASK) != data)\n                return -EINVAL;\n            child->thread.per_info = data;\n        } else {\n            return -EINVAL;\n        }\n    } else {\n        return -EINVAL;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int write_register_data(struct task_struct *child, addr_t addr, addr_t data) {\n    if ((addr >= 0 && addr < 16) || (addr >= 32 && addr < 48)) {\n        if (addr < 16) {\n            /* Handle general purpose register (gprs) */\n            if (data > 0xFFFFFFFF) {\n                return -EINVAL;\n            }\n            child->thread.gprs[addr] = data;\n        } else {\n            /* Handle 64-bit register (psw) */\n            if (data > 0xFFFFFFFFFFFFFFFF) {\n                return -EINVAL;\n            }\n            child->thread.psw = data;\n        }\n    } else if (addr >= 48 && addr < 64) {\n        /* Handle floating-point registers */\n        if (data > 0xFFFFFFFFFFFFFFFF) {\n            return -EINVAL;\n        }\n        child->thread.fprs[addr - 48] = data;\n    } else if (addr == 64) {\n        /* Handle per_info structure */\n        if (data > 0xFFFFFFFF) {\n            return -EINVAL;\n        }\n        child->thread.per_info = data;\n    } else {\n        /* Address not in a valid register range */\n        return -EINVAL;\n    }\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int write_child_register_data(struct task_struct *child, addr_t addr, addr_t data) {\n    if (addr >= PSW_ADDRESS_MIN && addr <= PSW_ADDRESS_MAX) {\n        if (data > PSW_MAX_VALUE)\n            return -EINVAL;\n        /* Write to psw register */\n        *(addr_t *)addr = data;\n    } else if (addr >= GPRS_ADDRESS_MIN && addr <= GPRS_ADDRESS_MAX) {\n        if (addr % sizeof(addr_t) != 0)\n            return -EINVAL;\n        *(addr_t *)addr = data;\n    } else if (addr >= FP_ADDRESS_MIN && addr <= FP_ADDRESS_MAX) {\n        if (data > FP_MAX_VALUE)\n            return -EINVAL;\n        *(addr_t *)addr = data;\n    } else if (addr >= PER_INFO_ADDRESS_MIN && addr <= PER_INFO_ADDRESS_MAX) {\n        if (data > PER_INFO_MAX_VALUE)\n            return -EINVAL;\n        *(addr_t *)addr = data;\n    } else {\n        return -EINVAL;\n    }\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int write_task_data(struct task_struct *child, addr_t addr, addr_t data) {\n    if (addr >= PSW_ADDR_MIN && addr <= PSW_ADDR_MAX) {\n        /* Valid psw address range, write data */\n        *(addr_t *)((char *)&child->psw + (addr - PSW_ADDR_MIN)) = data;\n        return 0;\n    } else if (addr >= GPRS_ADDR_MIN && addr <= GPRS_ADDR_MAX) {\n        /* Valid general purpose registers address range */\n        if ((addr - GPRS_ADDR_MIN) % sizeof(addr_t) != 0) {\n            /* Prevent writes to padding holes */\n            return -EINVAL;\n        }\n        *(addr_t *)((char *)child->thread.gprs + (addr - GPRS_ADDR_MIN)) = data;\n        return 0;\n    } else if (addr >= FLOAT_REGS_ADDR_MIN && addr <= FLOAT_REGS_ADDR_MAX) {\n        /* Valid floating-point registers address range */\n        *(addr_t *)((char *)child->thread.float_regs + (addr - FLOAT_REGS_ADDR_MIN)) = data;\n        return 0;\n    } else if (addr >= PER_INFO_ADDR_MIN && addr <= PER_INFO_ADDR_MAX) {\n        /* Valid per_info address range */\n        *(addr_t *)((char *)&child->thread.per_info + (addr - PER_INFO_ADDR_MIN)) = data;\n        return 0;\n    } else {\n        return -EINVAL;\n    }\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

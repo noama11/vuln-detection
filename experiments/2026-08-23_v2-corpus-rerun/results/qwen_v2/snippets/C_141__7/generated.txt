@@ -1,0 +1,22 @@
+int ceph_verify_authorizer_reply(struct ceph_auth_client *ac, struct ceph_authorizer *a, size_t len)
+{
+    struct ceph_auth_handshake *ticket;
+    int ret;
+
+    ticket = ceph_get_ticket_handler(ac, a->service);
+    if (IS_ERR(ticket))
+        return PTR_ERR(ticket);
+
+    ret = ceph_decrypt_reply(ac, a, len);
+    if (ret < 0)
+        return ret;
+
+    if (ret != a->expected_decrypted_size)
+        return -EINVAL;
+
+    if (memcmp(a->nonce, a->expected_nonce, sizeof(a->nonce)) != 0)
+        return -EINVAL;
+
+    CEPH_LOG_DEBUG("Authorizer reply verified successfully for service %s", a->service);
+    return 0;
+}

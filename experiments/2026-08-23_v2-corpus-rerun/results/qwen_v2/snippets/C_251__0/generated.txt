@@ -1,0 +1,43 @@
+sctp_disposition_t sctp_process_oob_chunk(struct net *net,
+                                          const struct sctp_endpoint *ep,
+                                          const struct sctp_association *asoc,
+                                          sctp_subtype_t type,
+                                          void *arg,
+                                          sctp_cmd_seq_t *commands)
+{
+    sctp_chunk_t *chunk = (sctp_chunk_t *)arg;
+    sctp_disposition_t disposition = SCTP_DISPOSITION_CONSUME;
+
+    /* Increment statistics for out-of-band chunk processing */
+    net->sctp.statistics.oob_chunks_received++;
+
+    /* Validate chunk length */
+    if (chunk->length < sizeof(sctp_chunk_t)) {
+        /* Invalid chunk length, discard packet */
+        net->sctp.statistics.invalid_chunks++;
+        return SCTP_DISPOSITION_DISCARD;
+    }
+
+    /* Check for specific chunk types and handle accordingly */
+    switch (type) {
+        case SCTP_SUBTYPE_SHUTDOWN_ACK:
+            /* Handle SHUTDOWN_ACK */
+            sctp_handle_shutdown_ack(net, ep, asoc, chunk, commands);
+            break;
+        case SCTP_SUBTYPE_ABORT:
+            /* Handle ABORT */
+            sctp_handle_abort(net, ep, asoc, chunk, commands);
+            break;
+        case SCTP_SUBTYPE_COOKIE_ACK:
+            /* Handle COOKIE_ACK */
+            sctp_handle_cookie_ack(net, ep, asoc, chunk, commands);
+            break;
+        default:
+            /* Unknown or unsupported chunk type, discard */
+            net->sctp.statistics.unknown_chunks++;
+            disposition = SCTP_DISPOSITION_DISCARD;
+            break;
+    }
+
+    return disposition;
+}

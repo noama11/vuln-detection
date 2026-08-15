@@ -1,0 +1,34 @@
+{
+  "case_id": "C_740__0",
+  "k": 5,
+  "temperature": 0.8,
+  "seed": 5678,
+  "generator_prompt_sha": "1de29ae28c7d",
+  "samples": [
+    {
+      "sample": 0,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes,\n                      struct kvec *iov, int n_vec) {\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    int rc = 0;\n    int bytes_sent;\n\n    /* Check if the connection is valid */\n    if (!io_parms->cfile || !io_parms->cfile->ses || !io_parms->cfile->tcon) {\n        return -EIO;\n    }\n\n    /* Allocate and prepare the request buffer */\n    req = cifs_small_buf_get();\n    if (!req) {\n        return -ENOMEM;\n    }\n\n    /* Initialize the SMB2 write request header */\n    init_smb2_write_request(req, xid, io_parms->pid, io_parms->tcon, io_parms->cfile,\n                            iov, n_vec, *nbytes);\n\n    /* Send the request and get the response */\n    rc = cifs_send_recv(io_parms->cfile->ses, req, (char **)&resp, &bytes_sent, 0);\n    if (rc != 0) {\n        cifs_small_buf_release(req);\n        return rc;\n    }\n\n    /* Update the number of bytes written from the response */\n    *nbytes = le32_to_cpu(resp->DataOffset);\n\n    /* Clean up the request buffer */\n    cifs_small_buf_release(req);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 1,
+      "code": "int smb2_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    struct smb2_write_request *req;\n    struct smb2_write_response *resp;\n    int rc = 0;\n    int i;\n\n    if (!io_parms || !iov || !nbytes || !n_vec) {\n        return -EINVAL;\n    }\n\n    req = cifs_small_smb2_request_alloc(SMB2_WRITE_SIZE + n_vec * sizeof(struct kvec), GFP_NOFS);\n    if (!req) {\n        return -ENOMEM;\n    }\n\n    req->hdr.MessageID = cpu_to_le64(xid);\n    req->PersistentFileId = io_parms->persistent_file_id;\n    req->VolatileFileId = io_parms->volatile_file_id;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->Remaining = 0;\n    req->DataOffset = cpu_to_le16(SMB2_WRITE_SIZE);\n    req->DataLength = cpu_to_le16(*nbytes);\n\n    for (i = 0; i < n_vec; i++) {\n        memcpy(req->iov[i].iov_base, iov[i].iov_base, iov[i].iov_len);\n        req->iov[i].iov_len = iov[i].iov_len;\n    }\n\n    rc = cifs_send_recv(io_parms->tcon->ses->server, &req->hdr, &resp, 0);\n    if (rc) {\n        cifs_small_smb2_request_free(req);\n        return rc;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\n    cifs_small_smb2_request_free(req);\n    return rc;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 2,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms,\n                      unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    int rc = 0;\n    struct smb2_write_request *req = NULL;\n    struct smb2_write_response *resp = NULL;\n    struct kvec rsp_iov;\n\n    if (!io_parms || !nbytes || !iov || n_vec <= 0)\n        return -EINVAL;\n\n    req = cifs_small_tcon_alloc(io_parms->tcon);\n    if (!req)\n        return -ENOMEM;\n\n    req->hdr.MessageId = cpu_to_le64(xid);\n    req->PersistentFileId = io_parms->persistent_fid;\n    req->VolatileFileId = io_parms->volatile_fid;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->Length = cpu_to_le32(*nbytes);\n    req->ChunkCount = cpu_to_le16(n_vec);\n    req->Remaining = 0;\n\n    rc = cifs_send_recv(io_parms->tcon->ses->server,\n                        iov, n_vec, &req->hdr, CIFS_WRITE_OP, &resp, &rsp_iov);\n    if (rc) {\n        cifs_small_tcon_free(req);\n        return rc;\n    }\n\n    *nbytes = le32_to_cpu(resp->DataLength);\n    cifs_small_tcon_free(req);\n    return 0;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 3,
+      "code": "int smb2_handle_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    int rc = 0;\n    struct smb2_write_request *req = NULL;\n    struct smb2_write_response *resp = NULL;\n    struct TCP_Server_Info *server = io_parms->tcon->ses->server;\n\n    if (!server || !serverCanDo(server, CIFS_NEGOTIATE_WRITE))\n        return -EIO;\n\n    req = kzalloc(sizeof(*req) + iov[0].iov_len, GFP_KERNEL);\n    if (!req)\n        return -ENOMEM;\n\n    req->hdr.MessageId = cpu_to_le64(xid);\n    req->PersistentFileId = io_parms->persistent_fid;\n    req->VolatileFileId = io_parms->volatile_fid;\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->Remaining = 0;\n    req->DataLength = cpu_to_le32(iov[0].iov_len);\n\n    memcpy(req + 1, iov[0].iov_base, iov[0].iov_len);\n\n    rc = cifs_send_recv(io_parms->tcon->ses, io_parms->tcon, (char *)req, CIFS_MAX_MSG_SIZE, &resp, 0);\n    if (rc)\n        goto out;\n\n    *nbytes = le32_to_cpu(resp->DataOffset);\n    rc = 0;\n\nout:\n    kfree(req);\n    return rc;\n}",
+      "finish_reason": "stop"
+    },
+    {
+      "sample": 4,
+      "code": "int cifs_smb2_write(unsigned int xid, struct cifs_io_parms *io_parms, unsigned int *nbytes, struct kvec *iov, int n_vec) {\n    struct smb2_write_req *req;\n    struct smb2_write_rsp *rsp;\n    int rc = 0;\n    int resp_buftype;\n    struct kveciov_hdr iov_hdr;\n    unsigned int total_len;\n\n    if (!io_parms || !nbytes || !iov || n_vec <= 0) {\n        return -EINVAL;\n    }\n\n    req = smb2_plain_req_init(SMB2_WRITE, io_parms->tcon, &total_len, NULL);\n    if (!req)\n        return -ENOMEM;\n\n    req->Offset = cpu_to_le64(io_parms->offset);\n    req->Length = cpu_to_le32(io_parms->length);\n    memcpy(req->PersistentFileId, io_parms->persistent_fid, 16);\n    memcpy(req->VolatileFileId, io_parms->volatile_fid, 16);\n\n    iov_hdr.iov = iov;\n    iov_hdr.nvec = n_vec;\n    iov_hdr.iov[0].iov_base = req;\n    iov_hdr.iov[0].iov_len = total_len;\n    iov_hdr.nvec++;\n\n    rc = cifs_send_recv(xid, io_parms->tcon->ses, &iov_hdr, &rsp, &resp_buftype, CIFS_LOG_ERROR);\n    if (rc != 0) {\n        cifs_buf_release(req);\n        return rc;\n    }\n\n    *nbytes = le32_to_cpu(rsp->DataOffset) + le32_to_cpu(rsp->DataLength);\n\n    cifs_buf_release(req);\n    cifs_buf_release(rsp);\n\n    return 0;\n}",
+      "finish_reason": "stop"
+    }
+  ]
+}

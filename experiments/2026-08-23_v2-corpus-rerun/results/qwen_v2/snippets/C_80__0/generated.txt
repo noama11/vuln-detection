@@ -1,0 +1,32 @@
+int my_framebuffer_mmap(struct file *file, struct vm_area_struct *vma) {
+    struct fb_info *info = file->private_data;
+    int ret = 0;
+
+    if (!info || !info->var.xres || !info->var.yres || !info->var.bits_per_pixel) {
+        return -EINVAL;
+    }
+
+    mutex_lock(&info->mmio_lock);
+
+    if (info->fbops->fb_mmap) {
+        ret = info->fbops->fb_mmap(info, vma);
+        mutex_unlock(&info->mmio_lock);
+        return ret;
+    }
+
+    unsigned long start_pg = vma->vm_start;
+    unsigned long size = vma->vm_end - vma->vm_start;
+    unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
+    unsigned long phys = info->fix.smem_start + offset;
+
+    if (offset + size > info->fix.smem_len) {
+        mutex_unlock(&info->mmio_lock);
+        return -EINVAL;
+    }
+
+    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    ret = remap_pfn_range(vma, start_pg, phys >> PAGE_SHIFT, size, vma->vm_page_prot);
+
+    mutex_unlock(&info->mmio_lock);
+    return ret;
+}

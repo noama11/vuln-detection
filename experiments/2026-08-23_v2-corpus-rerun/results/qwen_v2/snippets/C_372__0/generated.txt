@@ -1,0 +1,36 @@
+int lego_usb_tower_init(struct usb_interface *interface, const struct usb_device_id *id) {
+    struct lego_usb_tower_dev *dev;
+    int retval = -ENOMEM;
+
+    dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+    if (!dev)
+        goto error;
+
+    spin_lock_init(&dev->lock);
+
+    dev->interface = interface;
+    dev->udev = usb_get_dev(interface_to_usbdev(interface));
+
+    usb_set_intfdata(interface, dev);
+
+    if (lego_usb_tower_setup_endpoints(dev)) {
+        dev_err(&interface->dev, "Failed to setup endpoints\n");
+        goto error;
+    }
+
+    if (lego_usb_tower_get_firmware_version(dev)) {
+        dev_err(&interface->dev, "Failed to get firmware version\n");
+        goto error;
+    }
+
+    if (lego_usb_tower_register_device(dev)) {
+        dev_err(&interface->dev, "Failed to register device\n");
+        goto error;
+    }
+
+    return 0;
+
+error:
+    kfree(dev);
+    return retval;
+}

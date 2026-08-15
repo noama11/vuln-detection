@@ -1,0 +1,56 @@
+{
+  "case_id": "C_664__0",
+  "sample_id": "D/C/664",
+  "func_idx": 0,
+  "language": "c",
+  "repo": "mruby/mruby",
+  "cve_id": "CVE-2018-10199",
+  "cve_summary": "In versions of mruby up to and including 1.4.0, a use-after-free vulnerability exists in src/io.c::File#initilialize_copy(). An attacker that can cause Ruby code to be run can possibly use this to execute arbitrary code.",
+  "changed_file": "mrbgems/mruby-io/src/io.c",
+  "docstring": "\"\"\"\nSummary: Initializes a copy of an IO object in the MRuby environment.\n\nParameters:\nmrb (mrb_state *): The MRuby state.\ncopy (mrb_value): The IO object to be initialized as a copy.\n\nReturns:\nmrb_value: The initialized copy of the IO object.\n\nLogic: This function retrieves the original IO object, finalizes any existing data in the copy, and allocates new resources for the copy. It duplicates file descriptors and sets various attributes (like readability, writability, and synchronization) from the original IO object to the copy. If any duplication fails, it raises a system failure error. The function ultimately returns the initialized copy of the IO object.\n\"\"\"",
+  "heuristic_leakage_flag": false,
+  "generated_code": "mrb_value\nmrb_io_init_copy(mrb_state *mrb, mrb_value copy)\n{\n  struct RClass *c;\n  mrb_value orig;\n  mrb_io *io, *orig_io;\n  int oflags;\n\n  orig = mrb_get_args(mrb, \"o\", &c);\n  if (!mrb_io_p(orig)) {\n    mrb_raise(mrb, E_TYPE_ERROR, \"wrong argument type\");\n  }\n\n  io = mrb_io_ptr(copy);\n  orig_io = mrb_io_ptr(orig);\n\n  if (io == orig_io) {\n    return copy;\n  }\n\n  if (io->fd != -1) {\n    mrb_io_close(mrb, copy);\n  }\n\n  io->fd = dup(orig_io->fd);\n  if (io->fd == -1) {\n    mrb_sys_fail(mrb, \"dup\");\n  }\n\n  io->mode = orig_io->mode;\n  io->path = orig_io->path;\n  if (orig_io->path) {\n    io->path = mrb_strdup(mrb, orig_io->path);\n  }\n\n  oflags = fcntl(orig_io->fd, F_GETFL);\n  if (oflags == -1) {\n    mrb_sys_fail(mrb, \"fcntl\");\n  }\n\n  if (oflags & O_APPEND) {\n    io->mode |= MRB_IO_APPEND;\n  }\n\n  if (oflags & O_SYNC) {\n    io->mode |= MRB_IO_SYNC;\n  }\n\n  if (oflags & O_NONBLOCK) {\n    io->mode |= MRB_IO_NONBLOCK;\n  }\n\n  return copy;\n}",
+  "generator_model": "qwen3-32b-awq",
+  "judge_model": "qwen3-32b-awq",
+  "judge_vs_vulnerable": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "medium",
+    "rationale": "The two implementations differ in several key aspects. The candidate implementation uses `mrb_io_ptr` to access the IO object's internal structure, while the reference implementation uses `DATA_PTR` and `DATA_TYPE`. The candidate implementation directly duplicates the file descriptor and sets flags based on `fcntl`, while the reference implementation uses a helper function `mrb_dup` and tracks failure via a boolean. The reference implementation also handles a second file descriptor (`fd2`) and sets the `cloexec` flag, which the candidate implementation does not. These differences could lead to different behaviors, particularly in handling edge cases like file descriptor duplication failures or socket-like IO objects. The handling of `@buf` and `cloexec` in the reference implementation is not present in the candidate, which could affect resource cleanup and security.",
+    "finish_reason": "stop"
+  },
+  "judge_vs_fixed": {
+    "score": 4,
+    "category": "functional_mismatch",
+    "security_relevant": true,
+    "confidence": "high",
+    "rationale": "The two implementations differ in several key behaviors. The candidate implementation retrieves the original IO object via mrb_get_args with an explicit class pointer, while the reference implementation uses a more general mrb_value. The candidate implementation directly duplicates the file descriptor using dup and sets flags based on fcntl, while the reference implementation uses mrb_dup and handles a second file descriptor (fd2) if present. The reference implementation also sets cloexec flags and handles a buffer copy via mrb_iv_get and mrb_iv_set, which the candidate implementation does not. These differences are reachable via normal inputs and could affect resource management and security (e.g., cloexec).",
+    "finish_reason": "stop"
+  },
+  "pairwise_ranking_correct": false,
+  "paired_flag_correct": false,
+  "human_review": {
+    "reviewed": false,
+    "human_category": null,
+    "is_security_relevant_function": null,
+    "docstring_leakage_suspected": null,
+    "notes": ""
+  },
+  "runtime": {
+    "arm": "local_vllm",
+    "backend": "vllm",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "served_model": "qwen3-32b-awq",
+    "gen_temperature": 0.2,
+    "judge_temperature": 0.0,
+    "seed": 1234,
+    "thinking": false,
+    "max_model_len": 16384,
+    "judge_key_order": "rationale_first",
+    "prompt_sha": "1de29ae28c7d",
+    "corpus_sha": "b60b2d62fbd0",
+    "corpus_dir": "experiments/2026-08-22_extraction-v2/cases_v2",
+    "corpus_n_ok": 626
+  }
+}

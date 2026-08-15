@@ -1,0 +1,58 @@
+MagickBooleanType WriteINLINEImage(const ImageInfo *image_info, Image *image)
+{
+  Image
+    *clone_image;
+
+  MagickBooleanType
+    status;
+
+  MagickInfo
+    *magick_info;
+
+  char
+    *base64_data;
+
+  size_t
+    base64_length;
+
+  StringInfo
+    *blob;
+
+  clone_image = CloneImage(image, image->columns, image->rows, MagickTrue, NULL);
+  if (clone_image == (Image *) NULL)
+    return(MagickFalse);
+
+  (void) TransformImage(clone_image, image_info->background_color, image_info->background_color);
+
+  blob = GetImageBlob(clone_image, NULL);
+  if (blob == (StringInfo *) NULL)
+  {
+    DestroyImage(clone_image);
+    return(MagickFalse);
+  }
+
+  base64_length = (size_t) (4 * (((GetStringInfoLength(blob) + 2) / 3)));
+  base64_data = (char *) AcquireQuantumMemory(base64_length, sizeof(*base64_data));
+  if (base64_data == (char *) NULL)
+  {
+    DestroyImage(clone_image);
+    return(MagickFalse);
+  }
+
+  (void) Base64Encode(base64_data, base64_length, GetStringInfoDatum(blob), (size_t) GetStringInfoLength(blob));
+
+  magick_info = GetMagickInfo("INLINE", NULL);
+  if (magick_info == (MagickInfo *) NULL)
+  {
+    RelinquishMagickMemory(base64_data);
+    DestroyImage(clone_image);
+    return(MagickFalse);
+  }
+
+  status = WriteBlobString(image_info, base64_data);
+
+  RelinquishMagickMemory(base64_data);
+  DestroyImage(clone_image);
+
+  return(status);
+}

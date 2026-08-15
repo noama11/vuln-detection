@@ -1,0 +1,26 @@
+int sctp_peeloff(struct sock *sk, sctp_assoc_t id, struct socket **sockp)
+{
+    int ret = -EINVAL;
+
+    if (!net_eq(sock_net(sk), current->nsproxy->net_ns))
+        return -EINVAL;
+
+    if (!sctp_assoc_lookup(sk, id))
+        return -EINVAL;
+
+    if (sctp_has_pending_threads(sk, id))
+        return -EBUSY;
+
+    if (sk->sk_type != SOCK_STREAM)
+        return -EINVAL;
+
+    ret = sock_create_kern(sock_net(sk), sk->sk_family, sk->sk_type,
+                           sk->sk_protocol, sockp);
+    if (ret < 0)
+        return ret;
+
+    sctp_copy_properties(sk, *sockp);
+    sctp_migrate_association(sk, id, *sockp);
+
+    return 0;
+}
