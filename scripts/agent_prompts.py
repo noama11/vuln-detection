@@ -1,10 +1,12 @@
-"""Single source of truth for the Generator/Judge system prompts.
+"""Single source of truth for the generator system prompt.
 
-Both the Claude arm (`.claude/commands/run-case.md` -> Task subagents) and the
-local-model arm (`scripts/run_cases_local.py`) must use *identical* prompt text,
-otherwise a difference between the two arms is uninterpretable. Rather than
-copying the prompts into Python, we read them straight out of the agent
-definition files and strip the YAML frontmatter.
+The prompt is read straight out of its `.claude/agents/` definition file rather
+than copied into Python, so there is exactly one copy of the text and no way
+for a second one to drift from it.
+
+`prompt_sha` digests what was actually used and is stamped into every result
+file. That is what lets a later reader tell whether two runs shared prompt text
+without having to trust a changelog: if the digest differs, the rubric differed.
 """
 import hashlib
 from pathlib import Path

@@ -10,16 +10,27 @@
   "changed_file": "fs/isofs/rock.c",
   "docstring": "\"\"\"\nSummary: \nHandles the continuation of scanning a rock ridge directory entry.\n\nParameters: \nrs (struct rock_state *): Pointer to the state structure containing scanning context and data.\n\nReturns: \nint: Returns 0 if scanning should continue, 1 if scanning must end, and a negative value on error.\n\nLogic: \nThe function checks the validity of the current offset and size against the block size. If valid, it attempts to allocate memory for the buffer and read data from the specified extent. If the read is successful, it updates the state and returns 0. If any checks fail or memory allocation fails, it cleans up and returns an appropriate error code.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     78,
     132
   ],
-  "vulnerable_snippet": " * and -ve on error.\r\n */\r\nstatic int rock_continue(struct rock_state *rs)\r\n{\r\n\tint ret = 1;\r\n\tint blocksize = 1 << rs->inode->i_blkbits;\r\n\tconst int min_de_size = offsetof(struct rock_ridge, u);\r\n\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\r\n\tif ((unsigned)rs->cont_offset > blocksize - min_de_size ||\r\n\t    (unsigned)rs->cont_size > blocksize ||\r\n\t    (unsigned)(rs->cont_offset + rs->cont_size) > blocksize) {\r\n\t\tprintk(KERN_NOTICE \"rock: corrupted directory entry. \"\r\n\t\t\t\"extent=%d, offset=%d, size=%d\\n\",\r\n\t\t\trs->cont_extent, rs->cont_offset, rs->cont_size);\r\n\t\tret = -EIO;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tif (rs->cont_extent) {\r\n\t\tstruct buffer_head *bh;\r\n\r\n\t\trs->buffer = kmalloc(rs->cont_size, GFP_KERNEL);\r\n\t\tif (!rs->buffer) {\r\n\t\t\tret = -ENOMEM;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t\tret = -EIO;\r\n\t\tbh = sb_bread(rs->inode->i_sb, rs->cont_extent);\r\n\t\tif (bh) {\r\n\t\t\tmemcpy(rs->buffer, bh->b_data + rs->cont_offset,\r\n\t\t\t\t\trs->cont_size);\r\n\t\t\tput_bh(bh);\r\n\t\t\trs->chr = rs->buffer;\r\n\t\t\trs->len = rs->cont_size;\r\n\t\t\trs->cont_extent = 0;\r\n\t\t\trs->cont_size = 0;\r\n\t\t\trs->cont_offset = 0;\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tprintk(\"Unable to read rock-ridge attributes\\n\");\r\n\t}\r\nout:\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\treturn ret;\r\n}\r\n\r\n/*\r\n * We think there's a record of type `sig' at rs->chr.  Parse the signature\r\n * and make sure that there's really room for a record of that type.\r\n */\r\nstatic int rock_check_overflow(struct rock_state *rs, int sig)\r\n",
-  "extraction_status": "suspect_identifier_mismatch",
-  "extraction_reason": "located fixed-side function does not contain identifier 'rock_continue'",
-  "fixed_line_range": [
-    107,
-    110
+  "vulnerable_line_range": [
+    80,
+    126
   ],
-  "fixed_snippet": "\t\tif (!rs->buffer) {\r\n\t\t\tret = -ENOMEM;\r\n\t\t\tgoto out;\r\n\t\t}"
+  "vulnerable_snippet": "static int rock_continue(struct rock_state *rs)\r\n{\r\n\tint ret = 1;\r\n\tint blocksize = 1 << rs->inode->i_blkbits;\r\n\tconst int min_de_size = offsetof(struct rock_ridge, u);\r\n\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\r\n\tif ((unsigned)rs->cont_offset > blocksize - min_de_size ||\r\n\t    (unsigned)rs->cont_size > blocksize ||\r\n\t    (unsigned)(rs->cont_offset + rs->cont_size) > blocksize) {\r\n\t\tprintk(KERN_NOTICE \"rock: corrupted directory entry. \"\r\n\t\t\t\"extent=%d, offset=%d, size=%d\\n\",\r\n\t\t\trs->cont_extent, rs->cont_offset, rs->cont_size);\r\n\t\tret = -EIO;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tif (rs->cont_extent) {\r\n\t\tstruct buffer_head *bh;\r\n\r\n\t\trs->buffer = kmalloc(rs->cont_size, GFP_KERNEL);\r\n\t\tif (!rs->buffer) {\r\n\t\t\tret = -ENOMEM;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t\tret = -EIO;\r\n\t\tbh = sb_bread(rs->inode->i_sb, rs->cont_extent);\r\n\t\tif (bh) {\r\n\t\t\tmemcpy(rs->buffer, bh->b_data + rs->cont_offset,\r\n\t\t\t\t\trs->cont_size);\r\n\t\t\tput_bh(bh);\r\n\t\t\trs->chr = rs->buffer;\r\n\t\t\trs->len = rs->cont_size;\r\n\t\t\trs->cont_extent = 0;\r\n\t\t\trs->cont_size = 0;\r\n\t\t\trs->cont_offset = 0;\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tprintk(\"Unable to read rock-ridge attributes\\n\");\r\n\t}\r\nout:\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\treturn ret;\r\n}",
+  "fixed_line_range": [
+    84,
+    132
+  ],
+  "fixed_snippet": "static int rock_continue(struct rock_state *rs)\r\n{\r\n\tint ret = 1;\r\n\tint blocksize = 1 << rs->inode->i_blkbits;\r\n\tconst int min_de_size = offsetof(struct rock_ridge, u);\r\n\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\r\n\tif ((unsigned)rs->cont_offset > blocksize - min_de_size ||\r\n\t    (unsigned)rs->cont_size > blocksize ||\r\n\t    (unsigned)(rs->cont_offset + rs->cont_size) > blocksize) {\r\n\t\tprintk(KERN_NOTICE \"rock: corrupted directory entry. \"\r\n\t\t\t\"extent=%d, offset=%d, size=%d\\n\",\r\n\t\t\trs->cont_extent, rs->cont_offset, rs->cont_size);\r\n\t\tret = -EIO;\r\n\t\tgoto out;\r\n\t}\r\n\r\n\tif (rs->cont_extent) {\r\n\t\tstruct buffer_head *bh;\r\n\r\n\t\trs->buffer = kmalloc(rs->cont_size, GFP_KERNEL);\r\n\t\tif (!rs->buffer) {\r\n\t\t\tret = -ENOMEM;\r\n\t\t\tgoto out;\r\n\t\t}\r\n\t\tret = -EIO;\r\n\t\tif (++rs->cont_loops >= RR_MAX_CE_ENTRIES)\r\n\t\t\tgoto out;\r\n\t\tbh = sb_bread(rs->inode->i_sb, rs->cont_extent);\r\n\t\tif (bh) {\r\n\t\t\tmemcpy(rs->buffer, bh->b_data + rs->cont_offset,\r\n\t\t\t\t\trs->cont_size);\r\n\t\t\tput_bh(bh);\r\n\t\t\trs->chr = rs->buffer;\r\n\t\t\trs->len = rs->cont_size;\r\n\t\t\trs->cont_extent = 0;\r\n\t\t\trs->cont_size = 0;\r\n\t\t\trs->cont_offset = 0;\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tprintk(\"Unable to read rock-ridge attributes\\n\");\r\n\t}\r\nout:\r\n\tkfree(rs->buffer);\r\n\trs->buffer = NULL;\r\n\treturn ret;\r\n}",
+  "func_name": "rock_continue",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

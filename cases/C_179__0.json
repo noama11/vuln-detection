@@ -10,16 +10,27 @@
   "changed_file": "drivers/net/wan/wanxl.c",
   "docstring": "\"\"\"\nSummary: \nHandles ioctl requests for WAN interface settings.\n\nParameters: \ndev (struct net_device *): Pointer to the network device.\nifr (struct ifreq *): Pointer to the interface request structure.\ncmd (int): Command identifier for the ioctl operation.\n\nReturns: \nint: Returns 0 on success, negative error codes on failure (e.g., -ENOBUFS, -EFAULT, -EPERM, -EBUSY, -EINVAL).\n\nLogic: \nThe function first checks if the command is SIOCWANDEV; if not, it delegates to hdlc_ioctl. For the IF_GET_IFACE case, it prepares to return the current sync_serial_settings. If the requested size is insufficient, it updates the size and returns an error. It initializes the settings and copies them to user space. For the IF_IFACE_SYNC_SERIAL case, it checks for administrative permissions, device status, and validates the incoming settings before updating the clocking status. Any unrecognized command is also passed to hdlc_ioctl.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     342,
     390
   ],
-  "vulnerable_snippet": "static int wanxl_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)\r\n{\r\n\tconst size_t size = sizeof(sync_serial_settings);\r\n\tsync_serial_settings line;\r\n\tport_t *port = dev_to_port(dev);\r\n\r\n\tif (cmd != SIOCWANDEV)\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n\r\n\tswitch (ifr->ifr_settings.type) {\r\n\tcase IF_GET_IFACE:\r\n\t\tifr->ifr_settings.type = IF_IFACE_SYNC_SERIAL;\r\n\t\tif (ifr->ifr_settings.size < size) {\r\n\t\t\tifr->ifr_settings.size = size; /* data size wanted */\r\n\t\t\treturn -ENOBUFS;\r\n\t\t}\r\n\t\tline.clock_type = get_status(port)->clocking;\r\n\t\tline.clock_rate = 0;\r\n\t\tline.loopback = 0;\r\n\r\n\t\tif (copy_to_user(ifr->ifr_settings.ifs_ifsu.sync, &line, size))\r\n\t\t\treturn -EFAULT;\r\n\t\treturn 0;\r\n\r\n\tcase IF_IFACE_SYNC_SERIAL:\r\n\t\tif (!capable(CAP_NET_ADMIN))\r\n\t\t\treturn -EPERM;\r\n\t\tif (dev->flags & IFF_UP)\r\n\t\t\treturn -EBUSY;\r\n\r\n\t\tif (copy_from_user(&line, ifr->ifr_settings.ifs_ifsu.sync,\r\n\t\t\t\t   size))\r\n\t\t\treturn -EFAULT;\r\n\r\n\t\tif (line.clock_type != CLOCK_EXT &&\r\n\t\t    line.clock_type != CLOCK_TXFROMRX)\r\n\t\t\treturn -EINVAL; /* No such clock setting */\r\n\r\n\t\tif (line.loopback != 0)\r\n\t\t\treturn -EINVAL;\r\n\r\n\t\tget_status(port)->clocking = line.clock_type;\r\n\t\treturn 0;\r\n\r\n\tdefault:\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n        }\r\n}\r\n\r\n",
-  "extraction_status": "suspect_identifier_mismatch",
-  "extraction_reason": "located fixed-side function does not contain identifier 'wanxl_ioctl'",
-  "fixed_line_range": [
-    354,
-    357
+  "vulnerable_line_range": [
+    342,
+    389
   ],
-  "fixed_snippet": "\t\tif (ifr->ifr_settings.size < size) {\r\n\t\t\tifr->ifr_settings.size = size; /* data size wanted */\r\n\t\t\treturn -ENOBUFS;\r\n\t\t}"
+  "vulnerable_snippet": "static int wanxl_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)\r\n{\r\n\tconst size_t size = sizeof(sync_serial_settings);\r\n\tsync_serial_settings line;\r\n\tport_t *port = dev_to_port(dev);\r\n\r\n\tif (cmd != SIOCWANDEV)\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n\r\n\tswitch (ifr->ifr_settings.type) {\r\n\tcase IF_GET_IFACE:\r\n\t\tifr->ifr_settings.type = IF_IFACE_SYNC_SERIAL;\r\n\t\tif (ifr->ifr_settings.size < size) {\r\n\t\t\tifr->ifr_settings.size = size; /* data size wanted */\r\n\t\t\treturn -ENOBUFS;\r\n\t\t}\r\n\t\tline.clock_type = get_status(port)->clocking;\r\n\t\tline.clock_rate = 0;\r\n\t\tline.loopback = 0;\r\n\r\n\t\tif (copy_to_user(ifr->ifr_settings.ifs_ifsu.sync, &line, size))\r\n\t\t\treturn -EFAULT;\r\n\t\treturn 0;\r\n\r\n\tcase IF_IFACE_SYNC_SERIAL:\r\n\t\tif (!capable(CAP_NET_ADMIN))\r\n\t\t\treturn -EPERM;\r\n\t\tif (dev->flags & IFF_UP)\r\n\t\t\treturn -EBUSY;\r\n\r\n\t\tif (copy_from_user(&line, ifr->ifr_settings.ifs_ifsu.sync,\r\n\t\t\t\t   size))\r\n\t\t\treturn -EFAULT;\r\n\r\n\t\tif (line.clock_type != CLOCK_EXT &&\r\n\t\t    line.clock_type != CLOCK_TXFROMRX)\r\n\t\t\treturn -EINVAL; /* No such clock setting */\r\n\r\n\t\tif (line.loopback != 0)\r\n\t\t\treturn -EINVAL;\r\n\r\n\t\tget_status(port)->clocking = line.clock_type;\r\n\t\treturn 0;\r\n\r\n\tdefault:\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n        }\r\n}",
+  "fixed_line_range": [
+    342,
+    390
+  ],
+  "fixed_snippet": "static int wanxl_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)\r\n{\r\n\tconst size_t size = sizeof(sync_serial_settings);\r\n\tsync_serial_settings line;\r\n\tport_t *port = dev_to_port(dev);\r\n\r\n\tif (cmd != SIOCWANDEV)\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n\r\n\tswitch (ifr->ifr_settings.type) {\r\n\tcase IF_GET_IFACE:\r\n\t\tifr->ifr_settings.type = IF_IFACE_SYNC_SERIAL;\r\n\t\tif (ifr->ifr_settings.size < size) {\r\n\t\t\tifr->ifr_settings.size = size; /* data size wanted */\r\n\t\t\treturn -ENOBUFS;\r\n\t\t}\r\n\t\tmemset(&line, 0, sizeof(line));\r\n\t\tline.clock_type = get_status(port)->clocking;\r\n\t\tline.clock_rate = 0;\r\n\t\tline.loopback = 0;\r\n\r\n\t\tif (copy_to_user(ifr->ifr_settings.ifs_ifsu.sync, &line, size))\r\n\t\t\treturn -EFAULT;\r\n\t\treturn 0;\r\n\r\n\tcase IF_IFACE_SYNC_SERIAL:\r\n\t\tif (!capable(CAP_NET_ADMIN))\r\n\t\t\treturn -EPERM;\r\n\t\tif (dev->flags & IFF_UP)\r\n\t\t\treturn -EBUSY;\r\n\r\n\t\tif (copy_from_user(&line, ifr->ifr_settings.ifs_ifsu.sync,\r\n\t\t\t\t   size))\r\n\t\t\treturn -EFAULT;\r\n\r\n\t\tif (line.clock_type != CLOCK_EXT &&\r\n\t\t    line.clock_type != CLOCK_TXFROMRX)\r\n\t\t\treturn -EINVAL; /* No such clock setting */\r\n\r\n\t\tif (line.loopback != 0)\r\n\t\t\treturn -EINVAL;\r\n\r\n\t\tget_status(port)->clocking = line.clock_type;\r\n\t\treturn 0;\r\n\r\n\tdefault:\r\n\t\treturn hdlc_ioctl(dev, ifr, cmd);\r\n        }\r\n}",
+  "func_name": "wanxl_ioctl",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

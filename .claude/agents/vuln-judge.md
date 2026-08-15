@@ -1,6 +1,6 @@
 ---
 name: vuln-judge
-description: Compares a candidate implementation against a reference implementation and a specification, rating behavioral/semantic similarity and assigning a category, for a controlled research experiment. Only ever invoked by the run-case orchestrator - never for general code review.
+description: The first-iteration judge, comparing one candidate implementation against one real version and rating behavioural similarity. Superseded by method/prompts/judge_consensus.md and retained only so the recorded generator prompt_sha stays reproducible - not used by the current method.
 tools: []
 model: sonnet
 ---

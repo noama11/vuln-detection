@@ -10,16 +10,27 @@
   "changed_file": "kernel/time/posix-timers.c",
   "docstring": "/**\n * Summary: Sets the timer with new settings and manages its state.\n * \n * Parameters:\n * timr (struct k_itimer*): Pointer to the timer to be set.\n * flags (int): Flags that modify the behavior of the timer.\n * new_setting (struct itimerspec64*): New timer settings including value and interval.\n * old_setting (struct itimerspec64*): Pointer to store the previous timer settings, if applicable.\n * \n * Returns: \n * int: Returns 0 on success, or TIMER_RETRY if the timer could not be canceled.\n * \n * Logic: The function first retrieves the current timer settings if old_setting is provided. It then clears the timer's interval to prevent rearming. If the timer is active, it attempts to cancel it. If successful, it updates the timer's settings based on new_setting, including the interval and expiration time. If the new expiration time is zero, it disables the timer. Finally, it arms the timer with the new settings and updates its active state.\n */",
   "heuristic_leakage_flag": true,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     833,
     869
   ],
-  "vulnerable_snippet": "\tbool sigev_none;\r\n\tktime_t expires;\r\n\r\n\tif (old_setting)\r\n\t\tcommon_timer_get(timr, old_setting);\r\n\r\n\t/* Prevent rearming by clearing the interval */\r\n\ttimr->it_interval = 0;\r\n\t/*\r\n\t * Careful here. On SMP systems the timer expiry function could be\r\n\t * active and spinning on timr->it_lock.\r\n\t */\r\n\tif (kc->timer_try_to_cancel(timr) < 0)\r\n\t\treturn TIMER_RETRY;\r\n\r\n\ttimr->it_active = 0;\r\n\ttimr->it_requeue_pending = (timr->it_requeue_pending + 2) &\r\n\t\t~REQUEUE_PENDING;\r\n\ttimr->it_overrun_last = 0;\r\n\r\n\t/* Switch off the timer when it_value is zero */\r\n\tif (!new_setting->it_value.tv_sec && !new_setting->it_value.tv_nsec)\r\n\t\treturn 0;\r\n\r\n\ttimr->it_interval = timespec64_to_ktime(new_setting->it_interval);\r\n\texpires = timespec64_to_ktime(new_setting->it_value);\r\n\tsigev_none = (timr->it_sigev_notify & ~SIGEV_THREAD_ID) == SIGEV_NONE;\r\n\r\n\tkc->timer_arm(timr, expires, flags & TIMER_ABSTIME, sigev_none);\r\n\ttimr->it_active = !sigev_none;\r\n\treturn 0;\r\n}\r\n\r\nstatic int do_timer_settime(timer_t timer_id, int flags,\r\n\t\t\t    struct itimerspec64 *new_spec64,\r\n\t\t\t    struct itimerspec64 *old_spec64)\r\n{\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    828,
+    864
+  ],
+  "vulnerable_snippet": "int common_timer_set(struct k_itimer *timr, int flags,\r\n\t\t     struct itimerspec64 *new_setting,\r\n\t\t     struct itimerspec64 *old_setting)\r\n{\r\n\tconst struct k_clock *kc = timr->kclock;\r\n\tbool sigev_none;\r\n\tktime_t expires;\r\n\r\n\tif (old_setting)\r\n\t\tcommon_timer_get(timr, old_setting);\r\n\r\n\t/* Prevent rearming by clearing the interval */\r\n\ttimr->it_interval = 0;\r\n\t/*\r\n\t * Careful here. On SMP systems the timer expiry function could be\r\n\t * active and spinning on timr->it_lock.\r\n\t */\r\n\tif (kc->timer_try_to_cancel(timr) < 0)\r\n\t\treturn TIMER_RETRY;\r\n\r\n\ttimr->it_active = 0;\r\n\ttimr->it_requeue_pending = (timr->it_requeue_pending + 2) &\r\n\t\t~REQUEUE_PENDING;\r\n\ttimr->it_overrun_last = 0;\r\n\r\n\t/* Switch off the timer when it_value is zero */\r\n\tif (!new_setting->it_value.tv_sec && !new_setting->it_value.tv_nsec)\r\n\t\treturn 0;\r\n\r\n\ttimr->it_interval = timespec64_to_ktime(new_setting->it_interval);\r\n\texpires = timespec64_to_ktime(new_setting->it_value);\r\n\tsigev_none = (timr->it_sigev_notify & ~SIGEV_THREAD_ID) == SIGEV_NONE;\r\n\r\n\tkc->timer_arm(timr, expires, flags & TIMER_ABSTIME, sigev_none);\r\n\ttimr->it_active = !sigev_none;\r\n\treturn 0;\r\n}",
   "fixed_line_range": [
     833,
     869
   ],
-  "fixed_snippet": "int common_timer_set(struct k_itimer *timr, int flags,\r\n\t\t     struct itimerspec64 *new_setting,\r\n\t\t     struct itimerspec64 *old_setting)\r\n{\r\n\tconst struct k_clock *kc = timr->kclock;\r\n\tbool sigev_none;\r\n\tktime_t expires;\r\n\r\n\tif (old_setting)\r\n\t\tcommon_timer_get(timr, old_setting);\r\n\r\n\t/* Prevent rearming by clearing the interval */\r\n\ttimr->it_interval = 0;\r\n\t/*\r\n\t * Careful here. On SMP systems the timer expiry function could be\r\n\t * active and spinning on timr->it_lock.\r\n\t */\r\n\tif (kc->timer_try_to_cancel(timr) < 0)\r\n\t\treturn TIMER_RETRY;\r\n\r\n\ttimr->it_active = 0;\r\n\ttimr->it_requeue_pending = (timr->it_requeue_pending + 2) &\r\n\t\t~REQUEUE_PENDING;\r\n\ttimr->it_overrun_last = 0;\r\n\r\n\t/* Switch off the timer when it_value is zero */\r\n\tif (!new_setting->it_value.tv_sec && !new_setting->it_value.tv_nsec)\r\n\t\treturn 0;\r\n\r\n\ttimr->it_interval = timespec64_to_ktime(new_setting->it_interval);\r\n\texpires = timespec64_to_ktime(new_setting->it_value);\r\n\tsigev_none = timr->it_sigev_notify == SIGEV_NONE;\r\n\r\n\tkc->timer_arm(timr, expires, flags & TIMER_ABSTIME, sigev_none);\r\n\ttimr->it_active = !sigev_none;\r\n\treturn 0;\r\n}"
+  "fixed_snippet": "int common_timer_set(struct k_itimer *timr, int flags,\r\n\t\t     struct itimerspec64 *new_setting,\r\n\t\t     struct itimerspec64 *old_setting)\r\n{\r\n\tconst struct k_clock *kc = timr->kclock;\r\n\tbool sigev_none;\r\n\tktime_t expires;\r\n\r\n\tif (old_setting)\r\n\t\tcommon_timer_get(timr, old_setting);\r\n\r\n\t/* Prevent rearming by clearing the interval */\r\n\ttimr->it_interval = 0;\r\n\t/*\r\n\t * Careful here. On SMP systems the timer expiry function could be\r\n\t * active and spinning on timr->it_lock.\r\n\t */\r\n\tif (kc->timer_try_to_cancel(timr) < 0)\r\n\t\treturn TIMER_RETRY;\r\n\r\n\ttimr->it_active = 0;\r\n\ttimr->it_requeue_pending = (timr->it_requeue_pending + 2) &\r\n\t\t~REQUEUE_PENDING;\r\n\ttimr->it_overrun_last = 0;\r\n\r\n\t/* Switch off the timer when it_value is zero */\r\n\tif (!new_setting->it_value.tv_sec && !new_setting->it_value.tv_nsec)\r\n\t\treturn 0;\r\n\r\n\ttimr->it_interval = timespec64_to_ktime(new_setting->it_interval);\r\n\texpires = timespec64_to_ktime(new_setting->it_value);\r\n\tsigev_none = timr->it_sigev_notify == SIGEV_NONE;\r\n\r\n\tkc->timer_arm(timr, expires, flags & TIMER_ABSTIME, sigev_none);\r\n\ttimr->it_active = !sigev_none;\r\n\treturn 0;\r\n}",
+  "func_name": "common_timer_set",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

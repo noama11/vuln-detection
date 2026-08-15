@@ -8,18 +8,29 @@
   "cve_summary": "Directory traversal vulnerability in device-linux.c in the router advertisement daemon (radvd) before 1.8.2 allows local users to overwrite arbitrary files, and remote attackers to overwrite certain files, via a .. (dot dot) in an interface name.  NOTE: this can be leveraged with a symlink to overwrite arbitrary files.",
   "commit_message": "set_interface_var() doesn't check interface name and blindly does\nfopen(path \"/\" ifname, \"w\") on it.  As \"ifname\" is an untrusted input, it\nshould be checked for \"..\" and/or \"/\" in it.  Otherwise, an infected\nunprivileged daemon may overwrite contents of file named \"mtu\",\n\"hoplimit\", etc. in arbitrary location with arbitrary 32-bit value in\ndecimal representation (\"%d\").  If an attacker has a local account or\nmay create arbitrary symlinks with these names in any location (e.g.\n/tmp), any file may be overwritten with a decimal value.",
   "changed_file": "device-linux.c",
-  "docstring": "Summary: Sets a variable for a specified network interface by writing a value to a file.\n\nParameters: \niface (const char *): the name of the network interface.  \nvar (const char *): the format string for the file path.  \nname (const char *): the name of the variable being set.  \nval (uint32_t): the value to write to the file.\n\nReturns: int: returns 0 on success, or -1 on failure.\n\nLogic: The function constructs a file path using the provided interface name and variable format. It verifies the existence of the file. If the file can be opened, it writes the specified value to it and closes the file. If any checks fail or if file operations encounter errors, it logs the error and returns -1.",
+  "docstring": "Summary: Sets a variable for a specified network interface by writing a value to a file.\n\nParameters: \niface (const char *): the name of the network interface.  \nvar (const char *): the format string for the file path.  \nname (const char *): the name of the variable being set.  \nval (uint32_t): the value to write to the file.\n\nReturns: int: returns 0 on success, or -1 on failure.\n\nLogic: The function constructs a file path using the provided interface name and variable format. It checks for path traversal vulnerabilities and verifies the existence of the file. If the file can be opened, it writes the specified value to it and closes the file. If any checks fail or if file operations encounter errors, it logs the error and returns -1.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     236,
     264
   ],
-  "vulnerable_snippet": "int\r\nset_interface_var(const char *iface,\r\n\t\t  const char *var, const char *name,\r\n\t\t  uint32_t val)\r\n{\r\n\tFILE *fp;\r\n\tchar spath[64+IFNAMSIZ];\t/* XXX: magic constant */\r\n\tif (snprintf(spath, sizeof(spath), var, iface) >= sizeof(spath))\r\n\t\treturn -1;\r\n\r\n\tif (access(spath, F_OK) != 0)\r\n\t\treturn -1;\r\n\r\n\tfp = fopen(spath, \"w\");\r\n\tif (!fp) {\r\n\t\tif (name)\r\n\t\t\tflog(LOG_ERR, \"failed to set %s (%u) for %s: %s\",\r\n\t\t\t     name, val, iface, strerror(errno));\r\n\t\treturn -1;\r\n\t}\r\n\tfprintf(fp, \"%u\", val);\r\n\tfclose(fp);\r\n\r\n\treturn 0;\r\n}\r\n\r\nint\r\nset_interface_linkmtu(const char *iface, uint32_t mtu)\r\n{\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    236,
+    260
+  ],
+  "vulnerable_snippet": "int\r\nset_interface_var(const char *iface,\r\n\t\t  const char *var, const char *name,\r\n\t\t  uint32_t val)\r\n{\r\n\tFILE *fp;\r\n\tchar spath[64+IFNAMSIZ];\t/* XXX: magic constant */\r\n\tif (snprintf(spath, sizeof(spath), var, iface) >= sizeof(spath))\r\n\t\treturn -1;\r\n\r\n\tif (access(spath, F_OK) != 0)\r\n\t\treturn -1;\r\n\r\n\tfp = fopen(spath, \"w\");\r\n\tif (!fp) {\r\n\t\tif (name)\r\n\t\t\tflog(LOG_ERR, \"failed to set %s (%u) for %s: %s\",\r\n\t\t\t     name, val, iface, strerror(errno));\r\n\t\treturn -1;\r\n\t}\r\n\tfprintf(fp, \"%u\", val);\r\n\tfclose(fp);\r\n\r\n\treturn 0;\r\n}",
   "fixed_line_range": [
     236,
     264
   ],
-  "fixed_snippet": "int\r\nset_interface_var(const char *iface,\r\n\t\t  const char *var, const char *name,\r\n\t\t  uint32_t val)\r\n{\r\n\tFILE *fp;\r\n\tchar spath[64+IFNAMSIZ];\t/* XXX: magic constant */\r\n\tif (snprintf(spath, sizeof(spath), var, iface) >= sizeof(spath))\r\n\t\treturn -1;\r\n\r\n\t/* No path traversal */\r\n\tif (strstr(name, \"..\") || strchr(name, '/'))\r\n\t\treturn -1;\r\n\r\n\tif (access(spath, F_OK) != 0)\r\n\t\treturn -1;\r\n\r\n\tfp = fopen(spath, \"w\");\r\n\tif (!fp) {\r\n\t\tif (name)\r\n\t\t\tflog(LOG_ERR, \"failed to set %s (%u) for %s: %s\",\r\n\t\t\t     name, val, iface, strerror(errno));\r\n\t\treturn -1;\r\n\t}\r\n\tfprintf(fp, \"%u\", val);\r\n\tfclose(fp);\r\n\r\n\treturn 0;\r\n}"
+  "fixed_snippet": "int\r\nset_interface_var(const char *iface,\r\n\t\t  const char *var, const char *name,\r\n\t\t  uint32_t val)\r\n{\r\n\tFILE *fp;\r\n\tchar spath[64+IFNAMSIZ];\t/* XXX: magic constant */\r\n\tif (snprintf(spath, sizeof(spath), var, iface) >= sizeof(spath))\r\n\t\treturn -1;\r\n\r\n\t/* No path traversal */\r\n\tif (strstr(name, \"..\") || strchr(name, '/'))\r\n\t\treturn -1;\r\n\r\n\tif (access(spath, F_OK) != 0)\r\n\t\treturn -1;\r\n\r\n\tfp = fopen(spath, \"w\");\r\n\tif (!fp) {\r\n\t\tif (name)\r\n\t\t\tflog(LOG_ERR, \"failed to set %s (%u) for %s: %s\",\r\n\t\t\t     name, val, iface, strerror(errno));\r\n\t\treturn -1;\r\n\t}\r\n\tfprintf(fp, \"%u\", val);\r\n\tfclose(fp);\r\n\r\n\treturn 0;\r\n}",
+  "func_name": "set_interface_var",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -10,13 +10,21 @@
   "changed_file": "net/netfilter/nf_nat_irc.c",
   "docstring": "\"\"\"\nSummary: \nProcesses a network packet for NAT (Network Address Translation) in the context of IRC (Internet Relay Chat) by managing expectations for TCP connections.\n\nParameters: \nskb (struct sk_buff *): Pointer to the socket buffer containing the packet data.\nctinfo (enum ip_conntrack_info): Information about the connection tracking state.\nprotoff (unsigned int): Offset to the protocol header within the packet.\nmatchoff (unsigned int): Offset to the match data within the packet.\nmatchlen (unsigned int): Length of the match data.\nexp (struct nf_conntrack_expect *): Pointer to the expected connection tracking structure.\n\nReturns: \nunsigned int: The result of the NAT operation, indicating success or failure (NF_DROP if all ports are in use).\n\nLogic: \nThe function retrieves the destination address and port from the connection tracking structure, attempts to find an available port for the expected connection, and modifies the packet accordingly. If no ports are available, it logs an error and drops the packet. If successful, it mangles the TCP packet and returns the result of the operation.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     29,
     94
   ],
-  "vulnerable_snippet": "static unsigned int help(struct sk_buff *skb,\r\n\t\t\t enum ip_conntrack_info ctinfo,\r\n\t\t\t unsigned int protoff,\r\n\t\t\t unsigned int matchoff,\r\n\t\t\t unsigned int matchlen,\r\n\t\t\t struct nf_conntrack_expect *exp)\r\n{\r\n\tchar buffer[sizeof(\"4294967296 65635\")];\r\n\tu_int16_t port;\r\n\tunsigned int ret;\r\n\r\n\t/* Reply comes from server. */\r\n\texp->saved_proto.tcp.port = exp->tuple.dst.u.tcp.port;\r\n\texp->dir = IP_CT_DIR_REPLY;\r\n\texp->expectfn = nf_nat_follow_master;\r\n\r\n\t/* Try to get same port: if not, try to change it. */\r\n\tfor (port = ntohs(exp->saved_proto.tcp.port); port != 0; port++) {\r\n\t\tint ret;\r\n\r\n\t\texp->tuple.dst.u.tcp.port = htons(port);\r\n\t\tret = nf_ct_expect_related(exp);\r\n\t\tif (ret == 0)\r\n\t\t\tbreak;\r\n\t\telse if (ret != -EBUSY) {\r\n\t\t\tport = 0;\r\n\t\t\tbreak;\r\n\t\t}\r\n\t}\r\n\r\n\tif (port == 0) {\r\n\t\tnf_ct_helper_log(skb, exp->master, \"all ports in use\");\r\n\t\treturn NF_DROP;\r\n\t}\r\n\r\n\tret = nf_nat_mangle_tcp_packet(skb, exp->master, ctinfo,\r\n\t\t\t\t       protoff, matchoff, matchlen, buffer,\r\n\t\t\t\t       strlen(buffer));\r\n\tif (ret != NF_ACCEPT) {\r\n\t\tnf_ct_helper_log(skb, exp->master, \"cannot mangle packet\");\r\n\t\tnf_ct_unexpect_related(exp);\r\n\t}\r\n\treturn ret;\r\n}\r\n\r\nstatic void __exit nf_nat_irc_fini(void)\r\n{\r\n\tRCU_INIT_POINTER(nf_nat_irc_hook, NULL);\r\n\tsynchronize_rcu();\r\n}\r\n\r\nstatic int __init nf_nat_irc_init(void)\r\n{\r\n\tBUG_ON(nf_nat_irc_hook != NULL);\r\n\tRCU_INIT_POINTER(nf_nat_irc_hook, help);\r\n\treturn 0;\r\n}\r\n\r\n/* Prior to 2.6.11, we had a ports param.  No longer, but don't break users. */\r\nstatic int warn_set(const char *val, struct kernel_param *kp)\r\n{\r\n\tprintk(KERN_INFO KBUILD_MODNAME\r\n\t       \": kernel >= 2.6.10 only uses 'ports' for conntrack modules\\n\");\r\n\treturn 0;\r\n}\r\nmodule_param_call(ports, warn_set, NULL, NULL, 0);\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 4 top-level constructs (functions/declarations), not a single function",
+  "vulnerable_line_range": null,
+  "vulnerable_snippet": null,
   "fixed_line_range": null,
-  "fixed_snippet": null
+  "fixed_snippet": null,
+  "func_name": "help",
+  "extraction_status": "skipped_hunk_not_contained",
+  "extraction_reason": "changed lines 57-73 are not fully inside the extracted function (29-72)",
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

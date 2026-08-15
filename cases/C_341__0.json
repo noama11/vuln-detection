@@ -10,16 +10,27 @@
   "changed_file": "fs/fuse/cuse.c",
   "docstring": "Summary: Releases a CUSE channel by unregistering the associated device and cleaning up resources.\n\nParameters:\n- inode (struct inode *): Pointer to the inode associated with the file.\n- file (struct file *): Pointer to the file structure representing the open file.\n\nReturns: \n- int: The result of the `fuse_dev_release` function, indicating success or failure of the release operation.\n\nLogic: The function locks a mutex to safely remove the connection from a list, unregisters the associated device if it exists, and cleans up the character device region. It then releases the base reference held by the connection and returns the result of the release operation.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     534,
     558
   ],
-  "vulnerable_snippet": "static int cuse_channel_release(struct inode *inode, struct file *file)\r\n{\r\n\tstruct fuse_dev *fud = file->private_data;\r\n\tstruct cuse_conn *cc = fc_to_cc(fud->fc);\r\n\tint rc;\r\n\r\n\t/* remove from the conntbl, no more access from this point on */\r\n\tmutex_lock(&cuse_lock);\r\n\tlist_del_init(&cc->list);\r\n\tmutex_unlock(&cuse_lock);\r\n\r\n\t/* remove device */\r\n\tif (cc->dev)\r\n\t\tdevice_unregister(cc->dev);\r\n\tif (cc->cdev) {\r\n\t\tunregister_chrdev_region(cc->cdev->dev, 1);\r\n\t\tcdev_del(cc->cdev);\r\n\t}\r\n\r\n\trc = fuse_dev_release(inode, file);\t/* puts the base reference */\r\n\r\n\treturn rc;\r\n}\r\n\r\nstatic struct file_operations cuse_channel_fops; /* initialized during init */\r\n",
-  "extraction_status": "suspect_identifier_mismatch",
-  "extraction_reason": "located fixed-side function does not contain identifier 'cuse_channel_release'",
-  "fixed_line_range": [
-    548,
-    551
+  "vulnerable_line_range": [
+    534,
+    556
   ],
-  "fixed_snippet": "\tif (cc->cdev) {\r\n\t\tunregister_chrdev_region(cc->cdev->dev, 1);\r\n\t\tcdev_del(cc->cdev);\r\n\t}"
+  "vulnerable_snippet": "static int cuse_channel_release(struct inode *inode, struct file *file)\r\n{\r\n\tstruct fuse_dev *fud = file->private_data;\r\n\tstruct cuse_conn *cc = fc_to_cc(fud->fc);\r\n\tint rc;\r\n\r\n\t/* remove from the conntbl, no more access from this point on */\r\n\tmutex_lock(&cuse_lock);\r\n\tlist_del_init(&cc->list);\r\n\tmutex_unlock(&cuse_lock);\r\n\r\n\t/* remove device */\r\n\tif (cc->dev)\r\n\t\tdevice_unregister(cc->dev);\r\n\tif (cc->cdev) {\r\n\t\tunregister_chrdev_region(cc->cdev->dev, 1);\r\n\t\tcdev_del(cc->cdev);\r\n\t}\r\n\r\n\trc = fuse_dev_release(inode, file);\t/* puts the base reference */\r\n\r\n\treturn rc;\r\n}",
+  "fixed_line_range": [
+    534,
+    558
+  ],
+  "fixed_snippet": "static int cuse_channel_release(struct inode *inode, struct file *file)\r\n{\r\n\tstruct fuse_dev *fud = file->private_data;\r\n\tstruct cuse_conn *cc = fc_to_cc(fud->fc);\r\n\tint rc;\r\n\r\n\t/* remove from the conntbl, no more access from this point on */\r\n\tmutex_lock(&cuse_lock);\r\n\tlist_del_init(&cc->list);\r\n\tmutex_unlock(&cuse_lock);\r\n\r\n\t/* remove device */\r\n\tif (cc->dev)\r\n\t\tdevice_unregister(cc->dev);\r\n\tif (cc->cdev) {\r\n\t\tunregister_chrdev_region(cc->cdev->dev, 1);\r\n\t\tcdev_del(cc->cdev);\r\n\t}\r\n\t/* Base reference is now owned by \"fud\" */\r\n\tfuse_conn_put(&cc->fc);\r\n\r\n\trc = fuse_dev_release(inode, file);\t/* puts the base reference */\r\n\r\n\treturn rc;\r\n}",
+  "func_name": "cuse_channel_release",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

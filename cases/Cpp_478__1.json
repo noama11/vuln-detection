@@ -10,16 +10,27 @@
   "changed_file": "libaudiofile/modules/IMA.cpp",
   "docstring": "Summary: This function decodes a block of audio data using the ADPCM algorithm.\n\nParameters: \n- encoded (const uint8_t*): Pointer to the encoded audio data.\n- decoded (int16_t*): Pointer to the buffer where decoded audio samples will be stored.\n\nReturns: \n- int: The total number of bytes written to the decoded buffer.\n\nLogic: The function first retrieves the number of audio channels from the track. It then iterates over each channel, initializing the ADPCM state and extracting the predictor and index from the encoded data. For each frame in the packet, it decodes two samples using the `decodeSample` function and stores them in the decoded buffer. Finally, it returns the total size of the decoded audio data in bytes.",
   "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    201,
+    226
+  ],
   "vulnerable_line_range": [
     201,
     226
   ],
-  "vulnerable_snippet": "int IMA::decodeBlockQT(const uint8_t *encoded, int16_t *decoded)\r\n{\r\n\tint channelCount = m_track->f.channelCount;\r\n\r\n\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tadpcmState state;\r\n\t\tint predictor = (encoded[0] << 8) | (encoded[1] & 0x80);\r\n\t\tif (predictor & 0x8000)\r\n\t\t\tpredictor -= 0x10000;\r\n\r\n\t\tstate.previousValue = clamp(predictor, MIN_INT16, MAX_INT16);\r\n\t\tstate.index = encoded[1] & 0x7f;\r\n\t\tencoded += 2;\r\n\r\n\t\tfor (int n=0; n<m_framesPerPacket; n+=2)\r\n\t\t{\r\n\t\t\tuint8_t e = *encoded;\r\n\t\t\tdecoded[n*channelCount + c] = decodeSample(state, e & 0xf);\r\n\t\t\tdecoded[(n+1)*channelCount + c] = decodeSample(state, e >> 4);\r\n\t\t\tencoded++;\r\n\t\t}\r\n\t}\r\n\r\n\treturn m_framesPerPacket * channelCount * sizeof (int16_t);\r\n}\r\n",
+  "vulnerable_snippet": "int IMA::decodeBlockQT(const uint8_t *encoded, int16_t *decoded)\r\n{\r\n\tint channelCount = m_track->f.channelCount;\r\n\r\n\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tadpcmState state;\r\n\t\tint predictor = (encoded[0] << 8) | (encoded[1] & 0x80);\r\n\t\tif (predictor & 0x8000)\r\n\t\t\tpredictor -= 0x10000;\r\n\r\n\t\tstate.previousValue = clamp(predictor, MIN_INT16, MAX_INT16);\r\n\t\tstate.index = encoded[1] & 0x7f;\r\n\t\tencoded += 2;\r\n\r\n\t\tfor (int n=0; n<m_framesPerPacket; n+=2)\r\n\t\t{\r\n\t\t\tuint8_t e = *encoded;\r\n\t\t\tdecoded[n*channelCount + c] = decodeSample(state, e & 0xf);\r\n\t\t\tdecoded[(n+1)*channelCount + c] = decodeSample(state, e >> 4);\r\n\t\t\tencoded++;\r\n\t\t}\r\n\t}\r\n\r\n\treturn m_framesPerPacket * channelCount * sizeof (int16_t);\r\n}",
+  "fixed_line_range": [
+    201,
+    226
+  ],
+  "fixed_snippet": "int IMA::decodeBlockQT(const uint8_t *encoded, int16_t *decoded)\r\n{\r\n\tint channelCount = m_track->f.channelCount;\r\n\r\n\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tadpcmState state;\r\n\t\tint predictor = (encoded[0] << 8) | (encoded[1] & 0x80);\r\n\t\tif (predictor & 0x8000)\r\n\t\t\tpredictor -= 0x10000;\r\n\r\n\t\tstate.previousValue = clamp(predictor, MIN_INT16, MAX_INT16);\r\n\t\tstate.index = clamp(encoded[1] & 0x7f, 0, 88);\r\n\t\tencoded += 2;\r\n\r\n\t\tfor (int n=0; n<m_framesPerPacket; n+=2)\r\n\t\t{\r\n\t\t\tuint8_t e = *encoded;\r\n\t\t\tdecoded[n*channelCount + c] = decodeSample(state, e & 0xf);\r\n\t\t\tdecoded[(n+1)*channelCount + c] = decodeSample(state, e >> 4);\r\n\t\t\tencoded++;\r\n\t\t}\r\n\t}\r\n\r\n\treturn m_framesPerPacket * channelCount * sizeof (int16_t);\r\n}",
+  "func_name": "decodeBlockQT",
   "extraction_status": "ok",
   "extraction_reason": null,
-  "fixed_line_range": [
-    205,
-    223
-  ],
-  "fixed_snippet": "\tfor (int c=0; c<channelCount; c++)\r\n\t{\r\n\t\tadpcmState state;\r\n\t\tint predictor = (encoded[0] << 8) | (encoded[1] & 0x80);\r\n\t\tif (predictor & 0x8000)\r\n\t\t\tpredictor -= 0x10000;\r\n\r\n\t\tstate.previousValue = clamp(predictor, MIN_INT16, MAX_INT16);\r\n\t\tstate.index = clamp(encoded[1] & 0x7f, 0, 88);\r\n\t\tencoded += 2;\r\n\r\n\t\tfor (int n=0; n<m_framesPerPacket; n+=2)\r\n\t\t{\r\n\t\t\tuint8_t e = *encoded;\r\n\t\t\tdecoded[n*channelCount + c] = decodeSample(state, e & 0xf);\r\n\t\t\tdecoded[(n+1)*channelCount + c] = decodeSample(state, e >> 4);\r\n\t\t\tencoded++;\r\n\t\t}\r\n\t}"
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

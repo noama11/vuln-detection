@@ -10,13 +10,27 @@
   "changed_file": "kernel/time/posix-timers.c",
   "docstring": "/**\n * Summary: Retrieves the current settings of a timer, including its interval and remaining time until expiration.\n * \n * Parameters:\n * timr (struct k_itimer*): Pointer to the timer whose settings are to be retrieved.\n * cur_setting (struct itimerspec64*): Pointer to a structure where the current timer settings will be stored.\n * \n * Returns: None\n * \n * Logic: The function checks if the timer is an interval timer or a oneshot timer with no signal notification. It retrieves the current time and calculates the remaining time until the timer expires. If the timer is expired and is a oneshot timer with no signal, it sets the value to indicate expiration. The function updates the provided `cur_setting` structure with the interval and remaining time values.\n */",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     670,
     718
   ],
-  "vulnerable_snippet": "\tbool sig_none;\r\n\r\n\tsig_none = (timr->it_sigev_notify & ~SIGEV_THREAD_ID) == SIGEV_NONE;\r\n\tiv = timr->it_interval;\r\n\r\n\t/* interval timer ? */\r\n\tif (iv) {\r\n\t\tcur_setting->it_interval = ktime_to_timespec64(iv);\r\n\t} else if (!timr->it_active) {\r\n\t\t/*\r\n\t\t * SIGEV_NONE oneshot timers are never queued. Check them\r\n\t\t * below.\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\treturn;\r\n\t}\r\n\r\n\t/*\r\n\t * The timespec64 based conversion is suboptimal, but it's not\r\n\t * worth to implement yet another callback.\r\n\t */\r\n\tkc->clock_get(timr->it_clock, &ts64);\r\n\tnow = timespec64_to_ktime(ts64);\r\n\r\n\t/*\r\n\t * When a requeue is pending or this is a SIGEV_NONE timer move the\r\n\t * expiry time forward by intervals, so expiry is > now.\r\n\t */\r\n\tif (iv && (timr->it_requeue_pending & REQUEUE_PENDING || sig_none))\r\n\t\ttimr->it_overrun += kc->timer_forward(timr, now);\r\n\r\n\tremaining = kc->timer_remaining(timr, now);\r\n\t/* Return 0 only, when the timer is expired and not pending */\r\n\tif (remaining <= 0) {\r\n\t\t/*\r\n\t\t * A single shot SIGEV_NONE timer must return 0, when\r\n\t\t * it is expired !\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\tcur_setting->it_value.tv_nsec = 1;\r\n\t} else {\r\n\t\tcur_setting->it_value = ktime_to_timespec64(remaining);\r\n\t}\r\n}\r\n\r\n/* Get the time remaining on a POSIX.1b interval timer. */\r\nstatic int do_timer_gettime(timer_t timer_id,  struct itimerspec64 *setting)\r\n{\r\n\tstruct k_itimer *timr;\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 4 top-level constructs (functions/declarations), not a single function",
-  "fixed_line_range": null,
-  "fixed_snippet": null
+  "vulnerable_line_range": [
+    665,
+    713
+  ],
+  "vulnerable_snippet": "void common_timer_get(struct k_itimer *timr, struct itimerspec64 *cur_setting)\r\n{\r\n\tconst struct k_clock *kc = timr->kclock;\r\n\tktime_t now, remaining, iv;\r\n\tstruct timespec64 ts64;\r\n\tbool sig_none;\r\n\r\n\tsig_none = (timr->it_sigev_notify & ~SIGEV_THREAD_ID) == SIGEV_NONE;\r\n\tiv = timr->it_interval;\r\n\r\n\t/* interval timer ? */\r\n\tif (iv) {\r\n\t\tcur_setting->it_interval = ktime_to_timespec64(iv);\r\n\t} else if (!timr->it_active) {\r\n\t\t/*\r\n\t\t * SIGEV_NONE oneshot timers are never queued. Check them\r\n\t\t * below.\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\treturn;\r\n\t}\r\n\r\n\t/*\r\n\t * The timespec64 based conversion is suboptimal, but it's not\r\n\t * worth to implement yet another callback.\r\n\t */\r\n\tkc->clock_get(timr->it_clock, &ts64);\r\n\tnow = timespec64_to_ktime(ts64);\r\n\r\n\t/*\r\n\t * When a requeue is pending or this is a SIGEV_NONE timer move the\r\n\t * expiry time forward by intervals, so expiry is > now.\r\n\t */\r\n\tif (iv && (timr->it_requeue_pending & REQUEUE_PENDING || sig_none))\r\n\t\ttimr->it_overrun += kc->timer_forward(timr, now);\r\n\r\n\tremaining = kc->timer_remaining(timr, now);\r\n\t/* Return 0 only, when the timer is expired and not pending */\r\n\tif (remaining <= 0) {\r\n\t\t/*\r\n\t\t * A single shot SIGEV_NONE timer must return 0, when\r\n\t\t * it is expired !\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\tcur_setting->it_value.tv_nsec = 1;\r\n\t} else {\r\n\t\tcur_setting->it_value = ktime_to_timespec64(remaining);\r\n\t}\r\n}",
+  "fixed_line_range": [
+    670,
+    718
+  ],
+  "fixed_snippet": "void common_timer_get(struct k_itimer *timr, struct itimerspec64 *cur_setting)\r\n{\r\n\tconst struct k_clock *kc = timr->kclock;\r\n\tktime_t now, remaining, iv;\r\n\tstruct timespec64 ts64;\r\n\tbool sig_none;\r\n\r\n\tsig_none = timr->it_sigev_notify == SIGEV_NONE;\r\n\tiv = timr->it_interval;\r\n\r\n\t/* interval timer ? */\r\n\tif (iv) {\r\n\t\tcur_setting->it_interval = ktime_to_timespec64(iv);\r\n\t} else if (!timr->it_active) {\r\n\t\t/*\r\n\t\t * SIGEV_NONE oneshot timers are never queued. Check them\r\n\t\t * below.\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\treturn;\r\n\t}\r\n\r\n\t/*\r\n\t * The timespec64 based conversion is suboptimal, but it's not\r\n\t * worth to implement yet another callback.\r\n\t */\r\n\tkc->clock_get(timr->it_clock, &ts64);\r\n\tnow = timespec64_to_ktime(ts64);\r\n\r\n\t/*\r\n\t * When a requeue is pending or this is a SIGEV_NONE timer move the\r\n\t * expiry time forward by intervals, so expiry is > now.\r\n\t */\r\n\tif (iv && (timr->it_requeue_pending & REQUEUE_PENDING || sig_none))\r\n\t\ttimr->it_overrun += kc->timer_forward(timr, now);\r\n\r\n\tremaining = kc->timer_remaining(timr, now);\r\n\t/* Return 0 only, when the timer is expired and not pending */\r\n\tif (remaining <= 0) {\r\n\t\t/*\r\n\t\t * A single shot SIGEV_NONE timer must return 0, when\r\n\t\t * it is expired !\r\n\t\t */\r\n\t\tif (!sig_none)\r\n\t\t\tcur_setting->it_value.tv_nsec = 1;\r\n\t} else {\r\n\t\tcur_setting->it_value = ktime_to_timespec64(remaining);\r\n\t}\r\n}",
+  "func_name": "common_timer_get",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

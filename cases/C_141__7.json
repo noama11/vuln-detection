@@ -10,16 +10,27 @@
   "changed_file": "net/ceph/auth_x.c",
   "docstring": "\"\"\"\nSummary: \nVerifies the authorizer reply in the Ceph authentication process.\n\nParameters: \nac (struct ceph_auth_client *): Pointer to the authentication client structure.\na (struct ceph_authorizer *): Pointer to the authorizer structure.\nlen (size_t): Length of the reply buffer.\n\nReturns: \nint: Returns 0 on success, or a negative error code on failure.\n\nLogic: \nThe function retrieves the ticket handler for the specified service and checks for errors. It then attempts to decrypt the reply using the session key. If decryption fails or the decrypted size does not match the expected size, it returns an error. The function also verifies that the nonce from the authorizer matches the expected value. Finally, it logs the verification result and returns the appropriate status code.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     592,
     619
   ],
-  "vulnerable_snippet": "\t\tdout(\"ceph_x_update_authorizer service %u secret %llu < %llu\\n\",\r\n\t\t     au->service, au->secret_id, th->secret_id);\r\n\t\treturn ceph_x_build_authorizer(ac, th, au);\r\n\t}\r\n\treturn 0;\r\n}\r\n\r\nstatic int ceph_x_verify_authorizer_reply(struct ceph_auth_client *ac,\r\n\t\t\t\t\t  struct ceph_authorizer *a, size_t len)\r\n{\r\n\tstruct ceph_x_authorizer *au = (void *)a;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tint ret = 0;\r\n\tstruct ceph_x_authorize_reply reply;\r\n\tvoid *p = au->reply_buf;\r\n\tvoid *end = p + sizeof(au->reply_buf);\r\n\r\n\tth = get_ticket_handler(ac, au->service);\r\n\tif (IS_ERR(th))\r\n\t\treturn PTR_ERR(th);\r\n\tret = ceph_x_decrypt(&th->session_key, &p, end, &reply, sizeof(reply));\r\n\tif (ret < 0)\r\n\t\treturn ret;\r\n\tif (ret != sizeof(reply))\r\n\t\treturn -EPERM;\r\n\r\n\tif (au->nonce + 1 != le64_to_cpu(reply.nonce_plus_one))\r\n\t\tret = -EPERM;\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    599,
+    625
+  ],
+  "vulnerable_snippet": "static int ceph_x_verify_authorizer_reply(struct ceph_auth_client *ac,\r\n\t\t\t\t\t  struct ceph_authorizer *a, size_t len)\r\n{\r\n\tstruct ceph_x_authorizer *au = (void *)a;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tint ret = 0;\r\n\tstruct ceph_x_authorize_reply reply;\r\n\tvoid *p = au->reply_buf;\r\n\tvoid *end = p + sizeof(au->reply_buf);\r\n\r\n\tth = get_ticket_handler(ac, au->service);\r\n\tif (IS_ERR(th))\r\n\t\treturn PTR_ERR(th);\r\n\tret = ceph_x_decrypt(&th->session_key, &p, end, &reply, sizeof(reply));\r\n\tif (ret < 0)\r\n\t\treturn ret;\r\n\tif (ret != sizeof(reply))\r\n\t\treturn -EPERM;\r\n\r\n\tif (au->nonce + 1 != le64_to_cpu(reply.nonce_plus_one))\r\n\t\tret = -EPERM;\r\n\telse\r\n\t\tret = 0;\r\n\tdout(\"verify_authorizer_reply nonce %llx got %llx ret %d\\n\",\r\n\t     au->nonce, le64_to_cpu(reply.nonce_plus_one), ret);\r\n\treturn ret;\r\n}",
   "fixed_line_range": [
     592,
     619
   ],
-  "fixed_snippet": "static int ceph_x_verify_authorizer_reply(struct ceph_auth_client *ac,\r\n\t\t\t\t\t  struct ceph_authorizer *a, size_t len)\r\n{\r\n\tstruct ceph_x_authorizer *au = (void *)a;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tint ret = 0;\r\n\tstruct ceph_x_authorize_reply reply;\r\n\tvoid *preply = &reply;\r\n\tvoid *p = au->reply_buf;\r\n\tvoid *end = p + sizeof(au->reply_buf);\r\n\r\n\tth = get_ticket_handler(ac, au->service);\r\n\tif (IS_ERR(th))\r\n\t\treturn PTR_ERR(th);\r\n\tret = ceph_x_decrypt(&th->session_key, &p, end, &preply, sizeof(reply));\r\n\tif (ret < 0)\r\n\t\treturn ret;\r\n\tif (ret != sizeof(reply))\r\n\t\treturn -EPERM;\r\n\r\n\tif (au->nonce + 1 != le64_to_cpu(reply.nonce_plus_one))\r\n\t\tret = -EPERM;\r\n\telse\r\n\t\tret = 0;\r\n\tdout(\"verify_authorizer_reply nonce %llx got %llx ret %d\\n\",\r\n\t     au->nonce, le64_to_cpu(reply.nonce_plus_one), ret);\r\n\treturn ret;\r\n}"
+  "fixed_snippet": "static int ceph_x_verify_authorizer_reply(struct ceph_auth_client *ac,\r\n\t\t\t\t\t  struct ceph_authorizer *a, size_t len)\r\n{\r\n\tstruct ceph_x_authorizer *au = (void *)a;\r\n\tstruct ceph_x_ticket_handler *th;\r\n\tint ret = 0;\r\n\tstruct ceph_x_authorize_reply reply;\r\n\tvoid *preply = &reply;\r\n\tvoid *p = au->reply_buf;\r\n\tvoid *end = p + sizeof(au->reply_buf);\r\n\r\n\tth = get_ticket_handler(ac, au->service);\r\n\tif (IS_ERR(th))\r\n\t\treturn PTR_ERR(th);\r\n\tret = ceph_x_decrypt(&th->session_key, &p, end, &preply, sizeof(reply));\r\n\tif (ret < 0)\r\n\t\treturn ret;\r\n\tif (ret != sizeof(reply))\r\n\t\treturn -EPERM;\r\n\r\n\tif (au->nonce + 1 != le64_to_cpu(reply.nonce_plus_one))\r\n\t\tret = -EPERM;\r\n\telse\r\n\t\tret = 0;\r\n\tdout(\"verify_authorizer_reply nonce %llx got %llx ret %d\\n\",\r\n\t     au->nonce, le64_to_cpu(reply.nonce_plus_one), ret);\r\n\treturn ret;\r\n}",
+  "func_name": "ceph_x_verify_authorizer_reply",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

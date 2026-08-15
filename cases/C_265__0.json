@@ -8,18 +8,29 @@
   "cve_summary": "Race condition in the get_task_ioprio function in block/ioprio.c in the Linux kernel before 4.6.6 allows local users to gain privileges or cause a denial of service (use-after-free) via a crafted ioprio_get system call.",
   "commit_message": "block: fix use-after-free in sys_ioprio_get()\n\nget_task_ioprio() accesses the task->io_context without holding the task\nlock and thus can race with exit_io_context(), leading to a\nuse-after-free. The reproducer below hits this within a few seconds on\nmy 4-core QEMU VM:\n\n#define _GNU_SOURCE\n#include <assert.h>\n#include <unistd.h>\n#include <sys/syscall.h>\n#include <sys/wait.h>\n\nint main(int argc, char **argv)\n{\n\tpid_t pid, child;\n\tlong nproc, i;\n\n\t/* ioprio_set(IOPRIO_WHO_PROCESS, 0, IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE, 0)); */\n\tsyscall(SYS_ioprio_set, 1, 0, 0x6000);\n\n\tnproc = sysconf(_SC_NPROCESSORS_ONLN);\n\n\tfor (i = 0; i < nproc; i++) {\n\t\tpid = fork();\n\t\tassert(pid != -1);\n\t\tif (pid == 0) {\n\t\t\tfor (;;) {\n\t\t\t\tpid = fork();\n\t\t\t\tassert(pid != -1);\n\t\t\t\tif (pid == 0) {\n\t\t\t\t\t_exit(0);\n\t\t\t\t} else {\n\t\t\t\t\tchild = wait(NULL);\n\t\t\t\t\tassert(child == pid);\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\n\t\tpid = fork();\n\t\tassert(pid != -1);\n\t\tif (pid == 0) {\n\t\t\tfor (;;) {\n\t\t\t\t/* ioprio_get(IOPRIO_WHO_PGRP, 0); */\n\t\t\t\tsyscall(SYS_ioprio_get, 2, 0);\n\t\t\t}\n\t\t}\n\t}\n\n\tfor (;;) {\n\t\t/* ioprio_get(IOPRIO_WHO_PGRP, 0); */\n\t\tsyscall(SYS_ioprio_get, 2, 0);\n\t}\n\n\treturn 0;\n}\n\nThis gets us KASAN dumps like this:\n\n[   35.526914] ==================================================================\n[   35.530009] BUG: KASAN: out-of-bounds in get_task_ioprio+0x7b/0x90 at addr ffff880066f34e6c\n[   35.530009] Read of size 2 by task ioprio-gpf/363\n[   35.530009] =============================================================================\n[   35.530009] BUG blkdev_ioc (Not tainted): kasan: bad access detected\n[   35.530009] -----------------------------------------------------------------------------\n\n[   35.530009] Disabling lock debugging due to kernel taint\n[   35.530009] INFO: Allocated in create_task_io_context+0x2b/0x370 age=0 cpu=0 pid=360\n[   35.530009] \t___slab_alloc+0x55d/0x5a0\n[   35.530009] \t__slab_alloc.isra.20+0x2b/0x40\n[   35.530009] \tkmem_cache_alloc_node+0x84/0x200\n[   35.530009] \tcreate_task_io_context+0x2b/0x370\n[   35.530009] \tget_task_io_context+0x92/0xb0\n[   35.530009] \tcopy_process.part.8+0x5029/0x5660\n[   35.530009] \t_do_fork+0x155/0x7e0\n[   35.530009] \tSyS_clone+0x19/0x20\n[   35.530009] \tdo_syscall_64+0x195/0x3a0\n[   35.530009] \treturn_from_SYSCALL_64+0x0/0x6a\n[   35.530009] INFO: Freed in put_io_context+0xe7/0x120 age=0 cpu=0 pid=1060\n[   35.530009] \t__slab_free+0x27b/0x3d0\n[   35.530009] \tkmem_cache_free+0x1fb/0x220\n[   35.530009] \tput_io_context+0xe7/0x120\n[   35.530009] \tput_io_context_active+0x238/0x380\n[   35.530009] \texit_io_context+0x66/0x80\n[   35.530009] \tdo_exit+0x158e/0x2b90\n[   35.530009] \tdo_group_exit+0xe5/0x2b0\n[   35.530009] \tSyS_exit_group+0x1d/0x20\n[   35.530009] \tentry_SYSCALL_64_fastpath+0x1a/0xa4\n[   35.530009] INFO: Slab 0xffffea00019bcd00 objects=20 used=4 fp=0xffff880066f34ff0 flags=0x1fffe0000004080\n[   35.530009] INFO: Object 0xffff880066f34e58 @offset=3672 fp=0x0000000000000001\n[   35.530009] ==================================================================\n\nFix it by grabbing the task lock while we poke at the io_context.\n\nCc: stable@vger.kernel.org\nReported-by: Dmitry Vyukov <dvyukov@google.com>\nSigned-off-by: Omar Sandoval <osandov@fb.com>\nSigned-off-by: Jens Axboe <axboe@fb.com>",
   "changed_file": "block/ioprio.c",
-  "docstring": "\"\"\"\nSummary: Retrieves the I/O priority of a given task.\n\nParameters:\np (struct task_struct *): Pointer to the task structure for which to get the I/O priority.\n\nReturns:\nint: The I/O priority of the task, or an error code if retrieval fails.\n\nLogic: The function first checks the security context for permission to get the I/O priority. If successful, it initializes the return value to a default priority. It then accesses the task's I/O context and retrieves the actual I/O priority if it exists. Finally, it returns the retrieved priority or an error code.\n\"\"\"",
+  "docstring": "\"\"\"\nSummary: Retrieves the I/O priority of a given task.\n\nParameters:\np (struct task_struct *): Pointer to the task structure for which to get the I/O priority.\n\nReturns:\nint: The I/O priority of the task, or an error code if retrieval fails.\n\nLogic: The function first checks the security context for permission to get the I/O priority. If successful, it initializes the return value to a default priority. It then locks the task to safely access its I/O context and retrieves the actual I/O priority if it exists. Finally, it unlocks the task and returns the retrieved priority or an error code.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     145,
     159
   ],
-  "vulnerable_snippet": "static int get_task_ioprio(struct task_struct *p)\r\n{\r\n\tint ret;\r\n\r\n\tret = security_task_getioprio(p);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\tret = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM);\r\n\tif (p->io_context)\r\n\t\tret = p->io_context->ioprio;\r\nout:\r\n\treturn ret;\r\n}\r\n\r\nint ioprio_best(unsigned short aprio, unsigned short bprio)\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    145,
+    157
+  ],
+  "vulnerable_snippet": "static int get_task_ioprio(struct task_struct *p)\r\n{\r\n\tint ret;\r\n\r\n\tret = security_task_getioprio(p);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\tret = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM);\r\n\tif (p->io_context)\r\n\t\tret = p->io_context->ioprio;\r\nout:\r\n\treturn ret;\r\n}",
   "fixed_line_range": [
     145,
     159
   ],
-  "fixed_snippet": "static int get_task_ioprio(struct task_struct *p)\r\n{\r\n\tint ret;\r\n\r\n\tret = security_task_getioprio(p);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\tret = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM);\r\n\ttask_lock(p);\r\n\tif (p->io_context)\r\n\t\tret = p->io_context->ioprio;\r\n\ttask_unlock(p);\r\nout:\r\n\treturn ret;\r\n}"
+  "fixed_snippet": "static int get_task_ioprio(struct task_struct *p)\r\n{\r\n\tint ret;\r\n\r\n\tret = security_task_getioprio(p);\r\n\tif (ret)\r\n\t\tgoto out;\r\n\tret = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM);\r\n\ttask_lock(p);\r\n\tif (p->io_context)\r\n\t\tret = p->io_context->ioprio;\r\n\ttask_unlock(p);\r\nout:\r\n\treturn ret;\r\n}",
+  "func_name": "get_task_ioprio",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

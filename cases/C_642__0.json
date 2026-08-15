@@ -8,18 +8,29 @@
   "cve_summary": "The inode_init_owner function in fs/inode.c in the Linux kernel through 4.17.4 allows local users to create files with an unintended group ownership, in a scenario where a directory is SGID to a certain group and is writable by a user who is not a member of that group. Here, the non-member can trigger creation of a plain file whose group ownership is that group. The intended behavior was that the non-member can trigger creation of a directory (but not a plain file) whose group ownership is that group. The non-member can escalate privileges by making the plain file executable and SGID.",
   "commit_message": "Fix up non-directory creation in SGID directories\n\nsgid directories have special semantics, making newly created files in\nthe directory belong to the group of the directory, and newly created\nsubdirectories will also become sgid.  This is historically used for\ngroup-shared directories.\n\nBut group directories writable by non-group members should not imply\nthat such non-group members can magically join the group, so make sure\nto clear the sgid bit on non-directories for non-members (but remember\nthat sgid without group execute means \"mandatory locking\", just to\nconfuse things even more).\n\nReported-by: Jann Horn <jannh@google.com>\nCc: Andy Lutomirski <luto@kernel.org>\nCc: Al Viro <viro@zeniv.linux.org.uk>\nSigned-off-by: Linus Torvalds <torvalds@linux-foundation.org>",
   "changed_file": "fs/inode.c",
-  "docstring": "Summary: Initializes the owner attributes of an inode structure based on the specified directory and mode.\n\nParameters:\n- inode (struct inode *): Pointer to the inode structure to be initialized.\n- dir (const struct inode *): Pointer to the directory inode from which to inherit group ID and permissions, if applicable.\n- mode (umode_t): The mode that defines the permissions for the inode.\n\nReturns: None\n\nLogic: The function sets the user ID of the inode to the current file system user ID. If a directory is provided and has the set-group-ID (S_ISGID) bit set, it inherits the group ID from the directory. The function also adjusts the mode so that directories inherit the S_ISGID bit. Finally, it assigns the mode to the inode.",
+  "docstring": "Summary: Initializes the owner attributes of an inode structure based on the specified directory and mode.\n\nParameters:\n- inode (struct inode *): Pointer to the inode structure to be initialized.\n- dir (const struct inode *): Pointer to the directory inode from which to inherit group ID and permissions, if applicable.\n- mode (umode_t): The mode that defines the permissions for the inode.\n\nReturns: None\n\nLogic: The function sets the user ID of the inode to the current file system user ID. If a directory is provided and has the set-group-ID (S_ISGID) bit set, it inherits the group ID from the directory. The function also adjusts the mode to ensure that directories inherit the S_ISGID bit, while also checking conditions to potentially clear the S_ISGID bit based on group membership and capabilities. Finally, it assigns the mode to the inode.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     1996,
     2013
   ],
-  "vulnerable_snippet": "void inode_init_owner(struct inode *inode, const struct inode *dir,\r\n\t\t\tumode_t mode)\r\n{\r\n\tinode->i_uid = current_fsuid();\r\n\tif (dir && dir->i_mode & S_ISGID) {\r\n\t\tinode->i_gid = dir->i_gid;\r\n\t\tif (S_ISDIR(mode))\r\n\t\t\tmode |= S_ISGID;\r\n\t} else\r\n\t\tinode->i_gid = current_fsgid();\r\n\tinode->i_mode = mode;\r\n}\r\nEXPORT_SYMBOL(inode_init_owner);\r\n\r\n/**\r\n * inode_owner_or_capable - check current task permissions to inode\r\n * @inode: inode being checked\r\n *\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    1996,
+    2007
+  ],
+  "vulnerable_snippet": "void inode_init_owner(struct inode *inode, const struct inode *dir,\r\n\t\t\tumode_t mode)\r\n{\r\n\tinode->i_uid = current_fsuid();\r\n\tif (dir && dir->i_mode & S_ISGID) {\r\n\t\tinode->i_gid = dir->i_gid;\r\n\t\tif (S_ISDIR(mode))\r\n\t\t\tmode |= S_ISGID;\r\n\t} else\r\n\t\tinode->i_gid = current_fsgid();\r\n\tinode->i_mode = mode;\r\n}",
   "fixed_line_range": [
     1996,
     2013
   ],
-  "fixed_snippet": "void inode_init_owner(struct inode *inode, const struct inode *dir,\r\n\t\t\tumode_t mode)\r\n{\r\n\tinode->i_uid = current_fsuid();\r\n\tif (dir && dir->i_mode & S_ISGID) {\r\n\t\tinode->i_gid = dir->i_gid;\r\n\r\n\t\t/* Directories are special, and always inherit S_ISGID */\r\n\t\tif (S_ISDIR(mode))\r\n\t\t\tmode |= S_ISGID;\r\n\t\telse if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP) &&\r\n\t\t\t !in_group_p(inode->i_gid) &&\r\n\t\t\t !capable_wrt_inode_uidgid(dir, CAP_FSETID))\r\n\t\t\tmode &= ~S_ISGID;\r\n\t} else\r\n\t\tinode->i_gid = current_fsgid();\r\n\tinode->i_mode = mode;\r\n}"
+  "fixed_snippet": "void inode_init_owner(struct inode *inode, const struct inode *dir,\r\n\t\t\tumode_t mode)\r\n{\r\n\tinode->i_uid = current_fsuid();\r\n\tif (dir && dir->i_mode & S_ISGID) {\r\n\t\tinode->i_gid = dir->i_gid;\r\n\r\n\t\t/* Directories are special, and always inherit S_ISGID */\r\n\t\tif (S_ISDIR(mode))\r\n\t\t\tmode |= S_ISGID;\r\n\t\telse if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP) &&\r\n\t\t\t !in_group_p(inode->i_gid) &&\r\n\t\t\t !capable_wrt_inode_uidgid(dir, CAP_FSETID))\r\n\t\t\tmode &= ~S_ISGID;\r\n\t} else\r\n\t\tinode->i_gid = current_fsgid();\r\n\tinode->i_mode = mode;\r\n}",
+  "func_name": "inode_init_owner",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

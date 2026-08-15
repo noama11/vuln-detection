@@ -10,13 +10,27 @@
   "changed_file": "kernel/exit.c",
   "docstring": "Summary: This function implements a compatibility syscall for waiting on a process, retrieving information about its termination status.\n\nParameters:\n- which (int): Specifies the type of wait operation.\n- pid (compat_pid_t): The process ID to wait for.\n- infop (struct compat_siginfo __user *): Pointer to a user-space structure to store signal information.\n- options (int): Options for the wait operation.\n- uru (struct compat_rusage __user *): Pointer to a user-space structure to store resource usage information.\n\nReturns: int - Returns 0 on success, or a negative error code on failure.\n\nLogic: The function calls `kernel_waitid` to wait for the specified process and retrieve its status. If successful, it populates the user-space `infop` structure with signal information and resource usage data if requested. It handles potential errors during data copying to user space and ensures proper access control for user memory. If `infop` is NULL, it skips populating signal information. The function also manages error handling for user access violations.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     1712,
     1750
   ],
-  "vulnerable_snippet": "}\r\n\r\nCOMPAT_SYSCALL_DEFINE5(waitid,\r\n\t\tint, which, compat_pid_t, pid,\r\n\t\tstruct compat_siginfo __user *, infop, int, options,\r\n\t\tstruct compat_rusage __user *, uru)\r\n{\r\n\tstruct rusage ru;\r\n\tstruct waitid_info info = {.status = 0};\r\n\tlong err = kernel_waitid(which, pid, &info, options, uru ? &ru : NULL);\r\n\tint signo = 0;\r\n\tif (err > 0) {\r\n\t\tsigno = SIGCHLD;\r\n\t\terr = 0;\r\n\t}\r\n\r\n\tif (!err && uru) {\r\n\t\t/* kernel_waitid() overwrites everything in ru */\r\n\t\tif (COMPAT_USE_64BIT_TIME)\r\n\t\t\terr = copy_to_user(uru, &ru, sizeof(ru));\r\n\t\telse\r\n\t\t\terr = put_compat_rusage(&ru, uru);\r\n\t\tif (err)\r\n\t\t\treturn -EFAULT;\r\n\t}\r\n\r\n\tif (!infop)\r\n\t\treturn err;\r\n\r\n\tuser_access_begin();\r\n\tunsafe_put_user(signo, &infop->si_signo, Efault);\r\n\tunsafe_put_user(0, &infop->si_errno, Efault);\r\n\tunsafe_put_user(info.cause, &infop->si_code, Efault);\r\n\tunsafe_put_user(info.pid, &infop->si_pid, Efault);\r\n\tunsafe_put_user(info.uid, &infop->si_uid, Efault);\r\n\tunsafe_put_user(info.status, &infop->si_status, Efault);\r\n\tuser_access_end();\r\n\treturn err;\r\nEfault:\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 3 top-level constructs (functions/declarations), not a single function",
-  "fixed_line_range": null,
-  "fixed_snippet": null
+  "vulnerable_line_range": [
+    1714,
+    1753
+  ],
+  "vulnerable_snippet": "COMPAT_SYSCALL_DEFINE5(waitid,\r\n\t\tint, which, compat_pid_t, pid,\r\n\t\tstruct compat_siginfo __user *, infop, int, options,\r\n\t\tstruct compat_rusage __user *, uru)\r\n{\r\n\tstruct rusage ru;\r\n\tstruct waitid_info info = {.status = 0};\r\n\tlong err = kernel_waitid(which, pid, &info, options, uru ? &ru : NULL);\r\n\tint signo = 0;\r\n\tif (err > 0) {\r\n\t\tsigno = SIGCHLD;\r\n\t\terr = 0;\r\n\t}\r\n\r\n\tif (!err && uru) {\r\n\t\t/* kernel_waitid() overwrites everything in ru */\r\n\t\tif (COMPAT_USE_64BIT_TIME)\r\n\t\t\terr = copy_to_user(uru, &ru, sizeof(ru));\r\n\t\telse\r\n\t\t\terr = put_compat_rusage(&ru, uru);\r\n\t\tif (err)\r\n\t\t\treturn -EFAULT;\r\n\t}\r\n\r\n\tif (!infop)\r\n\t\treturn err;\r\n\r\n\tuser_access_begin();\r\n\tunsafe_put_user(signo, &infop->si_signo, Efault);\r\n\tunsafe_put_user(0, &infop->si_errno, Efault);\r\n\tunsafe_put_user(info.cause, &infop->si_code, Efault);\r\n\tunsafe_put_user(info.pid, &infop->si_pid, Efault);\r\n\tunsafe_put_user(info.uid, &infop->si_uid, Efault);\r\n\tunsafe_put_user(info.status, &infop->si_status, Efault);\r\n\tuser_access_end();\r\n\treturn err;\r\nEfault:\r\n\tuser_access_end();\r\n\treturn -EFAULT;\r\n}",
+  "fixed_line_range": [
+    1712,
+    1750
+  ],
+  "fixed_snippet": "COMPAT_SYSCALL_DEFINE5(waitid,\r\n\t\tint, which, compat_pid_t, pid,\r\n\t\tstruct compat_siginfo __user *, infop, int, options,\r\n\t\tstruct compat_rusage __user *, uru)\r\n{\r\n\tstruct rusage ru;\r\n\tstruct waitid_info info = {.status = 0};\r\n\tlong err = kernel_waitid(which, pid, &info, options, uru ? &ru : NULL);\r\n\tint signo = 0;\r\n\tif (err > 0) {\r\n\t\tsigno = SIGCHLD;\r\n\t\terr = 0;\r\n\t\tif (uru) {\r\n\t\t\t/* kernel_waitid() overwrites everything in ru */\r\n\t\t\tif (COMPAT_USE_64BIT_TIME)\r\n\t\t\t\terr = copy_to_user(uru, &ru, sizeof(ru));\r\n\t\t\telse\r\n\t\t\t\terr = put_compat_rusage(&ru, uru);\r\n\t\t\tif (err)\r\n\t\t\t\treturn -EFAULT;\r\n\t\t}\r\n\t}\r\n\r\n\tif (!infop)\r\n\t\treturn err;\r\n\r\n\tuser_access_begin();\r\n\tunsafe_put_user(signo, &infop->si_signo, Efault);\r\n\tunsafe_put_user(0, &infop->si_errno, Efault);\r\n\tunsafe_put_user(info.cause, &infop->si_code, Efault);\r\n\tunsafe_put_user(info.pid, &infop->si_pid, Efault);\r\n\tunsafe_put_user(info.uid, &infop->si_uid, Efault);\r\n\tunsafe_put_user(info.status, &infop->si_status, Efault);\r\n\tuser_access_end();\r\n\treturn err;\r\nEfault:\r\n\tuser_access_end();\r\n\treturn -EFAULT;\r\n}",
+  "func_name": "COMPAT_SYSCALL_DEFINE5",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

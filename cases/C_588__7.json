@@ -8,18 +8,29 @@
   "cve_summary": "coders/dds.c in ImageMagick allows remote attackers to cause a denial of service via a crafted DDS file.",
   "commit_message": "Added extra EOF check and some minor refactoring.",
   "changed_file": "coders/dds.c",
-  "docstring": "/******************************************************************************  \nSummary:  \nSkips the mipmap images for uncompressed RGB or RGBA DDS files if they are textures or cube maps.\n\nParameters:  \nimage (Image*): Pointer to the image being processed.  \ndds_info (DDSInfo*): Pointer to the DDS information structure.  \npixel_size (int): Size of each pixel in bytes.  \nexception (ExceptionInfo*): Pointer to the exception information structure.\n\nReturns:  \nMagickBooleanType: Returns MagickFalse if an error occurs, otherwise returns MagickTrue.\n\nLogic: The function checks if the DDS file has mipmaps and is either a texture or a cube map. If so, it attempts to skip the mipmap images by seeking through the image data based on the width, height, and pixel size. It adjusts the dimensions for each mipmap level.\n******************************************************************************/",
+  "docstring": "/******************************************************************************  \nSummary:  \nSkips the mipmap images for uncompressed RGB or RGBA DDS files if they are textures or cube maps.\n\nParameters:  \nimage (Image*): Pointer to the image being processed.  \ndds_info (DDSInfo*): Pointer to the DDS information structure.  \npixel_size (int): Size of each pixel in bytes.  \nexception (ExceptionInfo*): Pointer to the exception information structure.\n\nReturns:  \nMagickBooleanType: Returns MagickFalse if an error occurs, otherwise returns MagickTrue.\n\nLogic:  \nThe function checks if the DDS file has mipmaps and is either a texture or a cube map. If so, it attempts to skip the mipmap images by seeking through the image data based on the width, height, and pixel size. It handles potential end-of-file errors and adjusts the dimensions for each mipmap level.  \n******************************************************************************/",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     2403,
     2445
   ],
-  "vulnerable_snippet": "  entry->module = ConstantString(\"DDS\");\r\n  (void) RegisterMagickInfo(entry);\r\n  return(MagickImageCoderSignature);\r\n}\r\n\r\nstatic void RemapIndices(const ssize_t *map, const unsigned char *source,\r\n  unsigned char *target)\r\n{\r\n  register ssize_t\r\n    i;\r\n\r\n  for (i = 0; i < 16; i++)\r\n  {\r\n    if (map[i] == -1)\r\n      target[i] = 3;\r\n    else\r\n      target[i] = source[map[i]];\r\n  }\r\n}\r\n\r\n/*\r\n  Skip the mipmap images for compressed (DXTn) dds files\r\n*/\r\nstatic void SkipDXTMipmaps(Image *image, DDSInfo *dds_info, int texel_size)\r\n{\r\n  register ssize_t\r\n    i;\r\n\r\n  MagickOffsetType\r\n    offset;\r\n\r\n  size_t\r\n    h,\r\n    w;\r\n\r\n  /*\r\n    Only skip mipmaps for textures and cube maps\r\n  */\r\n  if (dds_info->ddscaps1 & DDSCAPS_MIPMAP\r\n      && (dds_info->ddscaps1 & DDSCAPS_TEXTURE\r\n          || dds_info->ddscaps2 & DDSCAPS2_CUBEMAP))\r\n    {\r\n      w = DIV2(dds_info->width);\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    2426,
+    2460
+  ],
+  "vulnerable_snippet": "static void SkipDXTMipmaps(Image *image, DDSInfo *dds_info, int texel_size)\r\n{\r\n  register ssize_t\r\n    i;\r\n\r\n  MagickOffsetType\r\n    offset;\r\n\r\n  size_t\r\n    h,\r\n    w;\r\n\r\n  /*\r\n    Only skip mipmaps for textures and cube maps\r\n  */\r\n  if (dds_info->ddscaps1 & DDSCAPS_MIPMAP\r\n      && (dds_info->ddscaps1 & DDSCAPS_TEXTURE\r\n          || dds_info->ddscaps2 & DDSCAPS2_CUBEMAP))\r\n    {\r\n      w = DIV2(dds_info->width);\r\n      h = DIV2(dds_info->height);\r\n\r\n      /*\r\n        Mipmapcount includes the main image, so start from one\r\n      */\r\n      for (i = 1; (i < (ssize_t) dds_info->mipmapcount) && w && h; i++)\r\n      {\r\n        offset = (MagickOffsetType) ((w + 3) / 4) * ((h + 3) / 4) * texel_size;\r\n        (void) SeekBlob(image, offset, SEEK_CUR);\r\n\r\n        w = DIV2(w);\r\n        h = DIV2(h);\r\n      }\r\n    }\r\n}",
   "fixed_line_range": [
     2356,
     2398
   ],
-  "fixed_snippet": "static MagickBooleanType SkipDXTMipmaps(Image *image,DDSInfo *dds_info,\r\n  int texel_size,ExceptionInfo *exception)\r\n{\r\n  register ssize_t\r\n    i;\r\n\r\n  MagickOffsetType\r\n    offset;\r\n\r\n  size_t\r\n    h,\r\n    w;\r\n\r\n  /*\r\n    Only skip mipmaps for textures and cube maps\r\n  */\r\n  if (dds_info->ddscaps1 & DDSCAPS_MIPMAP\r\n      && (dds_info->ddscaps1 & DDSCAPS_TEXTURE\r\n          || dds_info->ddscaps2 & DDSCAPS2_CUBEMAP))\r\n    {\r\n      if (EOFBlob(image) != MagickFalse)\r\n        {\r\n          ThrowFileException(exception,CorruptImageError,\"UnexpectedEndOfFile\",\r\n            image->filename);\r\n          return(MagickFalse);\r\n        }\r\n      w = DIV2(dds_info->width);\r\n      h = DIV2(dds_info->height);\r\n\r\n      /*\r\n        Mipmapcount includes the main image, so start from one\r\n      */\r\n      for (i = 1; (i < (ssize_t) dds_info->mipmapcount) && w && h; i++)\r\n      {\r\n        offset = (MagickOffsetType) ((w + 3) / 4) * ((h + 3) / 4) * texel_size;\r\n        (void) SeekBlob(image, offset, SEEK_CUR);\r\n\r\n        w = DIV2(w);\r\n        h = DIV2(h);\r\n      }\r\n    }\r\n  return(MagickTrue);\r\n}"
+  "fixed_snippet": "static MagickBooleanType SkipDXTMipmaps(Image *image,DDSInfo *dds_info,\r\n  int texel_size,ExceptionInfo *exception)\r\n{\r\n  register ssize_t\r\n    i;\r\n\r\n  MagickOffsetType\r\n    offset;\r\n\r\n  size_t\r\n    h,\r\n    w;\r\n\r\n  /*\r\n    Only skip mipmaps for textures and cube maps\r\n  */\r\n  if (dds_info->ddscaps1 & DDSCAPS_MIPMAP\r\n      && (dds_info->ddscaps1 & DDSCAPS_TEXTURE\r\n          || dds_info->ddscaps2 & DDSCAPS2_CUBEMAP))\r\n    {\r\n      if (EOFBlob(image) != MagickFalse)\r\n        {\r\n          ThrowFileException(exception,CorruptImageError,\"UnexpectedEndOfFile\",\r\n            image->filename);\r\n          return(MagickFalse);\r\n        }\r\n      w = DIV2(dds_info->width);\r\n      h = DIV2(dds_info->height);\r\n\r\n      /*\r\n        Mipmapcount includes the main image, so start from one\r\n      */\r\n      for (i = 1; (i < (ssize_t) dds_info->mipmapcount) && w && h; i++)\r\n      {\r\n        offset = (MagickOffsetType) ((w + 3) / 4) * ((h + 3) / 4) * texel_size;\r\n        (void) SeekBlob(image, offset, SEEK_CUR);\r\n\r\n        w = DIV2(w);\r\n        h = DIV2(h);\r\n      }\r\n    }\r\n  return(MagickTrue);\r\n}",
+  "func_name": "SkipDXTMipmaps",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

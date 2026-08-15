@@ -10,16 +10,27 @@
   "changed_file": "net/bluetooth/rfcomm/sock.c",
   "docstring": "/******************************************************************************  \n * Summary:  \n * Receives a message from an RFCOMM socket and handles setup and throttling.  \n *  \n * Parameters:  \n * iocb (struct kiocb *): I/O control block for the operation.  \n * sock (struct socket *): The socket from which to receive the message.  \n * msg (struct msghdr *): Message header structure to fill with received data.  \n * size (size_t): Maximum size of the message to receive.  \n * flags (int): Flags to modify the behavior of the receive operation.  \n *  \n * Returns:  \n * int: The number of bytes received, or 0 if no data is available.  \n *  \n * Logic:  \n * The function checks if the RFCOMM connection setup is deferred and accepts it if so.  \n * It then calls a lower-level function to receive the message, updates the socket's  \n * receive memory allocation, and potentially unthrottles the connection if memory  \n * usage is below a certain threshold.  \n ******************************************************************************/",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     602,
     626
   ],
-  "vulnerable_snippet": "static int rfcomm_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t       struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct rfcomm_dlc *d = rfcomm_pi(sk)->dlc;\r\n\tint len;\r\n\r\n\tif (test_and_clear_bit(RFCOMM_DEFER_SETUP, &d->flags)) {\r\n\t\trfcomm_dlc_accept(d);\r\n\t\treturn 0;\r\n\t}\r\n\r\n\tlen = bt_sock_stream_recvmsg(iocb, sock, msg, size, flags);\r\n\r\n\tlock_sock(sk);\r\n\tif (!(flags & MSG_PEEK) && len > 0)\r\n\t\tatomic_sub(len, &sk->sk_rmem_alloc);\r\n\r\n\tif (atomic_read(&sk->sk_rmem_alloc) <= (sk->sk_rcvbuf >> 2))\r\n\t\trfcomm_dlc_unthrottle(rfcomm_pi(sk)->dlc);\r\n\trelease_sock(sk);\r\n\r\n\treturn len;\r\n}\r\n\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    602,
+    625
+  ],
+  "vulnerable_snippet": "static int rfcomm_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t       struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct rfcomm_dlc *d = rfcomm_pi(sk)->dlc;\r\n\tint len;\r\n\r\n\tif (test_and_clear_bit(RFCOMM_DEFER_SETUP, &d->flags)) {\r\n\t\trfcomm_dlc_accept(d);\r\n\t\treturn 0;\r\n\t}\r\n\r\n\tlen = bt_sock_stream_recvmsg(iocb, sock, msg, size, flags);\r\n\r\n\tlock_sock(sk);\r\n\tif (!(flags & MSG_PEEK) && len > 0)\r\n\t\tatomic_sub(len, &sk->sk_rmem_alloc);\r\n\r\n\tif (atomic_read(&sk->sk_rmem_alloc) <= (sk->sk_rcvbuf >> 2))\r\n\t\trfcomm_dlc_unthrottle(rfcomm_pi(sk)->dlc);\r\n\trelease_sock(sk);\r\n\r\n\treturn len;\r\n}",
   "fixed_line_range": [
     602,
     626
   ],
-  "fixed_snippet": "static int rfcomm_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t       struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct rfcomm_dlc *d = rfcomm_pi(sk)->dlc;\r\n\tint len;\r\n\r\n\tif (test_and_clear_bit(RFCOMM_DEFER_SETUP, &d->flags)) {\r\n\t\trfcomm_dlc_accept(d);\r\n\t\tmsg->msg_namelen = 0;\r\n\t\treturn 0;\r\n\t}\r\n\r\n\tlen = bt_sock_stream_recvmsg(iocb, sock, msg, size, flags);\r\n\r\n\tlock_sock(sk);\r\n\tif (!(flags & MSG_PEEK) && len > 0)\r\n\t\tatomic_sub(len, &sk->sk_rmem_alloc);\r\n\r\n\tif (atomic_read(&sk->sk_rmem_alloc) <= (sk->sk_rcvbuf >> 2))\r\n\t\trfcomm_dlc_unthrottle(rfcomm_pi(sk)->dlc);\r\n\trelease_sock(sk);\r\n\r\n\treturn len;\r\n}"
+  "fixed_snippet": "static int rfcomm_sock_recvmsg(struct kiocb *iocb, struct socket *sock,\r\n\t\t\t       struct msghdr *msg, size_t size, int flags)\r\n{\r\n\tstruct sock *sk = sock->sk;\r\n\tstruct rfcomm_dlc *d = rfcomm_pi(sk)->dlc;\r\n\tint len;\r\n\r\n\tif (test_and_clear_bit(RFCOMM_DEFER_SETUP, &d->flags)) {\r\n\t\trfcomm_dlc_accept(d);\r\n\t\tmsg->msg_namelen = 0;\r\n\t\treturn 0;\r\n\t}\r\n\r\n\tlen = bt_sock_stream_recvmsg(iocb, sock, msg, size, flags);\r\n\r\n\tlock_sock(sk);\r\n\tif (!(flags & MSG_PEEK) && len > 0)\r\n\t\tatomic_sub(len, &sk->sk_rmem_alloc);\r\n\r\n\tif (atomic_read(&sk->sk_rmem_alloc) <= (sk->sk_rcvbuf >> 2))\r\n\t\trfcomm_dlc_unthrottle(rfcomm_pi(sk)->dlc);\r\n\trelease_sock(sk);\r\n\r\n\treturn len;\r\n}",
+  "func_name": "rfcomm_sock_recvmsg",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -10,13 +10,21 @@
   "changed_file": "block/blk-ioc.c",
   "docstring": "Summary:  \nThis code defines functions for managing I/O contexts in a task management system, including allocation, retrieval, and cleanup of I/O contexts associated with tasks.\n\nParameters:  \n- gfp_flags (gfp_t): Flags for memory allocation.  \n- node (int): NUMA node identifier for memory allocation.  \n\nReturns:  \n- struct io_context*: Pointer to the allocated or existing I/O context, or NULL if allocation fails.\n\nLogic:  \nThe `exit_io_context` function cleans up the I/O context when a task exits, decrementing the task count and calling cleanup functions if necessary. The `alloc_io_context` function allocates and initializes a new I/O context. The `current_io_context` function retrieves the current task's I/O context, creating one if it doesn't exist. The `get_io_context` function safely retrieves the I/O context for the current task, ensuring proper reference counting to avoid race conditions with exiting tasks.",
   "heuristic_leakage_flag": true,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     64,
     158
   ],
-  "vulnerable_snippet": "\t}\r\n\trcu_read_unlock();\r\n}\r\n\r\n/* Called by the exitting task */\r\nvoid exit_io_context(void)\r\n{\r\n\tstruct io_context *ioc;\r\n\r\n\ttask_lock(current);\r\n\tioc = current->io_context;\r\n\tcurrent->io_context = NULL;\r\n\ttask_unlock(current);\r\n\r\n\tif (atomic_dec_and_test(&ioc->nr_tasks)) {\r\n\t\tif (ioc->aic && ioc->aic->exit)\r\n\t\t\tioc->aic->exit(ioc->aic);\r\n\t\tcfq_exit(ioc);\r\n\r\n\t\tput_io_context(ioc);\r\n\t}\r\n}\r\n\r\nstruct io_context *alloc_io_context(gfp_t gfp_flags, int node)\r\n{\r\n\tstruct io_context *ret;\r\n\r\n\tret = kmem_cache_alloc_node(iocontext_cachep, gfp_flags, node);\r\n\tif (ret) {\r\n\t\tatomic_long_set(&ret->refcount, 1);\r\n\t\tatomic_set(&ret->nr_tasks, 1);\r\n\t\tspin_lock_init(&ret->lock);\r\n\t\tret->ioprio_changed = 0;\r\n\t\tret->ioprio = 0;\r\n\t\tret->last_waited = jiffies; /* doesn't matter... */\r\n\t\tret->nr_batch_requests = 0; /* because this is 0 */\r\n\t\tret->aic = NULL;\r\n\t\tINIT_RADIX_TREE(&ret->radix_root, GFP_ATOMIC | __GFP_HIGH);\r\n\t\tINIT_HLIST_HEAD(&ret->cic_list);\r\n\t\tret->ioc_data = NULL;\r\n\t}\r\n\r\n\treturn ret;\r\n}\r\n\r\n/*\r\n * If the current task has no IO context then create one and initialise it.\r\n * Otherwise, return its existing IO context.\r\n *\r\n * This returned IO context doesn't have a specifically elevated refcount,\r\n * but since the current task itself holds a reference, the context can be\r\n * used in general code, so long as it stays within `current` context.\r\n */\r\nstruct io_context *current_io_context(gfp_t gfp_flags, int node)\r\n{\r\n\tstruct task_struct *tsk = current;\r\n\tstruct io_context *ret;\r\n\r\n\tret = tsk->io_context;\r\n\tif (likely(ret))\r\n\t\treturn ret;\r\n\r\n\tret = alloc_io_context(gfp_flags, node);\r\n\tif (ret) {\r\n\t\t/* make sure set_task_ioprio() sees the settings above */\r\n\t\tsmp_wmb();\r\n\t\ttsk->io_context = ret;\r\n\t}\r\n\r\n\treturn ret;\r\n}\r\n\r\n/*\r\n * If the current task has no IO context then create one and initialise it.\r\n * If it does have a context, take a ref on it.\r\n *\r\n * This is always called in the context of the task which submitted the I/O.\r\n */\r\nstruct io_context *get_io_context(gfp_t gfp_flags, int node)\r\n{\r\n\tstruct io_context *ret = NULL;\r\n\r\n\t/*\r\n\t * Check for unlikely race with exiting task. ioc ref count is\r\n\t * zero when ioc is being detached.\r\n\t */\r\n\tdo {\r\n\t\tret = current_io_context(gfp_flags, node);\r\n\t\tif (unlikely(!ret))\r\n\t\t\tbreak;\r\n\t} while (!atomic_long_inc_not_zero(&ret->refcount));\r\n\r\n\treturn ret;\r\n}\r\nEXPORT_SYMBOL(get_io_context);\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 4 top-level constructs (functions/declarations), not a single function",
+  "vulnerable_line_range": null,
+  "vulnerable_snippet": null,
   "fixed_line_range": null,
-  "fixed_snippet": null
+  "fixed_snippet": null,
+  "func_name": "exit_io_context",
+  "extraction_status": "skipped_hunk_not_contained",
+  "extraction_reason": "changed lines 80-87 are not fully inside the extracted function (69-85)",
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -1,17 +1,16 @@
 """Structural validation for a case corpus, independent of whatever built it.
 
-The extraction defect documented in `experiments/2026-08-22_extraction-v2/`
-survived for eight arms because `extraction_status: "ok"` was written by the
-same code that had the bug, and the one validity check that was run - brace
-balance - could not see the failure mode (a slice that over-runs the target
-function but happens to balance). Nothing verified the corpus against the raw
-data in D.zip.
+An earlier extraction defect survived a long run of experiments because
+`extraction_status: "ok"` was written by the same code that had the bug, and
+the one validity check being run - brace balance - could not see the failure
+mode (a slice that over-runs the target function but happens to balance).
+Nothing verified the corpus against the raw data in D.zip.
 
 This module is that check. It knows nothing about how a corpus was produced; it
 asserts properties every usable case must have, and exits non-zero when they do
 not hold. Run it on any corpus before trusting a number derived from it.
 
-    python3 scripts/validate_corpus.py                          # the published cases/
+    python3 scripts/validate_corpus.py                          # cases/
     python3 scripts/validate_corpus.py --cases-dir <dir>        # any other corpus
     python3 scripts/validate_corpus.py --cases-dir <dir> --quiet
 

@@ -8,18 +8,29 @@
   "cve_summary": "The ip_cmsg_recv_checksum function in net/ipv4/ip_sockglue.c in the Linux kernel before 4.10.1 has incorrect expectations about skb data layout, which allows local users to cause a denial of service (buffer over-read) or possibly have unspecified other impact via crafted system calls, as demonstrated by use of the MSG_MORE flag in conjunction with loopback UDP transmission.",
   "commit_message": "ip: fix IP_CHECKSUM handling\n\nThe skbs processed by ip_cmsg_recv() are not guaranteed to\nbe linear e.g. when sending UDP packets over loopback with\nMSGMORE.\nUsing csum_partial() on [potentially] the whole skb len\nis dangerous; instead be on the safe side and use skb_checksum().\n\nThanks to syzkaller team to detect the issue and provide the\nreproducer.\n\nv1 -> v2:\n - move the variable declaration in a tighter scope\n\nFixes: ad6f939ab193 (\"ip: Add offset parameter to ip_cmsg_recv\")\nReported-by: Andrey Konovalov <andreyknvl@google.com>\nSigned-off-by: Paolo Abeni <pabeni@redhat.com>\nAcked-by: Eric Dumazet <edumazet@google.com>\nSigned-off-by: David S. Miller <davem@davemloft.net>",
   "changed_file": "net/ipv4/ip_sockglue.c",
-  "docstring": "\"\"\"\nSummary: \nProcesses and appends the checksum information to a control message for a received packet.\n\nParameters: \nmsg (struct msghdr *): Pointer to the message header where the checksum will be added.\nskb (struct sk_buff *): Pointer to the socket buffer containing the packet data.\ntlen (int): Length of the transport layer header.\noffset (int): Offset used to adjust the checksum calculation.\n\nReturns: \nNone\n\nLogic: The function first checks if the checksum is complete; if not, it exits early. If an offset is provided, it adjusts the checksum for the specified portion of the packet. Finally, it appends the computed checksum to the provided message header.\n\"\"\"",
+  "docstring": "\"\"\"\nSummary: \nProcesses and appends the checksum information to a control message for a received packet.\n\nParameters: \nmsg (struct msghdr *): Pointer to the message header where the checksum will be added.\nskb (struct sk_buff *): Pointer to the socket buffer containing the packet data.\ntlen (int): Length of the transport layer header.\noffset (int): Offset used to adjust the checksum calculation.\n\nReturns: \nNone\n\nLogic: \nThe function first checks if the checksum is complete; if not, it exits early. If an offset is provided, it adjusts the checksum by subtracting the checksum of the specified portion of the packet. Finally, it appends the computed checksum to the provided message header.\n\"\"\"",
   "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    111,
+    125
+  ],
   "vulnerable_line_range": [
     111,
     125
   ],
-  "vulnerable_snippet": "static void ip_cmsg_recv_checksum(struct msghdr *msg, struct sk_buff *skb,\r\n\t\t\t\t  int tlen, int offset)\r\n{\r\n\t__wsum csum = skb->csum;\r\n\r\n\tif (skb->ip_summed != CHECKSUM_COMPLETE)\r\n\t\treturn;\r\n\r\n\tif (offset != 0)\r\n\t\tcsum = csum_sub(csum,\r\n\t\t\t\tcsum_partial(skb_transport_header(skb) + tlen,\r\n\t\t\t\t\t     offset, 0));\r\n\r\n\tput_cmsg(msg, SOL_IP, IP_CHECKSUM, sizeof(__wsum), &csum);\r\n}\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_snippet": "static void ip_cmsg_recv_checksum(struct msghdr *msg, struct sk_buff *skb,\r\n\t\t\t\t  int tlen, int offset)\r\n{\r\n\t__wsum csum = skb->csum;\r\n\r\n\tif (skb->ip_summed != CHECKSUM_COMPLETE)\r\n\t\treturn;\r\n\r\n\tif (offset != 0)\r\n\t\tcsum = csum_sub(csum,\r\n\t\t\t\tcsum_partial(skb_transport_header(skb) + tlen,\r\n\t\t\t\t\t     offset, 0));\r\n\r\n\tput_cmsg(msg, SOL_IP, IP_CHECKSUM, sizeof(__wsum), &csum);\r\n}",
   "fixed_line_range": [
     111,
     125
   ],
-  "fixed_snippet": "static void ip_cmsg_recv_checksum(struct msghdr *msg, struct sk_buff *skb,\r\n\t\t\t\t  int tlen, int offset)\r\n{\r\n\t__wsum csum = skb->csum;\r\n\r\n\tif (skb->ip_summed != CHECKSUM_COMPLETE)\r\n\t\treturn;\r\n\r\n\tif (offset != 0) {\r\n\t\tint tend_off = skb_transport_offset(skb) + tlen;\r\n\t\tcsum = csum_sub(csum, skb_checksum(skb, tend_off, offset, 0));\r\n\t}\r\n\r\n\tput_cmsg(msg, SOL_IP, IP_CHECKSUM, sizeof(__wsum), &csum);\r\n}"
+  "fixed_snippet": "static void ip_cmsg_recv_checksum(struct msghdr *msg, struct sk_buff *skb,\r\n\t\t\t\t  int tlen, int offset)\r\n{\r\n\t__wsum csum = skb->csum;\r\n\r\n\tif (skb->ip_summed != CHECKSUM_COMPLETE)\r\n\t\treturn;\r\n\r\n\tif (offset != 0) {\r\n\t\tint tend_off = skb_transport_offset(skb) + tlen;\r\n\t\tcsum = csum_sub(csum, skb_checksum(skb, tend_off, offset, 0));\r\n\t}\r\n\r\n\tput_cmsg(msg, SOL_IP, IP_CHECKSUM, sizeof(__wsum), &csum);\r\n}",
+  "func_name": "ip_cmsg_recv_checksum",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -8,18 +8,29 @@
   "cve_summary": "drivers/media/usb/dvb-usb-v2/dvb_usb_core.c in the Linux kernel 4.9.x and 4.10.x before 4.10.12 interacts incorrectly with the CONFIG_VMAP_STACK option, which allows local users to cause a denial of service (system crash or memory corruption) or possibly have unspecified other impact by leveraging use of more than one virtual page for a DMA scatterlist.",
   "commit_message": "[media] dvb-usb-v2: avoid use-after-free\n\nI ran into a stack frame size warning because of the on-stack copy of\nthe USB device structure:\n\ndrivers/media/usb/dvb-usb-v2/dvb_usb_core.c: In function 'dvb_usbv2_disconnect':\ndrivers/media/usb/dvb-usb-v2/dvb_usb_core.c:1029:1: error: the frame size of 1104 bytes is larger than 1024 bytes [-Werror=frame-larger-than=]\n\nCopying a device structure like this is wrong for a number of other reasons\ntoo aside from the possible stack overflow. One of them is that the\ndev_info() call will print the name of the device later, but AFAICT\nwe have only copied a pointer to the name earlier and the actual name\nhas been freed by the time it gets printed.\n\nThis removes the on-stack copy of the device and instead copies the\ndevice name using kstrdup(). I'm ignoring the possible failure here\nas both printk() and kfree() are able to deal with NULL pointers.\n\nSigned-off-by: Arnd Bergmann <arnd@arndb.de>\nSigned-off-by: Mauro Carvalho Chehab <mchehab@s-opensource.com>",
   "changed_file": "drivers/media/usb/dvb-usb-v2/dvb_usb_core.c",
-  "docstring": "/**\n * Summary: Disconnects a USB device from the DVB USB interface.\n * \n * Parameters:\n * intf (struct usb_interface*): Pointer to the USB interface to disconnect.\n * \n * Returns: None\n * \n * Logic: The function retrieves the associated DVB USB device from the USB interface, logs the interface\n * number, and calls an exit function if defined in the device properties. It then performs cleanup\n * by calling dvb_usbv2_exit and logs a success message.\n */",
+  "docstring": "/**\n * Summary: Disconnects a USB device from the DVB USB interface.\n * \n * Parameters:\n * intf (struct usb_interface*): Pointer to the USB interface to disconnect.\n * \n * Returns: None\n * \n * Logic: The function retrieves the associated DVB USB device from the USB interface, logs the interface number, and calls an exit function if defined in the device properties. It then performs cleanup by calling dvb_usbv2_exit, logs a success message, and frees allocated memory for the device name.\n */",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     1012,
     1029
   ],
-  "vulnerable_snippet": "void dvb_usbv2_disconnect(struct usb_interface *intf)\r\n{\r\n\tstruct dvb_usb_device *d = usb_get_intfdata(intf);\r\n\tconst char *name = d->name;\r\n\tstruct device dev = d->udev->dev;\r\n\r\n\tdev_dbg(&d->udev->dev, \"%s: bInterfaceNumber=%d\\n\", __func__,\r\n\t\t\tintf->cur_altsetting->desc.bInterfaceNumber);\r\n\r\n\tif (d->props->exit)\r\n\t\td->props->exit(d);\r\n\r\n\tdvb_usbv2_exit(d);\r\n\r\n\tdev_info(&dev, \"%s: '%s' successfully deinitialized and disconnected\\n\",\r\n\t\t\tKBUILD_MODNAME, name);\r\n}\r\nEXPORT_SYMBOL(dvb_usbv2_disconnect);\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    1012,
+    1028
+  ],
+  "vulnerable_snippet": "void dvb_usbv2_disconnect(struct usb_interface *intf)\r\n{\r\n\tstruct dvb_usb_device *d = usb_get_intfdata(intf);\r\n\tconst char *name = d->name;\r\n\tstruct device dev = d->udev->dev;\r\n\r\n\tdev_dbg(&d->udev->dev, \"%s: bInterfaceNumber=%d\\n\", __func__,\r\n\t\t\tintf->cur_altsetting->desc.bInterfaceNumber);\r\n\r\n\tif (d->props->exit)\r\n\t\td->props->exit(d);\r\n\r\n\tdvb_usbv2_exit(d);\r\n\r\n\tdev_info(&dev, \"%s: '%s' successfully deinitialized and disconnected\\n\",\r\n\t\t\tKBUILD_MODNAME, name);\r\n}",
   "fixed_line_range": [
     1012,
     1029
   ],
-  "fixed_snippet": "void dvb_usbv2_disconnect(struct usb_interface *intf)\r\n{\r\n\tstruct dvb_usb_device *d = usb_get_intfdata(intf);\r\n\tconst char *devname = kstrdup(dev_name(&d->udev->dev), GFP_KERNEL);\r\n\tconst char *drvname = d->name;\r\n\r\n\tdev_dbg(&d->udev->dev, \"%s: bInterfaceNumber=%d\\n\", __func__,\r\n\t\t\tintf->cur_altsetting->desc.bInterfaceNumber);\r\n\r\n\tif (d->props->exit)\r\n\t\td->props->exit(d);\r\n\r\n\tdvb_usbv2_exit(d);\r\n\r\n\tpr_info(\"%s: '%s:%s' successfully deinitialized and disconnected\\n\",\r\n\t\tKBUILD_MODNAME, drvname, devname);\r\n\tkfree(devname);\r\n}"
+  "fixed_snippet": "void dvb_usbv2_disconnect(struct usb_interface *intf)\r\n{\r\n\tstruct dvb_usb_device *d = usb_get_intfdata(intf);\r\n\tconst char *devname = kstrdup(dev_name(&d->udev->dev), GFP_KERNEL);\r\n\tconst char *drvname = d->name;\r\n\r\n\tdev_dbg(&d->udev->dev, \"%s: bInterfaceNumber=%d\\n\", __func__,\r\n\t\t\tintf->cur_altsetting->desc.bInterfaceNumber);\r\n\r\n\tif (d->props->exit)\r\n\t\td->props->exit(d);\r\n\r\n\tdvb_usbv2_exit(d);\r\n\r\n\tpr_info(\"%s: '%s:%s' successfully deinitialized and disconnected\\n\",\r\n\t\tKBUILD_MODNAME, drvname, devname);\r\n\tkfree(devname);\r\n}",
+  "func_name": "dvb_usbv2_disconnect",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

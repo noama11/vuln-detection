@@ -8,18 +8,29 @@
   "cve_summary": "The apic_get_tmcct function in arch/x86/kvm/lapic.c in the KVM subsystem in the Linux kernel through 3.12.5 allows guest OS users to cause a denial of service (divide-by-zero error and host OS crash) via crafted modifications of the TMICT value.",
   "commit_message": "KVM: x86: Fix potential divide by 0 in lapic (CVE-2013-6367)\n\nUnder guest controllable circumstances apic_get_tmcct will execute a\ndivide by zero and cause a crash.  If the guest cpuid support\ntsc deadline timers and performs the following sequence of requests\nthe host will crash.\n- Set the mode to periodic\n- Set the TMICT to 0\n- Set the mode bits to 11 (neither periodic, nor one shot, nor tsc deadline)\n- Set the TMICT to non-zero.\nThen the lapic_timer.period will be 0, but the TMICT will not be.  If the\nguest then reads from the TMCCT then the host will perform a divide by 0.\n\nThis patch ensures that if the lapic_timer.period is 0, then the division\ndoes not occur.\n\nReported-by: Andrew Honig <ahonig@google.com>\nCc: stable@vger.kernel.org\nSigned-off-by: Andrew Honig <ahonig@google.com>\nSigned-off-by: Paolo Bonzini <pbonzini@redhat.com>",
   "changed_file": "arch/x86/kvm/lapic.c",
-  "docstring": "Summary: This function retrieves the current timer count for the APIC (Advanced Programmable Interrupt Controller) by calculating the remaining time on the timer.\n\nParameters:\n- apic (struct kvm_lapic *): Pointer to the LAPIC structure representing the APIC.\n\nReturns:\n- u32: The current timer count value, or 0 if the initial count is 0 or the timer period is 0.\n\nLogic: The function first checks if the provided APIC pointer is valid. It then verifies whether the initial count permits a current count to be calculated, returning 0 when appropriate. It calculates the remaining time on the timer, ensuring it is non-negative. The function computes the timer count by taking the modulus of the remaining time with the timer period and dividing by the bus cycle duration adjusted by the divide count. Finally, it returns the computed timer count.",
+  "docstring": "Summary: This function retrieves the current timer count for the APIC (Advanced Programmable Interrupt Controller) by calculating the remaining time on the timer.\n\nParameters:\n- apic (struct kvm_lapic *): Pointer to the LAPIC structure representing the APIC.\n\nReturns:\n- u32: The current timer count value, or 0 if the initial count is 0 or the timer period is 0.\n\nLogic: The function first checks if the provided APIC pointer is valid. It then verifies if the initial count or timer period is zero, returning 0 if true. It calculates the remaining time on the timer, ensuring it is non-negative. The function computes the timer count by taking the modulus of the remaining time with the timer period and dividing by the bus cycle duration adjusted by the divide count. Finally, it returns the computed timer count.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     835,
     857
   ],
-  "vulnerable_snippet": "static u32 apic_get_tmcct(struct kvm_lapic *apic)\r\n{\r\n\tktime_t remaining;\r\n\ts64 ns;\r\n\tu32 tmcct;\r\n\r\n\tASSERT(apic != NULL);\r\n\r\n\t/* if initial count is 0, current count should also be 0 */\r\n\tif (kvm_apic_get_reg(apic, APIC_TMICT) == 0)\r\n\t\treturn 0;\r\n\r\n\tremaining = hrtimer_get_remaining(&apic->lapic_timer.timer);\r\n\tif (ktime_to_ns(remaining) < 0)\r\n\t\tremaining = ktime_set(0, 0);\r\n\r\n\tns = mod_64(ktime_to_ns(remaining), apic->lapic_timer.period);\r\n\ttmcct = div64_u64(ns,\r\n\t\t\t (APIC_BUS_CYCLE_NS * apic->divide_count));\r\n\r\n\treturn tmcct;\r\n}\r\n\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_line_range": [
+    835,
+    856
+  ],
+  "vulnerable_snippet": "static u32 apic_get_tmcct(struct kvm_lapic *apic)\r\n{\r\n\tktime_t remaining;\r\n\ts64 ns;\r\n\tu32 tmcct;\r\n\r\n\tASSERT(apic != NULL);\r\n\r\n\t/* if initial count is 0, current count should also be 0 */\r\n\tif (kvm_apic_get_reg(apic, APIC_TMICT) == 0)\r\n\t\treturn 0;\r\n\r\n\tremaining = hrtimer_get_remaining(&apic->lapic_timer.timer);\r\n\tif (ktime_to_ns(remaining) < 0)\r\n\t\tremaining = ktime_set(0, 0);\r\n\r\n\tns = mod_64(ktime_to_ns(remaining), apic->lapic_timer.period);\r\n\ttmcct = div64_u64(ns,\r\n\t\t\t (APIC_BUS_CYCLE_NS * apic->divide_count));\r\n\r\n\treturn tmcct;\r\n}",
   "fixed_line_range": [
     835,
     857
   ],
-  "fixed_snippet": "static u32 apic_get_tmcct(struct kvm_lapic *apic)\r\n{\r\n\tktime_t remaining;\r\n\ts64 ns;\r\n\tu32 tmcct;\r\n\r\n\tASSERT(apic != NULL);\r\n\r\n\t/* if initial count is 0, current count should also be 0 */\r\n\tif (kvm_apic_get_reg(apic, APIC_TMICT) == 0 ||\r\n\t\tapic->lapic_timer.period == 0)\r\n\t\treturn 0;\r\n\r\n\tremaining = hrtimer_get_remaining(&apic->lapic_timer.timer);\r\n\tif (ktime_to_ns(remaining) < 0)\r\n\t\tremaining = ktime_set(0, 0);\r\n\r\n\tns = mod_64(ktime_to_ns(remaining), apic->lapic_timer.period);\r\n\ttmcct = div64_u64(ns,\r\n\t\t\t (APIC_BUS_CYCLE_NS * apic->divide_count));\r\n\r\n\treturn tmcct;\r\n}"
+  "fixed_snippet": "static u32 apic_get_tmcct(struct kvm_lapic *apic)\r\n{\r\n\tktime_t remaining;\r\n\ts64 ns;\r\n\tu32 tmcct;\r\n\r\n\tASSERT(apic != NULL);\r\n\r\n\t/* if initial count is 0, current count should also be 0 */\r\n\tif (kvm_apic_get_reg(apic, APIC_TMICT) == 0 ||\r\n\t\tapic->lapic_timer.period == 0)\r\n\t\treturn 0;\r\n\r\n\tremaining = hrtimer_get_remaining(&apic->lapic_timer.timer);\r\n\tif (ktime_to_ns(remaining) < 0)\r\n\t\tremaining = ktime_set(0, 0);\r\n\r\n\tns = mod_64(ktime_to_ns(remaining), apic->lapic_timer.period);\r\n\ttmcct = div64_u64(ns,\r\n\t\t\t (APIC_BUS_CYCLE_NS * apic->divide_count));\r\n\r\n\treturn tmcct;\r\n}",
+  "func_name": "apic_get_tmcct",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -1,6 +1,6 @@
 ---
 name: vuln-generator
-description: Implements a single function purely from a natural-language specification, for a controlled research experiment on spec-vs-implementation drift. Only ever invoked by the run-case orchestrator with a docstring and a target language - never for general coding tasks.
+description: Implements a single function purely from a natural-language specification, for a controlled research experiment on spec-vs-implementation drift. Invoked by method/run.py with a docstring and a target language and nothing else - never for general coding tasks.
 tools: []
 model: haiku
 ---

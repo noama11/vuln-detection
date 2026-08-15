@@ -10,16 +10,27 @@
   "changed_file": "arch/x86/kvm/emulate.c",
   "docstring": "\"\"\"\nSummary: \nHandles the far return operation in x86 emulation.\n\nParameters: \nctxt (struct x86_emulate_ctxt *): Pointer to the emulation context containing CPU state and operations.\n\nReturns: \nint: Status of the emulation operation, where X86EMUL_CONTINUE indicates success, and other values indicate different error states.\n\nLogic: \nThe function retrieves the instruction pointer (EIP) and code segment (CS) from the stack using the emulate_pop function. It checks for privilege level violations and loads the segment descriptor for the code segment. Finally, it assigns the new instruction pointer and handles potential errors during the process. If any operation fails, it returns an appropriate error code.\n\"\"\"",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     2180,
     2207
   ],
-  "vulnerable_snippet": "\r\n\trc = emulate_pop(ctxt, &eip, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\r\n\treturn assign_eip_near(ctxt, eip);\r\n}\r\n\r\nstatic int em_ret_far(struct x86_emulate_ctxt *ctxt)\r\n{\r\n\tint rc;\r\n\tunsigned long eip, cs;\r\n\tu16 old_cs;\r\n\tint cpl = ctxt->ops->cpl(ctxt);\r\n\tstruct desc_struct old_desc, new_desc;\r\n\tconst struct x86_emulate_ops *ops = ctxt->ops;\r\n\r\n\tif (ctxt->mode == X86EMUL_MODE_PROT64)\r\n\t\tops->get_segment(ctxt, &old_cs, &old_desc, NULL,\r\n\t\t\t\t VCPU_SREG_CS);\r\n\r\n\trc = emulate_pop(ctxt, &eip, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\trc = emulate_pop(ctxt, &cs, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\t/* Outer-privilege level return is not implemented */\r\n",
+  "vulnerable_line_range": [
+    2188,
+    2221
+  ],
+  "vulnerable_snippet": "static int em_ret_far(struct x86_emulate_ctxt *ctxt)\r\n{\r\n\tint rc;\r\n\tunsigned long eip, cs;\r\n\tu16 old_cs;\r\n\tint cpl = ctxt->ops->cpl(ctxt);\r\n\tstruct desc_struct old_desc, new_desc;\r\n\tconst struct x86_emulate_ops *ops = ctxt->ops;\r\n\r\n\tif (ctxt->mode == X86EMUL_MODE_PROT64)\r\n\t\tops->get_segment(ctxt, &old_cs, &old_desc, NULL,\r\n\t\t\t\t VCPU_SREG_CS);\r\n\r\n\trc = emulate_pop(ctxt, &eip, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\trc = emulate_pop(ctxt, &cs, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\t/* Outer-privilege level return is not implemented */\r\n\tif (ctxt->mode >= X86EMUL_MODE_PROT16 && (cs & 3) > cpl)\r\n\t\treturn X86EMUL_UNHANDLEABLE;\r\n\trc = __load_segment_descriptor(ctxt, (u16)cs, VCPU_SREG_CS, cpl,\r\n\t\t\t\t       X86_TRANSFER_RET,\r\n\t\t\t\t       &new_desc);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\trc = assign_eip_far(ctxt, eip, &new_desc);\r\n\tif (rc != X86EMUL_CONTINUE) {\r\n\t\tWARN_ON(ctxt->mode != X86EMUL_MODE_PROT64);\r\n\t\tops->set_segment(ctxt, old_cs, &old_desc, 0, VCPU_SREG_CS);\r\n\t}\r\n\treturn rc;\r\n}",
+  "fixed_line_range": [
+    2180,
+    2207
+  ],
+  "fixed_snippet": "static int em_ret_far(struct x86_emulate_ctxt *ctxt)\r\n{\r\n\tint rc;\r\n\tunsigned long eip, cs;\r\n\tint cpl = ctxt->ops->cpl(ctxt);\r\n\tstruct desc_struct new_desc;\r\n\r\n\trc = emulate_pop(ctxt, &eip, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\trc = emulate_pop(ctxt, &cs, ctxt->op_bytes);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\t/* Outer-privilege level return is not implemented */\r\n\tif (ctxt->mode >= X86EMUL_MODE_PROT16 && (cs & 3) > cpl)\r\n\t\treturn X86EMUL_UNHANDLEABLE;\r\n\trc = __load_segment_descriptor(ctxt, (u16)cs, VCPU_SREG_CS, cpl,\r\n\t\t\t\t       X86_TRANSFER_RET,\r\n\t\t\t\t       &new_desc);\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn rc;\r\n\trc = assign_eip_far(ctxt, eip, &new_desc);\r\n\t/* Error handling is not implemented. */\r\n\tif (rc != X86EMUL_CONTINUE)\r\n\t\treturn X86EMUL_UNHANDLEABLE;\r\n\r\n\treturn rc;\r\n}",
+  "func_name": "em_ret_far",
   "extraction_status": "ok",
   "extraction_reason": null,
-  "fixed_line_range": [
-    262,
-    265
-  ],
-  "fixed_snippet": "\tif (!(ctxt->regs_valid & (1 << nr))) {\r\n\t\tctxt->regs_valid |= 1 << nr;\r\n\t\tctxt->_regs[nr] = ctxt->ops->read_gpr(ctxt, nr);\r\n\t}"
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

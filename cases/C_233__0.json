@@ -10,13 +10,27 @@
   "changed_file": "usr/src/uts/common/fs/dev/sdev_zvolops.c",
   "docstring": "/******************************************************************************  \n * Summary:  \n * This function implements the readdir operation for a device volume,  \n * allowing directory entries to be read from a specified vnode.  \n *  \n * Parameters:  \n * dvp (struct vnode *): The vnode representing the directory to read from.  \n * uiop (struct uio *): The user I/O structure for reading data.  \n * cred (struct cred *): The credentials of the user requesting the read.  \n * eofp (int *): Pointer to an integer indicating end-of-file status.  \n * ct_unused (caller_context_t *): Unused context parameter.  \n * flags_unused (int): Unused flags parameter.  \n *  \n * Returns:  \n * int: Returns 0 on success, or an error code on failure.  \n *  \n * Logic:  \n * The function checks the path of the device node and handles special cases  \n * for the ZVOL_DIR, creating necessary directories if needed, and iterates  \n * over datasets to populate the directory entries. It manages read/write  \n * locks to ensure thread safety during directory operations.  \n ******************************************************************************/",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     762,
     803
   ],
-  "vulnerable_snippet": "static int\r\ndevzvol_readdir(struct vnode *dvp, struct uio *uiop, struct cred *cred,\r\n    int *eofp, caller_context_t *ct_unused, int flags_unused)\r\n{\r\n\tstruct sdev_node *sdvp = VTOSDEV(dvp);\r\n\tchar *ptr;\r\n\r\n\tsdcmn_err13((\"zv readdir of '%s' %s'\", sdvp->sdev_path,\r\n\t    sdvp->sdev_name));\r\n\r\n\tif (strcmp(sdvp->sdev_path, ZVOL_DIR) == 0) {\r\n\t\tstruct vnode *vp;\r\n\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\t(void) devname_lookup_func(sdvp, \"dsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\t(void) devname_lookup_func(sdvp, \"rdsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\tif (uiop->uio_offset == 0)\r\n\t\tdevzvol_prunedir(sdvp);\r\n\tptr = sdvp->sdev_path + strlen(ZVOL_DIR);\r\n\tif ((strcmp(ptr, \"/dsk\") == 0) || (strcmp(ptr, \"/rdsk\") == 0)) {\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\tdevzvol_create_pool_dirs(dvp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\r\n\tptr = strchr(ptr + 1, '/') + 1;\r\n\trw_exit(&sdvp->sdev_contents);\r\n\tsdev_iter_datasets(dvp, ZFS_IOC_DATASET_LIST_NEXT, ptr);\r\n\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n}\r\n\r\nconst fs_operation_def_t devzvol_vnodeops_tbl[] = {\r\n\tVOPNAME_READDIR,\t{ .vop_readdir = devzvol_readdir },\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 2 top-level constructs (functions/declarations), not a single function",
-  "fixed_line_range": null,
-  "fixed_snippet": null
+  "vulnerable_line_range": [
+    762,
+    800
+  ],
+  "vulnerable_snippet": "static int\r\ndevzvol_readdir(struct vnode *dvp, struct uio *uiop, struct cred *cred,\r\n    int *eofp, caller_context_t *ct_unused, int flags_unused)\r\n{\r\n\tstruct sdev_node *sdvp = VTOSDEV(dvp);\r\n\tchar *ptr;\r\n\r\n\tsdcmn_err13((\"zv readdir of '%s' %s'\", sdvp->sdev_path,\r\n\t    sdvp->sdev_name));\r\n\r\n\tif (strcmp(sdvp->sdev_path, ZVOL_DIR) == 0) {\r\n\t\tstruct vnode *vp;\r\n\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\t(void) devname_lookup_func(sdvp, \"dsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\t(void) devname_lookup_func(sdvp, \"rdsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\tif (uiop->uio_offset == 0)\r\n\t\tdevzvol_prunedir(sdvp);\r\n\tptr = sdvp->sdev_path + strlen(ZVOL_DIR);\r\n\tif ((strcmp(ptr, \"/dsk\") == 0) || (strcmp(ptr, \"/rdsk\") == 0)) {\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\tdevzvol_create_pool_dirs(dvp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\r\n\tptr = strchr(ptr + 1, '/') + 1;\r\n\trw_exit(&sdvp->sdev_contents);\r\n\tsdev_iter_datasets(dvp, ZFS_IOC_DATASET_LIST_NEXT, ptr);\r\n\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n}",
+  "fixed_line_range": [
+    762,
+    803
+  ],
+  "fixed_snippet": "static int\r\ndevzvol_readdir(struct vnode *dvp, struct uio *uiop, struct cred *cred,\r\n    int *eofp, caller_context_t *ct_unused, int flags_unused)\r\n{\r\n\tstruct sdev_node *sdvp = VTOSDEV(dvp);\r\n\tchar *ptr;\r\n\r\n\tsdcmn_err13((\"zv readdir of '%s' %s'\", sdvp->sdev_path,\r\n\t    sdvp->sdev_name));\r\n\r\n\tif (strcmp(sdvp->sdev_path, ZVOL_DIR) == 0) {\r\n\t\tstruct vnode *vp;\r\n\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\t(void) devname_lookup_func(sdvp, \"dsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\t(void) devname_lookup_func(sdvp, \"rdsk\", &vp, cred,\r\n\t\t    devzvol_create_dir, SDEV_VATTR);\r\n\t\tVN_RELE(vp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\tif (uiop->uio_offset == 0)\r\n\t\tdevzvol_prunedir(sdvp);\r\n\tptr = sdvp->sdev_path + strlen(ZVOL_DIR);\r\n\tif ((strcmp(ptr, \"/dsk\") == 0) || (strcmp(ptr, \"/rdsk\") == 0)) {\r\n\t\trw_exit(&sdvp->sdev_contents);\r\n\t\tdevzvol_create_pool_dirs(dvp);\r\n\t\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\t\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n\t}\r\n\r\n\tptr = strchr(ptr + 1, '/');\r\n\tif (ptr == NULL)\r\n\t\treturn (ENOENT);\r\n\tptr++;\r\n\trw_exit(&sdvp->sdev_contents);\r\n\tsdev_iter_datasets(dvp, ZFS_IOC_DATASET_LIST_NEXT, ptr);\r\n\trw_enter(&sdvp->sdev_contents, RW_READER);\r\n\treturn (devname_readdir_func(dvp, uiop, cred, eofp, 0));\r\n}",
+  "func_name": "devzvol_readdir",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

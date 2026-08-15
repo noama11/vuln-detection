@@ -8,18 +8,29 @@
   "cve_summary": "The check_1_6_dummy function in lib/kadm5/srv/svr_principal.c in kadmind in MIT Kerberos 5 (aka krb5) 1.8.x, 1.9.x, and 1.10.x before 1.10.2 allows remote authenticated administrators to cause a denial of service (NULL pointer dereference and daemon crash) via a KRB5_KDB_DISALLOW_ALL_TIX create request that lacks a password.",
   "commit_message": "Null pointer deref in kadmind [CVE-2012-1013]\n\nThe fix for #6626 could cause kadmind to dereference a null pointer if\na create-principal request contains no password but does contain the\nKRB5_KDB_DISALLOW_ALL_TIX flag (e.g. \"addprinc -randkey -allow_tix\nname\").  Only clients authorized to create principals can trigger the\nbug.  Fix the bug by testing for a null password in check_1_6_dummy.\n\nCVSSv2 vector: AV:N/AC:M/Au:S/C:N/I:N/A:P/E:H/RL:O/RC:C\n\n[ghudson@mit.edu: Minor style change and commit message]\n\nticket: 7152\ntarget_version: 1.10.2\ntags: pullup",
   "changed_file": "src/lib/kadm5/srv/svr_principal.c",
-  "docstring": "\"\"\"\nSummary: \nChecks if the provided password meets the criteria for a dummy password used in version 1.6.\n\nParameters: \nentry (kadm5_principal_ent_t): The principal entry to check against.\nmask (long): A mask indicating attributes to check.\nn_ks_tuple (int): The number of key salt tuples.\nks_tuple (krb5_key_salt_tuple *): An array of key salt tuples.\npassptr (char **): A pointer to the password string to validate.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: The function first checks the relevant mask and entry attributes and exits early when they do not indicate an old-style randkey operation. It then verifies that the password matches the expected dummy password format (octets 1 to 255). If the password is valid, it sets the password pointer to NULL, indicating that a random password should be used instead.\n\"\"\"",
+  "docstring": "\"\"\"\nSummary: \nChecks if the provided password meets the criteria for a dummy password used in version 1.6.\n\nParameters: \nentry (kadm5_principal_ent_t): The principal entry to check against.\nmask (long): A mask indicating attributes to check.\nn_ks_tuple (int): The number of key salt tuples.\nks_tuple (krb5_key_salt_tuple *): An array of key salt tuples.\npassptr (char **): A pointer to the password string to validate.\n\nReturns: \nNone: This function does not return a value.\n\nLogic: \nThe function first checks if the password is NULL, if the mask does not include KADM5_ATTRIBUTES, or if the entry has the KRB5_KDB_DISALLOW_ALL_TIX attribute set. If any of these conditions are true, it exits early. It then verifies that the password matches the expected dummy password format (octets 1 to 255). If the password is valid, it sets the password pointer to NULL, indicating that a random password should be used instead.\n\"\"\"",
   "heuristic_leakage_flag": false,
+  "scope_line_range": [
+    181,
+    200
+  ],
   "vulnerable_line_range": [
     181,
     200
   ],
-  "vulnerable_snippet": "static void\r\ncheck_1_6_dummy(kadm5_principal_ent_t entry, long mask,\r\n                int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char **passptr)\r\n{\r\n    int i;\r\n    char *password = *passptr;\r\n\r\n    /* Old-style randkey operations disallowed tickets to start. */\r\n    if (!(mask & KADM5_ATTRIBUTES) ||\r\n        !(entry->attributes & KRB5_KDB_DISALLOW_ALL_TIX))\r\n        return;\r\n\r\n    /* The 1.6 dummy password was the octets 1..255. */\r\n    for (i = 0; (unsigned char) password[i] == i + 1; i++);\r\n    if (password[i] != '\\0' || i != 255)\r\n        return;\r\n\r\n    /* This will make the caller use a random password instead. */\r\n    *passptr = NULL;\r\n}\r\n",
-  "extraction_status": "ok",
-  "extraction_reason": null,
+  "vulnerable_snippet": "static void\r\ncheck_1_6_dummy(kadm5_principal_ent_t entry, long mask,\r\n                int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char **passptr)\r\n{\r\n    int i;\r\n    char *password = *passptr;\r\n\r\n    /* Old-style randkey operations disallowed tickets to start. */\r\n    if (!(mask & KADM5_ATTRIBUTES) ||\r\n        !(entry->attributes & KRB5_KDB_DISALLOW_ALL_TIX))\r\n        return;\r\n\r\n    /* The 1.6 dummy password was the octets 1..255. */\r\n    for (i = 0; (unsigned char) password[i] == i + 1; i++);\r\n    if (password[i] != '\\0' || i != 255)\r\n        return;\r\n\r\n    /* This will make the caller use a random password instead. */\r\n    *passptr = NULL;\r\n}",
   "fixed_line_range": [
     181,
     200
   ],
-  "fixed_snippet": "static void\r\ncheck_1_6_dummy(kadm5_principal_ent_t entry, long mask,\r\n                int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char **passptr)\r\n{\r\n    int i;\r\n    char *password = *passptr;\r\n\r\n    /* Old-style randkey operations disallowed tickets to start. */\r\n    if (password == NULL || !(mask & KADM5_ATTRIBUTES) ||\r\n        !(entry->attributes & KRB5_KDB_DISALLOW_ALL_TIX))\r\n        return;\r\n\r\n    /* The 1.6 dummy password was the octets 1..255. */\r\n    for (i = 0; (unsigned char) password[i] == i + 1; i++);\r\n    if (password[i] != '\\0' || i != 255)\r\n        return;\r\n\r\n    /* This will make the caller use a random password instead. */\r\n    *passptr = NULL;\r\n}"
+  "fixed_snippet": "static void\r\ncheck_1_6_dummy(kadm5_principal_ent_t entry, long mask,\r\n                int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char **passptr)\r\n{\r\n    int i;\r\n    char *password = *passptr;\r\n\r\n    /* Old-style randkey operations disallowed tickets to start. */\r\n    if (password == NULL || !(mask & KADM5_ATTRIBUTES) ||\r\n        !(entry->attributes & KRB5_KDB_DISALLOW_ALL_TIX))\r\n        return;\r\n\r\n    /* The 1.6 dummy password was the octets 1..255. */\r\n    for (i = 0; (unsigned char) password[i] == i + 1; i++);\r\n    if (password[i] != '\\0' || i != 255)\r\n        return;\r\n\r\n    /* This will make the caller use a random password instead. */\r\n    *passptr = NULL;\r\n}",
+  "func_name": "check_1_6_dummy",
+  "extraction_status": "ok",
+  "extraction_reason": null,
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

@@ -10,13 +10,21 @@
   "changed_file": "include/net/scm.h",
   "docstring": "Summary: This code fragment defines several inline functions for managing socket control messages and associated credentials in a network context.\n\nParameters: \nscm (struct scm_cookie *): A pointer to the SCM cookie structure that holds credential information.  \npid (struct pid *): A pointer to the process ID structure.  \ncred (const struct cred *): A pointer to the credential structure.  \nsock (struct socket *): A pointer to the socket structure.  \nmsg (struct msghdr *): A pointer to the message header structure.  \nflags (int): Flags for message reception.  \nforcecreds (bool): A boolean indicating whether to force credential setting.\n\nReturns: \nN/A\n\nLogic: The functions manage the lifecycle of `scm_cookie` structures, including setting and destroying credentials. The `scm_send` function initializes the `scm` structure and optionally sets credentials based on the `forcecreds` flag. The `scm_recv` function handles receiving messages, checking for control message presence, and managing credentials based on socket flags. If credentials are passed, they are formatted and added to the message. The `scm_passec` function conditionally adds security context information if security features are enabled. Error handling is minimal, primarily focusing on ensuring valid states before proceeding with operations.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     47,
     145
   ],
-  "vulnerable_snippet": "}\r\n#else\r\nstatic __inline__ void unix_get_peersec_dgram(struct socket *sock, struct scm_cookie *scm)\r\n{ }\r\n#endif /* CONFIG_SECURITY_NETWORK */\r\n\r\nstatic __inline__ void scm_set_cred(struct scm_cookie *scm,\r\n\t\t\t\t    struct pid *pid, const struct cred *cred)\r\n{\r\n\tscm->pid  = get_pid(pid);\r\n\tscm->cred = cred ? get_cred(cred) : NULL;\r\n\tscm->creds.pid = pid_vnr(pid);\r\n\tscm->creds.uid = cred ? cred->euid : INVALID_UID;\r\n\tscm->creds.gid = cred ? cred->egid : INVALID_GID;\r\n}\r\n\r\nstatic __inline__ void scm_destroy_cred(struct scm_cookie *scm)\r\n{\r\n\tput_pid(scm->pid);\r\n\tscm->pid  = NULL;\r\n\r\n\tif (scm->cred)\r\n\t\tput_cred(scm->cred);\r\n\tscm->cred = NULL;\r\n}\r\n\r\nstatic __inline__ void scm_destroy(struct scm_cookie *scm)\r\n{\r\n\tscm_destroy_cred(scm);\r\n\tif (scm->fp)\r\n\t\t__scm_destroy(scm);\r\n}\r\n\r\nstatic __inline__ int scm_send(struct socket *sock, struct msghdr *msg,\r\n\t\t\t       struct scm_cookie *scm, bool forcecreds)\r\n{\r\n\tmemset(scm, 0, sizeof(*scm));\r\n\tif (forcecreds)\r\n\t\tscm_set_cred(scm, task_tgid(current), current_cred());\r\n\tunix_get_peersec_dgram(sock, scm);\r\n\tif (msg->msg_controllen <= 0)\r\n\t\treturn 0;\r\n\treturn __scm_send(sock, msg, scm);\r\n}\r\n\r\n#ifdef CONFIG_SECURITY_NETWORK\r\nstatic inline void scm_passec(struct socket *sock, struct msghdr *msg, struct scm_cookie *scm)\r\n{\r\n\tchar *secdata;\r\n\tu32 seclen;\r\n\tint err;\r\n\r\n\tif (test_bit(SOCK_PASSSEC, &sock->flags)) {\r\n\t\terr = security_secid_to_secctx(scm->secid, &secdata, &seclen);\r\n\r\n\t\tif (!err) {\r\n\t\t\tput_cmsg(msg, SOL_SOCKET, SCM_SECURITY, seclen, secdata);\r\n\t\t\tsecurity_release_secctx(secdata, seclen);\r\n\t\t}\r\n\t}\r\n}\r\n#else\r\nstatic inline void scm_passec(struct socket *sock, struct msghdr *msg, struct scm_cookie *scm)\r\n{ }\r\n#endif /* CONFIG_SECURITY_NETWORK */\r\n\r\nstatic __inline__ void scm_recv(struct socket *sock, struct msghdr *msg,\r\n\t\t\t\tstruct scm_cookie *scm, int flags)\r\n{\r\n\tif (!msg->msg_control) {\r\n\t\tif (test_bit(SOCK_PASSCRED, &sock->flags) || scm->fp)\r\n\t\t\tmsg->msg_flags |= MSG_CTRUNC;\r\n\t\tscm_destroy(scm);\r\n\t\treturn;\r\n\t}\r\n\r\n\tif (test_bit(SOCK_PASSCRED, &sock->flags)) {\r\n\t\tstruct user_namespace *current_ns = current_user_ns();\r\n\t\tstruct ucred ucreds = {\r\n\t\t\t.pid = scm->creds.pid,\r\n\t\t\t.uid = from_kuid_munged(current_ns, scm->creds.uid),\r\n\t\t\t.gid = from_kgid_munged(current_ns, scm->creds.gid),\r\n\t\t};\r\n\t\tput_cmsg(msg, SOL_SOCKET, SCM_CREDENTIALS, sizeof(ucreds), &ucreds);\r\n\t}\r\n\r\n\tscm_destroy_cred(scm);\r\n\r\n\tscm_passec(sock, msg, scm);\r\n\r\n\tif (!scm->fp)\r\n\t\treturn;\r\n\t\r\n\tscm_detach_fds(msg, scm);\r\n}\r\n\r\n\r\n#endif /* __LINUX_NET_SCM_H */\r\n\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 8 top-level constructs (functions/declarations), not a single function",
+  "vulnerable_line_range": null,
+  "vulnerable_snippet": null,
   "fixed_line_range": null,
-  "fixed_snippet": null
+  "fixed_snippet": null,
+  "func_name": "scm_set_cred",
+  "extraction_status": "skipped_hunk_not_contained",
+  "extraction_reason": "changed lines 56-63 are not fully inside the extracted function (53-61)",
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }

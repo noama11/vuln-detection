@@ -10,13 +10,21 @@
   "changed_file": "drivers/video/fbmem.c",
   "docstring": "Summary: This code fragment defines file operations for a framebuffer device, including opening, releasing, and memory mapping functionalities.\n\nParameters: \nN/A\n\nReturns: \nN/A\n\nLogic: The code includes several functions related to framebuffer management, such as `fb_open`, `fb_release`, and a structure `fb_fops` that holds pointers to these operations. The `fb_open` function retrieves framebuffer information based on the inode, handles module loading, and manages locking to ensure thread safety. If the framebuffer is not available, it attempts to load the appropriate module. The `fb_release` function cleans up by releasing the framebuffer and unlocking the associated mutex. The `fb_fops` structure encapsulates various operations like reading, writing, and memory mapping, allowing the kernel to interact with the framebuffer device seamlessly. Error handling is implemented to manage cases where framebuffer information is unavailable or when module loading fails.",
   "heuristic_leakage_flag": false,
-  "vulnerable_line_range": [
+  "scope_line_range": [
     1390,
     1488
   ],
-  "vulnerable_snippet": "\t\tint res;\r\n\t\tres = fb->fb_mmap(info, vma);\r\n\t\tmutex_unlock(&info->mm_lock);\r\n\t\treturn res;\r\n\t}\r\n\r\n\t/* frame buffer memory */\r\n\tstart = info->fix.smem_start;\r\n\tlen = PAGE_ALIGN((start & ~PAGE_MASK) + info->fix.smem_len);\r\n\tif (off >= len) {\r\n\t\t/* memory mapped io */\r\n\t\toff -= len;\r\n\t\tif (info->var.accel_flags) {\r\n\t\t\tmutex_unlock(&info->mm_lock);\r\n\t\t\treturn -EINVAL;\r\n\t\t}\r\n\t\tstart = info->fix.mmio_start;\r\n\t\tlen = PAGE_ALIGN((start & ~PAGE_MASK) + info->fix.mmio_len);\r\n\t}\r\n\tmutex_unlock(&info->mm_lock);\r\n\tstart &= PAGE_MASK;\r\n\tif ((vma->vm_end - vma->vm_start + off) > len)\r\n\t\treturn -EINVAL;\r\n\toff += start;\r\n\tvma->vm_pgoff = off >> PAGE_SHIFT;\r\n\t/* VM_IO | VM_DONTEXPAND | VM_DONTDUMP are set by io_remap_pfn_range()*/\r\n\tvma->vm_page_prot = vm_get_page_prot(vma->vm_flags);\r\n\tfb_pgprotect(file, vma, off);\r\n\tif (io_remap_pfn_range(vma, vma->vm_start, off >> PAGE_SHIFT,\r\n\t\t\t     vma->vm_end - vma->vm_start, vma->vm_page_prot))\r\n\t\treturn -EAGAIN;\r\n\treturn 0;\r\n}\r\n\r\nstatic int\r\nfb_open(struct inode *inode, struct file *file)\r\n__acquires(&info->lock)\r\n__releases(&info->lock)\r\n{\r\n\tint fbidx = iminor(inode);\r\n\tstruct fb_info *info;\r\n\tint res = 0;\r\n\r\n\tinfo = get_fb_info(fbidx);\r\n\tif (!info) {\r\n\t\trequest_module(\"fb%d\", fbidx);\r\n\t\tinfo = get_fb_info(fbidx);\r\n\t\tif (!info)\r\n\t\t\treturn -ENODEV;\r\n\t}\r\n\tif (IS_ERR(info))\r\n\t\treturn PTR_ERR(info);\r\n\r\n\tmutex_lock(&info->lock);\r\n\tif (!try_module_get(info->fbops->owner)) {\r\n\t\tres = -ENODEV;\r\n\t\tgoto out;\r\n\t}\r\n\tfile->private_data = info;\r\n\tif (info->fbops->fb_open) {\r\n\t\tres = info->fbops->fb_open(info,1);\r\n\t\tif (res)\r\n\t\t\tmodule_put(info->fbops->owner);\r\n\t}\r\n#ifdef CONFIG_FB_DEFERRED_IO\r\n\tif (info->fbdefio)\r\n\t\tfb_deferred_io_open(info, inode, file);\r\n#endif\r\nout:\r\n\tmutex_unlock(&info->lock);\r\n\tif (res)\r\n\t\tput_fb_info(info);\r\n\treturn res;\r\n}\r\n\r\nstatic int \r\nfb_release(struct inode *inode, struct file *file)\r\n__acquires(&info->lock)\r\n__releases(&info->lock)\r\n{\r\n\tstruct fb_info * const info = file->private_data;\r\n\r\n\tmutex_lock(&info->lock);\r\n\tif (info->fbops->fb_release)\r\n\t\tinfo->fbops->fb_release(info,1);\r\n\tmodule_put(info->fbops->owner);\r\n\tmutex_unlock(&info->lock);\r\n\tput_fb_info(info);\r\n\treturn 0;\r\n}\r\n\r\nstatic const struct file_operations fb_fops = {\r\n\t.owner =\tTHIS_MODULE,\r\n\t.read =\t\tfb_read,\r\n\t.write =\tfb_write,\r\n\t.unlocked_ioctl = fb_ioctl,\r\n#ifdef CONFIG_COMPAT\r\n\t.compat_ioctl = fb_compat_ioctl,\r\n#endif\r\n",
-  "extraction_status": "unsupported_multi_function_scope",
-  "extraction_reason": "vulnerable-side scope spans 3 top-level constructs (functions/declarations), not a single function",
+  "vulnerable_line_range": null,
+  "vulnerable_snippet": null,
   "fixed_line_range": null,
-  "fixed_snippet": null
+  "fixed_snippet": null,
+  "func_name": "fb_mmap",
+  "extraction_status": "skipped_hunk_not_contained",
+  "extraction_reason": "changed lines 1393-1424 are not fully inside the extracted function (1371-1422)",
+  "extraction_method": "v2",
+  "anchor_strategy": {
+    "vulnerable": "direct",
+    "fixed": "direct"
+  },
+  "duplicate_of": null
 }
